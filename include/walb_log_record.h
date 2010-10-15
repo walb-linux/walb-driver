@@ -32,10 +32,10 @@ typedef struct walb_log_record {
 
         u64 lsid; /* Log sequence id */
 
-        u16 lsid_local; /* local sequence id as the data offset in the log record. */
+        u16 lsid_local; /* Local sequence id as the data offset in the log record. */
         u16 reserved1;
         u16 size; /* IO size in sector. */
-        u16 is_exist; /* 0 if this record is exist. */
+        u16 is_exist; /* Non-zero if this record is exist. */
         
         u64 offset; /* IO offset in sector. */
 
@@ -56,6 +56,8 @@ typedef struct walb_log_record {
 
 /**
  * Log record header data inside sector.
+ *
+ * sizeof(walb_record_header_t) <= SECTOR_SIZE.
  */
 typedef struct walb_record_header {
 

@@ -131,7 +131,7 @@ typedef struct walb_super_sector {
 typedef struct walb_snapshot_record {
 
         u64 lsid;
-        u64 timestamp; /* in seconds ('time' system call). */
+        u64 timestamp; /* in seconds (the same as 'time' system call output). */
         u8 name[64];
         
 } __attribute__((packed)) walb_snapshot_record_t;
