@@ -401,7 +401,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	dev->size = nsectors*hardsect_size;
 	dev->data = vmalloc(dev->size);
 	if (dev->data == NULL) {
-		printk (KERN_NOTICE "vmalloc failure.\n");
+		printk (KERN_NOTICE "walb: vmalloc failure.\n");
 		return -1;
 	}
 	spin_lock_init(&dev->lock);
@@ -417,11 +417,12 @@ static int setup_device(struct walb_dev *dev, int which)
          * Setup underlying data device.
          */
         dev->devt = MKDEV(ddev_major, ddev_minor);
-        if (! walb_lock_bdev(&dev->ddev, dev->devt)) {
+        if (walb_lock_bdev(&dev->ddev, dev->devt) != 0) {
+                printk(KERN_ERR "walb: walb_lock_bdev failed\n");
                 goto out_vfree;
         }
         nsectors = get_capacity(dev->ddev->bd_disk);
-        printk(KERN_INFO "underlying disk size %d", nsectors);
+        printk(KERN_INFO "walb: underlying disk size %d\n", nsectors);
 
 	/*
 	 * The I/O queue, depending on whether we are using our own
@@ -454,7 +455,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	/* dev->gd = alloc_disk(WALB_MINORS); */
         dev->gd = alloc_disk(1);
 	if (! dev->gd) {
-		printk (KERN_NOTICE "alloc_disk failure\n");
+		printk (KERN_NOTICE "walb: alloc_disk failure\n");
 		goto out_blkdev;
 	}
 	dev->gd->major = walb_major;
@@ -500,6 +501,10 @@ static int __init walb_init(void)
 		goto out_unregister;
 	for (i = 0; i < ndevices; i++) {
                 ret = setup_device(Devices + i, i);
+        }
+        if (ret) {
+                printk(KERN_ERR "walb: setup_device failed\n");
+                goto out_unregister;
         }
     
 	return 0;
