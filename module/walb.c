@@ -30,8 +30,8 @@ module_param(walb_major, int, 0);
 static int hardsect_size = 512;
 module_param(hardsect_size, int, 0);
 static int nsectors = 1024;	/* How big the drive is */
-module_param(nsectors, int, 0);
-static int ndevices = 4;
+/* module_param(nsectors, int, 0); */
+static int ndevices = 1;
 module_param(ndevices, int, 0);
 
 /*
@@ -96,6 +96,9 @@ struct walb_dev {
         unsigned short ddev_logical_block_size;
         unsigned short ddev_physical_block_size;
 
+        /* Device number */
+        dev_t devt;
+        
         /* Underlying block devices */
         struct block_device *ldev;
         struct block_device *ddev;
@@ -378,7 +381,7 @@ static struct block_device_operations walb_ops = {
 	.owner           = THIS_MODULE,
 	.open 	         = walb_open,
 	.release 	 = walb_release,
-	.media_changed   = walb_media_changed,
+	/* .media_changed   = walb_media_changed, */
 	.revalidate_disk = walb_revalidate,
 	.ioctl	         = walb_ioctl
 };
@@ -386,8 +389,10 @@ static struct block_device_operations walb_ops = {
 
 /*
  * Set up our internal device.
+ *
+ * @return 0 in success, or -1.
  */
-static void setup_device(struct walb_dev *dev, int which)
+static int setup_device(struct walb_dev *dev, int which)
 {
 	/*
 	 * Get some memory.
@@ -397,7 +402,7 @@ static void setup_device(struct walb_dev *dev, int which)
 	dev->data = vmalloc(dev->size);
 	if (dev->data == NULL) {
 		printk (KERN_NOTICE "vmalloc failure.\n");
-		return;
+		return -1;
 	}
 	spin_lock_init(&dev->lock);
 	
@@ -407,7 +412,17 @@ static void setup_device(struct walb_dev *dev, int which)
 	init_timer(&dev->timer);
 	dev->timer.data = (unsigned long) dev;
 	dev->timer.function = walb_invalidate;
-	
+
+        /*
+         * Setup underlying data device.
+         */
+        dev->devt = MKDEV(ddev_major, ddev_minor);
+        if (! walb_lock_bdev(&dev->ddev, dev->devt)) {
+                goto out_vfree;
+        }
+        nsectors = get_capacity(dev->ddev->bd_disk);
+        printk(KERN_INFO "underlying disk size %d", nsectors);
+
 	/*
 	 * The I/O queue, depending on whether we are using our own
 	 * make_request function or not.
@@ -416,14 +431,14 @@ static void setup_device(struct walb_dev *dev, int which)
         case RM_NOQUEUE:
 		dev->queue = blk_alloc_queue(GFP_KERNEL);
 		if (dev->queue == NULL)
-			goto out_vfree;
+			goto out_blkdev;
 		blk_queue_make_request(dev->queue, walb_make_request);
 		break;
 
         case RM_FULL:
 		dev->queue = blk_init_queue(walb_full_request, &dev->lock);
 		if (dev->queue == NULL)
-			goto out_vfree;
+			goto out_blkdev;
 		break;
 
         default:
@@ -436,37 +451,45 @@ static void setup_device(struct walb_dev *dev, int which)
 	/*
 	 * And the gendisk structure.
 	 */
-	dev->gd = alloc_disk(WALB_MINORS);
+	/* dev->gd = alloc_disk(WALB_MINORS); */
+        dev->gd = alloc_disk(1);
 	if (! dev->gd) {
 		printk (KERN_NOTICE "alloc_disk failure\n");
-		goto out_vfree;
+		goto out_blkdev;
 	}
 	dev->gd->major = walb_major;
 	dev->gd->first_minor = which*WALB_MINORS;
 	dev->gd->fops = &walb_ops;
 	dev->gd->queue = dev->queue;
 	dev->gd->private_data = dev;
-	snprintf (dev->gd->disk_name, 32, "sbull%c", which + 'a');
+	snprintf (dev->gd->disk_name, 32, "walb_%c", which + 'a');
 	set_capacity(dev->gd, nsectors*(hardsect_size/KERNEL_SECTOR_SIZE));
 	add_disk(dev->gd);
-	return;
+	return 0;
 
+out_blkdev:
+        if (dev->ddev) {
+                walb_unlock_bdev(dev->ddev);
+        }
 out_vfree:
-	if (dev->data)
+	if (dev->data) {
 		vfree(dev->data);
+        }
+        return -1;
 }
 
 
 
 static int __init walb_init(void)
 {
+        int ret = 0;
 	int i;
 	/*
 	 * Get registered.
 	 */
-	walb_major = register_blkdev(walb_major, "sbull");
+	walb_major = register_blkdev(walb_major, "walb");
 	if (walb_major <= 0) {
-		printk(KERN_WARNING "sbull: unable to get major number\n");
+		printk(KERN_WARNING "walb: unable to get major number\n");
 		return -EBUSY;
 	}
 	/*
@@ -475,13 +498,14 @@ static int __init walb_init(void)
 	Devices = kmalloc(ndevices*sizeof (struct walb_dev), GFP_KERNEL);
 	if (Devices == NULL)
 		goto out_unregister;
-	for (i = 0; i < ndevices; i++) 
-		setup_device(Devices + i, i);
+	for (i = 0; i < ndevices; i++) {
+                ret = setup_device(Devices + i, i);
+        }
     
 	return 0;
 
 out_unregister:
-	unregister_blkdev(walb_major, "sbd");
+	unregister_blkdev(walb_major, "walb");
 	return -ENOMEM;
 }
 
@@ -503,10 +527,12 @@ static void walb_exit(void)
 			else
 				blk_cleanup_queue(dev->queue);
 		}
+                if (dev->ddev)
+                        walb_unlock_bdev(dev->ddev);
 		if (dev->data)
 			vfree(dev->data);
 	}
-	unregister_blkdev(walb_major, "sbull");
+	unregister_blkdev(walb_major, "walb");
 	kfree(Devices);
 }
 	
