@@ -408,7 +408,7 @@ static void walb_full_request2(struct request_queue *q)
 
                 blk_start_request(req);
                 if (req->cmd_type != REQ_TYPE_FS) {
-			printk (KERN_NOTICE "skip non-fs request.\n");
+			printk_n("skip non-fs request.\n");
                         __blk_end_request_all(req, -EIO);
                         continue;
                 }
@@ -501,7 +501,7 @@ void walb_invalidate(unsigned long ldev)
 
 	spin_lock(&dev->lock);
 	if (dev->users || !dev->data) 
-		printk (KERN_WARNING "timer sanity check failed\n");
+		printk_w("timer sanity check failed\n");
 	else
 		dev->media_change = 1;
 	spin_unlock(&dev->lock);
@@ -568,7 +568,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	dev->size = nsectors*hardsect_size;
 	dev->data = vmalloc(dev->size);
 	if (dev->data == NULL) {
-		printk (KERN_NOTICE "vmalloc failure.\n");
+		printk_n("vmalloc failure.\n");
 		return -1;
 	}
 	spin_lock_init(&dev->lock);
@@ -589,7 +589,7 @@ static int setup_device(struct walb_dev *dev, int which)
                 goto out_vfree;
         }
         nsectors = get_capacity(dev->ddev->bd_disk);
-        printk(KERN_INFO "underlying disk size %d\n", nsectors);
+        printk_i("underlying disk size %d\n", nsectors);
 
 	/*
 	 * The I/O queue, depending on whether we are using our own
@@ -612,7 +612,7 @@ static int setup_device(struct walb_dev *dev, int which)
 		break;
 
         default:
-		printk(KERN_NOTICE "Bad request mode %d, using simple\n", request_mode);
+		printk_i("Bad request mode %d, using simple\n", request_mode);
         	/* fall into.. */
 	}
 	blk_queue_logical_block_size(dev->queue, hardsect_size);
@@ -624,7 +624,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	/* dev->gd = alloc_disk(WALB_MINORS); */
         dev->gd = alloc_disk(1);
 	if (! dev->gd) {
-		printk (KERN_NOTICE "alloc_disk failure\n");
+		printk_n("alloc_disk failure\n");
 		goto out_queue;
 	}
 	dev->gd->major = walb_major;
