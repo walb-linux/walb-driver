@@ -3,6 +3,28 @@
 
 #include <linux/workqueue.h>
 #include <linux/bio.h>
+#include <linux/spinlock.h>
+#include <linux/kernel.h>
+
+/**
+ * For debug
+ */
+#if 0 && defined(WALB_DEBUG)
+#define printk_d(fmt, args...) \
+        printk(KERN_DEBUG "walb: " fmt, ##args)
+#else
+#define printk_d(fmt, args...)
+#endif
+
+#define printk_e(fmt, args...)                  \
+        printk(KERN_ERR "walb: " fmt, ##args)
+#define printk_w(fmt, args...)                  \
+        printk(KERN_WARNING "walb: " fmt, ##args)
+#define printk_n(fmt, args...)                  \
+        printk(KERN_NOTICE "walb: " fmt, ##args)
+#define printk_i(fmt, args...)                  \
+        printk(KERN_INFO "walb: " fmt, ##args)
+
 
 /*
  * The different "request modes" we can use.
@@ -83,6 +105,7 @@ struct walb_ddev_bio {
 struct walb_submit_bio_work
 {
         struct list_head list; /* list of walb_ddev_bio */
+        spinlock_t lock; /* lock for the list */
         struct work_struct work;
 };
 

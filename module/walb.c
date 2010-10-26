@@ -10,7 +10,6 @@
 #include <linux/init.h>
 
 #include <linux/sched.h>
-#include <linux/kernel.h>	/* printk() */
 #include <linux/slab.h>		/* kmalloc() */
 #include <linux/fs.h>		/* everything... */
 #include <linux/errno.h>	/* error codes */
@@ -24,6 +23,7 @@
 #include <linux/blkdev.h>
 #include <linux/buffer_head.h>	/* invalidate_bdev */
 #include <linux/bio.h>
+#include <linux/spinlock.h>
 
 #include "walb.h"
 
@@ -77,11 +77,11 @@ static int walb_lock_bdev(struct block_device **bdevp, dev_t dev)
         return err;
 
 claim_err:
-        printk(KERN_ERR "walb: bd_claim error %s.\n", __bdevname(dev, b));
+        printk_e("bd_claim error %s.\n", __bdevname(dev, b));
         blkdev_put(bdev, FMODE_READ|FMODE_WRITE);
         return err;
 open_err:
-        printk(KERN_ERR "walb: open error %s.\n", __bdevname(dev, b));
+        printk_e("open error %s.\n", __bdevname(dev, b));
         return err;
 }
 
@@ -104,7 +104,7 @@ static void walb_transfer(struct walb_dev *dev, unsigned long sector,
 	unsigned long offset = sector*KERNEL_SECTOR_SIZE;
 
 	if ((offset + nbytes) > dev->size) {
-		printk (KERN_NOTICE "Beyond-end write (%ld %ld)\n", offset, nbytes);
+		printk_n("Beyond-end write (%ld %ld)\n", offset, nbytes);
 		return;
 	}
 	if (write)
@@ -187,7 +187,7 @@ static void walb_full_request(struct request_queue *q)
 	while ((req = blk_peek_request(q)) != NULL) {
                 blk_start_request(req);
 		if (req->cmd_type != REQ_TYPE_FS) {
-			printk (KERN_NOTICE "Skip non-fs request\n");
+			printk_n("Skip non-fs request\n");
 			__blk_end_request_all(req, -EIO);
 			continue;
 		}
@@ -212,13 +212,9 @@ static void walb_full_request(struct request_queue *q)
 /**
  *
  */
-static void walb_submit_all_bios(struct walb_ddev_bio bios)
-{
-        
-
-
-        
-}
+/* static void walb_submit_all_bios(struct walb_ddev_bio bios) */
+/* { */
+/* }         */
 
 /**
  * The bio is walb_ddev_bio's bio.
@@ -235,14 +231,16 @@ static void walb_ddev_end_io(struct bio *bio, int error)
         int is_last = 1;
         int is_err = 0;
         
-        printk(KERN_INFO "walb: ddev_end_io() called\n");
+        printk_d("ddev_end_io() called\n");
+        printk_d("bio %ld %d\n",
+               (long)bio->bi_sector, bio->bi_size);
         
         BUG_ON(! dbio);
         head = dbio->head;
         BUG_ON(! head);
         
         if (error || ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
-                printk(KERN_ERR "walb: IO failed error=%d, uptodate=%d\n",
+                printk_e("IO failed error=%d, uptodate=%d\n",
                        error, test_bit(BIO_UPTODATE, &bio->bi_flags));
                 
                 dbio->status = WALB_BIO_ERROR;
@@ -254,8 +252,12 @@ static void walb_ddev_end_io(struct bio *bio, int error)
 
         /* Check whether it's the last bio in the request finished
            or error or not finished. */
+        wq = container_of(head, struct walb_submit_bio_work, list);
+        BUG_ON(! wq);
+        spin_lock(&wq->lock);
         list_for_each_entry_safe(tmp, next, head, list) {
 
+                printk_d("status: %d\n", tmp->status);
                 switch (tmp->status) {
                 case WALB_BIO_END:
                         /* do nothing */
@@ -266,38 +268,39 @@ static void walb_ddev_end_io(struct bio *bio, int error)
                 case WALB_BIO_INIT:
                         is_last = 0;
                         break;
-                default: BUG();
+                default:
+                        BUG();
                 }
 
                 if (is_err) {
                         break;
                 }
         }
+        spin_unlock(&wq->lock);
 
         /* Finalize the request of wrapper device. */
         if (is_last) {
                 if (is_err) {
-                        printk(KERN_INFO "walb blk_end_request_all() -EIO\n");
+                        printk_d("walb blk_end_request_all() -EIO\n");
                         blk_end_request_all(req, -EIO);
                 } else {
-                        printk(KERN_INFO "walb blk_end_request_all() 0\n");
+                        printk_d("walb blk_end_request_all() 0\n");
                         blk_end_request_all(req, 0);
                 }
 
+                spin_lock(&wq->lock);
                 list_for_each_entry_safe(tmp, next, head, list) {
                         BUG_ON(tmp->bio != NULL);
                         BUG_ON(tmp->status == WALB_BIO_INIT);
                         list_del(&tmp->list);
                         kfree(tmp);
                 }
+                spin_unlock(&wq->lock);
+
+                kfree(wq);
         }
 
-        
-        wq = container_of(head, struct walb_submit_bio_work, list);
-        BUG_ON(! wq);
-        kfree(wq);
-        
-        printk(KERN_INFO "walb: ddev_end_io() end\n");
+        printk_d("ddev_end_io() end\n");
 }
 
 
@@ -309,22 +312,23 @@ static void walb_submit_bio_task(struct work_struct *work)
         struct walb_submit_bio_work *wq;
         struct walb_ddev_bio *dbio, *next;
 
-        printk(KERN_INFO "walb: submit_bio_task begin\n");
+        printk_d("submit_bio_task begin\n");
         
         wq = container_of(work, struct walb_submit_bio_work, work);
         BUG_ON(! wq);
         
         if (list_empty(&wq->list)) {
-                printk(KERN_WARNING "walb: list is empty\n");
+                printk_w("list is empty\n");
         }
         
         list_for_each_entry_safe(dbio, next, &wq->list, list) {
 
-                printk(KERN_INFO "walb: submit_bio_task\n");
+                printk_d("submit_bio_task %ld %d\n",
+                       (long)dbio->bio->bi_sector, dbio->bio->bi_size);
                 submit_bio(dbio->bio->bi_rw, dbio->bio);
         }
 
-        printk(KERN_INFO "walb: submit_bio_task end\n");
+        printk_d("submit_bio_task end\n");
 }
 
 
@@ -341,11 +345,12 @@ static void walb_make_ddev_request(struct walb_dev *wdev, struct request *req)
         int bio_nr = 0;
         struct walb_submit_bio_work *wq;
 
-        printk(KERN_INFO "walb: make_ddev_request() called\n");
+        printk_d("make_ddev_request() called\n");
 
         wq = kmalloc(sizeof(struct walb_submit_bio_work), GFP_NOIO);
         if (! wq) { goto out; }
         INIT_LIST_HEAD(&wq->list);
+        spin_lock_init(&wq->lock);
         
         __rq_for_each_bio(bio, req) {
 
@@ -363,12 +368,13 @@ static void walb_make_ddev_request(struct walb_dev *wdev, struct request *req)
                 
                 list_add_tail(&dbio->list, &wq->list);
                 bio_nr ++;
+                printk_d("dbio->status: %d\n", dbio->status);
         }
 
-        printk(KERN_INFO "bio_nr: %d\n", bio_nr);
+        printk_d("bio_nr: %d\n", bio_nr);
 
         if (list_empty(&wq->list)) {
-                printk(KERN_WARNING "walb: list empty.\n");
+                printk_w("list empty.\n");
         }
         
         INIT_WORK(&wq->work, walb_submit_bio_task);
@@ -380,12 +386,12 @@ static void walb_make_ddev_request(struct walb_dev *wdev, struct request *req)
         /* Submit all the bios. */
         /* walb_submit_all_bios(ddev_bio); */
         
-        printk(KERN_INFO "walb: make_ddev_request() end\n");
+        printk_d("make_ddev_request() end\n");
         
         return;
         
 out:
-        printk(KERN_ERR "walb: make_ddev_request failed\n");
+        printk_e("make_ddev_request failed\n");
         __blk_end_request_all(req, -EIO);
 }
 
@@ -402,7 +408,7 @@ static void walb_full_request2(struct request_queue *q)
 
                 blk_start_request(req);
                 if (req->cmd_type != REQ_TYPE_FS) {
-			printk (KERN_NOTICE "walb: skip non-fs request.\n");
+			printk (KERN_NOTICE "skip non-fs request.\n");
                         __blk_end_request_all(req, -EIO);
                         continue;
                 }
@@ -495,7 +501,7 @@ void walb_invalidate(unsigned long ldev)
 
 	spin_lock(&dev->lock);
 	if (dev->users || !dev->data) 
-		printk (KERN_WARNING "walb: timer sanity check failed\n");
+		printk (KERN_WARNING "timer sanity check failed\n");
 	else
 		dev->media_change = 1;
 	spin_unlock(&dev->lock);
@@ -562,7 +568,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	dev->size = nsectors*hardsect_size;
 	dev->data = vmalloc(dev->size);
 	if (dev->data == NULL) {
-		printk (KERN_NOTICE "walb: vmalloc failure.\n");
+		printk (KERN_NOTICE "vmalloc failure.\n");
 		return -1;
 	}
 	spin_lock_init(&dev->lock);
@@ -579,11 +585,11 @@ static int setup_device(struct walb_dev *dev, int which)
          */
         dev->devt = MKDEV(ddev_major, ddev_minor);
         if (walb_lock_bdev(&dev->ddev, dev->devt) != 0) {
-                printk(KERN_ERR "walb: walb_lock_bdev failed\n");
+                printk_e("walb_lock_bdev failed\n");
                 goto out_vfree;
         }
         nsectors = get_capacity(dev->ddev->bd_disk);
-        printk(KERN_INFO "walb: underlying disk size %d\n", nsectors);
+        printk(KERN_INFO "underlying disk size %d\n", nsectors);
 
 	/*
 	 * The I/O queue, depending on whether we are using our own
@@ -618,7 +624,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	/* dev->gd = alloc_disk(WALB_MINORS); */
         dev->gd = alloc_disk(1);
 	if (! dev->gd) {
-		printk (KERN_NOTICE "walb: alloc_disk failure\n");
+		printk (KERN_NOTICE "alloc_disk failure\n");
 		goto out_queue;
 	}
 	dev->gd->major = walb_major;
@@ -660,7 +666,7 @@ static int __init walb_init(void)
 	 */
 	walb_major = register_blkdev(walb_major, "walb");
 	if (walb_major <= 0) {
-		printk(KERN_WARNING "walb: unable to get major number\n");
+		printk_w("unable to get major number\n");
 		return -EBUSY;
 	}
 	/*
@@ -673,7 +679,7 @@ static int __init walb_init(void)
                 ret = setup_device(Devices + i, i);
         }
         if (ret) {
-                printk(KERN_ERR "walb: setup_device failed\n");
+                printk_e("setup_device failed\n");
                 goto out_unregister;
         }
     
