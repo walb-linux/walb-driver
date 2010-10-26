@@ -3,13 +3,13 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef WALB_LOG_FILE_H
-#define WALB_LOG_FILE_H
+#ifndef _WALB_LOG_FILE_H
+#define _WALB_LOG_FILE_H
 
 #include "walb_log_record.h"
 
 /**
- * sizeof(walb_file_header_t) must be <= SECTOR_SIZE.
+ * sizeof(walb_file_header_t) must be <= walb_super_sector.sector_size.
  */
 typedef struct walb_file_header {
         
@@ -22,4 +22,4 @@ typedef struct walb_file_header {
 typedef walb_log_record_t walb_file_record_t;
 /* Log record is the same format as in log device. */
 
-#endif /* WALB_LOG_FILE_H */
+#endif /* _WALB_LOG_FILE_H */

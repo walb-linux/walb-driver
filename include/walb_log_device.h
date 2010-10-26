@@ -6,7 +6,7 @@
 #ifndef WALB_LOG_DEVICE_H
 #define WALB_LOG_DEVICE_H
 
-#include <linux/list.h>
+/* #include <linux/list.h> */
 #include "walb_log_record.h"
 
 /*
@@ -95,20 +95,31 @@
 /**
  * Super block data of the log device.
  *
- * sizeof(walb_super_sector_t) must be <= SECTOR_SIZE.
+ * sizeof(walb_super_sector_t) must be <= sector_size.
  */
 typedef struct walb_super_sector {
 
+        /* 4 * 4 + 16 + 8 * 5 = 72 bytes */
+        
+        /* Check sum of the super block */
+        u32 checksum;
+
+        /* Atomic read/write size.
+           Normally physical block size of the device.
+           Physical block size of the log device and data device
+           must be the same. */
+        u32 sector_size;
+        
+        /* Number of sectors for snapshot metadata. */
+        u32 snapshot_metadata_size;
+        u32 reserved1;
+
         /* UUID of the wal device. */
-        u8 uuid[16]; /* 128 bits */
+        u8 uuid[16];
 
         /* Offset of the oldest log record inside ring buffer.
            [sector] */
         u64 start_offset;
-
-        /* Number of sectors for snapshot metadata. */
-        u32 snapshot_metadata_size;
-        u32 reserved4;
 
         /* Ring buffer size [sector] */
         u64 ring_buffer_size;
@@ -119,10 +130,12 @@ typedef struct walb_super_sector {
         /* Log sequence id of the latest log record written to the data device also.
            This is used for checkpointing.
            When walb device is assembled redo must be
-           from written_lsid to the latest lsid stored in the log device.
-        */
+           from written_lsid to the latest lsid stored in the log device. */
         u64 written_lsid;
 
+        /* Size of wrapper block device */
+        u64 device_size;
+        
 } __attribute__((packed)) walb_super_sector_t;
 
 /**
@@ -130,23 +143,34 @@ typedef struct walb_super_sector {
  */
 typedef struct walb_snapshot_record {
 
+        /* 8 + 8 + 64 = 80 bytes */
+        
         u64 lsid;
         u64 timestamp; /* in seconds (the same as 'time' system call output). */
         u8 name[64];
         
 } __attribute__((packed)) walb_snapshot_record_t;
 
-#define N_SNAPSHOT_RECORD_IN_SECTOR (SECTOR_SIZE / sizeof(walb_snapshot_record_t))
-
 /**
  * Snapshot data inside sector.
  *
- * sizeof(walb_snapshot_sector_t) <= SECTOR_SIZE
+ * sizeof(walb_snapshot_sector_t) <= walb_super_sector.sector_size
  */
 typedef struct walb_snapshot_sector {
 
-        walb_snapshot_record_t record[N_SNAPSHOT_ENTRY_IN_SECTOR];
+        /* Checksum of snapshot sector */
+        u32 checksum;
 
+        /* Allocation bitmap of the continuous records
+           stored in the sector.
+           (i + 1)'th record exists when (bitmap & (1 << i)) != 0.
+        */
+        u32 bitmap;
+
+        walb_snapshot_record_t record[0];
+        /* The continuous data have records.
+           The number of records is up to 32 or sector size */
+        
 } __attribute__((packed)) walb_snapshot_sector_t;
 
 #endif /* WALB_LOG_DEVICE_H */

@@ -3,44 +3,32 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef WALB_LOG_RECORD_H
-#define WALB_LOG_RECORD_H
+#ifndef _WALB_LOG_RECORD_H
+#define _WALB_LOG_RECORD_H
 
-#include <linux/list.h>
-
-#ifdef __KERNEL__
-#include <linux/types.h>
-#else /* __KERNEL__ */
-#include <stdint.h>
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-#endif /* __KERNEL__ */
-
-/**
- * Sector size is fixed value.
- */
-#define SECTOR_SIZE 512
+#include "walb.h"
 
 /**
  * Log record.
  */
 typedef struct walb_log_record {
 
-        /* 256 bit size */
+        /* 8 + 2 * 4 + 8 * 2 = 32 bytes */
 
+        /* Just sum of the array assuming data contents
+           as an array of u32 integer. */
+        u32 checksum;
+        u32 reserved1;
+        
         u64 lsid; /* Log sequence id */
 
-        u16 lsid_local; /* Local sequence id as the data offset in the log record. */
-        u16 reserved1;
-        u16 size; /* IO size in sector. */
+        /* Local sequence id as the data offset in the log record. */
+        u16 lsid_local; 
+        u16 reserved2;
+        u16 io_size; /* IO size by the sector. */
         u16 is_exist; /* Non-zero if this record is exist. */
         
-        u64 offset; /* IO offset in sector. */
-
-        /* Just sum of the array assuming data contents as an array of u64 integer. */
-        u64 checksum;
+        u64 offset; /* IO offset by the sector. */
 
         /*
          * Data offset in the ring buffer.
@@ -51,17 +39,19 @@ typedef struct walb_log_record {
         
 } __attribute__((packed)) walb_log_record_t;
 
-#define N_LOG_RECORD_IN_SECTOR (SECTOR_SIZE / sizeof(walb_log_record_t))
-#define LOG_RECORD_SIZE_IN_SECTOR (N_LOG_RECORD_IN_SECTOR * sizeof(walb_log_record_t))
-
 /**
  * Log record header data inside sector.
  *
- * sizeof(walb_record_header_t) <= SECTOR_SIZE.
+ * sizeof(walb_record_header_t) <= walb_super_sector.sector_size.
  */
 typedef struct walb_record_header {
 
-        walb_log_record_t record[N_LOG_RECORD_IN_SECTOR];
+        u32 checksum; /* checksum of whole log pack. */
+        u16 n_io; /* Number of IO in the log pack. */
+        u16 total_io_size; /* Total io size in the log pack. */
+        
+        walb_log_record_t record[0];
+        /* continuous records */
         
 } __attribute__((packed)) walb_record_header_t;
 
@@ -71,7 +61,7 @@ typedef struct walb_record_header {
 typedef struct walb_io_data {
 
         u16 size; /* in sector. */
-        u8 *data; /* pointer to buffer with size is (size * SECTOR_SIZE). */
+        u8 *data; /* pointer to buffer with size. */
         
 } __attribute__((packed)) walb_io_data_t;
 
@@ -81,8 +71,9 @@ typedef struct walb_io_data {
 typedef struct walb_log_pack {
 
         walb_record_header_t header;
-        walb_io_data_t io_data[N_LOG_RECORD_IN_SECTOR];
+        walb_io_data_t io_data[0];
+        /* Contiuous io_data */
 
 } __attribute__((packed)) walb_pack_t;
 
-#endif /* WALB_LOG_RECORD_H */
+#endif /* _WALB_LOG_RECORD_H */
