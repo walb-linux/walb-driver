@@ -173,4 +173,51 @@ typedef struct walb_snapshot_sector {
         
 } __attribute__((packed)) walb_snapshot_sector_t;
 
+/**
+ * Number of snapshots in a sector.
+ */
+inline int max_n_snapshots_in_sector(int sector_size)
+{
+        int size;
+
+#if 0
+        printf("walb_snapshot_sector_t size: %zu\n",
+               sizeof(walb_snapshot_sector_t));
+        printf("walb_snapshot_record_t size: %zu\n",
+               sizeof(walb_snapshot_record_t));
+#endif
+        
+        size = (sector_size - sizeof(walb_snapshot_sector_t))
+                / sizeof(walb_snapshot_record_t);
+        
+        /* It depends on bitmap length. */
+        return (size < 32 ? size : 32);
+}
+
+
+/**
+ * Get metadata size
+ *
+ * @sector_size sector size.
+ * @n_snapshots number snapshot to keep.
+ * 
+ * @return required metadata size by the sector.
+ */
+inline int get_metadata_size(int sector_size, int n_snapshots)
+{
+        int n_sectors;
+        int t = max_n_snapshots_in_sector(sector_size);
+        n_sectors = (n_snapshots + t - 1) / t;
+        return n_sectors;
+}
+
+inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
+{
+        /* not yet implemented */
+
+        
+
+}
+
+
 #endif /* WALB_LOG_DEVICE_H */

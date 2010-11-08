@@ -13,52 +13,12 @@
 #include <sys/time.h>
 #include <string.h>
 
-#include "../include/walb.h"
+#include "random.h"
+#include "walb.h"
 
 double time_double(struct timeval *tv)
 {
         return (double)tv->tv_sec + tv->tv_usec * 0.000001;
-}
-
-/**
- * Read /dev/urandom to generate random value.
- */
-u32 read_urandom()
-{
-        int fd, val;
-        fd = open("/dev/urandom", O_RDONLY);
-        if (fd < 0) {
-                perror("open /dev/urandom failed\n");
-                exit(1);
-        }
-        if (read(fd, (void *)&val, sizeof(u32)) != sizeof(u32)) {
-                printf("read /dev/urandom failed\n");
-                exit(1);
-        }
-        close(fd);
-        return val;
-}
-
-/**
- * Get random value.
- * @return 0 <= val < max
- */
-int get_random(int max)
-{
-        int min = 0;
-        return min + (int)(rand() * (max - min + 0.0) / (RAND_MAX + 1.0));
-}
-
-
-/**
- * Random generator test.
- */
-void test_random()
-{
-        int i;
-        for (i = 0; i < 100000; i ++) {
-                printf("%d\n", get_random(10));
-        }
 }
 
 /**
@@ -76,22 +36,6 @@ void free_buf(u8* data)
 {
         if (data != NULL)
                 free(data);
-}
-
-/**
- * Randomly set the buffer.
- */
-void memset_random(u8 *data, size_t size)
-{
-        size_t i;
-        for (i = 0; i < size; i ++) {
-                data[i] = (u8)get_random(255);
-        }
-}
-
-void checksum4()
-{
-        
 }
 
 static int comp(const void *p1, const void *p2)
@@ -143,7 +87,7 @@ int main()
         struct timeval tv;
         double t1, t2, t3;
 
-        srand(read_urandom());
+        init_random();
         make_sorted_random_array(mid, 16, size, sizeof(u32));
 
         printf("making random array...\n");

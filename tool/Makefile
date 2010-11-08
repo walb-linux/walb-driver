@@ -1,4 +1,5 @@
-
+CC=gcc
+CFLAGS=-fPIC -Wall -Wextra -I../include
 
 BINARIES = walbctl test_checksum 
 
@@ -12,8 +13,14 @@ HEADER_FILES = ../include/walb.h \
 	../include/walb_log_device.h \
 	../include/userland.h
 
-walbctl: walbctl.c $(HEADER_FILES)
-	$(CC) -Wall -o $@ walbctl.c
+walbctl: walbctl.o util.o
+	$(CC) -o $@ $(CFLAGS) walbctl.o util.o
 
-test_checksum: test_checksum.c $(HEADER_FILES)
-	$(CC) -Wall -o $@ test_checksum.c
+test_checksum: test_checksum.o
+	$(CC) -o $@ $(CFLAGS) test_checksum.o
+
+util.o: util.c util.h
+
+
+.c.o:
+	$(CC) -c $< -o $@ $(CFLAGS)
