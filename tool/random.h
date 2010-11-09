@@ -19,7 +19,7 @@
 /**
  * Read /dev/urandom to generate random value.
  */
-inline u32 read_urandom()
+static inline u32 read_urandom()
 {
         int fd, val;
         fd = open("/dev/urandom", O_RDONLY);
@@ -38,7 +38,7 @@ inline u32 read_urandom()
 /**
  * Initialize random seed.
  */
-inline void init_random()
+static inline void init_random()
 {
         srand(read_urandom());
 }
@@ -48,7 +48,7 @@ inline void init_random()
  * Get random value.
  * @return 0 <= val < max
  */
-inline int get_random(int max)
+static inline int get_random(int max)
 {
         int min = 0;
         return min + (int)(rand() * (max - min + 0.0) / (RAND_MAX + 1.0));
@@ -57,7 +57,7 @@ inline int get_random(int max)
 /**
  * Randomly set the buffer.
  */
-inline void memset_random(u8 *data, size_t size)
+static inline void memset_random(u8 *data, size_t size)
 {
         size_t i;
         for (i = 0; i < size; i ++) {
@@ -69,7 +69,7 @@ inline void memset_random(u8 *data, size_t size)
 /**
  * Random generator test.
  */
-inline void test_random()
+static inline void test_random()
 {
         int i;
         for (i = 0; i < 100000; i ++) {

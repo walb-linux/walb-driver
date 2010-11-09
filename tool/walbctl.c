@@ -3,14 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-
-#include "walb.h"
-#include "walb_log_device.h"
-#include "walb_log_record.h"
-
-#include "util.h"
-
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -18,6 +12,14 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+
+#include "walb.h"
+#include "walb_log_device.h"
+#include "walb_log_record.h"
+#include "random.h"
+
+#include "util.h"
+
 
 typedef struct config
 {
@@ -40,7 +42,7 @@ void show_help()
 
 void init_config(config_t* cfg)
 {
-        assert(cfg != NULL);
+        ASSERT(cfg != NULL);
 
         cfg->n_snapshots = 10000;
 }
@@ -96,23 +98,22 @@ int parse_opt(int argc, char* const argv[])
  *
  * @fd block device file descripter.
  * @sector_size sector size.
- * @size device size by the sector.
+ * @dev_size device size by the sector.
  * @n_snapshots number of snapshots to keep.
  *
  * @return 0 in success, or -1.
  */
-int init_walb_metadata(int fd, int sector_size, u64 size, int n_snapshots)
+int init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
 {
-        assert(fd >= 0);
-        assert(sector_size > 0);
-        assert(size < (u64)(-1));
+        ASSERT(fd >= 0);
+        ASSERT(sector_size > 0);
+        ASSERT(size < (u64)(-1));
 
         walb_super_sector_t super_sect;
         walb_snapshot_sector_t snap_sect;
 
-        assert(sizeof(super_sect) <= sector_size);
-        assert(sizeof(snap_sect) <= sector_size);
-        
+        ASSERT(sizeof(super_sect) <= sector_size);
+        ASSERT(sizeof(snap_sect) <= sector_size);
 
         /* Calculate number of snapshot sectors. */
         int n_sectors;
@@ -121,12 +122,8 @@ int init_walb_metadata(int fd, int sector_size, u64 size, int n_snapshots)
 
         printf("metadata_size: %d\n", n_sectors);
 
-        /* Memory image of sector. */
-        u8 sector_buf[sector_size];
-        
         /* Prepare and write super sector */
         memset(&super_sect, 0, sizeof(super_sect));
-        memset(sector_buf, 0, sector_size);
 
         super_sect.sector_size = sector_size;
         super_sect.snapshot_metadata_size = n_sectors;
@@ -134,18 +131,25 @@ int init_walb_metadata(int fd, int sector_size, u64 size, int n_snapshots)
         
         super_sect.start_offset = get_ring_buffer_offset(sector_size, n_snapshots);
 
+        super_sect.oldest_lsid = 0;
+        super_sect.written_lsid = 0;
+        super_sect.device_size = dev_size;
+
+        /* write super sector */
+        if (write_super_sector(fd, &super_sect) < 0) {
+                LOG("write super sector failed.\n");
+                goto error;
+        }
         
         /* now editing */
         
+        
         /* Prepare and write n_sectors times snapshot sectors */
         memset(&snap_sect, 0, sizeof(snap_sect));
-        memset(sector_buf, 0, sector_size);
-
 
         
         return 0;
 
-        
 error:
         return -1;
 }
@@ -159,8 +163,8 @@ error:
  */
 int format_log_dev()
 {
-        assert(cfg_.cmd_str);
-        assert(strcmp(cfg_.cmd_str, "mklog") == 0);
+        ASSERT(cfg_.cmd_str);
+        ASSERT(strcmp(cfg_.cmd_str, "mklog") == 0);
         
         if (check_log_dev(cfg_.ldev_name) < 0) {
                 printf("format_log_dev: check failed.");
@@ -178,7 +182,7 @@ int format_log_dev()
         }
         
         int fd;
-        fd = open(cfg_.ldev_name, O_RDWR);
+        fd = open(cfg_.ldev_name, O_RDWR | O_DIRECT);
         if (fd < 0) {
                 perror("open failed");
                 goto error;
@@ -201,7 +205,7 @@ error:
 
 void dispatch()
 {
-        assert(cfg_.cmd_str != NULL);
+        ASSERT(cfg_.cmd_str != NULL);
         if (strcmp(cfg_.cmd_str, "mklog") == 0) {
 
                 format_log_dev();

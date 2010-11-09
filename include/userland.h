@@ -24,4 +24,13 @@ typedef int64_t  s64;
 #define MINOR(dev) minor(dev)
 #define MKDEV(dev) makedev(dev)
 
+/* page size */
+#ifndef PAGE_SIZE
+#include <unistd.h>
+#define PAGE_SIZE getpagesize()
+#endif
+
+/* bool */
+#include <stdbool.h>
+
 #endif /* _WALB_USERLAND_H */

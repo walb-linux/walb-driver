@@ -133,7 +133,7 @@ typedef struct walb_super_sector {
            from written_lsid to the latest lsid stored in the log device. */
         u64 written_lsid;
 
-        /* Size of wrapper block device */
+        /* Size of wrapper block device [sector] */
         u64 device_size;
         
 } __attribute__((packed)) walb_super_sector_t;
@@ -176,7 +176,7 @@ typedef struct walb_snapshot_sector {
 /**
  * Number of snapshots in a sector.
  */
-inline int max_n_snapshots_in_sector(int sector_size)
+static inline int max_n_snapshots_in_sector(int sector_size)
 {
         int size;
 
@@ -203,20 +203,63 @@ inline int max_n_snapshots_in_sector(int sector_size)
  * 
  * @return required metadata size by the sector.
  */
-inline int get_metadata_size(int sector_size, int n_snapshots)
+static inline int get_metadata_size(int sector_size, int n_snapshots)
 {
+        ASSERT(PAGE_SIZE % sector_size == 0 &&
+               PAGE_SIZE >= sector_size);
+        
         int n_sectors;
         int t = max_n_snapshots_in_sector(sector_size);
         n_sectors = (n_snapshots + t - 1) / t;
         return n_sectors;
 }
 
-inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
+/**
+ * Get offset of primary super sector.
+ *
+ * @sector_size sector size in bytes.
+ * @return offset in sectors.
+ */
+static inline u64 get_super_sector0_offset(int sector_size)
 {
-        /* not yet implemented */
+        return PAGE_SIZE/sector_size; /* skip reserved page */
+}
 
-        
+/**
+ * Get offset of first metadata sector.
+ *
+ * @sector_size sector size in bytes.
+ * @return offset in sectors.
+ */
+static inline u64 get_metadata_offset(int sector_size)
+{
+        return get_super_sector0_offset(sector_size) + 1;
+}
 
+/**
+ * Get offset of secondary super sector.
+ *
+ * @sector_size sector size in bytes.
+ * @n_snapshots number of snapshot to keep.
+ * @return offset in sectors.
+ */
+static inline u64 get_super_sector1_offset(int sector_size, int n_snapshots)
+{
+        return  get_metadata_offset(sector_size) +
+                get_metadata_size(sector_size, n_snapshots);
+}
+
+/**
+ * Get ring buffer offset.
+ *
+ * @sector_size sector size.
+ * @n_snapshots number of snapshot to keep.
+ *
+ * @return ring buffer offset by the sector.
+ */
+static inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
+{
+        return  get_super_sector1_offset(sector_size, n_snapshots) + 1;
 }
 
 
