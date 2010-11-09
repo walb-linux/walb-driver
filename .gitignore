@@ -2,3 +2,7 @@
 *.o
 *.o.cmd
 *.ko
+GPATH
+GRTAGS
+GSYMS
+GTAGS
