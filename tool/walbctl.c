@@ -122,7 +122,7 @@ int init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
 
         printf("metadata_size: %d\n", n_sectors);
 
-        /* Prepare and write super sector */
+        /* Prepare super sector */
         memset(&super_sect, 0, sizeof(super_sect));
 
         super_sect.sector_size = sector_size;
@@ -135,18 +135,25 @@ int init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
         super_sect.written_lsid = 0;
         super_sect.device_size = dev_size;
 
-        /* write super sector */
-        if (write_super_sector(fd, &super_sect) < 0) {
+        /* Write super sector */
+        if (! write_super_sector(fd, &super_sect)) {
                 LOG("write super sector failed.\n");
                 goto error;
         }
-        
-        /* now editing */
-        
-        
-        /* Prepare and write n_sectors times snapshot sectors */
-        memset(&snap_sect, 0, sizeof(snap_sect));
 
+        /* Prepare super sectors
+           Bitmap data will be all 0. */
+        memset(&snap_sect, 0, sizeof(snap_sect));
+        
+        /* Write metadata sectors */
+        int i = 0;
+        for (i = 0; i < n_sectors; i ++) {
+                if (! write_snapshot_sector(fd, &super_sect, &snap_sect, i)) {
+                        goto error;
+                }
+        }
+
+        /* now editing */
         
         return 0;
 

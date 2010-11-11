@@ -206,7 +206,7 @@ void generate_uuid(u8* uuid)
  * @offset offset in sectors.
  * @return true in success, or false.
  */
-static bool write_super_sector_one(int fd, const u8* sector_buf, u32 sector_size, u64 offset)
+bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset)
 {
         ssize_t w = 0;
         while (w < sector_size) {
@@ -216,12 +216,12 @@ static bool write_super_sector_one(int fd, const u8* sector_buf, u32 sector_size
                 if (s > 0) {
                         w += s;
                 } else {
-                        perror("write super sector is error.");
-                        return -1;
+                        perror("write sector error.");
+                        return false;
                 }
         }
         ASSERT(w == sector_size);
-        return 0;
+        return true;
 }
 
 /**
@@ -235,43 +235,38 @@ static bool write_super_sector_one(int fd, const u8* sector_buf, u32 sector_size
 bool write_super_sector(int fd, const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
-        
         u32 sect_sz = super_sect->sector_size;
-        u32 meta_sz = super_sect->snapshot_metadata_size;
         
         /* Memory image of sector. */
         u8 *sector_buf;
         if (posix_memalign((void **)&sector_buf, PAGE_SIZE, sect_sz) != 0) {
-                goto error;
+                goto error0;
         }
         memset(sector_buf, 0, sect_sz);
         memcpy(sector_buf, super_sect, sizeof(*super_sect));
 
         /* calculate checksum. */
-        ((walb_super_sector_t *)sector_buf)->checksum = 0;
+        walb_super_sector_t *super_sect_tmp = (walb_super_sector_t *)sector_buf;
+        super_sect_tmp->checksum = 0;
         u32 csum = checksum(sector_buf, sect_sz);
-        ((walb_super_sector_t *)sector_buf)->checksum = csum;
+        super_sect_tmp->checksum = csum;
         ASSERT(checksum(sector_buf, sect_sz) == 0);
-
-        ASSERT(PAGE_SIZE % sect_sz == 0);
-        u64 off0 = PAGE_SIZE / sect_sz;
-        u64 off1 = off0 + meta_sz;
-
+        
         /* really write sector data. */
-        if (! write_super_sector_one(fd, sector_buf, sect_sz, off0) ||
-            ! write_super_sector_one(fd, sector_buf, sect_sz, off1)) {
-
-                goto error_free;
+        u64 off0 = get_super_sector0_offset_2(super_sect);
+        u64 off1 = get_super_sector1_offset_2(super_sect);
+        if (! write_sector(fd, sector_buf, sect_sz, off0) ||
+            ! write_sector(fd, sector_buf, sect_sz, off1)) {
+                goto error1;
         }
         free(sector_buf);
         return true;
 
-error_free:
+error1:
         free(sector_buf);
-error:
+error0:
         return false;
 }
-
 
 /**
  * Read sector data from the offset.
@@ -282,7 +277,7 @@ error:
  *
  * @return true in success, or false.
  */
-static bool read_super_sector_one(int fd, u8* sector_buf, u32 sector_size, u64 offset)
+bool read_sector(int fd, u8* sector_buf, u32 sector_size, u64 offset)
 {
         ssize_t r = 0;
         while (r < sector_size) {
@@ -292,7 +287,7 @@ static bool read_super_sector_one(int fd, u8* sector_buf, u32 sector_size, u64 o
                 if (s > 0) {
                         r += s;
                 } else {
-                        perror("write super sector is error.");
+                        perror("read sector error.");
                         return false;
                 }
         }
@@ -329,8 +324,8 @@ bool read_super_sector(int fd, walb_super_sector_t* super_sect, u32 sector_size,
         u32 off0 = get_super_sector0_offset(sector_size);
         u32 off1 = get_super_sector1_offset(sector_size, n_snapshots);
 
-        bool ret0 = read_super_sector_one(fd, buf0, sector_size, off0);
-        bool ret1 = read_super_sector_one(fd, buf1, sector_size, off1);
+        bool ret0 = read_sector(fd, buf0, sector_size, off0);
+        bool ret1 = read_sector(fd, buf1, sector_size, off1);
         
         if (ret0 && checksum(buf0, sector_size) != 0) {
                 ret0 = -1;
@@ -359,10 +354,62 @@ bool read_super_sector(int fd, walb_super_sector_t* super_sect, u32 sector_size,
         free(buf);
         return true;
 
-/* not yet implemented */
-
 error1:
         free(buf);
+error0:
+        return false;
+}
+
+
+/**
+ * Write snapshot sector.
+ *
+ * @fd File descriptor of log device.
+ * @super_sect super sector data to refer its members.
+ * @snap_sect snapshot sector data to be written.
+ * @idx idx'th sector is written. (0 <= idx < snapshot_metadata_size)
+ *
+ * @return true in success, or false.
+ */
+bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
+                           const walb_snapshot_sector_t* snap_sect, size_t idx)
+{
+        ASSERT(fd >= 0);
+        ASSERT(snap_sect != NULL);
+        
+        u32 sect_sz = super_sect->sector_size;
+        u32 meta_sz = super_sect->snapshot_metadata_size;
+        if (! idx < meta_sz) {
+                LOG("idx range over.\n");
+                goto error0;
+        }
+
+        u8 *sector_buf;
+        if (posix_memalign((void **)&sector_buf, PAGE_SIZE, sect_sz) != 0) {
+                goto error0;
+        }
+
+        memset(sector_buf, 0, sect_sz);
+        memcpy(sector_buf, snap_sect, sizeof(*snap_sect));
+
+        /* checksum */
+        walb_snapshot_sector_t *snap_sect_tmp = (walb_snapshot_sector_t *)sector_buf;
+        
+        snap_sect_tmp->checksum = 0;
+        u32 csum = checksum(sector_buf, sect_sz);
+        snap_sect_tmp->checksum = csum;
+        ASSERT(checksum(sector_buf, sect_sz) == 0);
+
+        /* really write sector data. */
+        u64 off = get_metadata_offset_2(super_sect) + idx;
+        if (! write_sector(fd, sector_buf, sect_sz, off)) {
+                goto error1;
+        }
+        free(sector_buf);
+        return true;
+                
+error1:
+        free(sector_buf);
 error0:
         return false;
 }
