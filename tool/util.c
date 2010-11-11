@@ -233,6 +233,23 @@ void print_uuid(const u8* uuid)
 }
 
 /**
+ * Allocate sector (aligned and can be deallocated with free()).
+ *
+ * @sector_size sector size.
+ *
+ * @return pointer to allocated and zeroed sector in success, or NULL.
+ */
+u8* alloc_sector(int sector_size)
+{
+        u8 *sector;
+        if (posix_memalign((void **)&sector, sector_size, sector_size) != 0) {
+                return NULL;
+        }
+
+        return sector;
+}
+
+/**
  * Write sector data to the offset.
  *
  * @sector_buf aligned buffer containing sector data.
@@ -424,15 +441,70 @@ error0:
 }
 
 /**
- * print snapshot sector for debug.
+ * Print bitmap data.
  */
-void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect)
+void print_bitmap(const u8* bitmap, size_t size)
 {
         /* not yet implemented */
-
-        printf("checksum: %u\n", snap_sect->checksum);
 }
 
+/**
+ * Print bitmap data.
+ */
+void print_u32bitmap(const u32 bitmap)
+{
+        u32 i;
+        for (i = 0; i < 32; i ++) {
+                if (bitmap & (1 << i)) { /* on */
+                        printf("1");
+                } else { /* off */
+                        printf("0");
+                }
+        }
+}
+
+/**
+ * Print snapshot record for debug.
+ */
+void print_snapshot_record(const walb_snapshot_record_t* snap_rec)
+{
+        ASSERT(snap_rec != NULL);
+        printf("lsid: %lu, "
+               "timestamp: %lu, "
+               "name: %s\n",
+               snap_rec->lsid, snap_rec->timestamp, snap_rec->name);
+}
+
+/**
+ * print snapshot sector for debug.
+ */
+void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_size)
+{
+        printf("checksum: %u\n", snap_sect->checksum);
+
+        printf("bitmap: ");
+        print_u32bitmap(snap_sect->bitmap);
+        printf("\n");
+
+        /* Print continuous snapshot records */
+        int i;
+        int max = max_n_snapshots_in_sector(sector_size);
+        for (i = 0; i < max; i ++) {
+                printf("snapshot record %d: ", i);
+                print_snapshot_record(&snap_sect->record[i]);
+        }
+}
+
+/**
+ * Allocate sector and set all zero.
+ */
+u8* alloc_sector_zero(int sector_size)
+{
+        u8 *sector = alloc_sector(sector_size);
+        if (sector == NULL) { return NULL; }
+        memset(sector, 0, sector_size);
+        return sector;
+}
 
 /**
  * Write snapshot sector.
@@ -440,12 +512,14 @@ void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect)
  * @fd File descriptor of log device.
  * @super_sect super sector data to refer its members.
  * @snap_sect snapshot sector data to be written.
+ *            It's allocated size must be really sector size.
+ *            Only checksum area will be overwritten.
  * @idx idx'th sector is written. (0 <= idx < snapshot_metadata_size)
  *
  * @return true in success, or false.
  */
 bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
-                           const walb_snapshot_sector_t* snap_sect, u32 idx)
+                           walb_snapshot_sector_t* snap_sect, u32 idx)
 {
         ASSERT(fd >= 0);
         ASSERT(super_sect != NULL);
@@ -455,37 +529,22 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         u32 meta_sz = super_sect->snapshot_metadata_size;
         if (idx >= meta_sz) {
                 LOG("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
-                goto error0;
+                return false;
         }
-
-        u8 *sector_buf;
-        if (posix_memalign((void **)&sector_buf, PAGE_SIZE, sect_sz) != 0) {
-                goto error0;
-        }
-
-        memset(sector_buf, 0, sect_sz);
-        memcpy(sector_buf, snap_sect, sizeof(*snap_sect));
 
         /* checksum */
-        walb_snapshot_sector_t *snap_sect_tmp = (walb_snapshot_sector_t *)sector_buf;
-        
-        snap_sect_tmp->checksum = 0;
+        u8 *sector_buf = (u8*)snap_sect;
+        snap_sect->checksum = 0;
         u32 csum = checksum(sector_buf, sect_sz);
-        snap_sect_tmp->checksum = ~csum + 1;
+        snap_sect->checksum = ~csum + 1;
         ASSERT(checksum(sector_buf, sect_sz) == 0);
 
         /* really write sector data. */
         u64 off = get_metadata_offset_2(super_sect) + idx;
         if (! write_sector(fd, sector_buf, sect_sz, off)) {
-                goto error1;
+                return false;
         }
-        free(sector_buf);
         return true;
-                
-error1:
-        free(sector_buf);
-error0:
-        return false;
 }
 
 /**
@@ -494,6 +553,7 @@ error0:
  * @fd File descriptor of log device.
  * @super_sect super sector data to refer its members.
  * @snap_sect snapshot sector buffer to be read.
+ *            It's allocated size must be really sector size.
  * @idx idx'th sector is read. (0 <= idx < snapshot_metadata_size)
  *
  * @return true in success, or false.
@@ -507,36 +567,20 @@ bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         
         u32 sect_sz = super_sect->sector_size;
         u32 meta_sz = super_sect->snapshot_metadata_size;
-        if (! idx < meta_sz) {
-                LOG("idx range over.\n");
-                goto error0;
+        if (idx >= meta_sz) {
+                LOG("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
+                return false;
         }
-
-        u8 *sector_buf;
-        if (posix_memalign((void **)&sector_buf, PAGE_SIZE, sect_sz) != 0) {
-                goto error0;
-        }
-
-        /* Read sector data. */
+        
+        /* Read sector data.
+           Confirm checksum. */
+        u8 *sector_buf = (u8 *)snap_sect;
         u64 off = get_metadata_offset_2(super_sect) + idx;
-        if (! read_sector(fd, sector_buf, sect_sz, off)) {
-                goto error1;
+        if (! read_sector(fd, sector_buf, sect_sz, off) ||
+            checksum(sector_buf, sect_sz) != 0) {
+                return false;
         }
-
-        /* Confirm checksum. */
-        if (checksum(sector_buf, sect_sz) != 0) {
-                goto error1;
-        }
-
-        memcpy(snap_sect, sector_buf, sizeof(*snap_sect));
-
-        free(sector_buf);
         return true;
-                
-error1:
-        free(sector_buf);
-error0:
-        return false;
 }
 
 

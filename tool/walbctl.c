@@ -110,10 +110,10 @@ bool init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
         ASSERT(dev_size < (u64)(-1));
 
         walb_super_sector_t super_sect;
-        walb_snapshot_sector_t snap_sect;
+        walb_snapshot_sector_t *snap_sectp;
 
         ASSERT(sizeof(super_sect) <= (size_t)sector_size);
-        ASSERT(sizeof(snap_sect) <= (size_t)sector_size);
+        ASSERT(sizeof(*snap_sectp) <= (size_t)sector_size);
 
         /* Calculate number of snapshot sectors. */
         int n_sectors;
@@ -138,31 +138,46 @@ bool init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
         /* Write super sector */
         if (! write_super_sector(fd, &super_sect)) {
                 LOG("write super sector failed.\n");
-                goto error;
+                goto error0;
         }
 
         /* Prepare super sectors
            Bitmap data will be all 0. */
-        memset(&snap_sect, 0, sizeof(snap_sect));
+        snap_sectp = (walb_snapshot_sector_t *)alloc_sector_zero(sector_size);
+        if (snap_sectp == NULL) {
+                goto error0;
+        }
         
         /* Write metadata sectors */
         int i = 0;
         for (i = 0; i < n_sectors; i ++) {
-                if (! write_snapshot_sector(fd, &super_sect, &snap_sect, i)) {
-                        goto error;
+                if (! write_snapshot_sector(fd, &super_sect, snap_sectp, i)) {
+                        goto error1;
                 }
         }
 
+#if 1        
         /* Read super sector and print for debug. */
         memset(&super_sect, 0, sizeof(super_sect));
         if (! read_super_sector(fd, &super_sect, sector_size, n_snapshots)) {
-                goto error;
+                goto error1;
         }
         print_super_sector(&super_sect);
+
+        /* Read first snapshot sector and print for debug. */
+        memset(snap_sectp, 0, sector_size);
+        if (! read_snapshot_sector(fd, &super_sect, snap_sectp, 0)) {
+                goto error1;
+        }
+        print_snapshot_sector(snap_sectp, sector_size);
+        
+#endif
         
         return true;
 
-error:
+error1:
+        free(snap_sectp);
+error0:
         return false;
 }
 

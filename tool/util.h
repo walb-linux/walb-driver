@@ -22,6 +22,8 @@ dev_t get_bdev_devt(const char *devpath);
 void generate_uuid(u8* uuid);
 void print_uuid(const u8* uuid);
 
+u8* alloc_sector(int sector_size);
+u8* alloc_sector_zero(int sector_size);
 
 bool read_sector(int fd, u8* sector_buf, u32 sector_size, u64 offset);
 bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset);
@@ -31,9 +33,11 @@ bool write_super_sector(int fd, const walb_super_sector_t* super_sect);
 bool read_super_sector(int fd, walb_super_sector_t* super_sect,
                        u32 sector_size, u32 n_snapshots);
 
-void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect);
+void print_snapshot_record(const walb_snapshot_record_t* snap_rec);
+void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_size);
+
 bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
-                           const walb_snapshot_sector_t* snap_sect, u32 idx);
+                           walb_snapshot_sector_t* snap_sect, u32 idx);
 bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
                           walb_snapshot_sector_t* snap_sect, u32 idx);
 
