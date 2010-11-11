@@ -101,19 +101,19 @@ int parse_opt(int argc, char* const argv[])
  * @dev_size device size by the sector.
  * @n_snapshots number of snapshots to keep.
  *
- * @return 0 in success, or -1.
+ * @return true in success, or false.
  */
-int init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
+bool init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
 {
         ASSERT(fd >= 0);
         ASSERT(sector_size > 0);
-        ASSERT(size < (u64)(-1));
+        ASSERT(dev_size < (u64)(-1));
 
         walb_super_sector_t super_sect;
         walb_snapshot_sector_t snap_sect;
 
-        ASSERT(sizeof(super_sect) <= sector_size);
-        ASSERT(sizeof(snap_sect) <= sector_size);
+        ASSERT(sizeof(super_sect) <= (size_t)sector_size);
+        ASSERT(sizeof(snap_sect) <= (size_t)sector_size);
 
         /* Calculate number of snapshot sectors. */
         int n_sectors;
@@ -152,13 +152,10 @@ int init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
                         goto error;
                 }
         }
-
-        /* now editing */
-        
-        return 0;
+        return true;
 
 error:
-        return -1;
+        return false;
 }
 
 
@@ -185,28 +182,28 @@ int format_log_dev()
 
         if (sector_size < 0 || size == (u64)(-1)) {
                 printf("getting block device parameters failed.\n");
-                goto error;
+                goto error0;
         }
         
         int fd;
         fd = open(cfg_.ldev_name, O_RDWR | O_DIRECT);
         if (fd < 0) {
                 perror("open failed");
-                goto error;
+                goto error0;
         }
 
-        if (init_walb_metadata(fd, sector_size, size, cfg_.n_snapshots) < 0) {
+        if (! init_walb_metadata(fd, sector_size, size, cfg_.n_snapshots)) {
 
                 printf("initialize walb log device failed.\n");
-                goto close;
+                goto error1;
         }
         
         close(fd);
         return 0;
 
-close:
+error1:
         close(fd);
-error:
+error0:
         return -1;
 }
 
