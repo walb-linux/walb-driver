@@ -147,7 +147,7 @@ typedef struct walb_snapshot_record {
         
         u64 lsid;
         u64 timestamp; /* in seconds (the same as 'time' system call output). */
-        u8 name[64];
+        u8 name[64]; /* '\0' means end of string */
         
 } __attribute__((packed)) walb_snapshot_record_t;
 
