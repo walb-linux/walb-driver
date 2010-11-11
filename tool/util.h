@@ -30,6 +30,8 @@ bool read_super_sector(int fd, walb_super_sector_t* super_sect,
 
 bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
                            const walb_snapshot_sector_t* snap_sect, size_t idx);
+bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
+                          walb_snapshot_sector_t* snap_sect, size_t idx);
 
 
 #endif /* _WALB_UTIL_H */

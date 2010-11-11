@@ -375,6 +375,7 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
                            const walb_snapshot_sector_t* snap_sect, size_t idx)
 {
         ASSERT(fd >= 0);
+        ASSERT(super_sect != NULL);
         ASSERT(snap_sect != NULL);
         
         u32 sect_sz = super_sect->sector_size;
@@ -405,6 +406,57 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         if (! write_sector(fd, sector_buf, sect_sz, off)) {
                 goto error1;
         }
+        free(sector_buf);
+        return true;
+                
+error1:
+        free(sector_buf);
+error0:
+        return false;
+}
+
+/**
+ * Read snapshot sector.
+ *
+ * @fd File descriptor of log device.
+ * @super_sect super sector data to refer its members.
+ * @snap_sect snapshot sector buffer to be read.
+ * @idx idx'th sector is read. (0 <= idx < snapshot_metadata_size)
+ *
+ * @return true in success, or false.
+ */
+bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
+                          walb_snapshot_sector_t* snap_sect, size_t idx)
+{
+        ASSERT(fd >= 0);
+        ASSERT(super_sect != NULL);
+        ASSERT(snap_sect != NULL);
+        
+        u32 sect_sz = super_sect->sector_size;
+        u32 meta_sz = super_sect->snapshot_metadata_size;
+        if (! idx < meta_sz) {
+                LOG("idx range over.\n");
+                goto error0;
+        }
+
+        u8 *sector_buf;
+        if (posix_memalign((void **)&sector_buf, PAGE_SIZE, sect_sz) != 0) {
+                goto error0;
+        }
+
+        /* Read sector data. */
+        u64 off = get_metadata_offset_2(super_sect) + idx;
+        if (! read_sector(fd, sector_buf, sect_sz, off)) {
+                goto error1;
+        }
+
+        /* Confirm checksum. */
+        if (checksum(sector_buf, sect_sz) != 0) {
+                goto error1;
+        }
+
+        memcpy(snap_sect, sector_buf, sizeof(*snap_sect));
+
         free(sector_buf);
         return true;
                 
