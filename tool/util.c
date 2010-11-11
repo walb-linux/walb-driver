@@ -17,6 +17,27 @@
 #include "random.h"
 #include "util.h"
 
+/**
+ * hex print
+ */
+void print_binary_hex(const u8* data, size_t size)
+{
+        size_t i;
+        for (i = 0; i < size; i ++) {
+
+                int c = (unsigned char)data[i];
+                if (c == 0) {
+                        printf("__");
+                } else {
+                        printf("%02X", c);
+                }
+                if (i % 32 == 31) {
+                        printf("\n");
+                }
+        }
+}
+
+
 int check_log_dev(const char* path)
 {
         struct stat sb;
@@ -199,6 +220,19 @@ void generate_uuid(u8* uuid)
 }
 
 /**
+ * Print uuid.
+ *
+ * @uuid result uuid is stored. it must be u8[16].
+ */
+void print_uuid(const u8* uuid)
+{
+        size_t i;
+        for (i = 0; i < 16; i ++) {
+                printf("%02x", (unsigned char)uuid[i]);
+        }
+}
+
+/**
  * Write sector data to the offset.
  *
  * @sector_buf aligned buffer containing sector data.
@@ -225,6 +259,33 @@ bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset)
 }
 
 /**
+ * Print super sector for debug.
+ */
+void print_super_sector(const walb_super_sector_t* super_sect)
+{
+        ASSERT(super_sect != NULL);
+        printf("checksum: %u\n"
+               "sector_size: %u\n"
+               "snapshot_metadata_size: %u\n",
+               super_sect->checksum,
+               super_sect->sector_size,
+               super_sect->snapshot_metadata_size);
+        print_uuid(super_sect->uuid);
+        printf("\n"
+               "start_offset: %lu\n"
+               "ring_buffer_size: %lu\n"
+               "oldest_lsid: %lu\n"
+               "written_lsid: %lu\n"
+               "device_size: %lu\n",
+               super_sect->start_offset,
+               super_sect->ring_buffer_size,
+               super_sect->oldest_lsid,
+               super_sect->written_lsid,
+               super_sect->device_size);
+}
+
+
+/**
  * Write super sector to the log device.
  *
  * @fd file descripter of log device.
@@ -245,14 +306,16 @@ bool write_super_sector(int fd, const walb_super_sector_t* super_sect)
         memset(sector_buf, 0, sect_sz);
         memcpy(sector_buf, super_sect, sizeof(*super_sect));
 
-        /* calculate checksum. */
+        /* Calculate checksum. */
         walb_super_sector_t *super_sect_tmp = (walb_super_sector_t *)sector_buf;
         super_sect_tmp->checksum = 0;
         u32 csum = checksum(sector_buf, sect_sz);
-        super_sect_tmp->checksum = csum;
+        print_binary_hex(sector_buf, sect_sz);/* debug */
+        super_sect_tmp->checksum = ~csum + 1;
+        print_binary_hex(sector_buf, sect_sz);/* debug */
         ASSERT(checksum(sector_buf, sect_sz) == 0);
         
-        /* really write sector data. */
+        /* Really write sector data. */
         u64 off0 = get_super_sector0_offset_2(super_sect);
         u64 off1 = get_super_sector1_offset_2(super_sect);
         if (! write_sector(fd, sector_buf, sect_sz, off0) ||
@@ -360,6 +423,16 @@ error0:
         return false;
 }
 
+/**
+ * print snapshot sector for debug.
+ */
+void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect)
+{
+        /* not yet implemented */
+
+        printf("checksum: %u\n", snap_sect->checksum);
+}
+
 
 /**
  * Write snapshot sector.
@@ -372,7 +445,7 @@ error0:
  * @return true in success, or false.
  */
 bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
-                           const walb_snapshot_sector_t* snap_sect, size_t idx)
+                           const walb_snapshot_sector_t* snap_sect, u32 idx)
 {
         ASSERT(fd >= 0);
         ASSERT(super_sect != NULL);
@@ -380,8 +453,8 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         
         u32 sect_sz = super_sect->sector_size;
         u32 meta_sz = super_sect->snapshot_metadata_size;
-        if (! idx < meta_sz) {
-                LOG("idx range over.\n");
+        if (idx >= meta_sz) {
+                LOG("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
                 goto error0;
         }
 
@@ -398,7 +471,7 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         
         snap_sect_tmp->checksum = 0;
         u32 csum = checksum(sector_buf, sect_sz);
-        snap_sect_tmp->checksum = csum;
+        snap_sect_tmp->checksum = ~csum + 1;
         ASSERT(checksum(sector_buf, sect_sz) == 0);
 
         /* really write sector data. */
@@ -426,7 +499,7 @@ error0:
  * @return true in success, or false.
  */
 bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
-                          walb_snapshot_sector_t* snap_sect, size_t idx)
+                          walb_snapshot_sector_t* snap_sect, u32 idx)
 {
         ASSERT(fd >= 0);
         ASSERT(super_sect != NULL);

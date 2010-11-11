@@ -152,12 +152,19 @@ bool init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
                         goto error;
                 }
         }
+
+        /* Read super sector and print for debug. */
+        memset(&super_sect, 0, sizeof(super_sect));
+        if (! read_super_sector(fd, &super_sect, sector_size, n_snapshots)) {
+                goto error;
+        }
+        print_super_sector(&super_sect);
+        
         return true;
 
 error:
         return false;
 }
-
 
 
 /**
@@ -186,7 +193,7 @@ int format_log_dev()
         }
         
         int fd;
-        fd = open(cfg_.ldev_name, O_RDWR | O_DIRECT);
+        fd = open(cfg_.ldev_name, O_RDWR);
         if (fd < 0) {
                 perror("open failed");
                 goto error0;
