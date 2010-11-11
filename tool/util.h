@@ -9,19 +9,23 @@
 #include "walb.h"
 #include "walb_log_device.h"
 
-#define LOG(fmt, ...)                                               \
+#define LOG(fmt, ...)                                                   \
         fprintf(stderr, "DEBUG(%s:%d) " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
 
+/* utility */
 void print_binary_hex(const u8* data, size_t size);
 
+/* for block device information */
 int check_log_dev(const char* path);
 int get_bdev_sector_size(const char* devpath);
 u64 get_bdev_size(const char* devpath);
 dev_t get_bdev_devt(const char *devpath);
 
+/* uuid functions */
 void generate_uuid(u8* uuid);
 void print_uuid(const u8* uuid);
 
+/* sector functions */
 u8* alloc_sector(int sector_size);
 u8* alloc_sector_zero(int sector_size);
 
