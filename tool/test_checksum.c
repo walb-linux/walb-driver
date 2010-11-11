@@ -81,7 +81,7 @@ int main()
 {
         size_t i;
         u8 *buf, *buf2;
-        size_t size = 1024 * 1024 * 1024;
+        size_t size = 64 * 1024 * 1024;
         u32 csum1, csum2;
         size_t mid[16];
         struct timeval tv;
