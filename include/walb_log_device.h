@@ -222,6 +222,7 @@ static inline int get_metadata_size(int sector_size, int n_snapshots)
  */
 static inline u64 get_super_sector0_offset(int sector_size)
 {
+        ASSERT(PAGE_SIZE % sector_size == 0);
         return PAGE_SIZE/sector_size; /* skip reserved page */
 }
 
@@ -261,6 +262,45 @@ static inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
 {
         return  get_super_sector1_offset(sector_size, n_snapshots) + 1;
 }
+
+
+/**
+ * Get offset of primary super sector.
+ */
+static inline u64 get_super_sector0_offset_2(const walb_super_sector_t* super_sect)
+{
+        ASSERT(super_sect != NULL);
+        return get_super_sector0_offset(super_sect->sector_size);
+}
+
+/**
+ * Get offset of first metadata sector.
+ */
+static inline u64 get_metadata_offset_2(const walb_super_sector_t* super_sect)
+{
+        ASSERT(super_sect != NULL);
+        return get_metadata_offset(super_sect->sector_size);
+}
+
+/**
+ * Get offset of secondary super sector.
+ */
+static inline u64 get_super_sector1_offset_2(const walb_super_sector_t* super_sect)
+{
+        ASSERT(super_sect != NULL);
+        return  get_metadata_offset(super_sect->sector_size) +
+                super_sect->snapshot_metadata_size;
+}
+
+/**
+ * Get ring buffer offset.
+ */
+static inline u64 get_ring_buffer_offset_2(const walb_super_sector_t* super_sect)
+{
+        ASSERT(super_sect != NULL);
+        return  get_super_sector1_offset_2(super_sect) + 1;
+}
+
 
 
 #endif /* WALB_LOG_DEVICE_H */
