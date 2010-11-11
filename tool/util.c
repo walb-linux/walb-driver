@@ -328,7 +328,7 @@ bool write_super_sector(int fd, const walb_super_sector_t* super_sect)
         super_sect_tmp->checksum = 0;
         u32 csum = checksum(sector_buf, sect_sz);
         print_binary_hex(sector_buf, sect_sz);/* debug */
-        super_sect_tmp->checksum = ~csum + 1;
+        super_sect_tmp->checksum = csum;
         print_binary_hex(sector_buf, sect_sz);/* debug */
         ASSERT(checksum(sector_buf, sect_sz) == 0);
         
@@ -536,7 +536,7 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         u8 *sector_buf = (u8*)snap_sect;
         snap_sect->checksum = 0;
         u32 csum = checksum(sector_buf, sect_sz);
-        snap_sect->checksum = ~csum + 1;
+        snap_sect->checksum = csum;
         ASSERT(checksum(sector_buf, sect_sz) == 0);
 
         /* really write sector data. */

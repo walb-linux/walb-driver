@@ -16,9 +16,9 @@
 #define ASSERT(cond) assert(cond)
 #endif /* __KERNEL__ */
 
-static inline u32 checksum(const u8 *data, int size)
+static inline u32 checksum(const u8 *data, u32 size)
 {
-        u32 sum = 0;
+        u64 sum = 0;
         u32 n = size / sizeof(u32);
         u32 i;
 
@@ -27,8 +27,8 @@ static inline u32 checksum(const u8 *data, int size)
         for (i = 0; i < n; i ++) {
                 sum += *(u32 *)(data + (sizeof(u32) * i));
         }
-        
-        return sum;
+        u32 ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
+        return (ret == (u32)(-1) ? 0 : ret);
 }
 
 #endif /* _WALB_H */
