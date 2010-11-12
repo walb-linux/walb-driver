@@ -18,7 +18,7 @@
 #include <linux/fcntl.h>	/* O_ACCMODE */
 #include <linux/hdreg.h>	/* HDIO_GETGEO */
 #include <linux/kdev_t.h>
-#include <linux/vmalloc.h>
+/* #include <linux/vmalloc.h> */
 #include <linux/genhd.h>
 #include <linux/blkdev.h>
 #include <linux/buffer_head.h>	/* invalidate_bdev */
@@ -566,11 +566,6 @@ static int setup_device(struct walb_dev *dev, int which)
 	 */
 	memset (dev, 0, sizeof (struct walb_dev));
 	dev->size = nsectors*hardsect_size;
-	dev->data = vmalloc(dev->size);
-	if (dev->data == NULL) {
-		printk_n("vmalloc failure.\n");
-		return -1;
-	}
 	spin_lock_init(&dev->lock);
 	
 	/*
@@ -586,7 +581,7 @@ static int setup_device(struct walb_dev *dev, int which)
         dev->devt = MKDEV(ddev_major, ddev_minor);
         if (walb_lock_bdev(&dev->ddev, dev->devt) != 0) {
                 printk_e("walb_lock_bdev failed\n");
-                goto out_vfree;
+                return -1;
         }
         nsectors = get_capacity(dev->ddev->bd_disk);
         printk_i("underlying disk size %d\n", nsectors);
@@ -648,10 +643,6 @@ out_blkdev:
         if (dev->ddev) {
                 walb_unlock_bdev(dev->ddev);
         }
-out_vfree:
-	if (dev->data) {
-		vfree(dev->data);
-        }
         return -1;
 }
 
@@ -710,8 +701,6 @@ static void walb_exit(void)
 		}
                 if (dev->ddev)
                         walb_unlock_bdev(dev->ddev);
-		if (dev->data)
-			vfree(dev->data);
 	}
 	unregister_blkdev(walb_major, "walb");
 	kfree(Devices);
