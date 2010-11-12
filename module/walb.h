@@ -45,41 +45,40 @@ enum {
  * We can tweak our hardware sector size, but the kernel talks to us
  * in terms of small sectors, always.
  */
-#define KERNEL_SECTOR_SIZE	512
-
-/*
- * After this much idle time, the driver will simulate a media change.
- */
-#define INVALIDATE_DELAY	30*HZ
+/* #define KERNEL_SECTOR_SIZE	512 */
 
 /*
  * The internal representation of our device.
  */
 struct walb_dev {
-        int size;                       /* Device size in sectors */
+        u64 size;                       /* Device size in sectors */
         u8 *data;                       /* The data array */
-        short users;                    /* How many users */
-        short media_change;             /* Flag a media change? */
+        int users;                      /* How many users */
         spinlock_t lock;                /* For mutual exclusion */
         struct request_queue *queue;    /* The device request queue */
         struct gendisk *gd;             /* The gendisk structure */
-        struct timer_list timer;        /* For simulated media changes */
 
+        /* Size of underlying devices. [logical block] */
+        u64 ldev_size;
+        u64 ddev_size;
+        
+        /* You can get sector size with
+           bdev_logical_block_size(bdev) and
+           bdev_physical_block_size(bdev).
 
-        /* You can get with bdev_logical_block_size(bdev); */
-        unsigned short ldev_logical_block_size;
-        unsigned short ldev_physical_block_size;
-        unsigned short ddev_logical_block_size;
-        unsigned short ddev_physical_block_size;
+           Those of underlying log device and data device
+           must be same.
+        */
+        u16 logical_bs;
+        u16 physical_bs;
 
         /* Device number */
-        dev_t devt;
+        /* dev_t devt; */
         
         /* Underlying block devices */
         struct block_device *ldev;
         struct block_device *ddev;
 };
-
 
 
 #define WALB_BIO_INIT    0

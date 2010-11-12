@@ -4,7 +4,6 @@
  * Copyright(C) 2010, Cybozu Labs, Inc.
  * Written by: Takashi HOSHINO <hoshino@labs.cybozu.co.jp>
  */
-
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -13,7 +12,7 @@
 #include <linux/slab.h>		/* kmalloc() */
 #include <linux/fs.h>		/* everything... */
 #include <linux/errno.h>	/* error codes */
-#include <linux/timer.h>
+/* #include <linux/timer.h> */
 #include <linux/types.h>	/* size_t */
 #include <linux/fcntl.h>	/* O_ACCMODE */
 #include <linux/hdreg.h>	/* HDIO_GETGEO */
@@ -29,10 +28,6 @@
 
 static int walb_major = 0;
 module_param(walb_major, int, 0);
-static int hardsect_size = 512;
-module_param(hardsect_size, int, 0);
-static int nsectors = 1024;	/* How big the drive is */
-/* module_param(nsectors, int, 0); */
 static int ndevices = 1;
 module_param(ndevices, int, 0);
 
@@ -101,7 +96,7 @@ static void walb_unlock_bdev(struct block_device *bdev)
 static void walb_transfer(struct walb_dev *dev, unsigned long sector,
                           unsigned long nbytes, char *buffer, int write)
 {
-	unsigned long offset = sector*KERNEL_SECTOR_SIZE;
+	unsigned long offset = sector * dev->logical_bs;
 
 	if ((offset + nbytes) > dev->size) {
 		printk_n("Beyond-end write (%ld %ld)\n", offset, nbytes);
@@ -127,7 +122,7 @@ static int walb_xfer_bio(struct walb_dev *dev, struct bio *bio)
 		char *buffer = __bio_kmap_atomic(bio, i, KM_USER0);
 		walb_transfer(dev, sector, bio_cur_bytes(bio),
                               buffer, bio_data_dir(bio) == WRITE);
-		sector += bio_cur_bytes(bio) / KERNEL_SECTOR_SIZE;
+		sector += bio_cur_bytes(bio) / dev->logical_bs;
 		__bio_kunmap_atomic(bio, KM_USER0);
 	}
 	return 0; /* Always "succeed" */
@@ -143,7 +138,7 @@ static int walb_xfer_segment(struct walb_dev *dev,
         char *buffer = __bio_kmap_atomic(bio, i, KM_USER0);
         walb_transfer(dev, sector, bio_cur_bytes(bio),
                       buffer, bio_data_dir(bio) == WRITE);
-        sector += bio_cur_bytes(bio) / KERNEL_SECTOR_SIZE;
+        sector += bio_cur_bytes(bio) / dev->logical_bs;
         __bio_kunmap_atomic(bio, KM_USER0);
         return 0;
 }
@@ -161,13 +156,13 @@ static int walb_xfer_request(struct walb_dev *dev, struct request *req)
         if (0) {
                 __rq_for_each_bio(bio, req) {
                         walb_xfer_bio(dev, bio);
-                        nsect += bio->bi_size/KERNEL_SECTOR_SIZE;
+                        nsect += bio->bi_size/dev->logical_bs;
                 }
         } else {
                 rq_for_each_segment(bvec, req, iter) {
                         walb_xfer_segment(dev, &iter);
                         nsect += bio_iovec_idx(iter.bio, iter.i)->bv_len
-                                / KERNEL_SECTOR_SIZE;
+                                / dev->logical_bs;
                 }
         }
 	return nsect;
@@ -193,7 +188,7 @@ static void walb_full_request(struct request_queue *q)
 		}
 		sectors_xferred = walb_xfer_request(dev, req);
                 
-                error = (sectors_xferred * KERNEL_SECTOR_SIZE ==
+                error = (sectors_xferred * dev->logical_bs ==
                          blk_rq_bytes(req)) ? 0 : -EIO;
                 __blk_end_request_all(req, error);
 	}
@@ -441,7 +436,6 @@ static int walb_open(struct block_device *bdev, fmode_t mode)
 {
 	struct walb_dev *dev = bdev->bd_disk->private_data;
 
-	del_timer_sync(&dev->timer);
 	spin_lock(&dev->lock);
 	if (! dev->users) 
 		check_disk_change(bdev);
@@ -456,63 +450,17 @@ static int walb_release(struct gendisk *gd, fmode_t mode)
 
 	spin_lock(&dev->lock);
 	dev->users--;
-
-	if (!dev->users) {
-		dev->timer.expires = jiffies + INVALIDATE_DELAY;
-		add_timer(&dev->timer);
-	}
 	spin_unlock(&dev->lock);
 
 	return 0;
-}
-
-/*
- * Look for a (simulated) media change.
- */
-int walb_media_changed(struct gendisk *gd)
-{
-	struct walb_dev *dev = gd->private_data;
-	
-	return dev->media_change;
-}
-
-/*
- * Revalidate.  WE DO NOT TAKE THE LOCK HERE, for fear of deadlocking
- * with open.  That needs to be reevaluated.
- */
-int walb_revalidate(struct gendisk *gd)
-{
-	struct walb_dev *dev = gd->private_data;
-	
-	if (dev->media_change) {
-		dev->media_change = 0;
-		memset (dev->data, 0, dev->size);
-	}
-	return 0;
-}
-
-/*
- * The "invalidate" function runs out of the device timer; it sets
- * a flag to simulate the removal of the media.
- */
-void walb_invalidate(unsigned long ldev)
-{
-	struct walb_dev *dev = (struct walb_dev *) ldev;
-
-	spin_lock(&dev->lock);
-	if (dev->users || !dev->data) 
-		printk_w("timer sanity check failed\n");
-	else
-		dev->media_change = 1;
-	spin_unlock(&dev->lock);
 }
 
 /*
  * The ioctl() implementation
  */
 
-int walb_ioctl (struct block_device *bdev, fmode_t mode,
-                unsigned int cmd, unsigned long arg)
+int walb_ioctl(struct block_device *bdev, fmode_t mode,
+               unsigned int cmd, unsigned long arg)
 {
 	long size;
 	struct hd_geometry geo;
@@ -526,7 +474,7 @@ int walb_ioctl (struct block_device *bdev, fmode_t mode,
 		 * and calculate the corresponding number of cylinders.  We set the
 		 * start of data at sector four.
 		 */
-		size = dev->size*(hardsect_size/KERNEL_SECTOR_SIZE);
+		size = dev->size * (dev->physical_bs / dev->logical_bs);
 		geo.cylinders = (size & ~0x3f) >> 6;
 		geo.heads = 4;
 		geo.sectors = 16;
@@ -548,8 +496,6 @@ static struct block_device_operations walb_ops = {
 	.owner           = THIS_MODULE,
 	.open 	         = walb_open,
 	.release 	 = walb_release,
-	/* .media_changed   = walb_media_changed, */
-	.revalidate_disk = walb_revalidate,
 	.ioctl	         = walb_ioctl
 };
 
@@ -561,31 +507,52 @@ static struct block_device_operations walb_ops = {
  */
 static int setup_device(struct walb_dev *dev, int which)
 {
+        dev_t ldevt, ddevt;
+        u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
+
 	/*
-	 * Get some memory.
+	 * Initialize walb_dev.
 	 */
-	memset (dev, 0, sizeof (struct walb_dev));
-	dev->size = nsectors*hardsect_size;
+	memset(dev, 0, sizeof (struct walb_dev));
 	spin_lock_init(&dev->lock);
 	
-	/*
-	 * The timer which "invalidates" the device.
-	 */
-	init_timer(&dev->timer);
-	dev->timer.data = (unsigned long) dev;
-	dev->timer.function = walb_invalidate;
-
         /*
-         * Setup underlying data device.
+         * Setup underlying data devices.
          */
-        dev->devt = MKDEV(ddev_major, ddev_minor);
-        if (walb_lock_bdev(&dev->ddev, dev->devt) != 0) {
-                printk_e("walb_lock_bdev failed\n");
+        ddevt = MKDEV(ldev_major, ldev_minor);
+        if (walb_lock_bdev(&dev->ldev, ddevt) != 0) {
+                printk_e("walb_lock_bdev failed (%d:%d for log)\n",
+                         ldev_major, ldev_minor);
                 return -1;
         }
-        nsectors = get_capacity(dev->ddev->bd_disk);
-        printk_i("underlying disk size %d\n", nsectors);
+        dev->ldev_size = get_capacity(dev->ldev->bd_disk);
+        ldev_lbs = bdev_logical_block_size(dev->ldev);
+        ldev_pbs = bdev_physical_block_size(dev->ldev);
+        printk_i("log disk size %llu\n", dev->ldev_size);
+        printk_i("log logical sector size %u\n", ldev_lbs);
+        printk_i("log physical sector size %u\n", ldev_pbs);
 
+        ldevt = MKDEV(ddev_major, ddev_minor);
+        if (walb_lock_bdev(&dev->ddev, ldevt) != 0) {
+                printk_e("walb_lock_bdev failed (%d:%d for data)\n",
+                         ddev_major, ddev_minor);
+                goto out_ldev;
+        }
+        dev->ddev_size = get_capacity(dev->ddev->bd_disk);
+        ddev_lbs = bdev_logical_block_size(dev->ddev);
+        ddev_pbs = bdev_physical_block_size(dev->ddev);
+        printk_i("data disk size %llu\n", dev->ddev_size);
+        printk_i("data logical sector size %u\n", ddev_lbs);
+        printk_i("data physical sector size %u\n", ddev_pbs);
+
+        if (ldev_lbs != ddev_lbs || ldev_pbs != ddev_pbs) {
+                printk_e("Sector size of data and log must be same.\n");
+                goto out_ldev;
+        }
+        dev->logical_bs = ldev_lbs;
+        dev->physical_bs = ldev_pbs;
+	dev->size = dev->ddev_size * (u64)dev->logical_bs;
+        
 	/*
 	 * The I/O queue, depending on whether we are using our own
 	 * make_request function or not.
@@ -594,14 +561,14 @@ static int setup_device(struct walb_dev *dev, int which)
         case RM_NOQUEUE:
 		dev->queue = blk_alloc_queue(GFP_KERNEL);
 		if (dev->queue == NULL)
-			goto out_blkdev;
+			goto out_ddev;
 		blk_queue_make_request(dev->queue, walb_make_request);
 		break;
 
         case RM_FULL:
 		dev->queue = blk_init_queue(walb_full_request2, &dev->lock);
 		if (dev->queue == NULL)
-			goto out_blkdev;
+			goto out_ddev;
                 if (elevator_change(dev->queue, "noop"))
                         goto out_queue;
 		break;
@@ -610,8 +577,8 @@ static int setup_device(struct walb_dev *dev, int which)
 		printk_i("Bad request mode %d, using simple\n", request_mode);
         	/* fall into.. */
 	}
-	blk_queue_logical_block_size(dev->queue, hardsect_size);
-	blk_queue_physical_block_size(dev->queue, hardsect_size);
+	blk_queue_logical_block_size(dev->queue, dev->logical_bs);
+	blk_queue_physical_block_size(dev->queue, dev->physical_bs);
 	dev->queue->queuedata = dev;
 	/*
 	 * And the gendisk structure.
@@ -628,7 +595,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	dev->gd->queue = dev->queue;
 	dev->gd->private_data = dev;
 	snprintf (dev->gd->disk_name, 32, "walb_%c", which + 'a');
-	set_capacity(dev->gd, nsectors*(hardsect_size/KERNEL_SECTOR_SIZE));
+	set_capacity(dev->gd, dev->ddev_size);
 	add_disk(dev->gd);
 	return 0;
 
@@ -639,9 +606,13 @@ out_queue:
                 else
                         blk_cleanup_queue(dev->queue);
         }
-out_blkdev:
+out_ddev:
         if (dev->ddev) {
                 walb_unlock_bdev(dev->ddev);
+        }
+out_ldev:
+        if (dev->ldev) {
+                walb_unlock_bdev(dev->ldev);
         }
         return -1;
 }
@@ -660,6 +631,8 @@ static int __init walb_init(void)
 		printk_w("unable to get major number\n");
 		return -EBUSY;
 	}
+        printk_i("walb_start with major id %d\n", walb_major);
+        
 	/*
 	 * Allocate the device array, and initialize each one.
 	 */
@@ -688,7 +661,6 @@ static void walb_exit(void)
 	for (i = 0; i < ndevices; i++) {
 		struct walb_dev *dev = Devices + i;
 
-		del_timer_sync(&dev->timer);
 		if (dev->gd) {
 			del_gendisk(dev->gd);
 			put_disk(dev->gd);
@@ -701,6 +673,8 @@ static void walb_exit(void)
 		}
                 if (dev->ddev)
                         walb_unlock_bdev(dev->ddev);
+                if (dev->ldev)
+                        walb_unlock_bdev(dev->ldev);
 	}
 	unregister_blkdev(walb_major, "walb");
 	kfree(Devices);
