@@ -445,7 +445,16 @@ error0:
  */
 void print_bitmap(const u8* bitmap, size_t size)
 {
-        /* not yet implemented */
+        size_t i, j;
+        for (i = 0; i < size; i ++) {
+                for (j = 0; j < 8; j ++) {
+                        if (bitmap[i] & (1 << j)) { /* on */
+                                printf("1");
+                        } else { /* off */
+                                printf("0");
+                        }
+                }
+        }
 }
 
 /**
