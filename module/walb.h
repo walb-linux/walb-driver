@@ -9,7 +9,7 @@
 /**
  * For debug
  */
-#if 0 && defined(WALB_DEBUG)
+#if defined(WALB_DEBUG)
 #define printk_d(fmt, args...) \
         printk(KERN_DEBUG "walb: " fmt, ##args)
 #else
