@@ -252,7 +252,7 @@ static void walb_ddev_end_io(struct bio *bio, int error)
         spin_lock(&wq->lock);
         list_for_each_entry_safe(tmp, next, head, list) {
 
-                printk_d("status: %d\n", tmp->status);
+                /* printk_d("status: %d\n", tmp->status); */
                 switch (tmp->status) {
                 case WALB_BIO_END:
                         /* do nothing */
@@ -289,6 +289,11 @@ static void walb_ddev_end_io(struct bio *bio, int error)
                         BUG_ON(tmp->status == WALB_BIO_INIT);
                         list_del(&tmp->list);
                         kfree(tmp);
+                }
+                /* confirm the list is empty */
+                if (! list_empty(&wq->list)) {
+                        printk_e("wq->list must be empty.\n");
+                        BUG();
                 }
                 spin_unlock(&wq->lock);
 
@@ -575,7 +580,7 @@ static int setup_device(struct walb_dev *dev, int which)
 
         default:
 		printk_i("Bad request mode %d, using simple\n", request_mode);
-        	/* fall into.. */
+                BUG();
 	}
 	blk_queue_logical_block_size(dev->queue, dev->logical_bs);
 	blk_queue_physical_block_size(dev->queue, dev->physical_bs);

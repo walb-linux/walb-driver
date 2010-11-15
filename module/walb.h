@@ -37,8 +37,8 @@ enum {
 /*
  * Minor number and partition management.
  */
-#define WALB_MINORS	16
-#define MINOR_SHIFT	4
+#define WALB_MINORS	  16
+#define WALB_MINORS_SHIFT  4
 #define DEVNUM(kdevnum)	(MINOR(kdev_t_to_nr(kdevnum)) >> MINOR_SHIFT
 
 /*
