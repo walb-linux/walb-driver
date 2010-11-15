@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef WALB_LOG_DEVICE_H
-#define WALB_LOG_DEVICE_H
+#ifndef _WALB_LOG_DEVICE_H
+#define _WALB_LOG_DEVICE_H
 
 /* #include <linux/list.h> */
 #include "walb_log_record.h"
@@ -205,11 +205,13 @@ static inline int max_n_snapshots_in_sector(int sector_size)
  */
 static inline int get_metadata_size(int sector_size, int n_snapshots)
 {
+        int n_sectors;
+        int t;
+        
         ASSERT(PAGE_SIZE % sector_size == 0 &&
                PAGE_SIZE >= sector_size);
         
-        int n_sectors;
-        int t = max_n_snapshots_in_sector(sector_size);
+        t = max_n_snapshots_in_sector(sector_size);
         n_sectors = (n_snapshots + t - 1) / t;
         return n_sectors;
 }
@@ -303,4 +305,4 @@ static inline u64 get_ring_buffer_offset_2(const walb_super_sector_t* super_sect
 
 
 
-#endif /* WALB_LOG_DEVICE_H */
+#endif /* _WALB_LOG_DEVICE_H */

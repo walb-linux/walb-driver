@@ -1,4 +1,4 @@
-/*
+/**
  * walb.c - Block-level WAL
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
@@ -24,7 +24,8 @@
 #include <linux/bio.h>
 #include <linux/spinlock.h>
 
-#include "walb.h"
+#include "walb_kern.h"
+#include "../include/walb_log_device.h"
 
 static int walb_major = 0;
 module_param(walb_major, int, 0);
@@ -203,6 +204,21 @@ static void walb_full_request(struct request_queue *q)
 
 /* } */
 
+/**
+ * End io with completion.
+ *
+ * bio->bi_private must be (struct walb_bio_with_completion *).
+ */
+static void walb_end_io_with_completion(struct bio *bio, int error)
+{
+        struct walb_bio_with_completion *bioc;
+        bioc = bio->bi_private;
+        
+        if (error) {
+                bioc->status = WALB_BIO_ERROR;
+        }
+        complete(&bioc->wait);
+}
 
 /**
  *
@@ -436,7 +452,6 @@ static int walb_make_request(struct request_queue *q, struct bio *bio)
 /*
  * Open and close.
  */
-
 static int walb_open(struct block_device *bdev, fmode_t mode)
 {
 	struct walb_dev *dev = bdev->bd_disk->private_data;
@@ -505,6 +520,161 @@ static struct block_device_operations walb_ops = {
 };
 
 
+/**
+ * Allocate sector.
+ *
+ * @dev walb device.
+ * @flag GFP flag.
+ *
+ * @return pointer to allocated memory or 
+ */
+static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask)
+{
+        void *ret;
+        ret = kmalloc(dev->physical_bs, gfp_mask);
+        return ret;
+}
+
+/**
+ * Read physical sector from log device.
+ *
+ * @bdev block device, which is already opened.
+ * @buf pointer to buffer of physical sector size.
+ * @off offset in the block device [physical sector].
+ *
+ * @return 0 in success, or -1.
+ */
+static int walb_read_sector(struct block_device *bdev, void* buf, u64 off)
+{
+        struct bio *bio;
+        int pbs, lbs;
+        struct page *page;
+        struct walb_bio_with_completion *bioc;
+
+        printk_d("walb_read_sector begin\n");
+        
+        lbs = bdev_logical_block_size(bdev);
+        pbs = bdev_physical_block_size(bdev);
+
+        bioc = kmalloc(sizeof(struct walb_bio_with_completion), GFP_NOIO);
+        if (bioc == NULL) {
+                goto error0;
+        }
+        init_completion(&bioc->wait);
+        bioc->status = WALB_BIO_INIT;
+        
+        /* Alloc bio */
+        bio = bio_alloc(GFP_KERNEL, 1);
+        if (bio == NULL) {
+                printk_e("bio_alloc failed\n");
+                goto error1;
+        }
+        page = virt_to_page(buf);
+
+        printk_d("walb_read_sector: sector %lu "
+                 "page %p sectorsize %d offset %lu\n",
+                 (unsigned long)(off * (pbs / lbs)),
+                 virt_to_page(buf),
+                 pbs, offset_in_page(buf));
+
+        bio->bi_sector = off * (pbs / lbs);
+        bio->bi_end_io = walb_end_io_with_completion;
+        bio->bi_private = bioc;
+        bio_add_page(bio, page, pbs, offset_in_page(buf));
+
+        /* Submit and wait to complete. */
+        submit_bio(READ, bio);
+        wait_for_completion(&bioc->wait);
+
+        /* Check result. */
+        if (bioc->status != WALB_BIO_END ||
+            ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
+                printk_e("walb_read_sector: read sector failed\n");
+                goto error2;
+        }
+        bio_put(bio);
+        kfree(bioc);
+
+        printk_d("walb_read_sector end\n");
+        return 0;
+
+error2:
+        bio_put(bio);
+error1:
+        kfree(bioc);
+error0:
+        return -1;
+}
+
+/**
+ * Read super sector.
+ *
+ * Currently super sector 0 will be read only (not super sector 1).
+ *
+ * @return super sector (internally allocated) or NULL.
+ */
+static walb_super_sector_t* walb_read_super_sector(struct walb_dev *dev)
+{
+        u64 off0;
+        walb_super_sector_t *lsuper0;
+
+        printk_d("walb_read_super_sector begin\n");
+        
+        lsuper0 = walb_alloc_sector(dev, GFP_NOIO);
+        if (lsuper0 == NULL) {
+                goto error0;
+        }
+
+        off0 = get_super_sector0_offset(dev->physical_bs);
+        /* off1 = get_super_sector1_offset(dev->physical_bs, dev->n_snapshots); */
+        
+        if (walb_read_sector(dev->ldev, lsuper0, off0) != 0) {
+                printk_e("read super sector0 failed\n");
+                goto error1;
+        }
+
+        printk_d("walb_read_super_sector end\n");
+        return lsuper0;
+
+error1:
+        kfree(lsuper0);
+error0:
+        return NULL;
+}
+
+/**
+ * Log device initialization.
+ *
+ * <pre>
+ * 1. Read log device metadata
+ *    (currently snapshot metadata is not loaded.)
+ * 2. Redo from written_lsid to avaialble latest lsid.
+ * 3. Sync log device super block.
+ * </pre>
+ *
+ * @dev walb device struct.
+ * @return 0 in success, or -1.
+ */
+static int walb_ldev_init(struct walb_dev *dev)
+{
+        ASSERT(dev != NULL);
+        
+        dev->lsuper0 = walb_read_super_sector(dev);
+
+
+        kfree(dev->lsuper0);
+        
+        /* now editing */
+
+        return 0;
+        
+        goto error0;
+
+
+error0:
+        return -1;
+}
+
 /*
  * Set up our internal device.
  *
@@ -522,10 +692,10 @@ static int setup_device(struct walb_dev *dev, int which)
 	spin_lock_init(&dev->lock);
 	
         /*
-         * Setup underlying data devices.
+         * Open underlying log device.
          */
-        ddevt = MKDEV(ldev_major, ldev_minor);
-        if (walb_lock_bdev(&dev->ldev, ddevt) != 0) {
+        ldevt = MKDEV(ldev_major, ldev_minor);
+        if (walb_lock_bdev(&dev->ldev, ldevt) != 0) {
                 printk_e("walb_lock_bdev failed (%d:%d for log)\n",
                          ldev_major, ldev_minor);
                 return -1;
@@ -537,9 +707,12 @@ static int setup_device(struct walb_dev *dev, int which)
         printk_i("log disk size %llu\n", dev->ldev_size);
         printk_i("log logical sector size %u\n", ldev_lbs);
         printk_i("log physical sector size %u\n", ldev_pbs);
-
-        ldevt = MKDEV(ddev_major, ddev_minor);
-        if (walb_lock_bdev(&dev->ddev, ldevt) != 0) {
+        
+        /*
+         * Open underlying data device.
+         */
+        ddevt = MKDEV(ddev_major, ddev_minor);
+        if (walb_lock_bdev(&dev->ddev, ddevt) != 0) {
                 printk_e("walb_lock_bdev failed (%d:%d for data)\n",
                          ddev_major, ddev_minor);
                 goto out_ldev;
@@ -552,6 +725,7 @@ static int setup_device(struct walb_dev *dev, int which)
         printk_i("data logical sector size %u\n", ddev_lbs);
         printk_i("data physical sector size %u\n", ddev_pbs);
 
+        /* Check compatibility of log device and data devic. */
         if (ldev_lbs != ddev_lbs || ldev_pbs != ddev_pbs) {
                 printk_e("Sector size of data and log must be same.\n");
                 goto out_ldev;
@@ -559,6 +733,12 @@ static int setup_device(struct walb_dev *dev, int which)
         dev->logical_bs = ldev_lbs;
         dev->physical_bs = ldev_pbs;
 	dev->size = dev->ddev_size * (u64)dev->logical_bs;
+
+        /* Load log device metadata. */
+        if (walb_ldev_init(dev) != 0) {
+                printk_e("ldev init failed.\n");
+                goto out_ldev;
+        }
         
 	/*
 	 * The I/O queue, depending on whether we are using our own
@@ -602,7 +782,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	dev->gd->fops = &walb_ops;
 	dev->gd->queue = dev->queue;
 	dev->gd->private_data = dev;
-	snprintf (dev->gd->disk_name, 32, "walb_%c", which + 'a');
+	snprintf (dev->gd->disk_name, 32, "walb%d", which);
 	set_capacity(dev->gd, dev->ddev_size);
 	add_disk(dev->gd);
 	return 0;

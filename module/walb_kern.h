@@ -1,10 +1,17 @@
-#ifndef _WALB_H
-#define _WALB_H
+/**
+ * General definitions for Walb for kernel code.
+ *
+ * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
+ */
+#ifndef _WALB_KERN_H
+#define _WALB_KERN_H
 
 #include <linux/workqueue.h>
 #include <linux/bio.h>
 #include <linux/spinlock.h>
 #include <linux/kernel.h>
+
+#include "../include/walb_log_device.h"
 
 /**
  * For debug
@@ -51,14 +58,17 @@ enum {
  * The internal representation of our device.
  */
 struct walb_dev {
-        dev_t devt;
-        u64 size;                       /* Device size in sectors */
+        u64 size;                       /* Device size in bytes */
         u8 *data;                       /* The data array */
         int users;                      /* How many users */
         spinlock_t lock;                /* For mutual exclusion */
         struct request_queue *queue;    /* The device request queue */
         struct gendisk *gd;             /* The gendisk structure */
 
+        /* Max number of snapshots.
+           This is const after log device is initialized. */
+        u32 n_snapshots;
+        
         /* Size of underlying devices. [logical block] */
         u64 ldev_size;
         u64 ddev_size;
@@ -73,12 +83,17 @@ struct walb_dev {
         u16 logical_bs;
         u16 physical_bs;
 
-        /* Device number */
-        /* dev_t devt; */
+        /* Wrapper device id. */
+        dev_t devt;
         
         /* Underlying block devices */
         struct block_device *ldev;
         struct block_device *ddev;
+
+
+        /* Super sector of log device. */
+        walb_super_sector_t *lsuper0;
+        /* walb_super_sector_t *lsuper1; */
 };
 
 
@@ -109,6 +124,13 @@ struct walb_submit_bio_work
         struct work_struct work;
 };
 
+struct walb_bio_with_completion
+{
+        struct bio *bio;
+        struct completion wait;
+        int status;
+};
+
 static inline void walb_init_ddev_bio(struct walb_ddev_bio *dbio)
 {
         dbio->req = NULL;
@@ -118,4 +140,4 @@ static inline void walb_init_ddev_bio(struct walb_ddev_bio *dbio)
 }
 
 
-#endif /* _WALB_H */
+#endif /* _WALB_KERN_H */

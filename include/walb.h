@@ -21,13 +21,14 @@ static inline u32 checksum(const u8 *data, u32 size)
         u64 sum = 0;
         u32 n = size / sizeof(u32);
         u32 i;
+        u32 ret;
 
         ASSERT(size % sizeof(u32) == 0);
 
         for (i = 0; i < n; i ++) {
                 sum += *(u32 *)(data + (sizeof(u32) * i));
         }
-        u32 ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
+        ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
         return (ret == (u32)(-1) ? 0 : ret);
 }
 
