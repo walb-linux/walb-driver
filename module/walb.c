@@ -533,6 +533,7 @@ static int setup_device(struct walb_dev *dev, int which)
         dev->ldev_size = get_capacity(dev->ldev->bd_disk);
         ldev_lbs = bdev_logical_block_size(dev->ldev);
         ldev_pbs = bdev_physical_block_size(dev->ldev);
+        printk_i("log disk (%d:%d)\n", ldev_major, ldev_minor);
         printk_i("log disk size %llu\n", dev->ldev_size);
         printk_i("log logical sector size %u\n", ldev_lbs);
         printk_i("log physical sector size %u\n", ldev_pbs);
@@ -546,6 +547,7 @@ static int setup_device(struct walb_dev *dev, int which)
         dev->ddev_size = get_capacity(dev->ddev->bd_disk);
         ddev_lbs = bdev_logical_block_size(dev->ddev);
         ddev_pbs = bdev_physical_block_size(dev->ddev);
+        printk_i("data disk (%d:%d)\n", ddev_major, ddev_minor);
         printk_i("data disk size %llu\n", dev->ddev_size);
         printk_i("data logical sector size %u\n", ddev_lbs);
         printk_i("data physical sector size %u\n", ddev_pbs);
@@ -596,6 +598,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	}
 	dev->gd->major = walb_major;
 	dev->gd->first_minor = which * WALB_MINORS;
+        dev->devt = MKDEV(dev->gd->major, dev->gd->first_minor);
 	dev->gd->fops = &walb_ops;
 	dev->gd->queue = dev->queue;
 	dev->gd->private_data = dev;
@@ -680,9 +683,19 @@ static void walb_exit(void)
                         walb_unlock_bdev(dev->ddev);
                 if (dev->ldev)
                         walb_unlock_bdev(dev->ldev);
+
+                printk_i("walb stop (wrap %d:%d log %d:%d data %d:%d)\n",
+                         MAJOR(dev->devt),
+                         MINOR(dev->devt),
+                         MAJOR(dev->ldev->bd_dev),
+                         MINOR(dev->ldev->bd_dev),
+                         MAJOR(dev->ddev->bd_dev),
+                         MINOR(dev->ddev->bd_dev));
 	}
 	unregister_blkdev(walb_major, "walb");
 	kfree(Devices);
+
+        printk_i("walb exit.\n");
 }
 	
 module_init(walb_init);

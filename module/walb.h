@@ -51,6 +51,7 @@ enum {
  * The internal representation of our device.
  */
 struct walb_dev {
+        dev_t devt;
         u64 size;                       /* Device size in sectors */
         u8 *data;                       /* The data array */
         int users;                      /* How many users */
