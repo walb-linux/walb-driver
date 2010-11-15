@@ -347,18 +347,18 @@ static void walb_make_ddev_request(struct walb_dev *wdev, struct request *req)
 
         printk_d("make_ddev_request() called\n");
 
-        wq = kmalloc(sizeof(struct walb_submit_bio_work), GFP_NOIO);
+        wq = kmalloc(sizeof(struct walb_submit_bio_work), GFP_ATOMIC);
         if (! wq) { goto out; }
         INIT_LIST_HEAD(&wq->list);
         spin_lock_init(&wq->lock);
         
         __rq_for_each_bio(bio, req) {
 
-                dbio = kmalloc(sizeof(struct walb_ddev_bio), GFP_NOIO);
+                dbio = kmalloc(sizeof(struct walb_ddev_bio), GFP_ATOMIC);
                 if (! dbio) { goto out; }
                 
                 walb_init_ddev_bio(dbio);
-                dbio->bio = bio_clone(bio, GFP_NOIO);
+                dbio->bio = bio_clone(bio, GFP_ATOMIC);
                 dbio->bio->bi_bdev = wdev->ddev;
                 dbio->bio->bi_end_io = walb_ddev_end_io;
                 dbio->bio->bi_private = dbio;
