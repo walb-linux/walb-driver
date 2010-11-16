@@ -703,7 +703,8 @@ error0:
  *
  * <pre>
  * 1. Read log device metadata
- *    (currently snapshot metadata is not loaded.)
+ *    (currently snapshot metadata is not loaded.
+ *     super sector0 only...)
  * 2. Redo from written_lsid to avaialble latest lsid.
  * 3. Sync log device super block.
  * </pre>
@@ -715,6 +716,10 @@ static int walb_ldev_init(struct walb_dev *dev)
 {
         walb_super_sector_t *lsuper0_tmp;
         ASSERT(dev != NULL);
+
+        /*
+         * 1. Read log device metadata
+         */
         
         dev->lsuper0 = walb_read_super_sector(dev);
         if (dev->lsuper0 == NULL) {
@@ -741,13 +746,31 @@ static int walb_ldev_init(struct walb_dev *dev)
         }
 
         kfree(lsuper0_tmp);
-        
-
         /* Do not forget calling kfree(dev->lsuper0)
            before releasing the block device. */
         
-        /* now editing */
 
+
+        /* now editing */
+        
+
+        
+        
+        /*
+         * 2. Redo from written_lsid to avaialble latest lsid.
+         */
+
+        /* This feature will be implemented later. */
+
+        
+        /*
+         * 3. Sync log device super block.
+         */
+
+        /* If redo is done, super block should be re-written. */
+
+        
+        
         return 0;
 
 error1:
