@@ -213,9 +213,14 @@ static void walb_end_io_with_completion(struct bio *bio, int error)
 {
         struct walb_bio_with_completion *bioc;
         bioc = bio->bi_private;
-        
-        if (error) {
+
+        ASSERT(bioc->status == WALB_BIO_INIT);
+        if (error || ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
+                printk_e("walb_end_io_with_completion: error %d bi_flags %lu\n",
+                         error, bio->bi_flags);
                 bioc->status = WALB_BIO_ERROR;
+        } else {
+                bioc->status = WALB_BIO_END;
         }
         complete(&bioc->wait);
 }
@@ -572,11 +577,12 @@ static int walb_read_sector(struct block_device *bdev, void* buf, u64 off)
         page = virt_to_page(buf);
 
         printk_d("walb_read_sector: sector %lu "
-                 "page %p sectorsize %d offset %lu\n",
+                 "page %p buf %p sectorsize %d offset %lu\n",
                  (unsigned long)(off * (pbs / lbs)),
-                 virt_to_page(buf),
+                 virt_to_page(buf), buf,
                  pbs, offset_in_page(buf));
 
+        bio->bi_bdev = bdev;
         bio->bi_sector = off * (pbs / lbs);
         bio->bi_end_io = walb_end_io_with_completion;
         bio->bi_private = bioc;
@@ -587,11 +593,12 @@ static int walb_read_sector(struct block_device *bdev, void* buf, u64 off)
         wait_for_completion(&bioc->wait);
 
         /* Check result. */
-        if (bioc->status != WALB_BIO_END ||
-            ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
+        if (bioc->status != WALB_BIO_END) {
                 printk_e("walb_read_sector: read sector failed\n");
                 goto error2;
         }
+
+        /* Cleanup allocated bio and memory. */
         bio_put(bio);
         kfree(bioc);
 
@@ -660,17 +667,28 @@ static int walb_ldev_init(struct walb_dev *dev)
         ASSERT(dev != NULL);
         
         dev->lsuper0 = walb_read_super_sector(dev);
+        if (dev->lsuper0 == NULL) {
+                printk_e("walb_ldev_init: read super sector failed\n");
+                goto error0;
+        }
 
+        /* Validate checksum. */
+        if (checksum((u8 *)dev->lsuper0, dev->physical_bs) != 0) {
+                printk_e("walb_ldev_init: checksum check failed.\n");
+                goto error1;
+        }
 
-        kfree(dev->lsuper0);
+        
+
+        /* Do not forget calling kfree(dev->lsuper0)
+           before release the block device. */
         
         /* now editing */
 
         return 0;
-        
-        goto error0;
 
-
+error1:
+        kfree(dev->lsuper0);
 error0:
         return -1;
 }
@@ -863,6 +881,8 @@ static void walb_exit(void)
                         walb_unlock_bdev(dev->ddev);
                 if (dev->ldev)
                         walb_unlock_bdev(dev->ldev);
+
+                kfree(dev->lsuper0);
 
                 printk_i("walb stop (wrap %d:%d log %d:%d data %d:%d)\n",
                          MAJOR(dev->devt),
