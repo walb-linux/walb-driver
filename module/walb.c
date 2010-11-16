@@ -541,22 +541,27 @@ static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask)
 }
 
 /**
- * Read physical sector from log device.
+ * Read/write physical sector from/to block device.
+ * This is blocked operation.
+ * Do not call this function in interuption handlers.
  *
+ * @rw READ or WRITE (as same as 1st arg of submit_bio(rw, bio).).
  * @bdev block device, which is already opened.
  * @buf pointer to buffer of physical sector size.
  * @off offset in the block device [physical sector].
  *
  * @return 0 in success, or -1.
  */
-static int walb_read_sector(struct block_device *bdev, void* buf, u64 off)
+static int walb_io_sector(int rw, struct block_device *bdev, void* buf, u64 off)
 {
         struct bio *bio;
         int pbs, lbs;
         struct page *page;
         struct walb_bio_with_completion *bioc;
 
-        printk_d("walb_read_sector begin\n");
+        printk_d("walb_io_sector begin\n");
+
+        ASSERT(rw == READ || rw == WRITE);
         
         lbs = bdev_logical_block_size(bdev);
         pbs = bdev_physical_block_size(bdev);
@@ -569,18 +574,18 @@ static int walb_read_sector(struct block_device *bdev, void* buf, u64 off)
         bioc->status = WALB_BIO_INIT;
         
         /* Alloc bio */
-        bio = bio_alloc(GFP_KERNEL, 1);
+        bio = bio_alloc(GFP_NOIO, 1);
         if (bio == NULL) {
                 printk_e("bio_alloc failed\n");
                 goto error1;
         }
         page = virt_to_page(buf);
 
-        printk_d("walb_read_sector: sector %lu "
-                 "page %p buf %p sectorsize %d offset %lu\n",
+        printk_d("walb_io_sector: sector %lu "
+                 "page %p buf %p sectorsize %d offset %lu rw %d\n",
                  (unsigned long)(off * (pbs / lbs)),
                  virt_to_page(buf), buf,
-                 pbs, offset_in_page(buf));
+                 pbs, offset_in_page(buf), rw);
 
         bio->bi_bdev = bdev;
         bio->bi_sector = off * (pbs / lbs);
@@ -589,12 +594,12 @@ static int walb_read_sector(struct block_device *bdev, void* buf, u64 off)
         bio_add_page(bio, page, pbs, offset_in_page(buf));
 
         /* Submit and wait to complete. */
-        submit_bio(READ, bio);
+        submit_bio(rw, bio);
         wait_for_completion(&bioc->wait);
 
         /* Check result. */
         if (bioc->status != WALB_BIO_END) {
-                printk_e("walb_read_sector: read sector failed\n");
+                printk_e("walb_io_sector: read sector failed\n");
                 goto error2;
         }
 
@@ -602,7 +607,7 @@ static int walb_read_sector(struct block_device *bdev, void* buf, u64 off)
         bio_put(bio);
         kfree(bioc);
 
-        printk_d("walb_read_sector end\n");
+        printk_d("walb_io_sector end\n");
         return 0;
 
 error2:
@@ -613,10 +618,12 @@ error0:
         return -1;
 }
 
+
 /**
  * Read super sector.
- *
  * Currently super sector 0 will be read only (not super sector 1).
+ *
+ * @dev walb device.
  *
  * @return super sector (internally allocated) or NULL.
  */
@@ -632,14 +639,20 @@ static walb_super_sector_t* walb_read_super_sector(struct walb_dev *dev)
                 goto error0;
         }
 
+        /* Really read. */
         off0 = get_super_sector0_offset(dev->physical_bs);
         /* off1 = get_super_sector1_offset(dev->physical_bs, dev->n_snapshots); */
-        
-        if (walb_read_sector(dev->ldev, lsuper0, off0) != 0) {
+        if (walb_io_sector(READ, dev->ldev, lsuper0, off0) != 0) {
                 printk_e("read super sector0 failed\n");
                 goto error1;
         }
 
+        /* Validate checksum. */
+        if (checksum((u8 *)lsuper0, dev->physical_bs) != 0) {
+                printk_e("walb_read_super_sector: checksum check failed.\n");
+                goto error1;
+        }
+        
         printk_d("walb_read_super_sector end\n");
         return lsuper0;
 
@@ -647,6 +660,42 @@ error1:
         kfree(lsuper0);
 error0:
         return NULL;
+}
+
+/**
+ * Write super sector.
+ * Currently only super sector 0 will be written. (super sector 1 is not.)
+ *
+ * @dev walb device.
+ *
+ * @return 0 in success, or -1.
+ */
+static int walb_write_super_sector(struct walb_dev *dev)
+{
+        u64 off0;
+        u32 csum;
+
+        printk_d("walb_write_super_sector begin\n");
+        
+        ASSERT(dev->lsuper0 != NULL);
+
+        /* Generate checksum. */
+        dev->lsuper0->checksum = 0;
+        csum = checksum((u8 *)dev->lsuper0, dev->physical_bs);
+        dev->lsuper0->checksum = csum;
+
+        /* Really write. */
+        off0 = get_super_sector0_offset(dev->physical_bs);
+        if (walb_io_sector(WRITE, dev->ldev, dev->lsuper0, off0) != 0) {
+                printk_e("write super sector0 failed\n");
+                goto error0;
+        }
+
+        printk_d("walb_write_super_sector end\n");
+        return 0;
+
+error0:
+        return -1;
 }
 
 /**
@@ -664,6 +713,7 @@ error0:
  */
 static int walb_ldev_init(struct walb_dev *dev)
 {
+        walb_super_sector_t *lsuper0_tmp;
         ASSERT(dev != NULL);
         
         dev->lsuper0 = walb_read_super_sector(dev);
@@ -672,16 +722,29 @@ static int walb_ldev_init(struct walb_dev *dev)
                 goto error0;
         }
 
-        /* Validate checksum. */
-        if (checksum((u8 *)dev->lsuper0, dev->physical_bs) != 0) {
-                printk_e("walb_ldev_init: checksum check failed.\n");
+        if (walb_write_super_sector(dev) != 0) {
+                printk_e("walb_ldev_init: write super sector failed\n");
                 goto error1;
         }
 
+        lsuper0_tmp = walb_read_super_sector(dev);
+        if (lsuper0_tmp == NULL) {
+                printk_e("walb_ldev_init: read lsuper0_tmp failed\n");
+                kfree(lsuper0_tmp);
+                goto error1;
+        }
+
+        if (memcmp(dev->lsuper0, lsuper0_tmp, dev->physical_bs) != 0) {
+                printk_e("walb_ldev_init: memcmp NG\n");
+        } else {
+                printk_e("walb_ldev_init: memcmp OK\n");
+        }
+
+        kfree(lsuper0_tmp);
         
 
         /* Do not forget calling kfree(dev->lsuper0)
-           before release the block device. */
+           before releasing the block device. */
         
         /* now editing */
 
