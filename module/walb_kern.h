@@ -91,6 +91,9 @@ struct walb_dev {
         struct block_device *ddev;
 
 
+
+        /* Spinlock for lsuper0 access. */
+        spinlock_t lsuper0_lock;
         /* Super sector of log device. */
         walb_super_sector_t *lsuper0;
         /* walb_super_sector_t *lsuper1; */
@@ -139,5 +142,15 @@ static inline void walb_init_ddev_bio(struct walb_ddev_bio *dbio)
         dbio->bio = NULL;
 }
 
+/**
+ * Work to create log pack.
+ */
+struct walb_make_log_pack_work
+{
+        struct request** reqp_ary;
+        int n_req; /* array size */
+        spinlock_t lock; /* lock for the ary. */
+        struct work_struct work;
+};
 
 #endif /* _WALB_KERN_H */

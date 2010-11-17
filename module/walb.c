@@ -195,14 +195,6 @@ static void walb_full_request(struct request_queue *q)
 	}
 }
 
-/**
- *
- */
-/* static walb_ddev_bio* walb_make_ddev_bio(bio) */
-/* { */
-
-
-/* } */
 
 /**
  * End io with completion.
@@ -224,13 +216,6 @@ static void walb_end_io_with_completion(struct bio *bio, int error)
         }
         complete(&bioc->wait);
 }
-
-/**
- *
- */
-/* static void walb_submit_all_bios(struct walb_ddev_bio bios) */
-/* { */
-/* }         */
 
 /**
  * The bio is walb_ddev_bio's bio.
@@ -269,7 +254,6 @@ static void walb_ddev_end_io(struct bio *bio, int error)
         /* Check whether it's the last bio in the request finished
            or error or not finished. */
         wq = container_of(head, struct walb_submit_bio_work, list);
-        BUG_ON(! wq);
         spin_lock(&wq->lock);
         list_for_each_entry_safe(tmp, next, head, list) {
 
@@ -336,7 +320,6 @@ static void walb_submit_bio_task(struct work_struct *work)
         printk_d("submit_bio_task begin\n");
         
         wq = container_of(work, struct walb_submit_bio_work, work);
-        BUG_ON(! wq);
         
         if (list_empty(&wq->list)) {
                 printk_w("list is empty\n");
@@ -352,31 +335,105 @@ static void walb_submit_bio_task(struct work_struct *work)
         printk_d("submit_bio_task end\n");
 }
 
+/**
+ * Make log record of the request.
+ *
+ * @wdev walb device.
+ * @req request of the wrapper block device.
+ */
+static void walb_make_log_record(struct walb_dev *wdev, struct request *req)
+{
+
+        /* now editing */
+
+}
 
 /**
- * Convert request for data device.
+ * Make log pack and submit related bio(s).
+ */
+static void walb_make_log_pack_and_submit_task(struct work_struct *work)
+{
+        struct walb_make_log_pack_work *wk;
+
+        wk = container_of(work, struct walb_make_log_pack_work, work);
+
+        /* Allocate memory (sector size) for log pack header. */
+
+        
+        /* Fill log records for for each request. */
+        
+
+        /* Complete log pack header and create its bio. */
+        
+
+        /* Clone bio(s) of each request and set offset for log pack. */
+
+
+        /* Submit prepared bio(s) to log device. */
+
+
+
+        /* Now editing */
+}
+
+/**
+ * Register work of making log pack.
+ *
+ * This is executed inside interruption context.
+ *
+ * @wdev walb device.
+ * @reqp_ary array of (request*). This will be deallocated after making log pack really.
+ * @n_req number of items in the array.
+ *
+ * @return 0 in succeeded, or -1.
+ */
+static int walb_make_and_write_log_pack(struct walb_dev *wdev,
+                                         struct request** reqp_ary, int n_req)
+{
+        struct walb_make_log_pack_work *wk;
+
+        wk = kmalloc(sizeof(struct walb_make_log_pack_work), GFP_ATOMIC);
+        if (! wk) { goto error0; }
+
+        wk->reqp_ary = reqp_ary;
+        spin_lock_init(&wk->lock);
+        
+        INIT_WORK(&wk->work, walb_make_log_pack_and_submit_task);
+        schedule_work(&wk->work);
+        
+        return 0;
+
+error0:
+        return -1;
+}
+
+/**
+ * Convert request for data device and put IO task to workqueue.
+ * This is executed in interruption context.
+ *
  * @blk_start_request() has been already called.
  *
+ * @wdev walb device.
  * @req request of the wrapper block device.
  */
 static void walb_make_ddev_request(struct walb_dev *wdev, struct request *req)
 {
         struct bio *bio;
-        struct walb_ddev_bio *dbio;
+        struct walb_ddev_bio *dbio, *next;
         int bio_nr = 0;
         struct walb_submit_bio_work *wq;
 
         printk_d("make_ddev_request() called\n");
 
         wq = kmalloc(sizeof(struct walb_submit_bio_work), GFP_ATOMIC);
-        if (! wq) { goto out; }
+        if (! wq) { goto error0; }
         INIT_LIST_HEAD(&wq->list);
         spin_lock_init(&wq->lock);
         
         __rq_for_each_bio(bio, req) {
 
                 dbio = kmalloc(sizeof(struct walb_ddev_bio), GFP_ATOMIC);
-                if (! dbio) { goto out; }
+                if (! dbio) { goto error1; }
                 
                 walb_init_ddev_bio(dbio);
                 dbio->bio = bio_clone(bio, GFP_ATOMIC);
@@ -393,25 +450,21 @@ static void walb_make_ddev_request(struct walb_dev *wdev, struct request *req)
         }
 
         printk_d("bio_nr: %d\n", bio_nr);
+        ASSERT(! list_empty(&wq->list));
 
-        if (list_empty(&wq->list)) {
-                printk_w("list empty.\n");
-        }
-        
         INIT_WORK(&wq->work, walb_submit_bio_task);
         schedule_work(&wq->work);
         
-        /* Make bios corresponding to the given request. */
-        /* ddev_bio = walb_make_ddev_bios(req); */
-        
-        /* Submit all the bios. */
-        /* walb_submit_all_bios(ddev_bio); */
-        
         printk_d("make_ddev_request() end\n");
-        
         return;
-        
-out:
+
+error1:
+        list_for_each_entry_safe(dbio, next, &wq->list, list) {
+                bio_put(dbio->bio);
+                kfree(dbio);
+        }
+        kfree(wq);
+error0:
         printk_e("make_ddev_request failed\n");
         __blk_end_request_all(req, -EIO);
 }
@@ -424,7 +477,12 @@ static void walb_full_request2(struct request_queue *q)
 {
         struct request *req;
         struct walb_dev *wdev = q->queuedata;
+        int i;
 
+        struct request **reqp_ary = NULL;
+        int n_req = 0;
+        const int max_n_req = max_n_log_record_in_sector(wdev->physical_bs);
+        
         while ((req = blk_peek_request(q)) != NULL) {
 
                 blk_start_request(req);
@@ -434,10 +492,51 @@ static void walb_full_request2(struct request_queue *q)
                         continue;
                 }
 
-                walb_make_ddev_request(wdev, req);
+                if (req->cmd_flags & REQ_WRITE) {
+                        /* Write.
+                           Make log record and
+                           add log pack.
+                         */
+                        if (n_req == max_n_req) {
+                                if (walb_make_and_write_log_pack(wdev, reqp_ary, n_req) != 0) {
+
+                                        for (i = 0; i < n_req; i ++) {
+                                                __blk_end_request_all(reqp_ary[i], -EIO);
+                                        }
+                                        kfree(reqp_ary);
+                                        continue;
+                                }
+                                reqp_ary = NULL;
+                                n_req = 0;
+                        }
+                        if (n_req == 0) {
+                                ASSERT(reqp_ary == NULL);
+                                reqp_ary = kmalloc(sizeof(struct request *) * max_n_req,
+                                                  GFP_ATOMIC);
+                        }
+                                                  
+                        reqp_ary[n_req] = req;
+                        n_req ++;
+                        
+                } else {
+                        /* Read.
+                           Just forward to data device. */
+                        walb_make_ddev_request(wdev, req);
+                }
+        }
+
+        /* If log pack exists(one or more requests are write),
+           Enqueue log write task.
+         */
+        if (n_req > 0) {
+                if (walb_make_and_write_log_pack(wdev, reqp_ary, n_req) != 0) {
+                        for (i = 0; i < n_req; i ++) {
+                                __blk_end_request_all(reqp_ary[i], -EIO);
+                        }
+                        kfree(reqp_ary);
+                }
         }
 }
-
 
 
 /*
@@ -748,13 +847,9 @@ static int walb_ldev_init(struct walb_dev *dev)
         kfree(lsuper0_tmp);
         /* Do not forget calling kfree(dev->lsuper0)
            before releasing the block device. */
-        
-
 
         /* now editing */
-        
 
-        
         
         /*
          * 2. Redo from written_lsid to avaialble latest lsid.
@@ -794,6 +889,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	 */
 	memset(dev, 0, sizeof (struct walb_dev));
 	spin_lock_init(&dev->lock);
+        spin_lock_init(&dev->lsuper0_lock);
 	
         /*
          * Open underlying log device.
