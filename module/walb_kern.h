@@ -90,7 +90,9 @@ struct walb_dev {
         struct block_device *ldev;
         struct block_device *ddev;
 
-
+        /* Latest lsid and its lock. */
+        spinlock_t latest_lsid_lock;
+        u64 latest_lsid;
 
         /* Spinlock for lsuper0 access. */
         spinlock_t lsuper0_lock;
@@ -150,6 +152,7 @@ struct walb_make_log_pack_work
         struct request** reqp_ary;
         int n_req; /* array size */
         spinlock_t lock; /* lock for the ary. */
+        struct walb_dev *wdev;
         struct work_struct work;
 };
 

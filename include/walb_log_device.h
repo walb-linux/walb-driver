@@ -95,7 +95,7 @@
 /**
  * Super block data of the log device.
  *
- * sizeof(walb_super_sector_t) must be <= sector_size.
+ * sizeof(walb_super_sector_t) must be <= physical block size.
  */
 typedef struct walb_super_sector {
 
@@ -104,13 +104,14 @@ typedef struct walb_super_sector {
         /* Check sum of the super block */
         u32 checksum;
 
-        /* Atomic read/write size.
-           Normally physical block size of the device.
-           Physical block size of the log device and data device
-           must be the same. */
-        u32 sector_size;
+        /* Both log and data device have
+           the same logical sector size and physical sector size.
+           Each IO (offset and size) is aligned by logical sector size.
+           Each log (offset and size) on log device is aligned. */
+        u32 logical_sector_size;
+        u32 physical_sector_size;
         
-        /* Number of sectors for snapshot metadata. */
+        /* Number of physical blocks for snapshot metadata. */
         u32 snapshot_metadata_size;
         u32 reserved1;
 
@@ -118,13 +119,14 @@ typedef struct walb_super_sector {
         u8 uuid[16];
 
         /* Offset of the oldest log record inside ring buffer.
-           [sector] */
+           [physical sector] */
         u64 start_offset;
 
-        /* Ring buffer size [sector] */
+        /* Ring buffer size [physical sector] */
         u64 ring_buffer_size;
         
-        /* Log sequence id of the oldest log record in the ring buffer. */
+        /* Log sequence id of the oldest log record in the ring buffer.
+           [physical sector] */
         u64 oldest_lsid;
         
         /* Log sequence id of the latest log record written to the data device also.
@@ -272,7 +274,7 @@ static inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
 static inline u64 get_super_sector0_offset_2(const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
-        return get_super_sector0_offset(super_sect->sector_size);
+        return get_super_sector0_offset(super_sect->physical_sector_size);
 }
 
 /**
@@ -281,7 +283,7 @@ static inline u64 get_super_sector0_offset_2(const walb_super_sector_t* super_se
 static inline u64 get_metadata_offset_2(const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
-        return get_metadata_offset(super_sect->sector_size);
+        return get_metadata_offset(super_sect->physical_sector_size);
 }
 
 /**
@@ -290,7 +292,7 @@ static inline u64 get_metadata_offset_2(const walb_super_sector_t* super_sect)
 static inline u64 get_super_sector1_offset_2(const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
-        return  get_metadata_offset(super_sect->sector_size) +
+        return  get_metadata_offset(super_sect->physical_sector_size) +
                 super_sect->snapshot_metadata_size;
 }
 

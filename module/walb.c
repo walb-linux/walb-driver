@@ -51,6 +51,9 @@ module_param(request_mode, int, 0);
 
 static struct walb_dev *Devices = NULL;
 
+/* Prototypes */
+static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask);
+
 /**
  * Open and claim underlying block device.
  * @bdevp  pointer to bdev pointer to back.
@@ -349,16 +352,113 @@ static void walb_make_log_record(struct walb_dev *wdev, struct request *req)
 }
 
 /**
+ * Add record to log pack.
+ *
+ * @lhead header of log pack.
+ * @req request to add.
+ *
+ * @return 0 in success, or -1.
+ */
+static int walb_record_header_add(struct walb_record_header *lhead,
+                                  struct request* req)
+{
+        struct bio *bio;
+        
+        __rq_for_each_bio(bio, req) {
+
+                /* now editing */
+                
+
+        }
+}
+
+/**
+ *
+ */
+static int walb_get_request_size(struct request* req)
+{
+        /* now editing */
+
+}
+
+
+/**
  * Make log pack and submit related bio(s).
  */
 static void walb_make_log_pack_and_submit_task(struct work_struct *work)
 {
         struct walb_make_log_pack_work *wk;
+        struct walb_record_header *lhead;
+        int i;
+        int total_lb, n_lb_in_pb, tmp;
+        u64 logpack_lsid;
+        struct request *req;
 
         wk = container_of(work, struct walb_make_log_pack_work, work);
 
+        printk_d("walb_make_log_pack_and_submit_task begin\n");
+        
         /* Allocate memory (sector size) for log pack header. */
+        printk_d("making log pack (n_req %d)\n", wk->n_req);
 
+        lhead = walb_alloc_sector(wk->wdev, GFP_KERNEL);
+        if (lhead == NULL) {
+                printk_e("walb_alloc_sector() failed\n");
+                goto fin;
+        }
+        memset(lhead, 0, wk->wdev->physical_bs);
+
+        /*
+         * 1. Calc required number of physical blocks for log pack.
+         * 2. Lock latest_lsid_lock.
+         * 3. Get latest_lsid and set next latest_lsid.
+         * 4. Unlock latest_lsid_lock.
+         */
+        n_lb_in_pb = wk->wdev->physical_bs / wk->wdev->logical_bs;
+        total_lb = 0;
+        for (i = 0; i < wk->n_req; i ++) {
+                req = wk->reqp_ary[i];
+                tmp = blk_rq_sectors(req);
+                lhead->record[i].io_size = tmp;
+
+                /* Padding for physical sector alignment. */
+                if (tmp % n_lb_in_pb != 0) {
+                        tmp = ((tmp / n_lb_in_pb) + 1) * n_lb_in_pb;
+                }
+                
+                /* set local_lsid and io_size and offset. */
+                lhead->record[i].offset = blk_rq_pos(req);
+                lhead->record[i].is_exist = 1;
+                lhead->record[i].lsid_local = total_lb / n_lb_in_pb + 1;
+                
+                total_lb += tmp;
+                ASSERT(total_lb % n_lb_in_pb == 0);
+        }
+        /* Get latest_lsid and set next latest_lsid */
+        spin_lock(&wk->wdev->latest_lsid_lock);
+        logpack_lsid = wk->wdev->latest_lsid;
+        wk->wdev->latest_lsid += (total_lb / n_lb_in_pb) + 1;
+        spin_unlock(&wk->wdev->latest_lsid_lock);
+
+        lhead->n_records = wk->n_req;
+        lhead->total_io_size = total_lb / n_lb_in_pb;
+        
+        for (i = 0; i < wk->n_req; i ++) {
+                lhead->record[i].lsid = logpack_lsid + lhead->record[i].lsid_local;
+        }
+        /* Now log records is filled except checksum. */
+        
+        
+        /* now editing */
+
+
+        
+
+        ASSERT(wk->n_req <= max_n_log_record_in_sector(wk->wdev->physical_bs));
+        for (i = 0; i < wk->n_req; i ++) {
+                walb_record_header_add(lhead, wk->reqp_ary[i]);
+        }
+        
         
         /* Fill log records for for each request. */
         
@@ -374,6 +474,19 @@ static void walb_make_log_pack_and_submit_task(struct work_struct *work)
 
 
         /* Now editing */
+
+fin:        
+        /* temporarl deallocation */
+        msleep(10);
+        for (i = 0; i < wk->n_req; i ++) {
+                blk_end_request_all(wk->reqp_ary[i], 0);
+        }
+        kfree(wk->reqp_ary);
+        kfree(wk);
+        kfree(lhead);
+
+        printk_d("walb_make_log_pack_and_submit_task end\n");
+        
 }
 
 /**
@@ -396,8 +509,9 @@ static int walb_make_and_write_log_pack(struct walb_dev *wdev,
         if (! wk) { goto error0; }
 
         wk->reqp_ary = reqp_ary;
+        wk->n_req = n_req;
         spin_lock_init(&wk->lock);
-        
+        wk->wdev = wdev;
         INIT_WORK(&wk->work, walb_make_log_pack_and_submit_task);
         schedule_work(&wk->work);
         
@@ -482,6 +596,7 @@ static void walb_full_request2(struct request_queue *q)
         struct request **reqp_ary = NULL;
         int n_req = 0;
         const int max_n_req = max_n_log_record_in_sector(wdev->physical_bs);
+        /* printk_d("max_n_req: %d\n", max_n_req); */
         
         while ((req = blk_peek_request(q)) != NULL) {
 
@@ -497,6 +612,9 @@ static void walb_full_request2(struct request_queue *q)
                            Make log record and
                            add log pack.
                          */
+
+                        printk_d("walb: WRITE\n");
+                        
                         if (n_req == max_n_req) {
                                 if (walb_make_and_write_log_pack(wdev, reqp_ary, n_req) != 0) {
 
@@ -521,6 +639,8 @@ static void walb_full_request2(struct request_queue *q)
                 } else {
                         /* Read.
                            Just forward to data device. */
+
+                        printk_d("walb: READ\n");
                         walb_make_ddev_request(wdev, req);
                 }
         }
@@ -623,7 +743,6 @@ static struct block_device_operations walb_ops = {
 	.ioctl	         = walb_ioctl
 };
 
-
 /**
  * Allocate sector.
  *
@@ -638,6 +757,7 @@ static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask)
         ret = kmalloc(dev->physical_bs, gfp_mask);
         return ret;
 }
+
 
 /**
  * Read/write physical sector from/to block device.
@@ -853,6 +973,7 @@ static int walb_ldev_init(struct walb_dev *dev)
         
         /*
          * 2. Redo from written_lsid to avaialble latest lsid.
+         *    and set latest_lsid variable.
          */
 
         /* This feature will be implemented later. */
@@ -889,6 +1010,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	 */
 	memset(dev, 0, sizeof (struct walb_dev));
 	spin_lock_init(&dev->lock);
+        spin_lock_init(&dev->latest_lsid_lock);
         spin_lock_init(&dev->lsuper0_lock);
 	
         /*
@@ -967,6 +1089,7 @@ static int setup_device(struct walb_dev *dev, int which)
 	blk_queue_logical_block_size(dev->queue, dev->logical_bs);
 	blk_queue_physical_block_size(dev->queue, dev->physical_bs);
 	dev->queue->queuedata = dev;
+        dev->queue->unplug_thresh = 8; /* will be max requests in a log pack. */
 	/*
 	 * And the gendisk structure.
 	 */
