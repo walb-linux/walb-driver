@@ -16,20 +16,30 @@
 #define ASSERT(cond) assert(cond)
 #endif /* __KERNEL__ */
 
-static inline u32 checksum(const u8 *data, u32 size)
+static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
 {
-        u64 sum = 0;
         u32 n = size / sizeof(u32);
         u32 i;
-        u32 ret;
 
         ASSERT(size % sizeof(u32) == 0);
 
         for (i = 0; i < n; i ++) {
                 sum += *(u32 *)(data + (sizeof(u32) * i));
         }
+        return sum;
+}
+
+static inline u32 checksum_finish(u64 sum)
+{
+        u32 ret;
+        
         ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
         return (ret == (u32)(-1) ? 0 : ret);
+}
+
+static inline u32 checksum(const u8 *data, u32 size)
+{
+        return checksum_finish(checksum_partial(0, data, size));
 }
 
 #endif /* _WALB_H */

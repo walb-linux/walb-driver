@@ -97,27 +97,29 @@ int parse_opt(int argc, char* const argv[])
  * Initialize log device.
  *
  * @fd block device file descripter.
- * @sector_size sector size.
+ * @logical_bs logical block size.
+ * @physical_bs physical block size.
  * @dev_size device size by the sector.
  * @n_snapshots number of snapshots to keep.
  *
  * @return true in success, or false.
  */
-bool init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
+bool init_walb_metadata(int fd, int logical_bs, int physical_bs, u64 dev_size, int n_snapshots)
 {
         ASSERT(fd >= 0);
-        ASSERT(sector_size > 0);
+        ASSERT(logical_bs > 0);
+        ASSERT(physical_bs > 0);
         ASSERT(dev_size < (u64)(-1));
 
         walb_super_sector_t super_sect;
         walb_snapshot_sector_t *snap_sectp;
 
-        ASSERT(sizeof(super_sect) <= (size_t)sector_size);
-        ASSERT(sizeof(*snap_sectp) <= (size_t)sector_size);
+        ASSERT(sizeof(super_sect) <= (size_t)physical_bs);
+        ASSERT(sizeof(*snap_sectp) <= (size_t)physical_bs);
 
         /* Calculate number of snapshot sectors. */
         int n_sectors;
-        int t = max_n_snapshots_in_sector(sector_size);
+        int t = max_n_snapshots_in_sector(physical_bs);
         n_sectors = (n_snapshots + t - 1) / t;
 
         printf("metadata_size: %d\n", n_sectors);
@@ -125,11 +127,12 @@ bool init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
         /* Prepare super sector */
         memset(&super_sect, 0, sizeof(super_sect));
 
-        super_sect.sector_size = sector_size;
+        super_sect.logical_bs = logical_bs;
+        super_sect.physical_bs = physical_bs;
         super_sect.snapshot_metadata_size = n_sectors;
         generate_uuid(super_sect.uuid);
         
-        super_sect.start_offset = get_ring_buffer_offset(sector_size, n_snapshots);
+        super_sect.start_offset = get_ring_buffer_offset(physical_bs, n_snapshots);
 
         super_sect.oldest_lsid = 0;
         super_sect.written_lsid = 0;
@@ -143,7 +146,7 @@ bool init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
 
         /* Prepare super sectors
            Bitmap data will be all 0. */
-        snap_sectp = (walb_snapshot_sector_t *)alloc_sector_zero(sector_size);
+        snap_sectp = (walb_snapshot_sector_t *)alloc_sector_zero(physical_bs);
         if (snap_sectp == NULL) {
                 goto error0;
         }
@@ -159,17 +162,17 @@ bool init_walb_metadata(int fd, int sector_size, u64 dev_size, int n_snapshots)
 #if 1        
         /* Read super sector and print for debug. */
         memset(&super_sect, 0, sizeof(super_sect));
-        if (! read_super_sector(fd, &super_sect, sector_size, n_snapshots)) {
+        if (! read_super_sector(fd, &super_sect, physical_bs, n_snapshots)) {
                 goto error1;
         }
         print_super_sector(&super_sect);
 
         /* Read first snapshot sector and print for debug. */
-        memset(snap_sectp, 0, sector_size);
+        memset(snap_sectp, 0, physical_bs);
         if (! read_snapshot_sector(fd, &super_sect, snap_sectp, 0)) {
                 goto error1;
         }
-        print_snapshot_sector(snap_sectp, sector_size);
+        print_snapshot_sector(snap_sectp, physical_bs);
         
 #endif
         
@@ -195,14 +198,16 @@ int format_log_dev()
         if (check_log_dev(cfg_.ldev_name) < 0) {
                 printf("format_log_dev: check failed.");
         }
-        int sector_size = get_bdev_sector_size(cfg_.ldev_name);
+        int logical_bs = get_bdev_logical_block_size(cfg_.ldev_name);
+        int physical_bs = get_bdev_physical_block_size(cfg_.ldev_name);
         u64 size = get_bdev_size(cfg_.ldev_name);
 
-        printf("sector_size: %d\n"
-               "size: %zu\n", sector_size, size);
+        printf("logical_bs: %d\n"
+               "physical_bs: %d\n"
+               "size: %zu\n", logical_bs, physical_bs, size);
 
 
-        if (sector_size < 0 || size == (u64)(-1)) {
+        if (physical_bs < 0 || size == (u64)(-1)) {
                 printf("getting block device parameters failed.\n");
                 goto error0;
         }
@@ -214,7 +219,7 @@ int format_log_dev()
                 goto error0;
         }
 
-        if (! init_walb_metadata(fd, sector_size, size, cfg_.n_snapshots)) {
+        if (! init_walb_metadata(fd, logical_bs, physical_bs, size, cfg_.n_snapshots)) {
 
                 printf("initialize walb log device failed.\n");
                 goto error1;

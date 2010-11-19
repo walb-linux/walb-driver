@@ -108,12 +108,11 @@ typedef struct walb_super_sector {
            the same logical sector size and physical sector size.
            Each IO (offset and size) is aligned by logical sector size.
            Each log (offset and size) on log device is aligned. */
-        u32 logical_sector_size;
-        u32 physical_sector_size;
+        u32 logical_bs;
+        u32 physical_bs;
         
         /* Number of physical blocks for snapshot metadata. */
         u32 snapshot_metadata_size;
-        u32 reserved1;
 
         /* UUID of the wal device. */
         u8 uuid[16];
@@ -274,7 +273,7 @@ static inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
 static inline u64 get_super_sector0_offset_2(const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
-        return get_super_sector0_offset(super_sect->physical_sector_size);
+        return get_super_sector0_offset(super_sect->physical_bs);
 }
 
 /**
@@ -283,7 +282,7 @@ static inline u64 get_super_sector0_offset_2(const walb_super_sector_t* super_se
 static inline u64 get_metadata_offset_2(const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
-        return get_metadata_offset(super_sect->physical_sector_size);
+        return get_metadata_offset(super_sect->physical_bs);
 }
 
 /**
@@ -292,7 +291,7 @@ static inline u64 get_metadata_offset_2(const walb_super_sector_t* super_sect)
 static inline u64 get_super_sector1_offset_2(const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
-        return  get_metadata_offset(super_sect->physical_sector_size) +
+        return  get_metadata_offset(super_sect->physical_bs) +
                 super_sect->snapshot_metadata_size;
 }
 

@@ -99,6 +99,10 @@ struct walb_dev {
         /* Super sector of log device. */
         walb_super_sector_t *lsuper0;
         /* walb_super_sector_t *lsuper1; */
+
+        /* Log pack list */
+        spinlock_t logpack_list_lock;
+        struct list_head logpack_list;
 };
 
 
@@ -147,7 +151,7 @@ static inline void walb_init_ddev_bio(struct walb_ddev_bio *dbio)
 /**
  * Work to create log pack.
  */
-struct walb_make_log_pack_work
+struct walb_make_logpack_work
 {
         struct request** reqp_ary;
         int n_req; /* array size */
@@ -155,5 +159,55 @@ struct walb_make_log_pack_work
         struct walb_dev *wdev;
         struct work_struct work;
 };
+
+
+/**
+ * Bio wrapper for logpack write.
+ */
+struct walb_logpack_bio {
+
+        struct request *req_orig; /* corresponding wrapper-level request */
+        struct bio *bio_orig;     /* corresponding wrapper-level bio */
+        
+        int status; /* bio_for_log status */
+        struct bio *bio_for_log; /* inside logpack */
+        /* struct bio *bio_for_data; */ /* for data device */
+
+        struct walb_dev *wdev; /* walb device */
+        
+        /* pointer to belonging logpack entry */
+        struct walb_logpack_entry *logpack_entry;
+};
+
+/**
+ * Logpack list entry.
+ * wdev->logpack_list_lock is already locked.
+ */
+struct walb_logpack_entry {
+
+        struct list_head *head; /* pointer to wdev->logpack_list */
+        struct list_head list;
+
+        struct walb_logpack_header *logpack;
+
+        /* list of walb_logpack_request_entry */
+        struct list_head req_list;
+        /* array of pointer of original request */
+        struct request **reqp_ary;
+};
+
+struct walb_logpack_request_entry {
+
+        /* pointer to walb_logpack_entry->req_list */
+        struct list_head *head;
+        struct list_head list;
+
+        struct request *req_orig; /* corresponding original request. */
+        
+        /* size must be number of bio(s) inside the req_orig. */
+        struct walb_bitmap *io_end_bmp;
+        struct walb_bitmap *io_success_bmp;
+};
+
 
 #endif /* _WALB_KERN_H */

@@ -26,6 +26,7 @@
 
 #include "walb_kern.h"
 #include "../include/walb_log_device.h"
+#include "../include/bitmap.h"
 
 static int walb_major = 0;
 module_param(walb_major, int, 0);
@@ -231,6 +232,7 @@ static void walb_ddev_end_io(struct bio *bio, int error)
         struct walb_ddev_bio *tmp, *next;
         struct list_head *head;
         struct walb_submit_bio_work *wq;
+        unsigned long irq_flags;
 
         int is_last = 1;
         int is_err = 0;
@@ -257,7 +259,7 @@ static void walb_ddev_end_io(struct bio *bio, int error)
         /* Check whether it's the last bio in the request finished
            or error or not finished. */
         wq = container_of(head, struct walb_submit_bio_work, list);
-        spin_lock(&wq->lock);
+        spin_lock_irqsave(&wq->lock, irq_flags);
         list_for_each_entry_safe(tmp, next, head, list) {
 
                 /* printk_d("status: %d\n", tmp->status); */
@@ -279,7 +281,7 @@ static void walb_ddev_end_io(struct bio *bio, int error)
                         break;
                 }
         }
-        spin_unlock(&wq->lock);
+        spin_unlock_irqrestore(&wq->lock, irq_flags);
 
         /* Finalize the request of wrapper device. */
         if (is_last) {
@@ -291,7 +293,7 @@ static void walb_ddev_end_io(struct bio *bio, int error)
                         blk_end_request_all(req, 0);
                 }
 
-                spin_lock(&wq->lock);
+                spin_lock_irqsave(&wq->lock, irq_flags);
                 list_for_each_entry_safe(tmp, next, head, list) {
                         BUG_ON(tmp->bio != NULL);
                         BUG_ON(tmp->status == WALB_BIO_INIT);
@@ -303,7 +305,7 @@ static void walb_ddev_end_io(struct bio *bio, int error)
                         printk_e("wq->list must be empty.\n");
                         BUG();
                 }
-                spin_unlock(&wq->lock);
+                spin_unlock_irqrestore(&wq->lock, irq_flags);
 
                 kfree(wq);
         }
@@ -338,69 +340,355 @@ static void walb_submit_bio_task(struct work_struct *work)
         printk_d("submit_bio_task end\n");
 }
 
+
 /**
- * Make log record of the request.
+ * Debug print of logpack header.
  *
- * @wdev walb device.
- * @req request of the wrapper block device.
  */
-static void walb_make_log_record(struct walb_dev *wdev, struct request *req)
+static void walb_logpack_header_print(const char *level,
+                                      struct walb_logpack_header *lhead)
 {
-
-        /* now editing */
-
+        int i;
+        printk("%s*****logpack header*****\n"
+               "checksum: %08x\n"
+               "n_records: %u\n"
+               "total_io_size: %u\n",
+               level,
+               lhead->checksum,
+               lhead->n_records,
+               lhead->total_io_size);
+        for (i = 0; i < lhead->n_records; i ++) {
+                printk("%srecord %d\n"
+                       "  checksum: %08x\n"
+                       "  lsid: %llu\n"
+                       "  lsid_local: %u\n"
+                       "  io_size: %u\n"
+                       "  is_exist: %u\n"
+                       "  offset: %llu\n",
+                       level, i,
+                       lhead->record[i].checksum,
+                       lhead->record[i].lsid,
+                       lhead->record[i].lsid_local,
+                       lhead->record[i].io_size,
+                       lhead->record[i].is_exist,
+                       lhead->record[i].offset);
+                printk("%slogpack lsid: %llu\n", level,
+                       lhead->record[i].lsid - lhead->record[i].lsid_local);
+        }
 }
+
 
 /**
  * Add record to log pack.
  *
  * @lhead header of log pack.
- * @req request to add.
+ * @logpack_lsid lsid of the log pack.
+ * @reqp_ary requests to add.
+ * @n_req number of requests.
+ * @n_lb_in_pb number of logical blocks in a physical block
  *
- * @return 0 in success, or -1.
+ * @return physical sectors of the log pack in success, or -1.
  */
-static int walb_record_header_add(struct walb_record_header *lhead,
-                                  struct request* req)
+static int walb_logpack_header_fill(struct walb_logpack_header *lhead,
+                                   u64 logpack_lsid,
+                                   struct request** reqp_ary, int n_req,
+                                   int n_lb_in_pb)
+{
+        struct request* req;
+        int total_lb, tmp, i, logpack_size;
+
+        printk_d("walb_logpack_header_fill begin\n");
+
+        printk_d("logpack_lsid %llu n_req %d n_lb_in_pb %d\n",
+                 logpack_lsid, n_req, n_lb_in_pb);
+        
+        total_lb = 0;
+        for (i = 0; i < n_req; i ++) {
+                req = reqp_ary[i];
+                tmp = blk_rq_sectors(req);
+                lhead->record[i].io_size = tmp;
+
+                /* Calc size of padding logical sectors
+                   for physical sector alignment. */
+                if (tmp % n_lb_in_pb != 0) {
+                        tmp = ((tmp / n_lb_in_pb) + 1) * n_lb_in_pb;
+                }
+                
+                /* set lsid_local and io_size and offset. */
+                lhead->record[i].offset = blk_rq_pos(req);
+                lhead->record[i].is_exist = 1;
+                lhead->record[i].lsid_local = total_lb / n_lb_in_pb + 1;
+                lhead->record[i].lsid = logpack_lsid + lhead->record[i].lsid_local;
+                
+                total_lb += tmp;
+                ASSERT(total_lb % n_lb_in_pb == 0);
+        }
+        lhead->n_records = n_req;
+        lhead->total_io_size = total_lb / n_lb_in_pb;
+        ASSERT(total_lb % n_lb_in_pb == 0);
+        logpack_size = lhead->total_io_size + 1;
+
+        printk_d("walb_logpack_header_fill end\n");
+        return logpack_size;
+}
+
+
+/**
+ * Count number of bio(s) in the request.
+ *
+ * @req request
+ *
+ * @return number of bio(s).
+ */
+static int walb_rq_count_bio(struct request *req)
 {
         struct bio *bio;
-        
+        int n = 0;
+
         __rq_for_each_bio(bio, req) {
-
-                /* now editing */
-                
-
+                n ++;
         }
+        return n;
 }
 
 /**
+ * Create logpack request entry and its substructure.
  *
+ * @logpack completed log pack.
+ * @idx idx of the request in the log pack.
+ *
+ * @return Pointer to created entry, or NULL.
+ *         This must be destroyed with @walb_destroy_logpack_request_entry().
  */
-static int walb_get_request_size(struct request* req)
+static struct walb_logpack_request_entry*
+walb_create_logpack_request_entry(
+        struct walb_logpack_entry *logpack_entry,
+        struct walb_logpack_header *logpack,
+        int idx)
 {
-        /* now editing */
+        struct walb_logpack_request_entry *entry;
+        int n_bio;
+        
+        ASSERT(idx < logpack->n_records);
+        entry = kmalloc(sizeof(struct walb_logpack_entry), GFP_NOIO);
+        if (entry == NULL) { goto error0; }
 
+        entry->head = &logpack_entry->req_list;
+        entry->req_orig = logpack_entry->reqp_ary[idx];
+
+        n_bio = walb_rq_count_bio(entry->req_orig);
+
+        entry->io_end_bmp = walb_bitmap_create(n_bio, GFP_NOIO);
+        if (entry->io_end_bmp == NULL) { goto error1; }
+        walb_bitmap_clear(entry->io_end_bmp);
+        
+        entry->io_success_bmp = walb_bitmap_create(n_bio, GFP_NOIO);
+        if (entry->io_success_bmp == NULL) { goto error2; }
+        walb_bitmap_clear(entry->io_success_bmp);
+
+        return entry;
+        
+error2:
+        walb_bitmap_free(entry->io_end_bmp);
+error1:
+        kfree(entry);
+error0:
+        return NULL;
 }
 
+
+/**
+ * Destroy logpack request entry.
+ *
+ * @entry logpack request entry to destroy (and deallocated).
+ */
+static void walb_destroy_logpack_request_entry(
+        struct walb_logpack_request_entry *entry)
+{
+        ASSERT(entry != NULL);
+        
+        walb_bitmap_free(entry->io_success_bmp);
+        walb_bitmap_free(entry->io_end_bmp);
+
+        kfree(entry);
+}
+
+
+/**
+ * Create logpack entry and its substructure.
+ *
+ * @wdev walb device
+ * @logpack completed logpack data.
+ * 
+ * @return Pointer to created logpack entry or NULL.
+ *         This must be destroyed with @walb_destroy_logpack_entry().
+ *
+ */
+static struct walb_logpack_entry* walb_create_logpack_entry(
+        struct walb_dev *wdev,
+        struct walb_logpack_header *logpack,
+        struct request** reqp_ary
+        )
+{
+        struct walb_logpack_entry *entry;
+        struct walb_logpack_request_entry *req_entry, *tmp_req_entry;
+        int i;
+
+        /*
+         * Allocate and initialize logpack entry.
+         */
+        entry = kmalloc(sizeof(struct walb_logpack_entry), GFP_NOIO);
+        if (entry == NULL) { goto error0; }
+
+        entry->head = &wdev->logpack_list;
+        entry->logpack = logpack;
+        INIT_LIST_HEAD(&entry->req_list);
+        entry->reqp_ary = reqp_ary;
+
+        /*
+         * Create request entry and add tail to the request entry list.
+         */
+        for (i = 0; i < logpack->n_records; i ++) {
+                req_entry = walb_create_logpack_request_entry(entry, logpack, i);
+                if (req_entry == NULL) { goto error1; }
+                list_add_tail(&req_entry->list, &entry->req_list);
+        }
+
+        return entry;
+
+error1:
+        list_for_each_entry_safe(req_entry, tmp_req_entry, &entry->req_list, list) {
+                list_del(&req_entry->list);
+                walb_destroy_logpack_request_entry(req_entry);
+        }
+        kfree(entry);
+error0:
+        return NULL;
+}
+
+/**
+ * Destory logpack entry and its substructure created by
+ * @walb_create_logpack_entry().
+ *
+ * @entry logpack entry. Call this after deleted from wdev->logpack_list.
+ */
+static void walb_destroy_logpack_entry(struct walb_logpack_entry *entry)
+{
+        struct walb_logpack_request_entry *req_entry, *tmp_req_entry;
+
+        ASSERT(entry != NULL);
+        
+        list_for_each_entry_safe(req_entry, tmp_req_entry, &entry->req_list, list) {
+                list_del(&req_entry->list);
+                walb_destroy_logpack_request_entry(req_entry);
+        }
+        kfree(entry);
+}
+
+
+/**
+ * Clone each bio for log pack and write log header and its contents
+ * to log device.
+ *
+ * @wdev walb device (to access logpack_list)
+ * @logpack logpack header
+ * @reqp_ary request pointer array.
+ *
+ * @return 0 in success, or -1.
+ */
+static int walb_logpack_write(struct walb_dev *wdev,
+                              struct walb_logpack_header *logpack,
+                              struct request** reqp_ary)
+{
+        struct walb_logpack_entry *logpack_entry;
+
+        /* Create logpack entry */
+        logpack_entry = walb_create_logpack_entry(wdev, logpack, reqp_ary);
+        if (logpack_entry == NULL) { goto error0; }
+
+        
+        /* now editing */
+
+        walb_destroy_logpack_entry(logpack_entry);
+
+
+
+        /* Clone bio and submit. */
+
+        
+
+        return 0;
+        
+error0:
+        return -1;
+}
+
+
+/**
+ * Calc checksum of each requests and log header and set it.
+ *
+ * @lhead header of log pack.
+ * @physical_bs physical sector size (allocated as lhead).
+ * @reqp_ary requests to add.
+ * @n_req number of requests.
+ *
+ * @return 0 in success, or -1.
+ */
+static int walb_logpack_calc_checksum(struct walb_logpack_header *lhead,
+                                      int physical_bs,
+                                      struct request** reqp_ary, int n_req)
+{
+        int i;
+        struct request *req;
+        struct req_iterator iter;
+        struct bio_vec *bvec;
+        u64 sum;
+        
+        for (i = 0; i < n_req; i ++) {
+                sum = 0;
+                req = reqp_ary[i];
+
+                ASSERT(req->cmd_flags & REQ_WRITE);
+
+                rq_for_each_segment(bvec, req, iter) {
+                        
+                        sum = checksum_partial
+                                (sum,
+                                 kmap(bvec->bv_page) + bvec->bv_offset,
+                                 bvec->bv_len);
+                        kunmap(bvec->bv_page);
+                }
+
+                lhead->record[i].checksum = checksum_finish(sum);
+        }
+
+        ASSERT(lhead->checksum == 0);
+        lhead->checksum = checksum((u8 *)lhead, physical_bs);
+        ASSERT(checksum((u8 *)lhead, physical_bs) == 0);
+        
+        return 0;
+}
 
 /**
  * Make log pack and submit related bio(s).
  */
-static void walb_make_log_pack_and_submit_task(struct work_struct *work)
+static void walb_make_logpack_and_submit_task(struct work_struct *work)
 {
-        struct walb_make_log_pack_work *wk;
-        struct walb_record_header *lhead;
-        int i;
-        int total_lb, n_lb_in_pb, tmp;
+        struct walb_make_logpack_work *wk;
+        struct walb_logpack_header *lhead;
+        int i, logpack_size;
         u64 logpack_lsid;
-        struct request *req;
 
-        wk = container_of(work, struct walb_make_log_pack_work, work);
+        wk = container_of(work, struct walb_make_logpack_work, work);
 
-        printk_d("walb_make_log_pack_and_submit_task begin\n");
-        
-        /* Allocate memory (sector size) for log pack header. */
+        printk_d("walb_make_logpack_and_submit_task begin\n");
+        ASSERT(wk->n_req <= max_n_log_record_in_sector(wk->wdev->physical_bs));
+
         printk_d("making log pack (n_req %d)\n", wk->n_req);
-
+        
+        /*
+         * Allocate memory (sector size) for log pack header.
+         */
         lhead = walb_alloc_sector(wk->wdev, GFP_KERNEL);
         if (lhead == NULL) {
                 printk_e("walb_alloc_sector() failed\n");
@@ -409,61 +697,43 @@ static void walb_make_log_pack_and_submit_task(struct work_struct *work)
         memset(lhead, 0, wk->wdev->physical_bs);
 
         /*
-         * 1. Calc required number of physical blocks for log pack.
-         * 2. Lock latest_lsid_lock.
-         * 3. Get latest_lsid and set next latest_lsid.
-         * 4. Unlock latest_lsid_lock.
+         * Fill log records for for each request.
          */
-        n_lb_in_pb = wk->wdev->physical_bs / wk->wdev->logical_bs;
-        total_lb = 0;
-        for (i = 0; i < wk->n_req; i ++) {
-                req = wk->reqp_ary[i];
-                tmp = blk_rq_sectors(req);
-                lhead->record[i].io_size = tmp;
 
-                /* Padding for physical sector alignment. */
-                if (tmp % n_lb_in_pb != 0) {
-                        tmp = ((tmp / n_lb_in_pb) + 1) * n_lb_in_pb;
-                }
-                
-                /* set local_lsid and io_size and offset. */
-                lhead->record[i].offset = blk_rq_pos(req);
-                lhead->record[i].is_exist = 1;
-                lhead->record[i].lsid_local = total_lb / n_lb_in_pb + 1;
-                
-                total_lb += tmp;
-                ASSERT(total_lb % n_lb_in_pb == 0);
-        }
-        /* Get latest_lsid and set next latest_lsid */
+        /*
+         * 1. Lock latest_lsid_lock.
+         * 2. Get latest_lsid 
+         * 3. Calc required number of physical blocks for log pack.
+         * 4. Set next latest_lsid.
+         * 5. Unlock latest_lsid_lock.
+         */
         spin_lock(&wk->wdev->latest_lsid_lock);
         logpack_lsid = wk->wdev->latest_lsid;
-        wk->wdev->latest_lsid += (total_lb / n_lb_in_pb) + 1;
+        logpack_size = walb_logpack_header_fill
+                (lhead, logpack_lsid, wk->reqp_ary, wk->n_req,
+                 wk->wdev->physical_bs / wk->wdev->logical_bs);
+        if (logpack_size < 0) {
+                printk_e("walb_logpack_header_fill failed\n");
+                spin_unlock(&wk->wdev->latest_lsid_lock);
+                goto fin;
+        }
+        wk->wdev->latest_lsid += logpack_size;
         spin_unlock(&wk->wdev->latest_lsid_lock);
 
-        lhead->n_records = wk->n_req;
-        lhead->total_io_size = total_lb / n_lb_in_pb;
-        
-        for (i = 0; i < wk->n_req; i ++) {
-                lhead->record[i].lsid = logpack_lsid + lhead->record[i].lsid_local;
-        }
-        /* Now log records is filled except checksum. */
-        
-        
-        /* now editing */
-
+        /* Now log records is filled except checksum.
+           Calculate and fill checksum for all requests and
+           the logpack header. */
+        walb_logpack_header_print(KERN_DEBUG, lhead); /* debug */
+        walb_logpack_calc_checksum(lhead, wk->wdev->physical_bs,
+                                   wk->reqp_ary, wk->n_req);
+        walb_logpack_header_print(KERN_DEBUG, lhead); /* debug */
 
         
-
-        ASSERT(wk->n_req <= max_n_log_record_in_sector(wk->wdev->physical_bs));
-        for (i = 0; i < wk->n_req; i ++) {
-                walb_record_header_add(lhead, wk->reqp_ary[i]);
-        }
-        
-        
-        /* Fill log records for for each request. */
-        
-
         /* Complete log pack header and create its bio. */
+        walb_logpack_write(wk->wdev, lhead, wk->reqp_ary);
+
+
+        /* now editing */        
         
 
         /* Clone bio(s) of each request and set offset for log pack. */
@@ -473,11 +743,10 @@ static void walb_make_log_pack_and_submit_task(struct work_struct *work)
 
 
 
-        /* Now editing */
 
 fin:        
         /* temporarl deallocation */
-        msleep(10);
+        /* msleep(100); */
         for (i = 0; i < wk->n_req; i ++) {
                 blk_end_request_all(wk->reqp_ary[i], 0);
         }
@@ -485,7 +754,7 @@ fin:
         kfree(wk);
         kfree(lhead);
 
-        printk_d("walb_make_log_pack_and_submit_task end\n");
+        printk_d("walb_make_logpack_and_submit_task end\n");
         
 }
 
@@ -500,19 +769,19 @@ fin:
  *
  * @return 0 in succeeded, or -1.
  */
-static int walb_make_and_write_log_pack(struct walb_dev *wdev,
+static int walb_make_and_write_logpack(struct walb_dev *wdev,
                                          struct request** reqp_ary, int n_req)
 {
-        struct walb_make_log_pack_work *wk;
+        struct walb_make_logpack_work *wk;
 
-        wk = kmalloc(sizeof(struct walb_make_log_pack_work), GFP_ATOMIC);
+        wk = kmalloc(sizeof(struct walb_make_logpack_work), GFP_ATOMIC);
         if (! wk) { goto error0; }
 
         wk->reqp_ary = reqp_ary;
         wk->n_req = n_req;
         spin_lock_init(&wk->lock);
         wk->wdev = wdev;
-        INIT_WORK(&wk->work, walb_make_log_pack_and_submit_task);
+        INIT_WORK(&wk->work, walb_make_logpack_and_submit_task);
         schedule_work(&wk->work);
         
         return 0;
@@ -616,7 +885,7 @@ static void walb_full_request2(struct request_queue *q)
                         printk_d("walb: WRITE\n");
                         
                         if (n_req == max_n_req) {
-                                if (walb_make_and_write_log_pack(wdev, reqp_ary, n_req) != 0) {
+                                if (walb_make_and_write_logpack(wdev, reqp_ary, n_req) != 0) {
 
                                         for (i = 0; i < n_req; i ++) {
                                                 __blk_end_request_all(reqp_ary[i], -EIO);
@@ -649,7 +918,7 @@ static void walb_full_request2(struct request_queue *q)
            Enqueue log write task.
          */
         if (n_req > 0) {
-                if (walb_make_and_write_log_pack(wdev, reqp_ary, n_req) != 0) {
+                if (walb_make_and_write_logpack(wdev, reqp_ary, n_req) != 0) {
                         for (i = 0; i < n_req; i ++) {
                                 __blk_end_request_all(reqp_ary[i], -EIO);
                         }
@@ -798,6 +1067,7 @@ static int walb_io_sector(int rw, struct block_device *bdev, void* buf, u64 off)
                 printk_e("bio_alloc failed\n");
                 goto error1;
         }
+        ASSERT(virt_addr_valid(buf));
         page = virt_to_page(buf);
 
         printk_d("walb_io_sector: sector %lu "
@@ -1012,6 +1282,8 @@ static int setup_device(struct walb_dev *dev, int which)
 	spin_lock_init(&dev->lock);
         spin_lock_init(&dev->latest_lsid_lock);
         spin_lock_init(&dev->lsuper0_lock);
+        spin_lock_init(&dev->logpack_list_lock);
+        INIT_LIST_HEAD(&dev->logpack_list);
 	
         /*
          * Open underlying log device.

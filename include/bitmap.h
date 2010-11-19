@@ -10,36 +10,57 @@
 #include "walb.h"
 
 #ifdef __KERNEL__
-#define MALLOC(n) kmalloc(n, GFP_KERNEL)
 #define FREE(p) kfree(p)
 #define PRINT(fmt, args...) printk(KERN_INFO fmt, ##args)
 #else
 #include <stdio.h>
 #include <stdlib.h>
-#define MALLOC(n) malloc(n)
 #define FREE(p) free(p)
 #define spin_lock_init(lock)
 #define PRINT(fmt, args...) printf(fmt, ##args)
 #endif
+
+
 
 typedef struct walb_bitmap
 {
         u8 *ary;
         size_t size;
 #ifdef __KERNEL__
-        spin_lock_t lock;
+        spinlock_t lock;
 #endif
 } walb_bitmap_t;
 
+
+/**
+ * Create bitmap with size.
+ *
+ * @size Number of bits to store.
+ * @flags GFP_* flags. (if defined(__KERNEL__) only)
+ *
+ * @return Pointer to created bitmap, or NULL.
+ */
+#ifdef __KERNEL__
+static inline walb_bitmap_t* walb_bitmap_create(size_t size, gfp_t flags)
+#else
 static inline walb_bitmap_t* walb_bitmap_create(size_t size)
+#endif
 {
         walb_bitmap_t *bmp;
 
-        bmp = MALLOC(sizeof(walb_bitmap_t));
+#ifdef __KERNEL__
+        bmp = kmalloc(sizeof(walb_bitmap_t), flags);
+#else
+        bmp = malloc(sizeof(walb_bitmap_t));
+#endif
         if (bmp != NULL) {
-                spin_lock_init(lock);
+                spin_lock_init(&bmp->lock);
                 bmp->size = size;
-                bmp->ary = MALLOC((size + 7) / 8);
+#ifdef __KERNEL__
+                bmp->ary = kmalloc((size + 7) / 8, flags);
+#else
+                bmp->ary = malloc((size + 7) / 8);
+#endif
                 if (bmp->ary == NULL) {
                         FREE(bmp);
                         bmp = NULL;

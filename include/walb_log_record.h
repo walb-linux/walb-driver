@@ -40,11 +40,11 @@ typedef struct walb_log_record {
 } __attribute__((packed)) walb_log_record_t;
 
 /**
- * Log record header data inside sector.
+ * Logpack header data inside sector.
  *
- * sizeof(walb_record_header_t) <= walb_super_sector.sector_size.
+ * sizeof(walb_logpack_header_t) <= walb_super_sector.sector_size.
  */
-typedef struct walb_record_header {
+typedef struct walb_logpack_header {
 
         u32 checksum; /* checksum of whole log pack. */
         u16 n_records; /* Number of log records in the log pack. */
@@ -55,7 +55,7 @@ typedef struct walb_record_header {
         walb_log_record_t record[0];
         /* continuous records */
         
-} __attribute__((packed)) walb_record_header_t;
+} __attribute__((packed)) walb_logpack_header_t;
 
 
 /**
@@ -63,26 +63,26 @@ typedef struct walb_record_header {
  */
 static inline int max_n_log_record_in_sector(int sector_size)
 {
-        return (sector_size - sizeof(walb_record_header_t)) /
+        return (sector_size - sizeof(walb_logpack_header_t)) /
                 sizeof(walb_log_record_t);
 }
 
 /**
  * IO data inside kernel memory.
  */
-typedef struct walb_io_data {
+/* typedef struct walb_io_data { */
 
-        u16 size; /* in sector. */
-        u8 *data; /* pointer to buffer with size. */
+/*         u16 size; /\* in sector. *\/ */
+/*         u8 *data; /\* pointer to buffer with size. *\/ */
         
-} __attribute__((packed)) walb_io_data_t;
+/* } __attribute__((packed)) walb_io_data_t; */
 
 /**
  * Log pack structure inside kernel memory.
  */
 /* typedef struct walb_log_pack { */
 
-/*         walb_record_header_t header; */
+/*         walb_logpack_header_t header; */
 /*         walb_io_data_t io_data[0]; */
 /*         /\* Contiuous io_data *\/ */
 

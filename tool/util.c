@@ -139,12 +139,34 @@ error:
 
 
 /**
+ * Get logical block size of the block device.
+ *
+ * @devpath device file path.
+ * @return sector size in succeeded, or -1.
+ */
+int get_bdev_logical_block_size(const char* devpath)
+{
+        int fd;
+        unsigned int pbs;
+
+        fd = open_blk_dev(devpath);
+        if (fd < 0) { return -1; }
+        
+        if (ioctl(fd, BLKSSZGET, &pbs) < 0) {
+                perror("ioctl failed");
+                return -1;
+        }
+        close(fd);
+        return (int)pbs;
+}
+
+/**
  * Get physical block size of the block device.
  *
  * @devpath device file path.
  * @return sector size in succeeded, or -1.
  */
-int get_bdev_sector_size(const char* devpath)
+int get_bdev_physical_block_size(const char* devpath)
 {
         int fd;
         unsigned int pbs;
@@ -270,6 +292,7 @@ bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset)
                         perror("write sector error.");
                         return false;
                 }
+
         }
         ASSERT(w == sector_size);
         return true;
@@ -282,10 +305,12 @@ void print_super_sector(const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
         printf("checksum: %u\n"
-               "sector_size: %u\n"
+               "logical_bs: %u\n"
+               "physical_bs: %u\n"
                "snapshot_metadata_size: %u\n",
                super_sect->checksum,
-               super_sect->sector_size,
+               super_sect->logical_bs,
+               super_sect->physical_bs,
                super_sect->snapshot_metadata_size);
         print_uuid(super_sect->uuid);
         printf("\n"
@@ -313,7 +338,7 @@ void print_super_sector(const walb_super_sector_t* super_sect)
 bool write_super_sector(int fd, const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
-        u32 sect_sz = super_sect->sector_size;
+        u32 sect_sz = super_sect->physical_bs;
         
         /* Memory image of sector. */
         u8 *sector_buf;
@@ -534,7 +559,7 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         ASSERT(super_sect != NULL);
         ASSERT(snap_sect != NULL);
         
-        u32 sect_sz = super_sect->sector_size;
+        u32 sect_sz = super_sect->physical_bs;
         u32 meta_sz = super_sect->snapshot_metadata_size;
         if (idx >= meta_sz) {
                 LOG("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
@@ -574,7 +599,7 @@ bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         ASSERT(super_sect != NULL);
         ASSERT(snap_sect != NULL);
         
-        u32 sect_sz = super_sect->sector_size;
+        u32 sect_sz = super_sect->physical_bs;
         u32 meta_sz = super_sect->snapshot_metadata_size;
         if (idx >= meta_sz) {
                 LOG("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
