@@ -207,9 +207,9 @@ struct walb_logpack_entry {
         struct request **reqp_ary;
 
         /* Logpack header block flags. */
-        atomic_t is_submitted_header;
-        atomic_t is_end_header;
-        atomic_t is_success_header;
+        /* atomic_t is_submitted_header; */
+        /* atomic_t is_end_header; */
+        /* atomic_t is_success_header; */
 };
 
 struct walb_logpack_request_entry {
@@ -222,10 +222,13 @@ struct walb_logpack_request_entry {
         struct request *req_orig; /* corresponding original request. */
         
         /* size must be number of bio(s) inside the req_orig. */
-        spinlock_t bmp_lock;
-        struct walb_bitmap *io_submitted_bmp;
-        struct walb_bitmap *io_end_bmp;
-        struct walb_bitmap *io_success_bmp;
+        /* spinlock_t bmp_lock; */
+        /* struct walb_bitmap *io_submitted_bmp; */
+        /* struct walb_bitmap *io_end_bmp; */
+        /* struct walb_bitmap *io_success_bmp; */
+
+        /* bio_completion list */
+        struct list_head bioc_list;
 };
 
 
