@@ -305,5 +305,15 @@ static inline u64 get_ring_buffer_offset_2(const walb_super_sector_t* super_sect
 }
 
 
+/**
+ * Get offset inside log device of the specified lsid.
+ */
+static inline u64 get_offset_of_lsid_2
+(const walb_super_sector_t* super_sect, u64 lsid)
+{
+        return  get_ring_buffer_offset_2(super_sect) +
+                (lsid % super_sect->ring_buffer_size);
+}
+
 
 #endif /* _WALB_LOG_DEVICE_H */

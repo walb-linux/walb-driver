@@ -151,6 +151,15 @@ static inline int walb_bitmap_is_all_off(walb_bitmap_t *bmp)
         return 1;
 }
 
+static inline int walb_bitmap_is_any_on(walb_bitmap_t *bmp)
+{
+        return (! walb_bitmap_is_all_off(bmp));
+}
+
+static inline int walb_bitmap_is_any_off(walb_bitmap_t *bmp)
+{
+        return (! walb_bitmap_is_all_on(bmp));
+}
 
 static inline void walb_bitmap_print(walb_bitmap_t *bmp)
 {

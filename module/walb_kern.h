@@ -61,10 +61,14 @@ struct walb_dev {
         u64 size;                       /* Device size in bytes */
         u8 *data;                       /* The data array */
         int users;                      /* How many users */
-        spinlock_t lock;                /* For mutual exclusion */
+        spinlock_t lock;                /* For mutual exclusion.
+                                           Use spin_lock() */
         struct request_queue *queue;    /* The device request queue */
         struct gendisk *gd;             /* The gendisk structure */
 
+        atomic_t is_read_only;          /* Write always fails if true */
+
+        
         /* Max number of snapshots.
            This is const after log device is initialized. */
         u32 n_snapshots;
@@ -94,15 +98,21 @@ struct walb_dev {
         spinlock_t latest_lsid_lock;
         u64 latest_lsid;
 
-        /* Spinlock for lsuper0 access. */
+        /* Spinlock for lsuper0 access.
+           Irq handler must not lock this.
+           Use spin_lock().
+         */
         spinlock_t lsuper0_lock;
         /* Super sector of log device. */
         walb_super_sector_t *lsuper0;
         /* walb_super_sector_t *lsuper1; */
 
-        /* Log pack list */
+        /* Log pack list.
+           Use spin_lock_irqsave(). */
         spinlock_t logpack_list_lock;
         struct list_head logpack_list;
+
+        
 };
 
 
@@ -138,6 +148,7 @@ struct walb_bio_with_completion
         struct bio *bio;
         struct completion wait;
         int status;
+        struct list_head list;
 };
 
 static inline void walb_init_ddev_bio(struct walb_ddev_bio *dbio)
@@ -173,10 +184,9 @@ struct walb_logpack_bio {
         struct bio *bio_for_log; /* inside logpack */
         /* struct bio *bio_for_data; */ /* for data device */
 
-        struct walb_dev *wdev; /* walb device */
-        
-        /* pointer to belonging logpack entry */
-        struct walb_logpack_entry *logpack_entry;
+        /* pointer to belonging logpack request entry */
+        struct walb_logpack_request_entry *req_entry;
+        int idx; /* idx'th bio in the request. */
 };
 
 /**
@@ -188,12 +198,18 @@ struct walb_logpack_entry {
         struct list_head *head; /* pointer to wdev->logpack_list */
         struct list_head list;
 
+        struct walb_dev *wdev; /* belonging walb device. */
         struct walb_logpack_header *logpack;
 
         /* list of walb_logpack_request_entry */
         struct list_head req_list;
         /* array of pointer of original request */
         struct request **reqp_ary;
+
+        /* Logpack header block flags. */
+        atomic_t is_submitted_header;
+        atomic_t is_end_header;
+        atomic_t is_success_header;
 };
 
 struct walb_logpack_request_entry {
@@ -201,10 +217,13 @@ struct walb_logpack_request_entry {
         /* pointer to walb_logpack_entry->req_list */
         struct list_head *head;
         struct list_head list;
-
+        
+        struct walb_logpack_entry *logpack_entry; /* belonging logpack entry. */
         struct request *req_orig; /* corresponding original request. */
         
         /* size must be number of bio(s) inside the req_orig. */
+        spinlock_t bmp_lock;
+        struct walb_bitmap *io_submitted_bmp;
         struct walb_bitmap *io_end_bmp;
         struct walb_bitmap *io_success_bmp;
 };

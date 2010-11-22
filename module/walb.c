@@ -474,22 +474,30 @@ walb_create_logpack_request_entry(
         if (entry == NULL) { goto error0; }
 
         entry->head = &logpack_entry->req_list;
+        entry->logpack_entry = logpack_entry;
         entry->req_orig = logpack_entry->reqp_ary[idx];
+        spin_lock_init(&entry->bmp_lock);
 
         n_bio = walb_rq_count_bio(entry->req_orig);
 
+        entry->io_submitted_bmp = walb_bitmap_create(n_bio, GFP_NOIO);
+        if (entry->io_submitted_bmp == NULL) { goto error1; }
+        walb_bitmap_clear(entry->io_submitted_bmp);
+        
         entry->io_end_bmp = walb_bitmap_create(n_bio, GFP_NOIO);
-        if (entry->io_end_bmp == NULL) { goto error1; }
+        if (entry->io_end_bmp == NULL) { goto error2; }
         walb_bitmap_clear(entry->io_end_bmp);
         
         entry->io_success_bmp = walb_bitmap_create(n_bio, GFP_NOIO);
-        if (entry->io_success_bmp == NULL) { goto error2; }
+        if (entry->io_success_bmp == NULL) { goto error3; }
         walb_bitmap_clear(entry->io_success_bmp);
-
+        
         return entry;
         
-error2:
+error3:
         walb_bitmap_free(entry->io_end_bmp);
+error2:
+        walb_bitmap_free(entry->io_submitted_bmp);
 error1:
         kfree(entry);
 error0:
@@ -509,6 +517,7 @@ static void walb_destroy_logpack_request_entry(
         
         walb_bitmap_free(entry->io_success_bmp);
         walb_bitmap_free(entry->io_end_bmp);
+        walb_bitmap_free(entry->io_submitted_bmp);
 
         kfree(entry);
 }
@@ -541,6 +550,7 @@ static struct walb_logpack_entry* walb_create_logpack_entry(
         if (entry == NULL) { goto error0; }
 
         entry->head = &wdev->logpack_list;
+        entry->wdev = wdev;
         entry->logpack = logpack;
         INIT_LIST_HEAD(&entry->req_list);
         entry->reqp_ary = reqp_ary;
@@ -587,6 +597,322 @@ static void walb_destroy_logpack_entry(struct walb_logpack_entry *entry)
 
 
 /**
+ * End io callback of bio of logpack header write.
+ *
+ * @bio completed bio, bio->bi_private must be (struct walb_logpack_header_bio)
+ */
+static void walb_logpack_header_write_end_io_callback(struct bio *bio, int error0)
+{
+
+        /* now editing */
+}
+
+
+/**
+ * End_io callback of bio related to logpack write (except logpack header)
+ *
+ * @bio completed bio, bio->bi_private must be (struct walb_logpack_bio).
+ */
+static void walb_logpack_request_write_end_io_callback(struct bio *bio, int error)
+{
+        struct walb_logpack_bio *lbio;
+
+        lbio = bio->bi_private;
+        
+        ASSERT(lbio->status == WALB_BIO_INIT);
+
+        if (error || ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
+                printk_e("walb_logpack_request_write_end_io_callback: "
+                         " error %d bi_flags %lu\n",
+                         error, bio->bi_flags);
+                lbio->status = WALB_BIO_ERROR;
+        } else {
+                lbio->status = WALB_BIO_END;
+        }
+
+        
+        /* now editing */
+
+
+
+        
+        kfree(lbio);
+        bio_put(bio);
+}
+
+
+/**
+ * Call end_request and 
+ * 
+ * @logpack_entry logpack entry.
+ *                must be deleted from wdev->logpack_entry_list,
+ *                all related bio(s) for log device are all done.
+ *
+ */
+static void walb_logpack_write_fail(struct walb_logpack_entry *logpack_entry)
+{
+        int is_submitted_header, is_end_header, is_success_header;
+        
+        ASSERT(logpack_entry != NULL);
+        is_submitted_header = atomic_read(&logpack_entry->is_submitted_header);        
+        is_end_header = atomic_read(&logpack_entry->is_submitted_header);        
+        is_success_header = atomic_read(&logpack_entry->is_submitted_header);
+
+        /* Check all bio(s) are done */
+        /* now editing */
+        
+        /* Free all resources */
+        walb_destroy_logpack_entry(logpack_entry);
+}
+
+/**
+ * Clone and submit given bio of the request entry.
+ *
+ * @req_entry request entry.
+ * @bio bio to clone and submit to log device.
+ * @idx index of the bio inside the request.a
+ * @bio_offset offset of the bio inside the request [logical block].
+ *
+ * @return 0 in success, or -1.
+ */
+static int walb_logpack_request_bio_clone_and_submit
+(struct walb_logpack_request_entry *req_entry, struct bio *bio, int idx, int bio_offset)
+{
+        struct request *req;
+        unsigned long irq_flags;
+        struct walb_logpack_bio *logpack_bio;
+        struct bio *cbio;
+        struct walb_dev *wdev;
+        u64 off, logpack_lsid;
+        struct walb_logpack_request_entry *req_entry1, *req_entry2;
+        struct walb_logpack_entry *logpack_entry2;
+
+        req = req_entry->req_orig;
+        wdev = req_entry->logpack_entry->wdev;
+
+        logpack_bio = kmalloc(sizeof(logpack_bio), GFP_NOIO);
+        if (logpack_bio == NULL) {
+                printk_e("kmalloc failed\n");
+                goto error0;
+        }
+
+        logpack_bio->req_orig = req;
+        logpack_bio->bio_orig = bio;
+        logpack_bio->req_entry = req_entry;
+        logpack_bio->idx = idx;
+
+        cbio = bio_clone(bio, GFP_NOIO);
+        if (bio == NULL) {
+                printk_e("bio_clone() failed\n");
+        }
+        cbio->bi_bdev = wdev->ldev;
+        cbio->bi_end_io = walb_logpack_request_write_end_io_callback;
+        cbio->bi_private = logpack_bio;
+
+        /* wdev should have copy of ring buffer offset
+           not to lock lsuper0. */
+        spin_lock(&wdev->lsuper0_lock);
+        off = get_offset_of_lsid_2(wdev->lsuper0,
+                                   req_entry->logpack_entry->logpack->record[idx].lsid);
+        spin_unlock(&wdev->lsuper0_lock);
+        cbio->bi_sector = off * (wdev->physical_bs / wdev->logical_bs) + bio_offset;a
+        
+        logpack_bio->bio_for_log = cbio;
+                        
+        ASSERT(cbio->bi_rw & WRITE);
+        submit_bio(cbio->bi_rw, cbio);
+
+        /* now editing */
+
+        return 0;
+
+error1:
+        bio_put(cbio);
+error0:
+
+        /* Below code will executed after returned? */
+        
+        /* Failed clone or submit. */
+        logpack_lsid = req_entry->logpack_entry->logpack->record[0].lsid - 
+                req_entry->logpack_entry->logpack->record[0].lsid_local;
+
+        spin_lock_irqsave(&req_entry->bmp_lock, irq_flags);
+        walb_bitmap_on(req_entry->io_end_bmp, idx);
+        walb_bitmap_off(req_entry->io_succeeded_bmp, idx);
+        spin_unlock_irqrestore(&req_entry->bmp_lock, irq_flags);
+
+        /* From this point, logpack may be freed by end_io callback. */
+
+        /* Check all bio(s) is not submitted and all bio(s) end */
+        spin_lock_irqsave(&wdev->logpack_list_lock, irq_flags);
+        logpack_entry2 = walb_search_logpack_list(wdev, lsid);
+
+        if (logpack_entry2 != NULL) {
+                /* If null, logpack is already freed by end_io callback. */
+
+                is_all_failed = 1;
+                list_for_each_entry_safe(req_entry1, req_entry2, 
+                                         req_entry->logpack_entry->req_list,
+                                         list) {
+                        if (walb_bitmap_is_any_off(req_entry1->io_end_bmp) ||
+                            walb_bitmap_is_any_on(req_entry1->io_submitted_bmp)) {
+
+                                is_all_failed = 0;
+                                break;
+                        }
+                }
+                if (is_all_failed) {
+
+                        printk_e("walb_logpack_request_bio_clone_and_submit:"
+                                 " all bio failed\n");
+
+                        /* Read only mode */
+                        atomic_set(&wdev->is_read_only, 1);
+
+                        list_del(logpack_entry2);
+                        walb_logpack_write_fail(logpack_entry);
+                        
+                        /* now editing */
+                }
+
+        }
+        spin_unlock_irqrestore(&wdev->logpack_list_lock, irq_flags);
+
+
+        /* blk_end_request_all(wk->reqp_ary[i], -EIO); */
+
+        
+        /* now editing */
+        
+        return -1;
+}
+
+
+/**
+ * Clone each bio in the logpack request entry
+ * for log device write and submit it.
+ *
+ * @req_entry logpack request entry.
+ *
+ * @return 0 in success, or -1.
+ */
+static int walb_submit_logpack_request_to_ldev
+(struct walb_logpack_request_entry *req_entry)
+{
+        struct bio *bio;
+        int idx;
+        int offset;
+        struct request* req;
+        unsigned long irq_flags;
+        int lbs = req_entry->logpack_entry->wdev->logical_bs;
+        
+        ASSERT(req_entry != NULL);
+        req = req_entry->req_orig;
+
+        idx = 0;
+        offset = 0;
+        smp_wmb();
+        __rq_for_each_bio(bio, req) {
+
+                if (walb_logpack_request_bio_clone_and_submit(req, bio, idx, offset) != 0) {
+
+                        printk_e("walb_logpack_request_bio_clone_and_submit() faild\n");
+                        goto error0;
+                }
+                idx ++;
+                ASSERT(bio->bi_size % lbs == 0);
+                offset += bio->bi_size / lbs;
+                smp_wmb();
+        }
+
+        return 0;
+error0:
+        return -1;
+}
+
+/**
+ * Clone each bio in the logpack entry for log device write and submit it.
+ *
+ * @logpack_entry logpack entry to issue.
+ * 
+ * @return 0 in success, or -1.
+ */
+static int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
+{
+        int n_req, i;
+        struct bio *bio;
+        struct walb_logpack_request_entry *req_entry, *tmp_req_entry;
+        struct page *page;
+        struct u64 logpack_lsid;
+        struct u32 pbs, lbs;
+        struct walb_bio_with_completion *bioc;
+
+        ASSERT(logpack_entry != NULL);
+
+        n_req = logpack->n_records;
+        logpack_lsid = logpack_entry->logpack->record[0].lsid -
+                logpack_entry->logpack->record[0].lsid_local;
+        lbs = logpack_entry->wdev->logical_bs;
+        pbs = logpack_entry->wdev->physical_bs;
+
+        /* Create bio for logpack header. */
+        bioc = kmalloc(sizeof(struct walb_bio_with_completion), GFP_NOIO);
+        if (! bioc) { goto error0; }
+        init_completion(&bioc->wait);
+        bioc->status = WALB_BIO_INIT;
+        
+        bio = bio_alloc(GFP_NOKO, 1);
+        if (! bio) { goto error1; }
+        ASSERT(virt_addr_valid(logpack_entry->logpack));
+        page = virt_to_page(logpack_entry->logpack);
+
+        bio->bi_bdev = logpack_entry->wdev->ldev;
+        bio->bi_sector = logpack_lsid * (pbs / lbs);
+        bio->bi_end_io = walb_logpack_header_write_end_io_callback;
+        bio->bi_privete = bioc;
+        bio_add_page(bio, page, pbs, offset_in_page(logpack_entry->logpack));
+        bioc->bio = bio;
+
+        atomic_set(&logpack_entry->is_submitted_header, 1);
+        atomic_set(&logpack_entry->is_end_header, 0);
+        atomic_set(&logpack_entry->is_success_header, 0);
+        submit_bio(WRITE, bio);
+
+        /* Clone bio and submit for each bio of each request. */
+        i = 0;
+        list_for_each_entry_safe(req_entry, tmp_req_entry,
+                                 logpack_entry->req_list, list) {
+
+                if (walb_submit_logpack_request_to_ldev(req_entry) != 0) {
+                        printk_e("walb_submit_logpack_request_to_ldev() failed\n");
+                        goto error0;
+                }
+                i ++;
+        }
+
+        /* Wait for completion of all bio(s). */
+        wait_for_completion(&bioc->wait);
+
+        /* for each request */
+
+        
+        
+        /* now editing */
+
+
+        return 0;
+
+
+error2:
+        bio_put(bioc->bio);
+error1:
+        kfree(bioc);
+error0:
+        return -1;
+}
+
+
+/**
  * Clone each bio for log pack and write log header and its contents
  * to log device.
  *
@@ -606,6 +932,12 @@ static int walb_logpack_write(struct walb_dev *wdev,
         logpack_entry = walb_create_logpack_entry(wdev, logpack, reqp_ary);
         if (logpack_entry == NULL) { goto error0; }
 
+
+        /* now editing */
+        walb_submit_logpack_to_ldev(logpack_entry);
+        /* walb_logpack_submitstruct walb_logpack_entry* */
+
+        
         
         /* now editing */
 
@@ -1284,6 +1616,7 @@ static int setup_device(struct walb_dev *dev, int which)
         spin_lock_init(&dev->lsuper0_lock);
         spin_lock_init(&dev->logpack_list_lock);
         INIT_LIST_HEAD(&dev->logpack_list);
+        atomic_set(&dev->is_read_only, 0);
 	
         /*
          * Open underlying log device.
