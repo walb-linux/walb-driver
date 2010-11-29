@@ -54,6 +54,9 @@ static struct walb_dev *Devices = NULL;
 
 /* Prototypes */
 static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask);
+static void walb_free_sector(void *p);
+static int walb_rq_count_bio(struct request *req);
+
 
 /**
  * Open and claim underlying block device.
@@ -395,7 +398,7 @@ static int walb_logpack_header_fill(struct walb_logpack_header *lhead,
                                    int n_lb_in_pb)
 {
         struct request* req;
-        int total_lb, tmp, i, logpack_size;
+        int total_lb, req_lb, req_padding_lb, i, logpack_size;
 
         printk_d("walb_logpack_header_fill begin\n");
 
@@ -405,13 +408,15 @@ static int walb_logpack_header_fill(struct walb_logpack_header *lhead,
         total_lb = 0;
         for (i = 0; i < n_req; i ++) {
                 req = reqp_ary[i];
-                tmp = blk_rq_sectors(req);
-                lhead->record[i].io_size = tmp;
+                req_lb = blk_rq_sectors(req);
+                lhead->record[i].io_size = req_lb;
 
                 /* Calc size of padding logical sectors
                    for physical sector alignment. */
-                if (tmp % n_lb_in_pb != 0) {
-                        tmp = ((tmp / n_lb_in_pb) + 1) * n_lb_in_pb;
+                if (req_lb % n_lb_in_pb == 0) {
+                        req_padding_lb = req_lb;
+                } else {
+                        req_padding_lb = ((req_lb / n_lb_in_pb) + 1) * n_lb_in_pb;
                 }
                 
                 /* set lsid_local and io_size and offset. */
@@ -420,12 +425,15 @@ static int walb_logpack_header_fill(struct walb_logpack_header *lhead,
                 lhead->record[i].lsid_local = total_lb / n_lb_in_pb + 1;
                 lhead->record[i].lsid = logpack_lsid + lhead->record[i].lsid_local;
                 
-                total_lb += tmp;
+                total_lb += req_padding_lb;
                 ASSERT(total_lb % n_lb_in_pb == 0);
         }
         lhead->n_records = n_req;
-        lhead->total_io_size = total_lb / n_lb_in_pb;
         ASSERT(total_lb % n_lb_in_pb == 0);
+        printk_d("total_lb: %d\n", total_lb); /* debug */
+        lhead->total_io_size = total_lb / n_lb_in_pb;
+        lhead->logpack_lsid = logpack_lsid;
+        
         logpack_size = lhead->total_io_size + 1;
 
         printk_d("walb_logpack_header_fill end\n");
@@ -467,10 +475,12 @@ walb_create_logpack_request_entry(
         int idx)
 {
         struct walb_logpack_request_entry *entry;
-        int n_bio;
+        /* int n_bio; */
+
+        printk_d("walb_create_logpack_request_entry begin\n");
         
         ASSERT(idx < logpack->n_records);
-        entry = kmalloc(sizeof(struct walb_logpack_entry), GFP_NOIO);
+        entry = kmalloc(sizeof(struct walb_logpack_request_entry), GFP_NOIO);
         if (entry == NULL) { goto error0; }
 
         entry->head = &logpack_entry->req_list;
@@ -478,7 +488,7 @@ walb_create_logpack_request_entry(
         entry->req_orig = logpack_entry->reqp_ary[idx];
         /* spin_lock_init(&entry->bmp_lock); */
 
-        n_bio = walb_rq_count_bio(entry->req_orig);
+        /* n_bio = walb_rq_count_bio(entry->req_orig); */
 
         /* entry->io_submitted_bmp = walb_bitmap_create(n_bio, GFP_NOIO); */
         /* if (entry->io_submitted_bmp == NULL) { goto error1; } */
@@ -494,6 +504,7 @@ walb_create_logpack_request_entry(
 
         INIT_LIST_HEAD(&entry->bioc_list);
         
+        printk_d("walb_create_logpack_request_entry end\n");
         return entry;
         
 /* error3: */
@@ -546,6 +557,9 @@ static struct walb_logpack_entry* walb_create_logpack_entry(
         struct walb_logpack_request_entry *req_entry, *tmp_req_entry;
         int i;
 
+
+        printk_d("walb_create_logpack_entry begin\n");
+        
         /*
          * Allocate and initialize logpack entry.
          */
@@ -567,6 +581,7 @@ static struct walb_logpack_entry* walb_create_logpack_entry(
                 list_add_tail(&req_entry->list, &entry->req_list);
         }
 
+        printk_d("walb_create_logpack_entry end\n");
         return entry;
 
 error1:
@@ -678,21 +693,22 @@ static void walb_logpack_write_fail(struct walb_logpack_entry *logpack_entry)
  * @req_entry request entry.
  * @bio bio to clone and submit to log device.
  * @idx index of the bio inside the request.a
- * @bio_offset offset of the bio inside the request [logical block].
+ * @bio_offset offset of the bio inside the whole request [logical block].
  *
  * @return walb_bio_with_completion or NULL.
  */
-static struct walb_bio_with_completion* walb_logpack_request_bio_clone_and_submit
+static struct walb_bio_with_completion* walb_submit_logpack_bio_to_ldev
 (struct walb_logpack_request_entry *req_entry, struct bio *bio, int idx, int bio_offset)
 {
         struct request *req;
-        unsigned long irq_flags;
+        /* unsigned long irq_flags; */
         struct walb_bio_with_completion *bioc;
         struct bio *cbio;
         struct walb_dev *wdev;
-        u64 off, logpack_lsid;
-        struct walb_logpack_request_entry *req_entry1, *req_entry2;
-        struct walb_logpack_entry *logpack_entry2;
+        u64 off_pb, off_lb;
+        /* u64 logpack_lsid; */
+        /* struct walb_logpack_request_entry *req_entry1, *req_entry2; */
+        /* struct walb_logpack_entry *logpack_entry2; */
 
         req = req_entry->req_orig;
         wdev = req_entry->logpack_entry->wdev;
@@ -717,10 +733,11 @@ static struct walb_bio_with_completion* walb_logpack_request_bio_clone_and_submi
         /* wdev should have copy of ring buffer offset
            not to lock lsuper0. */
         spin_lock(&wdev->lsuper0_lock);
-        off = get_offset_of_lsid_2(wdev->lsuper0,
-                                   req_entry->logpack_entry->logpack->record[idx].lsid);
+        off_pb = get_offset_of_lsid_2(wdev->lsuper0,
+                                      req_entry->logpack_entry->logpack->record[idx].lsid);
         spin_unlock(&wdev->lsuper0_lock);
-        cbio->bi_sector = off * (wdev->physical_bs / wdev->logical_bs) + bio_offset;
+        off_lb = off_pb * (wdev->physical_bs / wdev->logical_bs);
+        cbio->bi_sector = off_lb + bio_offset;
         
         bioc->bio = cbio;
                         
@@ -767,7 +784,7 @@ error0:
                 }
                 if (is_all_failed) {
 
-                        printk_e("walb_logpack_request_bio_clone_and_submit:"
+                        printk_e("walb_submit_logpack_bio_to_ldev:"
                                  " all bio failed\n");
 
                         /* Read only mode */
@@ -804,9 +821,9 @@ static int walb_submit_logpack_request_to_ldev
 {
         struct bio *bio;
         int idx;
-        int offset;
+        int off_lb;
         struct request* req;
-        unsigned long irq_flags;
+        /* unsigned long irq_flags; */
         int lbs = req_entry->logpack_entry->wdev->logical_bs;
         struct walb_bio_with_completion *bioc;
         
@@ -814,21 +831,19 @@ static int walb_submit_logpack_request_to_ldev
         req = req_entry->req_orig;
 
         idx = 0;
-        offset = 0;
-        smp_wmb();
+        off_lb = 0;
         __rq_for_each_bio(bio, req) {
 
-                bioc = walb_logpack_request_bio_clone_and_submit(req_entry, bio, idx, offset);
+                bioc = walb_submit_logpack_bio_to_ldev(req_entry, bio, idx, off_lb);
                 if (bioc) {
                         list_add_tail(&bioc->list, &req_entry->bioc_list);
                 } else {
-                        printk_e("walb_logpack_request_bio_clone_and_submit() faild\n");
+                        printk_e("walb_submit_logpack_bio_to_ldev() faild\n");
                         goto error0;
                 }
                 idx ++;
                 ASSERT(bio->bi_size % lbs == 0);
-                offset += bio->bi_size / lbs;
-                smp_wmb();
+                off_lb += bio->bi_size / lbs;
         }
 
         return 0;
@@ -850,18 +865,24 @@ static int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
         struct walb_logpack_header *logpack;
         struct walb_logpack_request_entry *req_entry, *tmp_req_entry;
         struct page *page;
-        u64 logpack_lsid;
+        u64 logpack_lsid, off_pb, off_lb;
         u32 pbs, lbs;
         struct walb_bio_with_completion *bioc, *tmp_bioc;
+        struct walb_dev *wdev;
 
+        printk_d("walb_submit_logpack_to_ldev begin\n");
+        
         ASSERT(logpack_entry != NULL);
 
         logpack = logpack_entry->logpack;
         n_req = logpack->n_records;
-        logpack_lsid = logpack_entry->logpack->record[0].lsid -
-                logpack_entry->logpack->record[0].lsid_local;
-        lbs = logpack_entry->wdev->logical_bs;
-        pbs = logpack_entry->wdev->physical_bs;
+        logpack_lsid = logpack_entry->logpack->logpack_lsid;
+        ASSERT(logpack_lsid ==
+               logpack_entry->logpack->record[0].lsid -
+               logpack_entry->logpack->record[0].lsid_local);
+        wdev = logpack_entry->wdev;
+        lbs = wdev->logical_bs;
+        pbs = wdev->physical_bs;
 
         /* Create bio for logpack header and submit. */
         bioc = kmalloc(sizeof(struct walb_bio_with_completion), GFP_NOIO);
@@ -871,11 +892,21 @@ static int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
         
         bio = bio_alloc(GFP_NOIO, 1);
         if (! bio) { goto error1; }
+
+        /* This is bad for non-64bit architecture.
+           Use map() and unmap(). */
         ASSERT(virt_addr_valid(logpack_entry->logpack));
         page = virt_to_page(logpack_entry->logpack);
 
-        bio->bi_bdev = logpack_entry->wdev->ldev;
-        bio->bi_sector = logpack_lsid * (pbs / lbs);
+        bio->bi_bdev = wdev->ldev;
+        
+        /* We should use lock free data structure and algorithm. */
+        spin_lock(&wdev->lsuper0_lock);
+        off_pb = get_offset_of_lsid_2(wdev->lsuper0, logpack_lsid);
+        spin_unlock(&wdev->lsuper0_lock);
+        off_lb = off_pb * (pbs / lbs);
+        bio->bi_sector = off_lb;
+
         bio->bi_end_io = walb_end_io_with_completion;
         bio->bi_private = bioc;
         bio_add_page(bio, page, pbs, offset_in_page(logpack_entry->logpack));
@@ -896,7 +927,12 @@ static int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
                 i ++;
         }
 
-        /* Wait for completion of all bio(s). */
+        
+        /*
+         * Wait for completion of all bio(s).
+         */
+
+        /* Wait completion of logpack header IO. */
         wait_for_completion(&bioc->wait);
         bio_put(bioc->bio);
         kfree(bioc);
@@ -913,15 +949,16 @@ static int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
                                 is_fail = 1;
                         }
                         bio_put(bioc->bio);
-                        list_del(bioc);
+                        list_del(&bioc->list);
                         kfree(bioc);
                 }
+                ASSERT(list_empty(&req_entry->bioc_list));
         }
 
         /* Now all bio is done. */
 
         if (is_fail) {
-                for (i = 0; i < logpack_entry->logpack->n_records; i ++) {
+                for (i = 0; i < n_req; i ++) {
                         blk_end_request_all(logpack_entry->reqp_ary[i], -EIO);
                 }
                 goto error0;
@@ -939,6 +976,7 @@ static int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
         }
         
 
+        printk_d("walb_submit_logpack_to_ldev end\n");
         return 0;
 
 
@@ -967,27 +1005,22 @@ static int walb_logpack_write(struct walb_dev *wdev,
 {
         struct walb_logpack_entry *logpack_entry;
 
-        /* Create logpack entry */
+        printk_d("walb_logpack_write begin\n");
+        
+        /* Create logpack entry for IO to log device. */
         logpack_entry = walb_create_logpack_entry(wdev, logpack, reqp_ary);
         if (logpack_entry == NULL) { goto error0; }
 
-
-        /* now editing */
+        /* Alloc/clone related bio(s) and submit them.
+           Currently this function waits for end of all bio(s). */
         walb_submit_logpack_to_ldev(logpack_entry);
-        /* walb_logpack_submitstruct walb_logpack_entry* */
 
-        
-        
+
         /* now editing */
-
         walb_destroy_logpack_entry(logpack_entry);
 
-
-
-        /* Clone bio and submit. */
-
+        printk_d("walb_logpack_write end\n");
         
-
         return 0;
         
 error0:
@@ -998,8 +1031,8 @@ error0:
 /**
  * Calc checksum of each requests and log header and set it.
  *
- * @lhead header of log pack.
- * @physical_bs physical sector size (allocated as lhead).
+ * @lhead log pack header.
+ * @physical_bs physical sector size (allocated size as lhead).
  * @reqp_ary requests to add.
  * @n_req number of requests.
  *
@@ -1047,7 +1080,8 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
 {
         struct walb_make_logpack_work *wk;
         struct walb_logpack_header *lhead;
-        int i, logpack_size;
+        /* int i; */
+        int logpack_size;
         u64 logpack_lsid;
 
         wk = container_of(work, struct walb_make_logpack_work, work);
@@ -1060,7 +1094,7 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         /*
          * Allocate memory (sector size) for log pack header.
          */
-        lhead = walb_alloc_sector(wk->wdev, GFP_KERNEL);
+        lhead = walb_alloc_sector(wk->wdev, GFP_NOIO);
         if (lhead == NULL) {
                 printk_e("walb_alloc_sector() failed\n");
                 goto fin;
@@ -1094,24 +1128,23 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         /* Now log records is filled except checksum.
            Calculate and fill checksum for all requests and
            the logpack header. */
+#ifdef WALB_DEBUG
         walb_logpack_header_print(KERN_DEBUG, lhead); /* debug */
+#endif
         walb_logpack_calc_checksum(lhead, wk->wdev->physical_bs,
                                    wk->reqp_ary, wk->n_req);
+#ifdef WALB_DEBUG
         walb_logpack_header_print(KERN_DEBUG, lhead); /* debug */
-
+#endif
         
         /* Complete log pack header and create its bio. */
         walb_logpack_write(wk->wdev, lhead, wk->reqp_ary);
 
-
         /* now editing */        
-        
 
         /* Clone bio(s) of each request and set offset for log pack. */
 
-
         /* Submit prepared bio(s) to log device. */
-
 
 
 
@@ -1123,10 +1156,9 @@ fin:
         /* } */
         kfree(wk->reqp_ary);
         kfree(wk);
-        kfree(lhead);
+        walb_free_sector(lhead);
 
         printk_d("walb_make_logpack_and_submit_task end\n");
-        
 }
 
 /**
@@ -1150,7 +1182,6 @@ static int walb_make_and_write_logpack(struct walb_dev *wdev,
 
         wk->reqp_ary = reqp_ary;
         wk->n_req = n_req;
-        spin_lock_init(&wk->lock);
         wk->wdev = wdev;
         INIT_WORK(&wk->work, walb_make_logpack_and_submit_task);
         schedule_work(&wk->work);
@@ -1398,6 +1429,15 @@ static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask)
         return ret;
 }
 
+/**
+ * Deallocate sector.
+ *
+ * This must be used for memory allocated with @walb_alloc_sector().
+ */
+static void walb_free_sector(void *p)
+{
+        kfree(p);
+}
 
 /**
  * Read/write physical sector from/to block device.
@@ -1480,6 +1520,63 @@ error0:
 
 
 /**
+ * Sprint uuid.
+ *
+ * @buf buffer to store result. Its size must be 16 * 2 + 1.
+ * @uuid uuid ary. Its size must be 16.
+ */
+static void walb_sprint_uuid(char *buf, const u8 *uuid)
+{
+#ifdef WALB_DEBUG
+        char tmp[3];
+        int i;
+
+        buf[0] = '\0';
+        for (i = 0; i < 16; i ++) {
+                sprintf(tmp, "%02x", uuid[i]);
+                strcat(buf, tmp);
+        }
+#endif
+}
+
+/**
+ * Print super sector for debug.
+ *
+ * @lsuper0 super sector.
+ */
+static void walb_print_super_sector(walb_super_sector_t *lsuper0)
+{
+#ifdef WALB_DEBUG
+        char uuidstr[16 * 2 + 1];
+        walb_sprint_uuid(uuidstr, lsuper0->uuid);
+        
+        printk_d("-----super block------\n"
+                 "checksum %08x\n"
+                 "logical_bs %u\n"
+                 "physical_bs %u\n"
+                 "snapshot_metadata_size %u\n"
+                 "uuid: %s\n"         
+                 "start_offset %llu\n"
+                 "ring_buffer_size %llu\n"
+                 "oldest_lsid %llu\n"
+                 "written_lsid %llu\n"
+                 "device_size %llu\n"
+                 "----------\n",
+                 lsuper0->checksum,
+                 lsuper0->logical_bs,
+                 lsuper0->physical_bs,
+                 lsuper0->snapshot_metadata_size,
+                 uuidstr,
+                 lsuper0->start_offset,
+                 lsuper0->ring_buffer_size,
+                 lsuper0->oldest_lsid,
+                 lsuper0->written_lsid,
+                 lsuper0->device_size);
+#endif
+}
+
+
+/**
  * Read super sector.
  * Currently super sector 0 will be read only (not super sector 1).
  *
@@ -1512,12 +1609,16 @@ static walb_super_sector_t* walb_read_super_sector(struct walb_dev *dev)
                 printk_e("walb_read_super_sector: checksum check failed.\n");
                 goto error1;
         }
+
+#ifdef WALB_DEBUG
+        walb_print_super_sector(lsuper0);
+#endif
         
         printk_d("walb_read_super_sector end\n");
         return lsuper0;
 
 error1:
-        kfree(lsuper0);
+        walb_free_sector(lsuper0);
 error0:
         return NULL;
 }
@@ -1605,7 +1706,7 @@ static int walb_ldev_init(struct walb_dev *dev)
                 printk_e("walb_ldev_init: memcmp OK\n");
         }
 
-        kfree(lsuper0_tmp);
+        walb_free_sector(lsuper0_tmp);
         /* Do not forget calling kfree(dev->lsuper0)
            before releasing the block device. */
 
@@ -1631,7 +1732,7 @@ static int walb_ldev_init(struct walb_dev *dev)
         return 0;
 
 error1:
-        kfree(dev->lsuper0);
+        walb_free_sector(dev->lsuper0);
 error0:
         return -1;
 }
@@ -1734,6 +1835,8 @@ static int setup_device(struct walb_dev *dev, int which)
 	blk_queue_physical_block_size(dev->queue, dev->physical_bs);
 	dev->queue->queuedata = dev;
         dev->queue->unplug_thresh = 8; /* will be max requests in a log pack. */
+        dev->queue->unplug_delay = msecs_to_jiffies(1); /* 1 ms */
+        printk_d("1ms = %d jiffies\n", msecs_to_jiffies(1)); /* debug */
 	/*
 	 * And the gendisk structure.
 	 */

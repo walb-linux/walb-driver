@@ -164,9 +164,8 @@ static inline void walb_init_ddev_bio(struct walb_ddev_bio *dbio)
  */
 struct walb_make_logpack_work
 {
-        struct request** reqp_ary;
+        struct request** reqp_ary; /* This is read only. */
         int n_req; /* array size */
-        spinlock_t lock; /* lock for the ary. */
         struct walb_dev *wdev;
         struct work_struct work;
 };

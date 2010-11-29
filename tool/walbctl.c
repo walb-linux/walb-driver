@@ -23,11 +23,12 @@
 
 typedef struct config
 {
-        char* cmd_str; /* command string */
+        char *cmd_str; /* command string */
         char *ldev_name; /* log device name */
+        char *ddev_name; /* data device name */
 
-        size_t log_sector_size; /* sector size of log device */
-        size_t log_dev_size; /* size of log device by the sector */
+        /* size_t log_sector_size; /\* sector size of log device *\/ */
+        /* size_t log_dev_size; /\* size of log device by the sector *\/ */
 
         int n_snapshots; /* maximum number of snapshots to keep */
         
@@ -37,7 +38,7 @@ config_t cfg_;
 
 void show_help()
 {
-        printf("log format: walbctl mklog --ldev [block device path]\n");
+        printf("log format: walbctl mklog --ldev [path] --ddev [path]\n");
 }
 
 void init_config(config_t* cfg)
@@ -55,7 +56,8 @@ int parse_opt(int argc, char* const argv[])
                 int option_index = 0;
                 static struct option long_options[] = {
                         {"ldev", 1, 0, 1}, /* log device */
-                        {"n_snap", 1, 0, 2}, /* num of snapshots */
+                        {"ddev", 1, 0, 2}, /* data device */
+                        {"n_snap", 1, 0, 3}, /* num of snapshots */
                         {0, 0, 0, 0}
                 };
 
@@ -69,6 +71,10 @@ int parse_opt(int argc, char* const argv[])
                         printf("ldev: %s\n", optarg);
                         break;
                 case 2:
+                        cfg_.ddev_name = strdup(optarg);
+                        printf("ddev: %s\n", optarg);
+                        break;
+                case 3:
                         cfg_.n_snapshots = atoi(optarg);
                         break;
                 default:
@@ -99,17 +105,20 @@ int parse_opt(int argc, char* const argv[])
  * @fd block device file descripter.
  * @logical_bs logical block size.
  * @physical_bs physical block size.
- * @dev_size device size by the sector.
+ * @ddev_lb device size [logical block].
+ * @ldev_lb log device size [logical block]
  * @n_snapshots number of snapshots to keep.
  *
  * @return true in success, or false.
  */
-bool init_walb_metadata(int fd, int logical_bs, int physical_bs, u64 dev_size, int n_snapshots)
+bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
+                        u64 ddev_lb, u64 ldev_lb, int n_snapshots)
 {
         ASSERT(fd >= 0);
         ASSERT(logical_bs > 0);
         ASSERT(physical_bs > 0);
-        ASSERT(dev_size < (u64)(-1));
+        ASSERT(ddev_lb < (u64)(-1));
+        ASSERT(ldev_lb < (u64)(-1));
 
         walb_super_sector_t super_sect;
         walb_snapshot_sector_t *snap_sectp;
@@ -133,10 +142,13 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs, u64 dev_size, i
         generate_uuid(super_sect.uuid);
         
         super_sect.start_offset = get_ring_buffer_offset(physical_bs, n_snapshots);
+        super_sect.ring_buffer_size =
+                ldev_lb / (physical_bs / logical_bs)
+                - super_sect.start_offset;
 
         super_sect.oldest_lsid = 0;
         super_sect.written_lsid = 0;
-        super_sect.device_size = dev_size;
+        super_sect.device_size = ddev_lb;
 
         /* Write super sector */
         if (! write_super_sector(fd, &super_sect)) {
@@ -194,21 +206,57 @@ int format_log_dev()
 {
         ASSERT(cfg_.cmd_str);
         ASSERT(strcmp(cfg_.cmd_str, "mklog") == 0);
-        
-        if (check_log_dev(cfg_.ldev_name) < 0) {
-                printf("format_log_dev: check failed.");
-        }
-        int logical_bs = get_bdev_logical_block_size(cfg_.ldev_name);
-        int physical_bs = get_bdev_physical_block_size(cfg_.ldev_name);
-        u64 size = get_bdev_size(cfg_.ldev_name);
 
+        /*
+         * Check devices.
+         */
+        if (check_bdev(cfg_.ldev_name) < 0) {
+                printf("format_log_dev: check log device failed %s.\n",
+                       cfg_.ldev_name);
+        }
+        if (check_bdev(cfg_.ddev_name) < 0) {
+                printf("format_log_dev: check data device failed %s.\n",
+                       cfg_.ddev_name);
+        }
+
+        /*
+         * Block size.
+         */
+        int ldev_logical_bs = get_bdev_logical_block_size(cfg_.ldev_name);
+        int ddev_logical_bs = get_bdev_logical_block_size(cfg_.ddev_name);
+        int ldev_physical_bs = get_bdev_physical_block_size(cfg_.ldev_name);
+        int ddev_physical_bs = get_bdev_physical_block_size(cfg_.ddev_name);
+        if (ldev_logical_bs != ddev_logical_bs ||
+            ldev_physical_bs != ddev_physical_bs) {
+                printf("logical or physical block size is different.\n");
+                goto error0;
+        }
+        int logical_bs = ldev_logical_bs;
+        int physical_bs = ldev_physical_bs;
+
+        /*
+         * Device size.
+         */
+        u64 ldev_size = get_bdev_size(cfg_.ldev_name);
+        u64 ddev_size = get_bdev_size(cfg_.ddev_name);
+
+        /*
+         * Debug print.
+         */
         printf("logical_bs: %d\n"
                "physical_bs: %d\n"
-               "size: %zu\n", logical_bs, physical_bs, size);
-
-
-        if (physical_bs < 0 || size == (u64)(-1)) {
+               "ddev_size: %zu\n"
+               "ldev_size: %zu\n",
+               logical_bs, physical_bs, ddev_size, ldev_size);
+        
+        if (logical_bs <= 0 || physical_bs <= 0 ||
+            ldev_size == (u64)(-1) || ldev_size == (u64)(-1) ) {
                 printf("getting block device parameters failed.\n");
+                goto error0;
+        }
+        if (ldev_size % logical_bs != 0 ||
+            ddev_size % logical_bs != 0) {
+                printf("device size is not multiple of logical_bs\n");
                 goto error0;
         }
         
@@ -219,7 +267,10 @@ int format_log_dev()
                 goto error0;
         }
 
-        if (! init_walb_metadata(fd, logical_bs, physical_bs, size, cfg_.n_snapshots)) {
+        if (! init_walb_metadata(fd, logical_bs, physical_bs,
+                                 ddev_size / logical_bs,
+                                 ldev_size / logical_bs,
+                                 cfg_.n_snapshots)) {
 
                 printf("initialize walb log device failed.\n");
                 goto error1;

@@ -38,7 +38,7 @@ void print_binary_hex(const u8* data, size_t size)
 }
 
 
-int check_log_dev(const char* path)
+int check_bdev(const char* path)
 {
         struct stat sb;
         dev_t devt;
@@ -94,8 +94,6 @@ int check_log_dev(const char* path)
                        bs, ss, pbs, (size_t)size);
         }
         
-        /* not yet implemented */
-  
         return 0;
 }
 
@@ -304,7 +302,7 @@ bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset)
 void print_super_sector(const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
-        printf("checksum: %u\n"
+        printf("checksum: %08x\n"
                "logical_bs: %u\n"
                "physical_bs: %u\n"
                "snapshot_metadata_size: %u\n",

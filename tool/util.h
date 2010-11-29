@@ -16,7 +16,7 @@
 void print_binary_hex(const u8* data, size_t size);
 
 /* for block device information */
-int check_log_dev(const char* path);
+int check_bdev(const char* path);
 int get_bdev_logical_block_size(const char* devpath);
 int get_bdev_physical_block_size(const char* devpath);
 u64 get_bdev_size(const char* devpath);

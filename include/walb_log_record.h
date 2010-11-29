@@ -51,6 +51,7 @@ typedef struct walb_logpack_header {
         u16 total_io_size; /* Total io size in the log pack
                               [physical sector].
                               (Log pack size is total_io_size + 1.) */
+        u64 logpack_lsid; /* logpack lsid */
         
         walb_log_record_t record[0];
         /* continuous records */

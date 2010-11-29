@@ -105,8 +105,8 @@ typedef struct walb_super_sector {
         u32 checksum;
 
         /* Both log and data device have
-           the same logical sector size and physical sector size.
-           Each IO (offset and size) is aligned by logical sector size.
+           the same logical block size and physical block size.
+           Each IO (offset and size) is aligned by logical block size.
            Each log (offset and size) on log device is aligned. */
         u32 logical_bs;
         u32 physical_bs;
@@ -118,14 +118,14 @@ typedef struct walb_super_sector {
         u8 uuid[16];
 
         /* Offset of the oldest log record inside ring buffer.
-           [physical sector] */
+           [physical block] */
         u64 start_offset;
 
-        /* Ring buffer size [physical sector] */
+        /* Ring buffer size [physical block] */
         u64 ring_buffer_size;
         
         /* Log sequence id of the oldest log record in the ring buffer.
-           [physical sector] */
+           [physical block] */
         u64 oldest_lsid;
         
         /* Log sequence id of the latest log record written to the data device also.
@@ -134,7 +134,7 @@ typedef struct walb_super_sector {
            from written_lsid to the latest lsid stored in the log device. */
         u64 written_lsid;
 
-        /* Size of wrapper block device [sector] */
+        /* Size of wrapper block device [logical block] */
         u64 device_size;
         
 } __attribute__((packed)) walb_super_sector_t;
@@ -225,6 +225,12 @@ static inline int get_metadata_size(int sector_size, int n_snapshots)
  */
 static inline u64 get_super_sector0_offset(int sector_size)
 {
+#ifdef __KERNEL__
+        if (PAGE_SIZE % sector_size != 0) {
+                printk(KERN_ERR "PAGE_SIZE: %lu sector_size %d\n",
+                       PAGE_SIZE, sector_size);
+        }
+#endif
         ASSERT(PAGE_SIZE % sector_size == 0);
         return PAGE_SIZE/sector_size; /* skip reserved page */
 }
@@ -297,6 +303,8 @@ static inline u64 get_super_sector1_offset_2(const walb_super_sector_t* super_se
 
 /**
  * Get ring buffer offset.
+ *
+ * @return offset in log device [physical sector].
  */
 static inline u64 get_ring_buffer_offset_2(const walb_super_sector_t* super_sect)
 {
@@ -307,6 +315,8 @@ static inline u64 get_ring_buffer_offset_2(const walb_super_sector_t* super_sect
 
 /**
  * Get offset inside log device of the specified lsid.
+ *
+ * @return offset in log device [physical sector].
  */
 static inline u64 get_offset_of_lsid_2
 (const walb_super_sector_t* super_sect, u64 lsid)
@@ -314,6 +324,5 @@ static inline u64 get_offset_of_lsid_2
         return  get_ring_buffer_offset_2(super_sect) +
                 (lsid % super_sect->ring_buffer_size);
 }
-
 
 #endif /* _WALB_LOG_DEVICE_H */
