@@ -129,7 +129,7 @@ typedef struct walb_super_sector {
 
         /* Offset of the oldest log record inside ring buffer.
            [physical block] */
-        u64 start_offset;
+        /* u64 start_offset; */
 
         /* Ring buffer size [physical block] */
         u64 ring_buffer_size;

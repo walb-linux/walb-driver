@@ -1613,7 +1613,6 @@ static void walb_print_super_sector(walb_super_sector_t *lsuper0)
                  "physical_bs %u\n"
                  "snapshot_metadata_size %u\n"
                  "uuid: %s\n"         
-                 "start_offset %llu\n"
                  "ring_buffer_size %llu\n"
                  "oldest_lsid %llu\n"
                  "written_lsid %llu\n"
@@ -1624,7 +1623,6 @@ static void walb_print_super_sector(walb_super_sector_t *lsuper0)
                  lsuper0->physical_bs,
                  lsuper0->snapshot_metadata_size,
                  uuidstr,
-                 lsuper0->start_offset,
                  lsuper0->ring_buffer_size,
                  lsuper0->oldest_lsid,
                  lsuper0->written_lsid,

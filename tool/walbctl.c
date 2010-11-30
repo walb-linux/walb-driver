@@ -141,10 +141,9 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
         super_sect.snapshot_metadata_size = n_sectors;
         generate_uuid(super_sect.uuid);
         
-        super_sect.start_offset = get_ring_buffer_offset(physical_bs, n_snapshots);
         super_sect.ring_buffer_size =
                 ldev_lb / (physical_bs / logical_bs)
-                - super_sect.start_offset;
+                - get_ring_buffer_offset(physical_bs, n_snapshots);
 
         super_sect.oldest_lsid = 0;
         super_sect.written_lsid = 0;

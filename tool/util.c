@@ -312,12 +312,10 @@ void print_super_sector(const walb_super_sector_t* super_sect)
                super_sect->snapshot_metadata_size);
         print_uuid(super_sect->uuid);
         printf("\n"
-               "start_offset: %lu\n"
                "ring_buffer_size: %lu\n"
                "oldest_lsid: %lu\n"
                "written_lsid: %lu\n"
                "device_size: %lu\n",
-               super_sect->start_offset,
                super_sect->ring_buffer_size,
                super_sect->oldest_lsid,
                super_sect->written_lsid,
