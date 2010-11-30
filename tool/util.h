@@ -6,6 +6,8 @@
 #ifndef _WALB_UTIL_H
 #define _WALB_UTIL_H
 
+#include <stdio.h>
+
 #include "walb.h"
 #include "walb_log_device.h"
 

@@ -19,8 +19,8 @@ HEADER_FILES = ../include/walb.h \
 	../include/walb_log_device.h \
 	../include/userland.h
 
-walbctl: walbctl.o util.o
-	$(CC) -o $@ $(CFLAGS) walbctl.o util.o
+walbctl: walbctl.o util.o logpack.o
+	$(CC) -o $@ $(CFLAGS) walbctl.o util.o logpack.o
 
 test_checksum: test_checksum.o
 	$(CC) -o $@ $(CFLAGS) test_checksum.o
@@ -29,7 +29,8 @@ test_bitmap: test_bitmap.o
 	$(CC) -o $@ $(CFLAGS) test_bitmap.o
 
 test_bitmap.o: test_bitmap.c ../include/bitmap.h
-util.o: util.c util.h
+util.o: util.c util.h $(HEADER_FILES)
+logpack.o: logpack.c logpack.h util.h $(HEADER_FILES)
 
 .c.o:
 	$(CC) -c $< -o $@ $(CFLAGS)

@@ -19,6 +19,7 @@
 #include "random.h"
 
 #include "util.h"
+#include "logpack.h"
 
 
 typedef struct config
@@ -38,7 +39,8 @@ config_t cfg_;
 
 void show_help()
 {
-        printf("log format: walbctl mklog --ldev [path] --ddev [path]\n");
+        printf("log format: walbctl mklog --ldev [path] --ddev [path]\n"
+               "cat log: walbctl cat --ldev [path]\n");
 }
 
 void init_config(config_t* cfg)
@@ -284,12 +286,80 @@ error0:
         return -1;
 }
 
+
+/**
+ * Execute log device format.
+ *
+ * @return 0 in success, or -1.
+ */
+int cat_log()
+{
+        ASSERT(cfg_.cmd_str);
+        ASSERT(strcmp(cfg_.cmd_str, "cat") == 0);
+
+        /*
+         * Check device.
+         */
+        if (check_bdev(cfg_.ldev_name) < 0) {
+                printf("cat_log: check log device failed %s.\n",
+                       cfg_.ldev_name);
+        }
+        int physical_bs = get_bdev_physical_block_size(cfg_.ldev_name);
+
+        int fd = open(cfg_.ldev_name, O_RDONLY);
+        if (fd < 0) {
+                perror("open failed");
+                goto error0;
+        }
+        
+        /* Allocate memory and read super block */
+        walb_super_sector_t *super_sectp = 
+                (walb_super_sector_t *)alloc_sector(physical_bs);
+        if (super_sectp == NULL) { goto error1; }
+
+        u64 off0 = get_super_sector0_offset(physical_bs);
+        if (! read_sector(fd, (u8 *)super_sectp, physical_bs, off0)) {
+                LOG("read super sector0 failed.\n");
+                goto error1;
+        }
+        
+        walb_logpack_header_t *logpack =
+                (walb_logpack_header_t *)alloc_sector(physical_bs);
+        if (logpack == NULL) { goto error2; }
+
+        print_super_sector(super_sectp);
+        u64 lsid = super_sectp->oldest_lsid;
+        while (true) {
+                if (! read_logpack_header(fd, super_sectp, lsid, logpack)) {
+                        break;
+                }
+                print_logpack_header(logpack);
+                lsid += logpack->total_io_size + 1;
+        }
+
+        free(logpack);
+        free(super_sectp);
+        close(fd);
+        return 0;
+
+/* error3: */
+/*         free(logpack); */
+error2:
+        free(super_sectp);
+error1:
+        close(fd);
+error0:
+        return -1;
+}
+
+
 void dispatch()
 {
         ASSERT(cfg_.cmd_str != NULL);
         if (strcmp(cfg_.cmd_str, "mklog") == 0) {
-
                 format_log_dev();
+        } else if (strcmp(cfg_.cmd_str, "catlog") == 0) {
+                cat_log();
         }
 }
 

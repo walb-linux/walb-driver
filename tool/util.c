@@ -411,7 +411,7 @@ bool read_super_sector(int fd, walb_super_sector_t* super_sect, u32 sector_size,
         /* 1. Read two sectors
            2. Compare them and choose one having larger written_lsid. */
         ASSERT(super_sect != NULL);
-
+        ASSERT(sector_size <= PAGE_SIZE);
         
         /* Memory image of sector. */
         u8 *buf, *buf0, *buf1;
@@ -422,8 +422,8 @@ bool read_super_sector(int fd, walb_super_sector_t* super_sect, u32 sector_size,
         buf0 = buf;
         buf1 = buf + sector_size;
 
-        u32 off0 = get_super_sector0_offset(sector_size);
-        u32 off1 = get_super_sector1_offset(sector_size, n_snapshots);
+        u64 off0 = get_super_sector0_offset(sector_size);
+        u64 off1 = get_super_sector1_offset(sector_size, n_snapshots);
 
         bool ret0 = read_sector(fd, buf0, sector_size, off0);
         bool ret1 = read_sector(fd, buf1, sector_size, off1);
@@ -612,6 +612,5 @@ bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         }
         return true;
 }
-
 
 /* end of file */
