@@ -219,6 +219,7 @@ struct walb_logpack_request_entry {
         
         struct walb_logpack_entry *logpack_entry; /* belonging logpack entry. */
         struct request *req_orig; /* corresponding original request. */
+        int idx; /* Record index inside logpack header. */
         
         /* size must be number of bio(s) inside the req_orig. */
         /* spinlock_t bmp_lock; */

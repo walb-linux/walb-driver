@@ -24,7 +24,7 @@ typedef struct walb_log_record {
 
         /* Local sequence id as the data offset in the log record. */
         u16 lsid_local; 
-        u16 reserved2;
+        u16 is_padding; /* Non-zero if this is padding log */
         u16 io_size; /* IO size [logical sector]. */
         u16 is_exist; /* Non-zero if this record is exist. */
         
@@ -52,6 +52,10 @@ typedef struct walb_logpack_header {
                               [physical sector].
                               (Log pack size is total_io_size + 1.) */
         u64 logpack_lsid; /* logpack lsid */
+
+        u16 n_padding; /* Number of padding record. 0 or 1. */
+        u16 reserved1;
+        u32 reserved2;
         
         walb_log_record_t record[0];
         /* continuous records */

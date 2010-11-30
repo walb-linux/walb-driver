@@ -100,6 +100,16 @@
 typedef struct walb_super_sector {
 
         /* 4 * 4 + 16 + 8 * 5 = 72 bytes */
+
+        /*
+         * Constant value inside the kernel.
+         * Lock is not required to read these variables.
+         *
+         * logical_bs, physical_bs
+         * snapshot_metadata_size
+         * uuid
+         * ring_buffer_size
+         */
         
         /* Check sum of the super block */
         u32 checksum;
