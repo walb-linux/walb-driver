@@ -630,7 +630,7 @@ static struct walb_logpack_entry* walb_create_logpack_entry(
         entry = kmalloc(sizeof(struct walb_logpack_entry), GFP_NOIO);
         if (entry == NULL) { goto error0; }
 
-        entry->head = &wdev->logpack_list;
+        /* entry->head = &wdev->logpack_list; */
         entry->wdev = wdev;
         entry->logpack = logpack;
         INIT_LIST_HEAD(&entry->req_list);
@@ -669,7 +669,7 @@ error0:
  * Destory logpack entry and its substructure created by
  * @walb_create_logpack_entry().
  *
- * @entry logpack entry. Call this after deleted from wdev->logpack_list.
+ * @entry logpack entry.
  */
 static void walb_destroy_logpack_entry(struct walb_logpack_entry *entry)
 {
@@ -993,25 +993,10 @@ static int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
         }
 
         /* Now all bio is done. */
-
         if (is_fail) {
-                for (i = 0; i < n_req - n_padding; i ++) {
-                        blk_end_request_all(logpack_entry->reqp_ary[i], -EIO);
-                }
                 goto error0;
         }
         
-        /*
-         * Write requests to data device.
-         */
-        
-        /* now editing */
-
-        /* temporary */
-        for (i = 0; i < n_req - n_padding; i ++) {
-                blk_end_request_all(logpack_entry->reqp_ary[i], 0);
-        }
-
         printk_d("walb_submit_logpack_to_ldev end\n");
         return 0;
 
@@ -1049,15 +1034,16 @@ static int walb_logpack_write(struct walb_dev *wdev,
 
         /* Alloc/clone related bio(s) and submit them.
            Currently this function waits for end of all bio(s). */
-        walb_submit_logpack_to_ldev(logpack_entry);
+        if (walb_submit_logpack_to_ldev(logpack_entry) != 0) {
+                goto error1;
+        }
 
-        /* now editing */
         walb_destroy_logpack_entry(logpack_entry);
-
         printk_d("walb_logpack_write end\n");
-        
         return 0;
-        
+
+error1:
+        walb_destroy_logpack_entry(logpack_entry);
 error0:
         return -1;
 }
@@ -1121,6 +1107,23 @@ static int walb_logpack_calc_checksum(struct walb_logpack_header *lhead,
         return 0;
 }
 
+
+/**
+ * Call @blk_end_request_all() for all requests.
+ *
+ * @reqp_ary array of request pointers.
+ * @n_req array size.
+ * @error error value. 0 is normally complete.
+ */
+static void walb_end_requests(struct request **reqp_ary, int n_req, int error)
+{
+        int i;
+        for (i = 0; i < n_req; i ++) {
+                blk_end_request_all(reqp_ary[i], error);
+        }
+}
+
+
 /**
  * Make log pack and submit related bio(s).
  */
@@ -1128,7 +1131,6 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
 {
         struct walb_make_logpack_work *wk;
         struct walb_logpack_header *lhead;
-        int i;
         int logpack_size;
         u64 logpack_lsid;
         u64 ringbuf_off, ringbuf_size;
@@ -1189,22 +1191,34 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         walb_logpack_header_print(KERN_DEBUG, lhead); /* debug */
 #endif
         
-        /* Complete log pack header and create its bio. */
-        walb_logpack_write(wk->wdev, lhead, wk->reqp_ary);
+        /* 
+         * Complete log pack header and create its bio.
+         *
+         * Currnetly walb_logpack_write() is blocked till all bio(s)
+         * are completed.
+         */
+        if (walb_logpack_write(wk->wdev, lhead, wk->reqp_ary) != 0) {
+                printk_e("logpack write failed (lsid %llu).\n",
+                         lhead->logpack_lsid);
+                goto error0;
+        }
 
-        /* now editing */        
 
-        /* Clone bio(s) of each request and set offset for log pack. */
+        /* Clone bio(s) of each request and set offset for log pack.
+           Submit prepared bio(s) to log device. */
 
-        /* Submit prepared bio(s) to log device. */
+        /* now editing */
+
+        
+        /* Normally completed log/data writes. */
+        walb_end_requests(wk->reqp_ary, wk->n_req, 0);
+        
 
         goto fin;
         
 
 error0:
-        for (i = 0; i < wk->n_req; i ++) {
-                blk_end_request_all(wk->reqp_ary[i], -EIO);
-        }
+        walb_end_requests(wk->reqp_ary, wk->n_req, -EIO);
 fin:        
         /* temporarl deallocation */
         /* msleep(100); */
@@ -1497,6 +1511,19 @@ static void walb_free_sector(void *p)
 }
 
 /**
+ * Copy sector image.
+ *
+ * @wdev walb device.
+ * @dst destination buffer
+ * @src source buffer
+ */
+static void walb_copy_sector(struct walb_dev *wdev,
+                             u8 *dst, const u8 *src)
+{
+        memcpy(dst, src, wdev->physical_bs);
+}
+
+/**
  * Read/write physical sector from/to block device.
  * This is blocked operation.
  * Do not call this function in interuption handlers.
@@ -1683,26 +1710,28 @@ error0:
  * Currently only super sector 0 will be written. (super sector 1 is not.)
  *
  * @dev walb device.
+ * @lsuper super sector to write.
  *
  * @return 0 in success, or -1.
  */
-static int walb_write_super_sector(struct walb_dev *dev)
+static int walb_write_super_sector(struct walb_dev *dev,
+                                   struct walb_super_sector *lsuper)
 {
         u64 off0;
         u32 csum;
 
         printk_d("walb_write_super_sector begin\n");
         
-        ASSERT(dev->lsuper0 != NULL);
+        ASSERT(lsuper != NULL);
 
         /* Generate checksum. */
-        dev->lsuper0->checksum = 0;
-        csum = checksum((u8 *)dev->lsuper0, dev->physical_bs);
-        dev->lsuper0->checksum = csum;
+        lsuper->checksum = 0;
+        csum = checksum((u8 *)lsuper, dev->physical_bs);
+        lsuper->checksum = csum;
 
         /* Really write. */
         off0 = get_super_sector0_offset(dev->physical_bs);
-        if (walb_io_sector(WRITE, dev->ldev, dev->lsuper0, off0) != 0) {
+        if (walb_io_sector(WRITE, dev->ldev, lsuper, off0) != 0) {
                 printk_e("write super sector0 failed\n");
                 goto error0;
         }
@@ -1743,7 +1772,7 @@ static int walb_ldev_init(struct walb_dev *dev)
                 goto error0;
         }
 
-        if (walb_write_super_sector(dev) != 0) {
+        if (walb_write_super_sector(dev, dev->lsuper0) != 0) {
                 printk_e("walb_ldev_init: write super sector failed\n");
                 goto error1;
         }
@@ -1792,6 +1821,59 @@ error0:
         return -1;
 }
 
+/**
+ * Finalize super block.
+ *
+ * @wdev walb device.
+ *
+ * @return 0 in success, or -1.
+ */
+static int walb_finalize_super_block(struct walb_dev *wdev)
+{
+        /* 
+         * 1. Wait for all related IO are finished.
+         * 2. Cleanup snapshot metadata and write down.
+         * 3. Generate latest super block and write down.
+         */
+        
+        /*
+         * Test
+         */
+        u64 written_lsid;
+        struct walb_super_sector *lsuper_tmp;
+
+        /* Get latest lsid. */
+        spin_lock(&wdev->datapack_list_lock);
+        written_lsid = wdev->written_lsid;
+        spin_unlock(&wdev->datapack_list_lock);
+
+        lsuper_tmp = walb_alloc_sector(wdev, GFP_NOIO);
+        if (lsuper_tmp == NULL) {
+                goto error0;
+        }
+
+        /* Modify super sector and copy. */
+        spin_lock(&wdev->lsuper0_lock);
+        wdev->lsuper0->written_lsid = written_lsid;
+        walb_copy_sector(wdev, (u8 *)lsuper_tmp, (u8 *)wdev->lsuper0);
+        spin_unlock(&wdev->lsuper0_lock);
+                
+        if (walb_write_super_sector(wdev, lsuper_tmp) != 0) {
+                printk_e("walb_finalize_supe_block: write super block failed\n");
+                goto error1;
+        }
+
+        walb_free_sector(lsuper_tmp);
+        
+        return 0;
+
+error1:
+        walb_free_sector(lsuper_tmp);
+error0:
+        return -1;
+}
+
+
 /*
  * Set up our internal device.
  *
@@ -1809,8 +1891,10 @@ static int setup_device(struct walb_dev *dev, int which)
 	spin_lock_init(&dev->lock);
         spin_lock_init(&dev->latest_lsid_lock);
         spin_lock_init(&dev->lsuper0_lock);
-        spin_lock_init(&dev->logpack_list_lock);
-        INIT_LIST_HEAD(&dev->logpack_list);
+        /* spin_lock_init(&dev->logpack_list_lock); */
+        /* INIT_LIST_HEAD(&dev->logpack_list); */
+        spin_lock_init(&dev->datapack_list_lock);
+        INIT_LIST_HEAD(&dev->datapack_list);
         atomic_set(&dev->is_read_only, 0);
 	
         /*
@@ -1861,9 +1945,22 @@ static int setup_device(struct walb_dev *dev, int which)
                 printk_e("ldev init failed.\n");
                 goto out_ldev;
         }
+        dev->written_lsid = dev->lsuper0->written_lsid;
+
+        /*
+         * Redo
+         * 1. Read logpack from written_lsid.
+         * 2. Write the corresponding data of the logpack to data device.
+         * 3. Update written_lsid and latest_lsid;
+         */
+
+        /* Redo feature is not implemented yet. */
+        
+        
 
         /* For padding test in the end of ring buffer. */
-        /* dev->lsuper0->ring_buffer_size = 128; */ /* 64KB ring buffer */
+        /* 64KB ring buffer */
+        dev->lsuper0->ring_buffer_size = 128; 
         
 	/*
 	 * The I/O queue, depending on whether we are using our own
@@ -1983,7 +2080,7 @@ static void walb_exit(void)
 
 	for (i = 0; i < ndevices; i++) {
 		struct walb_dev *dev = Devices + i;
-
+                
 		if (dev->gd) {
 			del_gendisk(dev->gd);
 			put_disk(dev->gd);
@@ -1994,6 +2091,8 @@ static void walb_exit(void)
 			else
 				blk_cleanup_queue(dev->queue);
 		}
+                walb_finalize_super_block(dev);
+                
                 if (dev->ddev)
                         walb_unlock_bdev(dev->ddev);
                 if (dev->ldev)

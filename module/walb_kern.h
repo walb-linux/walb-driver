@@ -109,10 +109,14 @@ struct walb_dev {
 
         /* Log pack list.
            Use spin_lock_irqsave(). */
-        spinlock_t logpack_list_lock;
-        struct list_head logpack_list;
+        /* spinlock_t logpack_list_lock; */
+        /* struct list_head logpack_list; */
 
-        
+        /* Data pack list.
+           Use spin_lock() */
+        spinlock_t datapack_list_lock;
+        struct list_head datapack_list;
+        u64 written_lsid;
 };
 
 
