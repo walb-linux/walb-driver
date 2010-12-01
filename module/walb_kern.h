@@ -164,7 +164,7 @@ static inline void walb_init_ddev_bio(struct walb_ddev_bio *dbio)
 }
 
 /**
- * Work to create log pack.
+ * Work to create logpack.
  */
 struct walb_make_logpack_work
 {
@@ -194,7 +194,6 @@ struct walb_logpack_bio {
 
 /**
  * Logpack list entry.
- * wdev->logpack_list_lock is already locked.
  */
 struct walb_logpack_entry {
 
@@ -215,6 +214,12 @@ struct walb_logpack_entry {
         /* atomic_t is_success_header; */
 };
 
+/**
+ * Logpack request entry.
+ *
+ * A logpack may have several requests.
+ * This struct is corresponding to each request.
+ */
 struct walb_logpack_request_entry {
 
         /* pointer to walb_logpack_entry->req_list */
@@ -235,5 +240,65 @@ struct walb_logpack_request_entry {
         struct list_head bioc_list;
 };
 
+
+/**
+ * Work to create datapack.
+ */
+struct walb_make_datapack_work
+{
+        struct request** reqp_ary; /* This is read only. */
+        int n_req; /* array size */
+        struct walb_dev *wdev;
+        struct work_struct work;
+};
+
+/**
+ * Bio wrapper for datapack write.
+ * Almost the same walb_logpack_bio.
+ */
+struct walb_datapack_bio {
+
+        struct request *req_orig;
+        struct bio *bio_orig;
+
+        int status;
+        struct bio *bio_for_data;
+
+        struct walb_datapack_request_entry *req_entry;
+        int idx;
+};
+
+/**
+ * wdev->datapack_list_lock is already locked.
+ */
+struct walb_datapack_entry {
+
+        struct list_head *head;
+        struct list_head list;
+
+        struct walb_dev *wdev;
+        struct walb_logpack_header *logpack;
+
+        struct list_head req_list;
+        struct request **reqp_ary;
+};
+
+/**
+ * Datapack request entry.
+ *
+ * A datapack may have several requests.
+ * This struct is corresponding to each request.
+ */
+struct walb_datapack_request_entry {
+
+        struct list_head *head;
+        struct list_head list;
+
+        struct walb_datapack_entry *datapack_entry;
+        struct request *req_orig;
+        int idx;
+
+        struct list_head bioc_list;
+};
 
 #endif /* _WALB_KERN_H */

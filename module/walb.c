@@ -1123,9 +1123,10 @@ static void walb_end_requests(struct request **reqp_ary, int n_req, int error)
         }
 }
 
-
 /**
  * Make log pack and submit related bio(s).
+ *
+ * @work (struct walb_make_logpack_work *)->work
  */
 static void walb_make_logpack_and_submit_task(struct work_struct *work)
 {
@@ -1207,6 +1208,10 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         /* Clone bio(s) of each request and set offset for log pack.
            Submit prepared bio(s) to log device. */
 
+        /* if (walb_datapack_write(wk->wdev, lhead, wk->reqp_ary) != 0) { */
+                
+        /* } */
+        
         /* now editing */
 
         
