@@ -43,10 +43,13 @@ bool read_logpack_header(int fd,
         }
 
         /* check others */
-        if (logpack->n_records == 0 || logpack->total_io_size == 0) {
+        if (logpack->n_records == 0 ||
+            logpack->total_io_size == 0 ||
+            logpack->sector_type != SECTOR_TYPE_LOGPACK) {
                 LOG("log pack header is invalid "
-                    "(n_records: %u total_io_size %u).\n",
-                    logpack->n_records, logpack->total_io_size);
+                    "(n_records: %u total_io_size %u sector_type %u).\n",
+                    logpack->n_records, logpack->total_io_size,
+                    logpack->sector_type);
                 goto error0;
         }
         

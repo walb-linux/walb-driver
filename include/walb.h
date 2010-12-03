@@ -6,6 +6,8 @@
 #ifndef _WALB_H
 #define _WALB_H
 
+#define WALB_VERSION 1
+
 #ifdef __KERNEL__
 #include <linux/types.h>
 #include <linux/kdev_t.h>
@@ -15,6 +17,10 @@
 #include <assert.h>
 #define ASSERT(cond) assert(cond)
 #endif /* __KERNEL__ */
+
+#define SECTOR_TYPE_SUPER    0x0001
+#define SECTOR_TYPE_SNAPSHOT 0x0002
+#define SECTOR_TYPE_LOGPACK  0x0003
 
 static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
 {

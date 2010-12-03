@@ -61,8 +61,7 @@ struct walb_dev {
         u64 size;                       /* Device size in bytes */
         u8 *data;                       /* The data array */
         int users;                      /* How many users */
-        spinlock_t lock;                /* For mutual exclusion.
-                                           Use spin_lock() */
+        spinlock_t lock;                /* For queue access. */
         struct request_queue *queue;    /* The device request queue */
         struct gendisk *gd;             /* The gendisk structure */
 
@@ -117,6 +116,17 @@ struct walb_dev {
         spinlock_t datapack_list_lock;
         struct list_head datapack_list;
         u64 written_lsid;
+
+        spinlock_t oldest_lsid_lock;
+        u64 oldest_lsid;
+
+
+        /*
+         * For wrapper log device.
+         */
+        /* spinlock_t log_queue_lock; */
+        struct request_queue *log_queue;
+        struct gendisk *log_gd;
 };
 
 

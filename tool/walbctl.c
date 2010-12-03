@@ -17,6 +17,7 @@
 #include "walb_log_device.h"
 #include "walb_log_record.h"
 #include "random.h"
+#include "walb_ioctl.h"
 
 #include "util.h"
 #include "logpack.h"
@@ -32,6 +33,10 @@ typedef struct config
         /* size_t log_dev_size; /\* size of log device by the sector *\/ */
 
         int n_snapshots; /* maximum number of snapshots to keep */
+
+        char *wdev_name; /* walb device */
+        char *wldev_name;  /* walblog device */
+        u64 lsid; /* lsid */
         
 } config_t;
 
@@ -40,7 +45,9 @@ config_t cfg_;
 void show_help()
 {
         printf("log format: walbctl mklog --ldev [path] --ddev [path]\n"
-               "cat log: walbctl cat --ldev [path]\n");
+               "cat log: walbctl cat --ldev [path]\n"
+               "set oldest_lsid: walbctl set_oldest_lsid --wdev [path] --lsid [lsid]\n"
+               "get oldest_lsid: walbctl get_oldest_lsid --wdev [path]\n");
 }
 
 void init_config(config_t* cfg)
@@ -50,6 +57,17 @@ void init_config(config_t* cfg)
         cfg->n_snapshots = 10000;
 }
 
+
+enum {
+        OPT_LDEV = 1,
+        OPT_DDEV,
+        OPT_N_SNAP,
+        OPT_WDEV,
+        OPT_WLDEV,
+        OPT_LSID
+};
+
+
 int parse_opt(int argc, char* const argv[])
 {
         int c;
@@ -57,9 +75,12 @@ int parse_opt(int argc, char* const argv[])
         while (1) {
                 int option_index = 0;
                 static struct option long_options[] = {
-                        {"ldev", 1, 0, 1}, /* log device */
-                        {"ddev", 1, 0, 2}, /* data device */
-                        {"n_snap", 1, 0, 3}, /* num of snapshots */
+                        {"ldev", 1, 0, OPT_LDEV}, /* log device */
+                        {"ddev", 1, 0, OPT_DDEV}, /* data device */
+                        {"n_snap", 1, 0, OPT_N_SNAP}, /* num of snapshots */
+                        {"wdev", 1, 0, OPT_WDEV}, /* walb device */
+                        {"wldev", 1, 0, OPT_WLDEV}, /* walb log device */
+                        {"lsid", 1, 0, OPT_LSID}, /* lsid */
                         {0, 0, 0, 0}
                 };
 
@@ -68,16 +89,25 @@ int parse_opt(int argc, char* const argv[])
                         break;
                 }
                 switch (c) {
-                case 1:
+                case OPT_LDEV:
                         cfg_.ldev_name = strdup(optarg);
                         printf("ldev: %s\n", optarg);
                         break;
-                case 2:
+                case OPT_DDEV:
                         cfg_.ddev_name = strdup(optarg);
                         printf("ddev: %s\n", optarg);
                         break;
-                case 3:
+                case OPT_N_SNAP:
                         cfg_.n_snapshots = atoi(optarg);
+                        break;
+                case OPT_WDEV:
+                        cfg_.wdev_name = strdup(optarg);
+                        break;
+                case OPT_WLDEV:
+                        cfg_.wldev_name = strdup(optarg);
+                        break;
+                case OPT_LSID:
+                        cfg_.lsid = atoll(optarg);
                         break;
                 default:
                         printf("default\n");
@@ -352,6 +382,68 @@ error0:
         return -1;
 }
 
+/**
+ * Set oldest_lsid.
+ */
+int set_oldest_lsid()
+{
+        if (check_bdev(cfg_.wdev_name) < 0) {
+                printf("set_oldest_lsid: check walb device failed %s.\n",
+                       cfg_.wdev_name);
+        }
+        int fd = open(cfg_.wdev_name, O_RDWR);
+        if (fd < 0) {
+                perror("open failed");
+                goto error0;
+        }
+
+        u64 lsid = cfg_.lsid;
+        int ret = ioctl(fd, WALB_IOCTL_SET_OLDESTLSID, &lsid);
+        if (ret < 0) {
+                printf("set_oldest_lsid: ioctl failed.\n");
+                goto error1;
+        }
+        printf("oldest_lsid is set to %"PRIu64" successfully.\n", lsid);
+        close(fd);
+        return 0;
+        
+error1:
+        close(fd);
+error0:
+        return -1;
+}
+
+/**
+ * Get oldest_lsid.
+ */
+int get_oldest_lsid()
+{
+        if (check_bdev(cfg_.wdev_name) < 0) {
+                printf("get_oldest_lsid: check walb device failed %s.\n",
+                       cfg_.wdev_name);
+        }
+        int fd = open(cfg_.wdev_name, O_RDONLY);
+        if (fd < 0) {
+                perror("open failed");
+                goto error0;
+        }
+
+        u64 lsid;
+        int ret = ioctl(fd, WALB_IOCTL_GET_OLDESTLSID, &lsid);
+        if (ret < 0) {
+                printf("get_oldest_lsid: ioctl failed.\n");
+                goto error1;
+        }
+        printf("oldest_lsid is %"PRIu64"\n", lsid);
+        close(fd);
+        return 0;
+        
+error1:
+        close(fd);
+error0:
+        return -1;
+}        
+
 
 void dispatch()
 {
@@ -360,6 +452,10 @@ void dispatch()
                 format_log_dev();
         } else if (strcmp(cfg_.cmd_str, "catlog") == 0) {
                 cat_log();
+        } else if (strcmp(cfg_.cmd_str, "set_oldest_lsid") == 0) {
+                set_oldest_lsid();
+        } else if (strcmp(cfg_.cmd_str, "get_oldest_lsid") == 0) {
+                get_oldest_lsid();
         }
 }
 

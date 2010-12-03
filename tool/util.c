@@ -344,6 +344,9 @@ bool write_super_sector(int fd, const walb_super_sector_t* super_sect)
         memset(sector_buf, 0, sect_sz);
         memcpy(sector_buf, super_sect, sizeof(*super_sect));
 
+        /* Set sector type. */
+        ((walb_super_sector_t *)sector_buf)->sector_type = SECTOR_TYPE_SUPER;
+        
         /* Calculate checksum. */
         walb_super_sector_t *super_sect_tmp = (walb_super_sector_t *)sector_buf;
         super_sect_tmp->checksum = 0;
@@ -427,15 +430,21 @@ bool read_super_sector(int fd, walb_super_sector_t* super_sect, u32 sector_size,
 
         bool ret0 = read_sector(fd, buf0, sector_size, off0);
         bool ret1 = read_sector(fd, buf1, sector_size, off1);
-        
+
         if (ret0 && checksum(buf0, sector_size) != 0) {
                 ret0 = -1;
         }
         if (ret1 && checksum(buf1, sector_size) != 0) {
                 ret1 = -1;
         }
+        if (ret0 && ((walb_super_sector_t *)buf0)->sector_type != SECTOR_TYPE_SUPER) {
+                ret0 = -1;
+        }
+        if (ret1 && ((walb_super_sector_t *)buf1)->sector_type != SECTOR_TYPE_SUPER) {
+                ret1 = -1;
+        }
         if (! ret0 && ! ret1) {
-                LOG("checksum is wrong and both superblocks are broken.\n");
+                LOG("Both superblocks are broken.\n");
                 goto error1;
         } else if (ret0 && ret1) {
                 u64 lsid0 = ((walb_super_sector_t *)buf0)->written_lsid;

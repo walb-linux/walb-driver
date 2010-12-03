@@ -47,16 +47,16 @@ typedef struct walb_log_record {
 typedef struct walb_logpack_header {
 
         u32 checksum; /* checksum of whole log pack. */
-        u16 n_records; /* Number of log records in the log pack.
-                          This includes padding records also. */
+        u16 sector_type; /* type identifier */
         u16 total_io_size; /* Total io size in the log pack
                               [physical sector].
                               (Log pack size is total_io_size + 1.) */
         u64 logpack_lsid; /* logpack lsid */
 
+        u16 n_records; /* Number of log records in the log pack.
+                          This includes padding records also. */
         u16 n_padding; /* Number of padding record. 0 or 1. */
-        u16 reserved1;
-        u32 reserved2;
+        u32 reserved1;
         
         walb_log_record_t record[0];
         /* continuous records */

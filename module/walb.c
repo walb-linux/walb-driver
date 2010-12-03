@@ -25,6 +25,7 @@
 #include <linux/spinlock.h>
 
 #include "walb_kern.h"
+#include "../include/walb_ioctl.h"
 #include "../include/walb_log_device.h"
 #include "../include/bitmap.h"
 
@@ -56,6 +57,8 @@ static struct walb_dev *Devices = NULL;
 static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask);
 static void walb_free_sector(void *p);
 static int walb_rq_count_bio(struct request *req);
+static int walb_io_sector(int rw, struct block_device *bdev, void* buf, u64 off);
+
 
 
 /**
@@ -226,7 +229,6 @@ static void walb_end_io_with_completion(struct bio *bio, int error)
 
 /**
  * The bio is walb_ddev_bio's bio.
- *
  */
 static void walb_ddev_end_io(struct bio *bio, int error)
 {
@@ -482,6 +484,7 @@ static int walb_logpack_header_fill(struct walb_logpack_header *lhead,
         printk_d("total_lb: %d\n", total_lb); /* debug */
         lhead->total_io_size = total_lb / n_lb_in_pb;
         lhead->logpack_lsid = logpack_lsid;
+        lhead->sector_type = SECTOR_TYPE_LOGPACK;
         
         logpack_size = lhead->total_io_size + 1;
 
@@ -1388,32 +1391,34 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         struct walb_make_logpack_work *wk;
         struct walb_logpack_header *lhead;
         int logpack_size;
-        u64 logpack_lsid;
+        u64 logpack_lsid, next_logpack_lsid;
         u64 ringbuf_off, ringbuf_size;
+        struct walb_dev *wdev;
 
         wk = container_of(work, struct walb_make_logpack_work, work);
+        wdev = wk->wdev;
 
         printk_d("walb_make_logpack_and_submit_task begin\n");
-        ASSERT(wk->n_req <= max_n_log_record_in_sector(wk->wdev->physical_bs));
+        ASSERT(wk->n_req <= max_n_log_record_in_sector(wdev->physical_bs));
 
         printk_d("making log pack (n_req %d)\n", wk->n_req);
         
         /*
          * Allocate memory (sector size) for log pack header.
          */
-        lhead = walb_alloc_sector(wk->wdev, GFP_NOIO);
+        lhead = walb_alloc_sector(wdev, GFP_NOIO);
         if (lhead == NULL) {
                 printk_e("walb_alloc_sector() failed\n");
                 goto fin;
         }
-        memset(lhead, 0, wk->wdev->physical_bs);
+        memset(lhead, 0, wdev->physical_bs);
 
         /*
          * Fill log records for for each request.
          */
 
-        ringbuf_off = get_ring_buffer_offset_2(wk->wdev->lsuper0);
-        ringbuf_size = wk->wdev->lsuper0->ring_buffer_size;
+        ringbuf_off = get_ring_buffer_offset_2(wdev->lsuper0);
+        ringbuf_size = wdev->lsuper0->ring_buffer_size;
         /*
          * 1. Lock latest_lsid_lock.
          * 2. Get latest_lsid 
@@ -1421,19 +1426,20 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
          * 4. Set next latest_lsid.
          * 5. Unlock latest_lsid_lock.
          */
-        spin_lock(&wk->wdev->latest_lsid_lock);
-        logpack_lsid = wk->wdev->latest_lsid;
+        spin_lock(&wdev->latest_lsid_lock);
+        logpack_lsid = wdev->latest_lsid;
         logpack_size = walb_logpack_header_fill
                 (lhead, logpack_lsid, wk->reqp_ary, wk->n_req,
-                 wk->wdev->physical_bs / wk->wdev->logical_bs,
+                 wdev->physical_bs / wdev->logical_bs,
                  ringbuf_off, ringbuf_size);
         if (logpack_size < 0) {
                 printk_e("walb_logpack_header_fill failed\n");
-                spin_unlock(&wk->wdev->latest_lsid_lock);
+                spin_unlock(&wdev->latest_lsid_lock);
                 goto error0;
         }
-        wk->wdev->latest_lsid += logpack_size;
-        spin_unlock(&wk->wdev->latest_lsid_lock);
+        next_logpack_lsid = logpack_lsid + logpack_size;
+        wdev->latest_lsid = next_logpack_lsid;
+        spin_unlock(&wdev->latest_lsid_lock);
 
         /* Now log records is filled except checksum.
            Calculate and fill checksum for all requests and
@@ -1441,7 +1447,7 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
 #ifdef WALB_DEBUG
         walb_logpack_header_print(KERN_DEBUG, lhead); /* debug */
 #endif
-        walb_logpack_calc_checksum(lhead, wk->wdev->physical_bs,
+        walb_logpack_calc_checksum(lhead, wdev->physical_bs,
                                    wk->reqp_ary, wk->n_req);
 #ifdef WALB_DEBUG
         walb_logpack_header_print(KERN_DEBUG, lhead); /* debug */
@@ -1453,7 +1459,7 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
          * Currnetly walb_logpack_write() is blocked till all bio(s)
          * are completed.
          */
-        if (walb_logpack_write(wk->wdev, lhead, wk->reqp_ary) != 0) {
+        if (walb_logpack_write(wdev, lhead, wk->reqp_ary) != 0) {
                 printk_e("logpack write failed (lsid %llu).\n",
                          lhead->logpack_lsid);
                 goto error0;
@@ -1461,18 +1467,22 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
 
         /* Clone bio(s) of each request and set offset for log pack.
            Submit prepared bio(s) to log device. */
-        if (walb_datapack_write(wk->wdev, lhead, wk->reqp_ary) != 0) {
-                printk_e("datapack write failed (lsid %llu). \n",
-                         lhead->logpack_lsid);
-                goto error0;
-        }
+        /* if (walb_datapack_write(wdev, lhead, wk->reqp_ary) != 0) { */
+        /*         printk_e("datapack write failed (lsid %llu). \n", */
+        /*                  lhead->logpack_lsid); */
+        /*         goto error0; */
+        /* } */
 
         /* now editing */
 
-        
         /* Normally completed log/data writes. */
         walb_end_requests(wk->reqp_ary, wk->n_req, 0);
-        
+
+
+        /* Update written_lsid. */
+        spin_lock(&wdev->datapack_list_lock);
+        wdev->written_lsid = next_logpack_lsid;
+        spin_unlock(&wdev->datapack_list_lock);
 
         goto fin;
         
@@ -1660,6 +1670,27 @@ static void walb_full_request2(struct request_queue *q)
         }
 }
 
+/**
+ * Walblog device make request.
+ *
+ * 1. Completion with error if write.
+ * 2. Just forward to underlying log device if read.
+ *
+ * @q request queue.
+ * @bio bio.
+ */
+static int walblog_make_request(struct request_queue *q, struct bio *bio)
+{
+        struct walb_dev *wdev = q->queuedata;
+        
+        if (bio->bi_rw & WRITE) {
+                bio_endio(bio, -EIO);
+                return 0;
+        } else {
+                bio->bi_bdev = wdev->ldev;
+                return 1;
+        }
+}
 
 /*
  * The direct make request version.
@@ -1674,6 +1705,56 @@ static int walb_make_request(struct request_queue *q, struct bio *bio)
 	return 0;
 }
 
+
+/**
+ * Check logpack of the given lsid exists.
+ *
+ * @lsid lsid to check.
+ * 
+ * @return 0 if valid, or -1.
+ */
+static int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
+{
+        struct walb_logpack_header *logpack;
+        u64 off;
+
+        ASSERT(wdev != NULL);
+        
+        logpack = walb_alloc_sector(wdev, GFP_NOIO);
+        if (logpack == NULL) {
+                printk_e("walb_check_lsid_valid: alloc sector failed.\n");
+                goto error0;
+        }
+
+        off = get_offset_of_lsid_2(wdev->lsuper0, lsid);
+        if (walb_io_sector(READ, wdev->ldev, logpack, off) != 0) {
+                printk_e("walb_check_lsid_valid: read sector failed.\n");
+                goto error1;
+        }
+
+        /* sector type */
+        if (logpack->sector_type != SECTOR_TYPE_LOGPACK) {
+                goto error1;
+        }
+        
+        /* lsid */
+        if (logpack->logpack_lsid != lsid) {
+                goto error1;
+        }
+
+        /* checksum */
+        if (checksum((u8 *)logpack, wdev->physical_bs) != 0) {
+                goto error1;
+        }
+
+        walb_free_sector(logpack);
+        return 0;
+
+error1:
+        walb_free_sector(logpack);
+error0:
+        return -1;
+}
 
 /*
  * Open and close.
@@ -1704,14 +1785,18 @@ static int walb_release(struct gendisk *gd, fmode_t mode)
 /*
  * The ioctl() implementation
  */
-
-int walb_ioctl(struct block_device *bdev, fmode_t mode,
-               unsigned int cmd, unsigned long arg)
+static int walb_ioctl(struct block_device *bdev, fmode_t mode,
+                      unsigned int cmd, unsigned long arg)
 {
 	long size;
 	struct hd_geometry geo;
-	struct walb_dev *dev = bdev->bd_disk->private_data;
+	struct walb_dev *wdev = bdev->bd_disk->private_data;
+        int ret;
+        int version;
+        u64 lsid, oldest_lsid;
 
+        ret = -ENOTTY;
+        
 	switch(cmd) {
         case HDIO_GETGEO:
         	/*
@@ -1720,7 +1805,7 @@ int walb_ioctl(struct block_device *bdev, fmode_t mode,
 		 * and calculate the corresponding number of cylinders.  We set the
 		 * start of data at sector four.
 		 */
-		size = dev->size * (dev->physical_bs / dev->logical_bs);
+		size = wdev->ddev_size;
 		geo.cylinders = (size & ~0x3f) >> 6;
 		geo.heads = 4;
 		geo.sectors = 16;
@@ -1728,9 +1813,45 @@ int walb_ioctl(struct block_device *bdev, fmode_t mode,
 		if (copy_to_user((void __user *) arg, &geo, sizeof(geo)))
 			return -EFAULT;
 		return 0;
-	}
 
-	return -ENOTTY; /* unknown command */
+        case WALB_IOCTL_VERSION:
+                
+                version = WALB_VERSION;
+                ret = __put_user(version, (int __user *)arg);
+                break;
+                
+        case WALB_IOCTL_GET_OLDESTLSID:
+
+                printk_n("WALB_IOCTL_GET_OLDESTLSID\n");
+                spin_lock(&wdev->oldest_lsid_lock);
+                oldest_lsid = wdev->oldest_lsid;
+                spin_unlock(&wdev->oldest_lsid_lock);
+                ret = __put_user(oldest_lsid, (u64 __user *)arg);
+                break;
+                
+        case WALB_IOCTL_SET_OLDESTLSID:
+                
+                ret = __get_user(lsid, (u64 __user *)arg);
+                if (ret != 0) break;
+
+                if (walb_check_lsid_valid(wdev, lsid) == 0) {
+                        spin_lock(&wdev->oldest_lsid_lock);
+                        wdev->oldest_lsid = lsid;
+                        spin_unlock(&wdev->oldest_lsid_lock);
+                } else {
+                        printk_e("lsid %llu is not valid.\n", lsid);
+                        ret = -EFAULT;
+                }
+                break;
+                
+        case WALB_IOCTL_SEARCH_LSID:
+
+                /* not yet implemented. */
+                
+                break;
+	}
+        
+	return ret;
 }
 
 
@@ -1744,6 +1865,46 @@ static struct block_device_operations walb_ops = {
 	.release 	 = walb_release,
 	.ioctl	         = walb_ioctl
 };
+
+
+static int walblog_open(struct block_device *bdev, fmode_t mode)
+{
+	return 0;
+}
+
+static int walblog_release(struct gendisk *gd, fmode_t mode)
+{
+	return 0;
+}
+
+static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
+                         unsigned int cmd, unsigned long arg)
+{
+	long size;
+	struct hd_geometry geo;
+	struct walb_dev *wdev = bdev->bd_disk->private_data;
+
+	switch(cmd) {
+        case HDIO_GETGEO:
+		size = wdev->ldev_size;
+		geo.cylinders = (size & ~0x3f) >> 6;
+		geo.heads = 4;
+		geo.sectors = 16;
+		geo.start = 4;
+		if (copy_to_user((void __user *) arg, &geo, sizeof(geo)))
+			return -EFAULT;
+		return 0;
+	}
+	return -ENOTTY;
+}
+
+static struct block_device_operations walblog_ops = {
+        .owner   = THIS_MODULE,
+        .open    = walblog_open,
+        .release = walblog_release,
+        .ioctl   = walblog_ioctl
+};
+
 
 /**
  * Allocate sector.
@@ -1899,7 +2060,8 @@ static void walb_print_super_sector(walb_super_sector_t *lsuper0)
                  "logical_bs %u\n"
                  "physical_bs %u\n"
                  "snapshot_metadata_size %u\n"
-                 "uuid: %s\n"         
+                 "uuid: %s\n"
+                 "sector_type: %04x\n"
                  "ring_buffer_size %llu\n"
                  "oldest_lsid %llu\n"
                  "written_lsid %llu\n"
@@ -1910,6 +2072,7 @@ static void walb_print_super_sector(walb_super_sector_t *lsuper0)
                  lsuper0->physical_bs,
                  lsuper0->snapshot_metadata_size,
                  uuidstr,
+                 lsuper0->sector_type,
                  lsuper0->ring_buffer_size,
                  lsuper0->oldest_lsid,
                  lsuper0->written_lsid,
@@ -1952,6 +2115,12 @@ static walb_super_sector_t* walb_read_super_sector(struct walb_dev *dev)
                 goto error1;
         }
 
+        /* Validate sector type */
+        if (lsuper0->sector_type != SECTOR_TYPE_SUPER) {
+                printk_e("walb_read_super_sector: sector type check failed.\n");
+                goto error1;
+        }
+
 #ifdef WALB_DEBUG
         walb_print_super_sector(lsuper0);
 #endif
@@ -1984,6 +2153,9 @@ static int walb_write_super_sector(struct walb_dev *dev,
         
         ASSERT(lsuper != NULL);
 
+        /* Set sector_type. */
+        lsuper->sector_type = SECTOR_TYPE_SUPER;
+        
         /* Generate checksum. */
         lsuper->checksum = 0;
         csum = checksum((u8 *)lsuper, dev->physical_bs);
@@ -2099,13 +2271,17 @@ static int walb_finalize_super_block(struct walb_dev *wdev)
         /*
          * Test
          */
-        u64 written_lsid;
+        u64 written_lsid, oldest_lsid;
         struct walb_super_sector *lsuper_tmp;
 
         /* Get latest lsid. */
         spin_lock(&wdev->datapack_list_lock);
         written_lsid = wdev->written_lsid;
         spin_unlock(&wdev->datapack_list_lock);
+
+        spin_lock(&wdev->oldest_lsid_lock);
+        oldest_lsid = wdev->oldest_lsid;
+        spin_unlock(&wdev->oldest_lsid_lock);
 
         lsuper_tmp = walb_alloc_sector(wdev, GFP_NOIO);
         if (lsuper_tmp == NULL) {
@@ -2115,9 +2291,10 @@ static int walb_finalize_super_block(struct walb_dev *wdev)
         /* Modify super sector and copy. */
         spin_lock(&wdev->lsuper0_lock);
         wdev->lsuper0->written_lsid = written_lsid;
+        wdev->lsuper0->oldest_lsid = oldest_lsid;
         walb_copy_sector(wdev, (u8 *)lsuper_tmp, (u8 *)wdev->lsuper0);
         spin_unlock(&wdev->lsuper0_lock);
-                
+        
         if (walb_write_super_sector(wdev, lsuper_tmp) != 0) {
                 printk_e("walb_finalize_supe_block: write super block failed\n");
                 goto error1;
@@ -2133,8 +2310,62 @@ error0:
         return -1;
 }
 
+/**
+ * Setup walblog device.
+ */
+static int walblog_setup_device(struct walb_dev *wdev, int which)
+{
+        wdev->log_queue = blk_alloc_queue(GFP_KERNEL);
+        if (wdev->log_queue == NULL)
+                goto error0;
 
-/*
+        blk_queue_make_request(wdev->log_queue, walblog_make_request);
+
+        blk_queue_logical_block_size(wdev->log_queue, wdev->logical_bs);
+        blk_queue_physical_block_size(wdev->log_queue, wdev->physical_bs);
+        wdev->log_queue->queuedata = wdev;
+
+        wdev->log_gd = alloc_disk(1);
+        if (! wdev->log_gd) {
+                goto error1;
+        }
+        wdev->log_gd->major = walb_major;
+        wdev->log_gd->first_minor = which * WALB_MINORS + 1;
+        wdev->log_gd->queue = wdev->log_queue;
+        wdev->log_gd->fops = &walblog_ops;
+        wdev->log_gd->private_data = wdev;
+        set_capacity(wdev->log_gd, wdev->ldev_size);
+        snprintf(wdev->log_gd->disk_name, 32, "walblog%d", which);
+        add_disk(wdev->log_gd);
+        
+        return 0;
+
+error1:
+        if (wdev->log_queue) {
+                kobject_put(&wdev->log_queue->kobj);
+        }
+error0:
+        return -1;
+}
+
+/**
+ * Finalize walblog device
+ *
+ */
+static int walblog_finalize_device(struct walb_dev *wdev)
+{
+        if (wdev->log_gd) {
+                del_gendisk(wdev->log_gd);
+                put_disk(wdev->log_gd);
+        }
+        if (wdev->log_queue) {
+                kobject_put(&wdev->log_queue->kobj);
+        }
+        return 0;
+}
+
+
+/**
  * Set up our internal device.
  *
  * @return 0 in success, or -1.
@@ -2206,7 +2437,8 @@ static int setup_device(struct walb_dev *dev, int which)
                 goto out_ldev;
         }
         dev->written_lsid = dev->lsuper0->written_lsid;
-
+        dev->oldest_lsid = dev->lsuper0->oldest_lsid;
+        
         /*
          * Redo
          * 1. Read logpack from written_lsid.
@@ -2215,12 +2447,14 @@ static int setup_device(struct walb_dev *dev, int which)
          */
 
         /* Redo feature is not implemented yet. */
-        
-        
+
+
+        /* latest_lsid is written_lsid after redo. */
+        dev->latest_lsid = dev->written_lsid;
 
         /* For padding test in the end of ring buffer. */
         /* 64KB ring buffer */
-        dev->lsuper0->ring_buffer_size = 128; 
+        /* dev->lsuper0->ring_buffer_size = 128; */
         
 	/*
 	 * The I/O queue, depending on whether we are using our own
@@ -2277,8 +2511,18 @@ static int setup_device(struct walb_dev *dev, int which)
 	snprintf (dev->gd->disk_name, 32, "walb%d", which);
 	set_capacity(dev->gd, dev->ddev_size);
 	add_disk(dev->gd);
+
+        if (walblog_setup_device(dev, which) != 0) {
+                goto out_walbdev;
+        }
+        
 	return 0;
 
+out_walbdev:
+        if (dev->gd) {
+                del_gendisk(dev->gd);
+                put_disk(dev->gd);
+        }
 out_queue:
         if (dev->queue) {
                 if (request_mode == RM_NOQUEUE)
@@ -2339,34 +2583,36 @@ static void walb_exit(void)
 	int i;
 
 	for (i = 0; i < ndevices; i++) {
-		struct walb_dev *dev = Devices + i;
-                
-		if (dev->gd) {
-			del_gendisk(dev->gd);
-			put_disk(dev->gd);
-		}
-		if (dev->queue) {
-			if (request_mode == RM_NOQUEUE)
-                                kobject_put(&dev->queue->kobj);
-			else
-				blk_cleanup_queue(dev->queue);
-		}
-                walb_finalize_super_block(dev);
-                
-                if (dev->ddev)
-                        walb_unlock_bdev(dev->ddev);
-                if (dev->ldev)
-                        walb_unlock_bdev(dev->ldev);
+		struct walb_dev *wdev = Devices + i;
 
-                kfree(dev->lsuper0);
+                walblog_finalize_device(wdev);
+                
+		if (wdev->gd) {
+			del_gendisk(wdev->gd);
+			put_disk(wdev->gd);
+		}
+		if (wdev->queue) {
+			if (request_mode == RM_NOQUEUE)
+                                kobject_put(&wdev->queue->kobj);
+			else
+				blk_cleanup_queue(wdev->queue);
+		}
+                walb_finalize_super_block(wdev);
+                
+                if (wdev->ddev)
+                        walb_unlock_bdev(wdev->ddev);
+                if (wdev->ldev)
+                        walb_unlock_bdev(wdev->ldev);
+
+                kfree(wdev->lsuper0);
 
                 printk_i("walb stop (wrap %d:%d log %d:%d data %d:%d)\n",
-                         MAJOR(dev->devt),
-                         MINOR(dev->devt),
-                         MAJOR(dev->ldev->bd_dev),
-                         MINOR(dev->ldev->bd_dev),
-                         MAJOR(dev->ddev->bd_dev),
-                         MINOR(dev->ddev->bd_dev));
+                         MAJOR(wdev->devt),
+                         MINOR(wdev->devt),
+                         MAJOR(wdev->ldev->bd_dev),
+                         MINOR(wdev->ldev->bd_dev),
+                         MAJOR(wdev->ddev->bd_dev),
+                         MINOR(wdev->ddev->bd_dev));
 	}
 	unregister_blkdev(walb_major, "walb");
 	kfree(Devices);

@@ -99,7 +99,7 @@
  */
 typedef struct walb_super_sector {
 
-        /* 4 * 4 + 16 + 8 * 5 = 72 bytes */
+        /* (4 * 4) + (2 * 4) + 16 + (8 * 5) = 80 bytes */
 
         /*
          * Constant value inside the kernel.
@@ -126,6 +126,12 @@ typedef struct walb_super_sector {
 
         /* UUID of the wal device. */
         u8 uuid[16];
+
+        /* sector type */
+        u16 sector_type;
+        u16 reserved1;
+        u16 reserved2;
+        u16 reserved3;
 
         /* Offset of the oldest log record inside ring buffer.
            [physical block] */
@@ -177,6 +183,11 @@ typedef struct walb_snapshot_sector {
            (i + 1)'th record exists when (bitmap & (1 << i)) != 0.
         */
         u32 bitmap;
+
+        u16 sector_type;
+        u16 reserved1;
+        u16 reserved2;
+        u16 reserved3;
 
         walb_snapshot_record_t record[0];
         /* The continuous data have records.
