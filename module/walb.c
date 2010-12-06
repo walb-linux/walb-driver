@@ -58,7 +58,7 @@ static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask);
 static void walb_free_sector(void *p);
 static int walb_rq_count_bio(struct request *req);
 static int walb_io_sector(int rw, struct block_device *bdev, void* buf, u64 off);
-
+static int walb_sync_super_block(struct walb_dev *wdev);
 
 
 /**
@@ -1838,6 +1838,8 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
                         spin_lock(&wdev->oldest_lsid_lock);
                         wdev->oldest_lsid = lsid;
                         spin_unlock(&wdev->oldest_lsid_lock);
+                        
+                        walb_sync_super_block(wdev);
                 } else {
                         printk_e("lsid %llu is not valid.\n", lsid);
                         ret = -EFAULT;
@@ -2254,6 +2256,52 @@ error0:
 }
 
 /**
+ * Sync down super block.
+ */
+static int walb_sync_super_block(struct walb_dev *wdev)
+{
+        u64 written_lsid, oldest_lsid;
+        struct walb_super_sector *lsuper_tmp;
+
+        /* Get written lsid. */
+        spin_lock(&wdev->datapack_list_lock);
+        written_lsid = wdev->written_lsid;
+        spin_unlock(&wdev->datapack_list_lock);
+
+        /* Get oldest lsid. */
+        spin_lock(&wdev->oldest_lsid_lock);
+        oldest_lsid = wdev->oldest_lsid;
+        spin_unlock(&wdev->oldest_lsid_lock);
+
+        /* Allocate temporary super block. */
+        lsuper_tmp = walb_alloc_sector(wdev, GFP_NOIO);
+        if (lsuper_tmp == NULL) {
+                goto error0;
+        }
+
+        /* Modify super sector and copy. */
+        spin_lock(&wdev->lsuper0_lock);
+        wdev->lsuper0->oldest_lsid = oldest_lsid;
+        wdev->lsuper0->written_lsid = written_lsid;
+        walb_copy_sector(wdev, (u8 *)lsuper_tmp, (u8 *)wdev->lsuper0);
+        spin_unlock(&wdev->lsuper0_lock);
+        
+        if (walb_write_super_sector(wdev, lsuper_tmp) != 0) {
+                printk_e("walb_sync_super_block: write super block failed.\n");
+                goto error1;
+        }
+
+        walb_free_sector(lsuper_tmp);
+        return 0;
+
+error1:
+        walb_free_sector(lsuper_tmp);
+error0:
+        return -1;
+}
+
+
+/**
  * Finalize super block.
  *
  * @wdev walb device.
@@ -2271,41 +2319,22 @@ static int walb_finalize_super_block(struct walb_dev *wdev)
         /*
          * Test
          */
-        u64 written_lsid, oldest_lsid;
-        struct walb_super_sector *lsuper_tmp;
+        u64 latest_lsid;
 
-        /* Get latest lsid. */
+        spin_lock(&wdev->latest_lsid_lock);
+        latest_lsid = wdev->latest_lsid;
+        spin_unlock(&wdev->latest_lsid_lock);
+        
         spin_lock(&wdev->datapack_list_lock);
-        written_lsid = wdev->written_lsid;
+        wdev->written_lsid = latest_lsid;
         spin_unlock(&wdev->datapack_list_lock);
 
-        spin_lock(&wdev->oldest_lsid_lock);
-        oldest_lsid = wdev->oldest_lsid;
-        spin_unlock(&wdev->oldest_lsid_lock);
-
-        lsuper_tmp = walb_alloc_sector(wdev, GFP_NOIO);
-        if (lsuper_tmp == NULL) {
+        
+        if (walb_sync_super_block(wdev) != 0) {
                 goto error0;
         }
-
-        /* Modify super sector and copy. */
-        spin_lock(&wdev->lsuper0_lock);
-        wdev->lsuper0->written_lsid = written_lsid;
-        wdev->lsuper0->oldest_lsid = oldest_lsid;
-        walb_copy_sector(wdev, (u8 *)lsuper_tmp, (u8 *)wdev->lsuper0);
-        spin_unlock(&wdev->lsuper0_lock);
-        
-        if (walb_write_super_sector(wdev, lsuper_tmp) != 0) {
-                printk_e("walb_finalize_supe_block: write super block failed\n");
-                goto error1;
-        }
-
-        walb_free_sector(lsuper_tmp);
-        
         return 0;
 
-error1:
-        walb_free_sector(lsuper_tmp);
 error0:
         return -1;
 }
