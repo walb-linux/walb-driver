@@ -725,7 +725,7 @@ static struct walb_bio_with_completion* walb_submit_logpack_bio_to_ldev
         bioc->status = WALB_BIO_INIT;
         
         cbio = bio_clone(bio, GFP_NOIO);
-        if (bio == NULL) {
+        if (cbio == NULL) {
                 printk_e("bio_clone() failed\n");
                 goto error1;
         }
@@ -743,7 +743,6 @@ static struct walb_bio_with_completion* walb_submit_logpack_bio_to_ldev
         off_pb = ldev_offset;
         off_lb = off_pb * (wdev->physical_bs / wdev->logical_bs);
         cbio->bi_sector = off_lb + bio_offset;
-        
         bioc->bio = cbio;
 
         printk_d("submit logpack data bio: off %llu size %u\n",
@@ -1195,10 +1194,11 @@ static struct walb_bio_with_completion* walb_submit_datapack_bio_to_ddev(
         bioc->status = WALB_BIO_INIT;
 
         cbio = bio_clone(bio, GFP_NOIO);
-        if (bio == NULL) { goto error1; }
+        if (cbio == NULL) { goto error1; }
         cbio->bi_bdev = wdev->ddev;
         cbio->bi_end_io = walb_end_io_with_completion;
         cbio->bi_private = bioc;
+        bioc->bio = cbio;
 
         /* Block address is the same as original bio. */
 
