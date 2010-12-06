@@ -105,10 +105,17 @@ typedef struct walb_super_sector {
          * Constant value inside the kernel.
          * Lock is not required to read these variables.
          *
-         * logical_bs, physical_bs
-         * snapshot_metadata_size
-         * uuid
-         * ring_buffer_size
+         * Constant value inside kernel.
+         *   logical_bs, physical_bs
+         *   snapshot_metadata_size
+         *   uuid
+         *   ring_buffer_size
+         *   sector_type
+         *
+         * Variable inside kernel (set only in sync down)
+         *   checksum
+         *   oldest_lsid
+         *   written_lsid
          */
         
         /* Check sum of the super block */
@@ -144,10 +151,16 @@ typedef struct walb_super_sector {
            [physical block] */
         u64 oldest_lsid;
         
-        /* Log sequence id of the latest log record written to the data device also.
-           This is used for checkpointing.
-           When walb device is assembled redo must be
-           from written_lsid to the latest lsid stored in the log device. */
+        /* Log sequence id of next of latest log record written
+         * to the data device also.
+         * 
+         * This is used for checkpointing.
+         * When walb device is assembled redo must be
+         * from written_lsid to the latest lsid stored in the log device.
+         *
+         * The logpack of written_lsid may not be written.
+         * Just previous log is guaranteed written to data device.
+         */
         u64 written_lsid;
 
         /* Size of wrapper block device [logical block] */

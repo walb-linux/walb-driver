@@ -459,7 +459,7 @@ void dispatch()
         }
 }
 
-int main(int argc, char* const argv[])
+int main(int argc, char* argv[])
 {
         init_random();
         
