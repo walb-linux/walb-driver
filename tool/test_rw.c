@@ -15,8 +15,8 @@
 
 int main(int argc, char* argv[])
 {
-        if (argc != 2) {
-                printf("usage: test_rw [walb device]\n");
+        if (argc != 3) {
+                printf("usage: test_rw [walb device] [num of blocks]\n");
                 exit(1);
         }
 
@@ -36,8 +36,9 @@ int main(int argc, char* argv[])
                 exit(1);
         }
 
+        int num = atoi(argv[2]);
         int i;
-        for (i = 0; i < 100; i ++) {
+        for (i = 0; i < num; i ++) {
                 memset_random(block0, BLOCK_SIZE);
 
                 write_sector(fd, block0, BLOCK_SIZE, i);
