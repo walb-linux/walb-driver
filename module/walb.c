@@ -1467,11 +1467,11 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
 
         /* Clone bio(s) of each request and set offset for log pack.
            Submit prepared bio(s) to log device. */
-        /* if (walb_datapack_write(wdev, lhead, wk->reqp_ary) != 0) { */
-        /*         printk_e("datapack write failed (lsid %llu). \n", */
-        /*                  lhead->logpack_lsid); */
-        /*         goto error0; */
-        /* } */
+        if (walb_datapack_write(wdev, lhead, wk->reqp_ary) != 0) {
+                printk_e("datapack write failed (lsid %llu). \n",
+                         lhead->logpack_lsid);
+                goto error0;
+        }
 
         /* now editing */
 
