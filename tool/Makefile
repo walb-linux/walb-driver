@@ -35,6 +35,7 @@ test_bitmap.o: test_bitmap.c ../include/bitmap.h
 util.o: util.c util.h $(HEADER_FILES)
 logpack.o: logpack.c logpack.h util.h $(HEADER_FILES)
 test_rw.o: test_rw.c util.h random.h
+walbctl.o: walbctl.c walblog_format.h
 
 .c.o:
 	$(CC) -c $< -o $@ $(CFLAGS)

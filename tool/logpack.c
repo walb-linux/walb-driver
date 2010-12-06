@@ -5,6 +5,8 @@
  * @license GPLv2 or later.
  */
 
+#include <string.h>
+
 #include "util.h"
 #include "logpack.h"
 
@@ -53,9 +55,10 @@ bool read_logpack_header(int fd,
                 goto error0;
         }
         
-        /* check checksum */
+        /* confirm checksum */
         if (checksum((const u8 *)logpack, super_sectp->physical_bs) != 0) {
-                LOG("logpack header checksum is invalid.\n");
+                LOG("logpack header checksum is invalid (lsid %"PRIu64").\n",
+                    logpack->logpack_lsid);
                 goto error0;
         }
         
@@ -105,6 +108,104 @@ void print_logpack_header(const walb_logpack_header_t* logpack)
                 printf("logpack lsid: %"PRIu64"\n", 
                        logpack->record[i].lsid - logpack->record[i].lsid_local);
         }
+}
+
+/**
+ * Write logpack header.
+ *
+ * @fd file descriptor to write.
+ * @super_sectp super secter.
+ * @logpack logpack to be written.
+ *
+ * @return true in success, or false.
+ */
+bool write_logpack_header(int fd,
+                          const walb_super_sector_t* super_sectp,
+                          const walb_logpack_header_t* logpack)
+{
+        return write_data(fd, (const u8 *)logpack, super_sectp->physical_bs);
+}
+
+/**
+ * Read logpack data.
+ * Padding area will be also read.
+ *
+ * @fd file descriptor of log device.
+ * @super_sectp super sector.
+ * @logpack logpack header.
+ * @buf buffer.
+ * @bufsize buffer size in bytes.
+ *
+ * @return true in success, or false.
+ */
+bool read_logpack_data(int fd,
+                       const walb_super_sector_t* super_sectp,
+                       const walb_logpack_header_t* logpack,
+                       u8* buf, size_t bufsize)
+{
+        int logical_bs = super_sectp->logical_bs;
+        int physical_bs = super_sectp->physical_bs;
+        int n_lb_in_pb = physical_bs / logical_bs;
+        ASSERT(physical_bs % logical_bs == 0);
+
+        if (logpack->total_io_size * physical_bs > (ssize_t)bufsize) {
+                LOG("buffer size is not enough.\n");
+                return false;
+        }
+
+        int i;
+        int n_req = logpack->n_records;
+        int total_pb;
+        u64 log_off;
+        u32 log_lb, log_pb;
+        u8 *buf_off;
+        
+        buf_off = 0;
+        total_pb = 0;
+        for (i = 0; i < n_req; i ++) {
+
+                log_lb = logpack->record[i].io_size;
+
+                /* Calculate num of physical blocks. */
+                if (log_lb % n_lb_in_pb == 0) {
+                        log_pb = log_lb / n_lb_in_pb;
+                } else {
+                        log_pb = log_lb / n_lb_in_pb + 1;
+                }
+
+                log_off = get_offset_of_lsid_2
+                        (super_sectp, logpack->record[i].lsid);
+                LOG("lsid: %"PRIu64" log_off: %"PRIu64"\n",
+                    logpack->record[i].lsid,
+                    log_off);
+
+                buf_off = buf + (total_pb * physical_bs);
+                if (logpack->record[i].is_padding == 0) {
+
+                        /* Read data for the log record. */
+                        if (! read_sectors(fd, buf_off, physical_bs, log_off, log_pb)) {
+                                LOG("read sectors failed.\n");
+                                goto error0;
+                        }
+
+                        /* Confirm checksum */
+                        u32 csum = checksum((const u8 *)buf_off, logical_bs * log_lb);
+                        if (csum != logpack->record[i].checksum) {
+                                LOG("log header checksum is invalid. %08x %08x\n",
+                                    csum, logpack->record[i].checksum);
+                                goto error0;
+                        }
+                } else {
+                        /* memset zero instead of read due to padding area. */
+                        memset(buf_off, 0, log_pb * physical_bs);
+                }
+                total_pb += log_pb;
+        }
+
+        return true;
+        
+error0:        
+        return false;
 }
 
 /* end of file */

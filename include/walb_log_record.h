@@ -16,7 +16,8 @@ typedef struct walb_log_record {
         /* 8 + 2 * 4 + 8 * 2 = 32 bytes */
 
         /* Just sum of the array assuming data contents
-           as an array of u32 integer. */
+           as an array of u32 integer.
+           If is_paddingi non-zero, checksum is not calcurated. */
         u32 checksum;
         u32 reserved1;
         

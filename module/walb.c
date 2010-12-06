@@ -1792,7 +1792,7 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 	struct hd_geometry geo;
 	struct walb_dev *wdev = bdev->bd_disk->private_data;
         int ret;
-        int version;
+        u32 version;
         u64 lsid, oldest_lsid;
 
         ret = -ENOTTY;
@@ -2025,27 +2025,6 @@ error0:
         return -1;
 }
 
-
-/**
- * Sprint uuid.
- *
- * @buf buffer to store result. Its size must be 16 * 2 + 1.
- * @uuid uuid ary. Its size must be 16.
- */
-static void walb_sprint_uuid(char *buf, const u8 *uuid)
-{
-#ifdef WALB_DEBUG
-        char tmp[3];
-        int i;
-
-        buf[0] = '\0';
-        for (i = 0; i < 16; i ++) {
-                sprintf(tmp, "%02x", uuid[i]);
-                strcat(buf, tmp);
-        }
-#endif
-}
-
 /**
  * Print super sector for debug.
  *
@@ -2055,7 +2034,7 @@ static void walb_print_super_sector(walb_super_sector_t *lsuper0)
 {
 #ifdef WALB_DEBUG
         char uuidstr[16 * 2 + 1];
-        walb_sprint_uuid(uuidstr, lsuper0->uuid);
+        sprint_uuid(uuidstr, lsuper0->uuid);
         
         printk_d("-----super block------\n"
                  "checksum %08x\n"

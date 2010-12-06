@@ -61,14 +61,14 @@ int check_bdev(const char* path)
         dev_size = sb.st_blocks;
         size = sb.st_size;
 
-        printf("devname: %s\n"
-               "device: %d:%d\n"
-               "sector_size: %zu\n"
-               "device_size: %zu\n"
-               "size: %zu\n",
-               path,
-               MAJOR(devt), MINOR(devt),
-               sector_size, dev_size, size);
+        LOG("devname: %s\n"
+            "device: %d:%d\n"
+            "sector_size: %zu\n"
+            "device_size: %zu\n"
+            "size: %zu\n",
+            path,
+            MAJOR(devt), MINOR(devt),
+            sector_size, dev_size, size);
 
         {
                 int fd;
@@ -87,11 +87,11 @@ int check_bdev(const char* path)
                 ioctl(fd, BLKGETSIZE64, &size); /* size */
                 close(fd);
 
-                printf("soft block size: %d\n"
-                       "logical sector size: %d\n"
-                       "physical sector size: %u\n"
-                       "device size: %zu\n",
-                       bs, ss, pbs, (size_t)size);
+                LOG("soft block size: %d\n"
+                    "logical sector size: %d\n"
+                    "physical sector size: %u\n"
+                    "device size: %zu\n",
+                    bs, ss, pbs, (size_t)size);
         }
         
         return 0;
@@ -253,37 +253,103 @@ void print_uuid(const u8* uuid)
 }
 
 /**
+ * Copy uuid.
+ *
+ * @dst destination.
+ * @src source.
+ */
+void copy_uuid(u8* dst, const u8* src)
+{
+        memcpy(dst, src, 16);
+}
+
+/**
  * Allocate sector (aligned and can be deallocated with free()).
  *
  * @sector_size sector size.
  *
- * @return pointer to allocated and zeroed sector in success, or NULL.
+ * @return pointer to allocated sector in success, or NULL.
  */
 u8* alloc_sector(int sector_size)
 {
-        u8 *sector;
-        if (posix_memalign((void **)&sector, sector_size, sector_size) != 0) {
+        return alloc_sectors(sector_size, 1);
+}
+
+/**
+ * Allocate multiple sectors (aligned and can be deallocated with @free()).
+ *
+ * @sector_size sector size.
+ * @n number of sectors.
+ *
+ * @return pointer to allocated memory in success, or NULL.
+ */
+u8* alloc_sectors(int sector_size, int n)
+{
+        u8 *sectors;
+        if (posix_memalign((void **)&sectors, sector_size, sector_size * n) != 0) {
                 return NULL;
         }
 
-        return sector;
+        return sectors;
+}
+
+/**
+ * Realloc multiple sectors.
+ *
+ * @memptr pointer to allocated pointer.
+ * @sector_size sector size.
+ * @n number of sectors.
+ *
+ * @return true in success, or false.
+ *         if false, the memory is freed.
+ */
+bool realloc_sectors(u8** memptr, int sector_size, int n)
+{
+        u8* tmp;
+        tmp = realloc(*memptr, sector_size * n);
+
+        if (tmp) {
+                *memptr = tmp;
+                return true;
+        } else {
+                free(*memptr);
+                return false;
+        }
 }
 
 /**
  * Write sector data to the offset.
  *
+ * @fd file descriptor to write.
  * @sector_buf aligned buffer containing sector data.
  * @sector_size sector size in bytes.
  * @offset offset in sectors.
+ *
  * @return true in success, or false.
  */
 bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset)
 {
+        return write_sectors(fd, sector_buf, sector_size, offset, 1);
+}
+
+/**
+ * Write multiple sectors data to the offset.
+ *
+ * @fd file descriptor to write.
+ * @sectors_buf aligned buffer containing sectors data.
+ * @sector_size sector size in bytes.
+ * @offset offset in sectors.
+ * @n number of sectors to be written.
+ *
+ * @return true in success, or false.
+ */
+bool write_sectors(int fd, const u8* sectors_buf, u32 sector_size, u64 offset, int n)
+{
         ssize_t w = 0;
-        while (w < sector_size) {
-                ssize_t s = pwrite(fd, sector_buf + w,
-                                   sector_size - w,
-                                   offset * sector_size);
+        while (w < sector_size * n) {
+                ssize_t s = pwrite(fd, sectors_buf + w,
+                                   sector_size * n - w,
+                                   offset * sector_size + w);
                 if (s > 0) {
                         w += s;
                 } else {
@@ -292,9 +358,10 @@ bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset)
                 }
 
         }
-        ASSERT(w == sector_size);
+        ASSERT(w == sector_size * n);
         return true;
 }
+
 
 /**
  * Print super sector for debug.
@@ -383,11 +450,27 @@ error0:
  */
 bool read_sector(int fd, u8* sector_buf, u32 sector_size, u64 offset)
 {
+        return read_sectors(fd, sector_buf, sector_size, offset, 1);
+}
+
+
+/**
+ * Read multiple sectors data from the offset.
+ *
+ * @sectors_buf aligned buffer to be filled with read sectors data.
+ * @sector_size sector size in bytes.
+ * @offset offset in sectors.
+ * @n number of sectors to read.
+ *
+ * @return true in success, or false.
+ */
+bool read_sectors(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n)
+{
         ssize_t r = 0;
-        while (r < sector_size) {
-                ssize_t s = pread(fd, sector_buf + r,
-                                  sector_size - r,
-                                  offset * sector_size);
+        while (r < sector_size * n) {
+                ssize_t s = pread(fd, sectors_buf + r,
+                                  sector_size * n - r,
+                                  offset * sector_size + r);
                 if (s > 0) {
                         r += s;
                 } else {
@@ -395,7 +478,7 @@ bool read_sector(int fd, u8* sector_buf, u32 sector_size, u64 offset)
                         return false;
                 }
         }
-        ASSERT(r == sector_size);
+        ASSERT(r == sector_size * n);
         return true;
 }
 
@@ -414,7 +497,7 @@ bool read_super_sector(int fd, walb_super_sector_t* super_sect, u32 sector_size,
         /* 1. Read two sectors
            2. Compare them and choose one having larger written_lsid. */
         ASSERT(super_sect != NULL);
-        ASSERT(sector_size <= PAGE_SIZE);
+        ASSERT((int)sector_size <= PAGE_SIZE);
         
         /* Memory image of sector. */
         u8 *buf, *buf0, *buf1;
@@ -539,11 +622,20 @@ void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_s
  */
 u8* alloc_sector_zero(int sector_size)
 {
-        u8 *sector = alloc_sector(sector_size);
-        if (sector == NULL) { return NULL; }
-        memset(sector, 0, sector_size);
-        return sector;
+        return alloc_sectors_zero(sector_size, 1);
 }
+
+/**
+ * Allocate multiple sectors and set all zero.
+ */
+u8* alloc_sectors_zero(int sector_size, int n)
+{
+        u8 *sectors = alloc_sectors(sector_size, n);
+        if (sectors == NULL) { return NULL; }
+        memset(sectors, 0, sector_size * n);
+        return sectors;
+}
+
 
 /**
  * Write snapshot sector.
@@ -621,5 +713,53 @@ bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         }
         return true;
 }
+
+
+/**
+ * Read data.
+ *
+ * @fd file descriptor.
+ * @data pointer to store data.
+ * @size read size [bytes].
+ *
+ * @return true in success, or false.
+ */
+bool read_data(int fd, u8* data, size_t size)
+{
+        size_t r = 0;
+        ssize_t tmp;
+
+        while (r < size) {
+                tmp = read(fd, data + r, size - r);
+                if (tmp <= 0) { return false; }
+                r += tmp;
+        }
+        ASSERT(r == size);
+        return true;
+}
+
+/**
+ * Write data.
+ *
+ * @fd file descriptor.
+ * @data data pointer.
+ * @size write size [bytes].
+ *
+ * @return true in success, or false.
+ */
+bool write_data(int fd, const u8* data, size_t size)
+{
+        size_t w = 0;
+        ssize_t tmp;
+
+        while (w < size) {
+                tmp = write(fd, data + w, size - w);
+                if (tmp <= 0) { return false; }
+                w += tmp;
+        }
+        ASSERT(w == size);
+        return true;
+}
+
 
 /* end of file */
