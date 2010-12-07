@@ -57,7 +57,7 @@ static inline walb_bitmap_t* walb_bitmap_create(size_t size)
                 spin_lock_init(&bmp->lock);
                 bmp->size = size;
 #ifdef __KERNEL__
-                bmp->ary = kmalloc((size + 7) / 8, flags);
+                bmp->ary = kzalloc((size + 7) / 8, flags);
 #else
                 bmp->ary = malloc((size + 7) / 8);
 #endif
