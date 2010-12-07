@@ -150,11 +150,40 @@ struct walb_ddev_bio {
 
 };
 
+/**
+ * Work to deal with multiple bio(s).
+ */
 struct walb_submit_bio_work
 {
         struct list_head list; /* list of walb_ddev_bio */
         spinlock_t lock; /* lock for the list */
         struct work_struct work;
+};
+
+/**
+ * Work to deal with multiple bio(s).
+ * Using bitmap instead list.
+ */
+struct walb_bios_work
+{
+        struct work_struct work;
+        struct walb_dev *wdev; /* walb device */
+        struct request *req_orig; /* Original request. */
+        
+        int n_bio; /* Number of bio(s) managed in this object. */
+        struct walb_bitmap *end_bmp; /* Bitmap size is n_bio. */
+        struct bio **biop_ary; /* Array of bio pointer with n_bio size. */
+        atomic_t is_fail; /* non-zero if failed. */
+};
+
+/**
+ * Work to deal with multiple bio(s).
+ */
+struct walb_bioclist_work
+{
+        struct work_struct work;
+        struct walb_dev *wdev;
+        struct request *req_orig;
 };
 
 struct walb_bio_with_completion
