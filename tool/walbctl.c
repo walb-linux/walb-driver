@@ -380,11 +380,12 @@ bool cat_log()
 
         /* print_super_sector(super_sectp); */
         u64 oldest_lsid = super_sectp->oldest_lsid;
+        LOG("oldest_lsid: %"PRIu64"\n", oldest_lsid);
 
         /* Range check */
         u64 lsid, begin_lsid, end_lsid;
         if (cfg_.lsid0 == (u64)(-1)) {
-                begin_lsid = 0;
+                begin_lsid = oldest_lsid;
         } else {
                 begin_lsid = cfg_.lsid0;
         }
@@ -621,11 +622,12 @@ bool print_log()
 
         print_super_sector(super_sectp);
         u64 oldest_lsid = super_sectp->oldest_lsid;
+        LOG("oldest_lsid: %"PRIu64"\n", oldest_lsid);
 
         /* Range check */
         u64 lsid, begin_lsid, end_lsid;
         if (cfg_.lsid0 == (u64)(-1)) {
-                begin_lsid = 0;
+                begin_lsid = oldest_lsid;
         } else {
                 begin_lsid = cfg_.lsid0;
         }
