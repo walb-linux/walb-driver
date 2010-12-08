@@ -408,7 +408,7 @@ bool do_cat_wldev(const config_t *cfg)
 
         int fd = open(cfg->wldev_name, O_RDONLY);
         if (fd < 0) {
-                perror("open failed");
+                perror("open failed.");
                 goto error0;
         }
         
@@ -450,6 +450,7 @@ bool do_cat_wldev(const config_t *cfg)
         }
 
         size_t bufsize = 1024 * 1024; /* 1MB */
+        ASSERT(bufsize % physical_bs == 0);
         u8 *buf = alloc_sectors(physical_bs, bufsize / physical_bs);
         if (buf == NULL) {
                 goto error3;
@@ -480,11 +481,11 @@ bool do_cat_wldev(const config_t *cfg)
         while (lsid < end_lsid) {
 
                 /* Logpack header */
-                if (! read_logpack_header(fd, super_sectp, lsid, logpack)) {
+                if (! read_logpack_header_from_wldev(fd, super_sectp, lsid, logpack)) {
                         break;
                 }
                 LOG("logpack %"PRIu64"\n", logpack->logpack_lsid);
-                write_logpack_header(1, super_sectp, logpack);
+                write_logpack_header(1, physical_bs, logpack);
                 
                 /* Realloc buffer if buffer size is not enough. */
                 if (bufsize / physical_bs < logpack->total_io_size) {
@@ -497,7 +498,7 @@ bool do_cat_wldev(const config_t *cfg)
                 }
 
                 /* Logpack data. */
-                if (! read_logpack_data(fd, super_sectp, logpack, buf, bufsize)) {
+                if (! read_logpack_data_from_wldev(fd, super_sectp, logpack, buf, bufsize)) {
                         LOG("read logpack data failed.\n");
                         goto error4;
                 }
@@ -538,14 +539,22 @@ bool do_redo_wlog(const config_t *cfg)
         ASSERT(cfg->cmd_str);
         ASSERT(strcmp(cfg->cmd_str, "redo_wlog") == 0);
 
-        walblog_header_t* wh = (walblog_header_t *)malloc(WALBLOG_HEADER_SIZE);
-        if (wh == NULL) { goto error0; }
-
         /* Check data device. */
         if (check_bdev(cfg->ddev_name) < 0) {
                 LOG("redo_wlog: check data device failed %s.\n",
                     cfg->ddev_name);
         }
+
+        /* Open data device. */
+        int fd = open(cfg->ddev_name, O_RDWR);
+        if (fd < 0) {
+                perror("open failed.");
+                goto error0;
+        }
+
+        /* Allocate walblog header. */
+        walblog_header_t* wh = (walblog_header_t *)malloc(WALBLOG_HEADER_SIZE);
+        if (wh == NULL) { goto error1; }
         
         /* Read wlog header. */
         read_data(0, (u8 *)wh, WALBLOG_HEADER_SIZE);
@@ -557,9 +566,8 @@ bool do_redo_wlog(const config_t *cfg)
         int pbs = wh->physical_bs;
         if (pbs % lbs != 0) {
                 LOG("physical_bs %% logical_bs must be 0.\n");
-                goto error1;
+                goto error2;
         }
-        int n_lb_in_pb = pbs / lbs;
 
         int ddev_lbs = get_bdev_logical_block_size(cfg->ddev_name);
         int ddev_pbs = get_bdev_physical_block_size(cfg->ddev_name);
@@ -567,29 +575,83 @@ bool do_redo_wlog(const config_t *cfg)
                 LOG("block size check is not valid\n"
                     "(wlog lbs %d, ddev lbs %d, wlog pbs %d, ddev pbs %d.\n",
                     lbs, ddev_lbs, pbs, ddev_pbs);
-                goto error1;
+                goto error2;
         }
-        
-        
-        
-        /* now editing */
-        
 
         /* Deside begin_lsid and end_lsid. */
-        
+        u64 begin_lsid, end_lsid;
+        if (cfg->lsid0 == (u64)(-1)) {
+                begin_lsid = wh->begin_lsid;
+        } else {
+                begin_lsid = cfg->lsid0;
+        }
+        if (cfg->lsid1 == (u64)(-1)) {
+                end_lsid = wh->end_lsid;
+        } else {
+                end_lsid = cfg->lsid1;
+        }
 
+        /* Allocate for logpack header. */
+        walb_logpack_header_t *logpack =
+                (walb_logpack_header_t *)alloc_sector(pbs);
+        if (logpack == NULL) { goto error2; }
 
+        /* Allocate for logpack data. */
+        size_t bufsize = 1024 * 1024; /* 1MB */
+        ASSERT(bufsize % pbs == 0);
+        u8 *buf = alloc_sectors(pbs, bufsize / pbs);
+        if (buf == NULL) { goto error3; }
+        
+        u64 lsid = begin_lsid;
+        while (lsid < end_lsid) {
 
-        
-        
+                /* Read logpack header */
+                if (! read_logpack_header(0, pbs, logpack)) {
+                        break;
+                }
 
-        
+                /* Realloc buffer if needed. */
+                u32 total_io_size = logpack->total_io_size;
+                if (total_io_size * pbs > bufsize) {
+                        if (! realloc_sectors(&buf, pbs, total_io_size)) {
+                                LOG("realloc_sectors failed.\n");
+                                goto error4;
+                        }
+                        bufsize = total_io_size * pbs;
+                }
+                if (! read_logpack_data(0, lbs, pbs, logpack, buf, bufsize)) {
+                        LOG("read logpack data failed.\n");
+                        goto error4;
+                }
+
+                /* Decision of skip and end. */
+                lsid = logpack->logpack_lsid;
+                if (lsid < begin_lsid) { continue; }
+                if (end_lsid <= lsid) { break; }
+                
+                LOG("logpack %"PRIu64"\n", lsid);
+
+                /* Redo */
+                if (! redo_logpack(fd, lbs, pbs, logpack, buf)) {
+                        LOG("redo_logpack failed.\n");
+                        goto error4;
+                }
+        }
+
+        free(buf);
+        free(logpack);
         free(wh);
+        close(fd);
         return true;
 
-
-error1:
+error4:
+        free(buf);
+error3:
+        free(logpack);
+error2:
         free(wh);
+error1:
+        close(fd);
 error0:
         return false;
 }
@@ -620,7 +682,6 @@ bool do_show_wlog(const config_t *cfg)
                 LOG("physical_bs %% logical_bs must be 0.\n");
                 goto error1;
         }
-        int n_lb_in_pb = physical_bs / logical_bs;
 
         /* Buffer for logpack header. */
         struct walb_logpack_header *logpack;
@@ -631,15 +692,20 @@ bool do_show_wlog(const config_t *cfg)
         size_t bufsize = 1024 * 1024; /* 1MB */
         u8 *buf = alloc_sectors(physical_bs, bufsize / physical_bs);
         if (buf == NULL) { goto error2; }
-        
+
+        /* Range */
+        u64 begin_lsid, end_lsid;
+        if (cfg->lsid0 == (u64)(-1)) {
+                begin_lsid = 0;
+        } else {
+                begin_lsid = cfg->lsid0;
+        }
+        end_lsid = cfg->lsid1;
         
         /* Read, print and check each logpack */
-        while (read_data(0, (u8 *)logpack, physical_bs)) {
+        while (read_logpack_header(0, physical_bs, logpack)) {
 
-                /* Print logpack header. */
-                print_logpack_header(logpack);
-
-                /* Check buffer size */
+                /* Check buffer size. */
                 u32 total_io_size = logpack->total_io_size;
                 if (total_io_size * physical_bs > bufsize) {
                         if (! realloc_sectors(&buf, physical_bs, total_io_size)) {
@@ -649,39 +715,22 @@ bool do_show_wlog(const config_t *cfg)
                         bufsize = total_io_size * physical_bs;
                 }
 
-                /* Read logpack data */
-                if (! read_data(0, buf, total_io_size * physical_bs)) {
+                /* Read logpack data. */
+                if (! read_logpack_data(0, logical_bs, physical_bs, logpack, buf, bufsize)) {
                         LOG("read logpack data failed.\n");
                         goto error3;
                 }
 
-                /* Confirm checksum. */
-                int i;
-                for (i = 0; i < logpack->n_records; i ++) {
-
-                        if (logpack->record[i].is_padding == 0) {
-
-                                int off_pb = logpack->record[i].lsid_local - 1;
-
-                                int size_lb = logpack->record[i].io_size;                                                     int size_pb;
-                                if (size_lb % n_lb_in_pb == 0) {
-                                        size_pb = size_lb / n_lb_in_pb;
-                                } else {
-                                        size_pb = size_lb / n_lb_in_pb + 1;
-                                }
-                                
-                                if (checksum(buf + (off_pb * physical_bs), size_pb * physical_bs) == logpack->record[i].checksum) {
-                                        printf("record %d: checksum valid\n", i);
-                                } else {
-                                        printf("record %d: checksum invalid\n", i);
-                                }
-                                
-                                
-                        } else {
-                                printf("record %d: padding\n", i);
-                        }
-
+                /* Check range. */
+                if (logpack->logpack_lsid < begin_lsid) {
+                        continue; /* skip */
                 }
+                if (end_lsid <= logpack->logpack_lsid ) {
+                        break; /* end */
+                }   
+                
+                /* Print logpack header. */
+                print_logpack_header(logpack);
         }
 
         free(buf);
@@ -761,7 +810,7 @@ bool do_show_wldev(const config_t *cfg)
         /* Print each logpack header. */
         lsid = begin_lsid;
         while (lsid < end_lsid) {
-                if (! read_logpack_header(fd, super_sectp, lsid, logpack)) {
+                if (! read_logpack_header_from_wldev(fd, super_sectp, lsid, logpack)) {
                         break;
                 }
                 print_logpack_header(logpack);
