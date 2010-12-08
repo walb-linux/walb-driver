@@ -44,17 +44,66 @@ typedef struct config
         
 } config_t;
 
-config_t cfg_;
-
 void show_help()
 {
-        printf("log format: walbctl mklog --ldev [path] --ddev [path]\n"
-               "cat log: walbctl catlog --wldev [path] "
-               "(--lsid0 [from lsid]) (--lsid1 [to lsid])\n"
-               "print log: walbctl printlog --wldev [path] "
-               "(--lsid0 [from lsid]) (--lsid1 [to lsid])\n"
-               "set oldest_lsid: walbctl set_oldest_lsid --wdev [path] --lsid [lsid]\n"
-               "get oldest_lsid: walbctl get_oldest_lsid --wdev [path]\n");
+        printf("Usage: walbctl COMMAND OPTIONS\n"
+               "\n"
+               "COMMAND:\n"
+               "  format_ldev LDEV DDEV (NSNAP) (SIZE)\n"
+               "      Format log device.\n"
+               "\n"
+               "  (NIY)create_wdev LDEV DDEV NAME\n"
+               "      Make walb/walblog device.\n"
+               "\n"
+               "  (NIY)create_snapshot WDEV NAME\n"
+               "      Create snapshot.\n"
+               "\n"
+               "  (NIY)delete_snapshot WDEV NAME\n"
+               "      Delete snapshot.\n"
+               "\n"
+               "  (NIY)num_snapshot WDEV (LRANGE | TRANGE | SRANGE)\n"
+               "      Get number of snapshots.\n"
+               "\n"
+               "  (NIY)list_snapshot WDEV (LRANGE | TRANGE | SRANGE)\n"
+               "      Get list of snapshots.\n"
+               "\n"
+               "  (NIY)checkpoint WDEV\n"
+               "      Make checkpoint to reduce redo time after crash.\n"
+               "\n"
+               "  cat_wldev WLDEV (LRANGE) > WLOG\n"
+               "      Extract wlog from walblog device.\n"
+               "\n"
+               "  show_wldev WLDEV (LRANGE)\n"
+               "      Show wlog in walblog device.\n"
+               "\n"
+               "  show_wlog (LRANGE) < WLOG\n"
+               "      Show wlog in stdin.\n"
+               "\n"
+               "  redo_wlog DDEV (LRANGE) < WLOG\n"
+               "      Redo wlog to data device.\n"
+               "\n"
+               "  set_oldest_lsid WDEV LSID\n"
+               "      Delete old logs in the device.\n"
+               "\n"
+               "  get_oldest_lsid WDEV\n"
+               "      Get oldest_lsid in the device.\n"
+               "\n"
+               "OPTIONS:\n"
+               "  N_SNAP: --n_snap [max number of snapshots]\n"
+               "  SIZE:   --size [size of stuff]\n"
+               "  LRANGE: --lsid0 [from lsid] --lsid1 [to lsid]\n"
+               "  TRANGE: --time0 [from time] --time1 [to time]\n"
+               "  SRANGE: --snap0 [from snapshot] --snap1 [to snapshot]\n"
+               "  LSID:   --lsid [lsid]\n"
+               "  DDEV:   --ddev [data device path]\n"
+               "  LDEV:   --ldev [log device path]\n"
+               "  WDEV:   --wdev [walb device path]\n"
+               "  WLDEV:  --wldev [walblog device path]\n"
+               "  NAME:   --name [name of stuff]\n"
+               "  WLOG:   walb log data as stream\n"
+               "\n"
+               "NIY: Not Implemented Yet.\n"
+                );
 }
 
 void init_config(config_t* cfg)
@@ -80,7 +129,7 @@ enum {
 };
 
 
-int parse_opt(int argc, char* const argv[])
+int parse_opt(int argc, char* const argv[], config_t *cfg)
 {
         int c;
 
@@ -104,30 +153,30 @@ int parse_opt(int argc, char* const argv[])
                 }
                 switch (c) {
                 case OPT_LDEV:
-                        cfg_.ldev_name = strdup(optarg);
+                        cfg->ldev_name = strdup(optarg);
                         LOG("ldev: %s\n", optarg);
                         break;
                 case OPT_DDEV:
-                        cfg_.ddev_name = strdup(optarg);
+                        cfg->ddev_name = strdup(optarg);
                         LOG("ddev: %s\n", optarg);
                         break;
                 case OPT_N_SNAP:
-                        cfg_.n_snapshots = atoi(optarg);
+                        cfg->n_snapshots = atoi(optarg);
                         break;
                 case OPT_WDEV:
-                        cfg_.wdev_name = strdup(optarg);
+                        cfg->wdev_name = strdup(optarg);
                         break;
                 case OPT_WLDEV:
-                        cfg_.wldev_name = strdup(optarg);
+                        cfg->wldev_name = strdup(optarg);
                         break;
                 case OPT_LSID:
-                        cfg_.lsid = atoll(optarg);
+                        cfg->lsid = atoll(optarg);
                         break;
                 case OPT_LSID0:
-                        cfg_.lsid0 = atoll(optarg);
+                        cfg->lsid0 = atoll(optarg);
                         break;
                 case OPT_LSID1:
-                        cfg_.lsid1 = atoll(optarg);
+                        cfg->lsid1 = atoll(optarg);
                         break;
                 default:
                         LOG("unknown option.\n");
@@ -137,7 +186,7 @@ int parse_opt(int argc, char* const argv[])
         if (optind < argc) {
                 LOG("command: ");
                 while (optind < argc) {
-                        cfg_.cmd_str = strdup(argv[optind]);
+                        cfg->cmd_str = strdup(argv[optind]);
                         LOG("%s ", argv[optind]);
                         optind ++;
                 }
@@ -253,30 +302,30 @@ error0:
  *
  * @return true in success, or false.
  */
-bool format_log_dev()
+bool do_format_ldev(const config_t *cfg)
 {
-        ASSERT(cfg_.cmd_str);
-        ASSERT(strcmp(cfg_.cmd_str, "mklog") == 0);
+        ASSERT(cfg->cmd_str);
+        ASSERT(strcmp(cfg->cmd_str, "format_ldev") == 0);
 
         /*
          * Check devices.
          */
-        if (check_bdev(cfg_.ldev_name) < 0) {
-                LOG("format_log_dev: check log device failed %s.\n",
-                    cfg_.ldev_name);
+        if (check_bdev(cfg->ldev_name) < 0) {
+                LOG("format_ldev: check log device failed %s.\n",
+                    cfg->ldev_name);
         }
-        if (check_bdev(cfg_.ddev_name) < 0) {
-                LOG("format_log_dev: check data device failed %s.\n",
-                    cfg_.ddev_name);
+        if (check_bdev(cfg->ddev_name) < 0) {
+                LOG("format_ldev: check data device failed %s.\n",
+                    cfg->ddev_name);
         }
 
         /*
          * Block size.
          */
-        int ldev_logical_bs = get_bdev_logical_block_size(cfg_.ldev_name);
-        int ddev_logical_bs = get_bdev_logical_block_size(cfg_.ddev_name);
-        int ldev_physical_bs = get_bdev_physical_block_size(cfg_.ldev_name);
-        int ddev_physical_bs = get_bdev_physical_block_size(cfg_.ddev_name);
+        int ldev_logical_bs = get_bdev_logical_block_size(cfg->ldev_name);
+        int ddev_logical_bs = get_bdev_logical_block_size(cfg->ddev_name);
+        int ldev_physical_bs = get_bdev_physical_block_size(cfg->ldev_name);
+        int ddev_physical_bs = get_bdev_physical_block_size(cfg->ddev_name);
         if (ldev_logical_bs != ddev_logical_bs ||
             ldev_physical_bs != ddev_physical_bs) {
                 LOG("logical or physical block size is different.\n");
@@ -288,8 +337,8 @@ bool format_log_dev()
         /*
          * Device size.
          */
-        u64 ldev_size = get_bdev_size(cfg_.ldev_name);
-        u64 ddev_size = get_bdev_size(cfg_.ddev_name);
+        u64 ldev_size = get_bdev_size(cfg->ldev_name);
+        u64 ddev_size = get_bdev_size(cfg->ddev_name);
 
         /*
          * Debug print.
@@ -312,7 +361,7 @@ bool format_log_dev()
         }
         
         int fd;
-        fd = open(cfg_.ldev_name, O_RDWR);
+        fd = open(cfg->ldev_name, O_RDWR);
         if (fd < 0) {
                 perror("open failed");
                 goto error0;
@@ -321,7 +370,7 @@ bool format_log_dev()
         if (! init_walb_metadata(fd, logical_bs, physical_bs,
                                  ddev_size / logical_bs,
                                  ldev_size / logical_bs,
-                                 cfg_.n_snapshots)) {
+                                 cfg->n_snapshots)) {
 
                 LOG("initialize walb log device failed.\n");
                 goto error1;
@@ -342,22 +391,22 @@ error0:
  *
  * @return true in success, or false.
  */
-bool cat_log()
+bool do_cat_wldev(const config_t *cfg)
 {
-        ASSERT(cfg_.cmd_str);
-        ASSERT(strcmp(cfg_.cmd_str, "catlog") == 0);
+        ASSERT(cfg->cmd_str);
+        ASSERT(strcmp(cfg->cmd_str, "cat_wldev") == 0);
 
         /*
          * Check device.
          */
-        if (check_bdev(cfg_.wldev_name) < 0) {
-                LOG("cat_log: check log device failed %s.\n",
-                    cfg_.wldev_name);
+        if (check_bdev(cfg->wldev_name) < 0) {
+                LOG("cat_wldev: check log device failed %s.\n",
+                    cfg->wldev_name);
         }
-        int logical_bs = get_bdev_logical_block_size(cfg_.wldev_name);
-        int physical_bs = get_bdev_physical_block_size(cfg_.wldev_name);
+        int logical_bs = get_bdev_logical_block_size(cfg->wldev_name);
+        int physical_bs = get_bdev_physical_block_size(cfg->wldev_name);
 
-        int fd = open(cfg_.wldev_name, O_RDONLY);
+        int fd = open(cfg->wldev_name, O_RDONLY);
         if (fd < 0) {
                 perror("open failed");
                 goto error0;
@@ -384,17 +433,17 @@ bool cat_log()
 
         /* Range check */
         u64 lsid, begin_lsid, end_lsid;
-        if (cfg_.lsid0 == (u64)(-1)) {
+        if (cfg->lsid0 == (u64)(-1)) {
                 begin_lsid = oldest_lsid;
         } else {
-                begin_lsid = cfg_.lsid0;
+                begin_lsid = cfg->lsid0;
         }
-        if (cfg_.lsid0 < oldest_lsid) {
+        if (cfg->lsid0 < oldest_lsid) {
                 LOG("given lsid0 %"PRIu64" < oldest_lsid %"PRIu64"\n",
-                    cfg_.lsid0, oldest_lsid);
+                    cfg->lsid0, oldest_lsid);
                 goto error3;
         }
-        end_lsid = cfg_.lsid1;
+        end_lsid = cfg->lsid1;
         if (begin_lsid > end_lsid) {
                 LOG("lsid0 < lsid1 property is required.\n");
                 goto error3;
@@ -475,16 +524,84 @@ error0:
         return false;
 }
 
+/**
+ * Redo wlog.
+ *
+ * wlog is read from stdin.
+ * --ddev (required)
+ * --lsid0 (optional, default is the first lsid in the wlog.)
+ * --lsid1 (optional, default is the last lsid in the wlog.)
+ * redo logs of lsid0 <= lsid < lsid1.
+ */
+bool do_redo_wlog(const config_t *cfg)
+{
+        ASSERT(cfg->cmd_str);
+        ASSERT(strcmp(cfg->cmd_str, "redo_wlog") == 0);
 
+        walblog_header_t* wh = (walblog_header_t *)malloc(WALBLOG_HEADER_SIZE);
+        if (wh == NULL) { goto error0; }
+
+        /* Check data device. */
+        if (check_bdev(cfg->ddev_name) < 0) {
+                LOG("redo_wlog: check data device failed %s.\n",
+                    cfg->ddev_name);
+        }
+        
+        /* Read wlog header. */
+        read_data(0, (u8 *)wh, WALBLOG_HEADER_SIZE);
+        check_wlog_header(wh);
+        print_wlog_header(wh); /* debug */
+
+        /* Set block size */
+        int lbs = wh->logical_bs;
+        int pbs = wh->physical_bs;
+        if (pbs % lbs != 0) {
+                LOG("physical_bs %% logical_bs must be 0.\n");
+                goto error1;
+        }
+        int n_lb_in_pb = pbs / lbs;
+
+        int ddev_lbs = get_bdev_logical_block_size(cfg->ddev_name);
+        int ddev_pbs = get_bdev_physical_block_size(cfg->ddev_name);
+        if (ddev_lbs != lbs || ddev_pbs != pbs) {
+                LOG("block size check is not valid\n"
+                    "(wlog lbs %d, ddev lbs %d, wlog pbs %d, ddev pbs %d.\n",
+                    lbs, ddev_lbs, pbs, ddev_pbs);
+                goto error1;
+        }
+        
+        
+        
+        /* now editing */
+        
+
+        /* Deside begin_lsid and end_lsid. */
+        
+
+
+
+        
+        
+
+        
+        free(wh);
+        return true;
+
+
+error1:
+        free(wh);
+error0:
+        return false;
+}
 
 /**
- * Print wlog from stdin.
+ * Show wlog from stdin.
  *
  */
-bool print_wlog()
+bool do_show_wlog(const config_t *cfg)
 {
-        ASSERT(cfg_.cmd_str);
-        ASSERT(strcmp(cfg_.cmd_str, "printwlog") == 0);
+        ASSERT(cfg->cmd_str);
+        ASSERT(strcmp(cfg->cmd_str, "show_wlog") == 0);
 
         walblog_header_t* wh = (walblog_header_t *)malloc(WALBLOG_HEADER_SIZE);
         if (wh == NULL) { goto error0; }
@@ -581,25 +698,24 @@ error0:
 }
 
 /**
- * Print logpack in specified range.
+ * Show logpack header inside walblog device.
  *
  * @return true in success, or false.
  */
-bool print_log()
+bool do_show_wldev(const config_t *cfg)
 {
-        ASSERT(cfg_.cmd_str);
-        ASSERT(strcmp(cfg_.cmd_str, "printlog") == 0);
+        ASSERT(strcmp(cfg->cmd_str, "show_wldev") == 0);
 
         /*
          * Check device.
          */
-        if (check_bdev(cfg_.wldev_name) < 0) {
+        if (check_bdev(cfg->wldev_name) < 0) {
                 LOG("check log device failed %s.\n",
-                    cfg_.wldev_name);
+                    cfg->wldev_name);
         }
-        int physical_bs = get_bdev_physical_block_size(cfg_.wldev_name);
+        int physical_bs = get_bdev_physical_block_size(cfg->wldev_name);
 
-        int fd = open(cfg_.wldev_name, O_RDONLY);
+        int fd = open(cfg->wldev_name, O_RDONLY);
         if (fd < 0) {
                 perror("open failed");
                 goto error0;
@@ -626,17 +742,17 @@ bool print_log()
 
         /* Range check */
         u64 lsid, begin_lsid, end_lsid;
-        if (cfg_.lsid0 == (u64)(-1)) {
+        if (cfg->lsid0 == (u64)(-1)) {
                 begin_lsid = oldest_lsid;
         } else {
-                begin_lsid = cfg_.lsid0;
+                begin_lsid = cfg->lsid0;
         }
-        if (cfg_.lsid0 < oldest_lsid) {
+        if (cfg->lsid0 < oldest_lsid) {
                 LOG("given lsid0 %"PRIu64" < oldest_lsid %"PRIu64"\n",
-                    cfg_.lsid0, oldest_lsid);
+                    cfg->lsid0, oldest_lsid);
                 goto error3;
         }
-        end_lsid = cfg_.lsid1;
+        end_lsid = cfg->lsid1;
         if (begin_lsid > end_lsid) {
                 LOG("lsid0 < lsid1 property is required.\n");
                 goto error3;
@@ -670,19 +786,21 @@ error0:
 /**
  * Set oldest_lsid.
  */
-bool set_oldest_lsid()
+bool do_set_oldest_lsid(const config_t *cfg)
 {
-        if (check_bdev(cfg_.wdev_name) < 0) {
+        ASSERT(strcmp(cfg->cmd_str, "set_oldest_lsid") == 0);
+        
+        if (check_bdev(cfg->wdev_name) < 0) {
                 LOG("set_oldest_lsid: check walb device failed %s.\n",
-                    cfg_.wdev_name);
+                    cfg->wdev_name);
         }
-        int fd = open(cfg_.wdev_name, O_RDWR);
+        int fd = open(cfg->wdev_name, O_RDWR);
         if (fd < 0) {
                 perror("open failed");
                 goto error0;
         }
 
-        u64 lsid = cfg_.lsid;
+        u64 lsid = cfg->lsid;
         int ret = ioctl(fd, WALB_IOCTL_SET_OLDESTLSID, &lsid);
         if (ret < 0) {
                 LOG("set_oldest_lsid: ioctl failed.\n");
@@ -701,13 +819,15 @@ error0:
 /**
  * Get oldest_lsid.
  */
-bool get_oldest_lsid()
+bool do_get_oldest_lsid(const config_t *cfg)
 {
-        if (check_bdev(cfg_.wdev_name) < 0) {
+        ASSERT(strcmp(cfg->cmd_str, "get_oldest_lsid") == 0);
+        
+        if (check_bdev(cfg->wdev_name) < 0) {
                 LOG("get_oldest_lsid: check walb device failed %s.\n",
-                    cfg_.wdev_name);
+                    cfg->wdev_name);
         }
-        int fd = open(cfg_.wdev_name, O_RDONLY);
+        int fd = open(cfg->wdev_name, O_RDONLY);
         if (fd < 0) {
                 perror("open failed");
                 goto error0;
@@ -729,38 +849,66 @@ error0:
         return false;
 }        
 
-bool dispatch()
+
+/**
+ * For command string to function.
+ */
+typedef bool (*command_fn)(const config_t *);
+
+struct map_str_to_fn {
+        const char *str;
+        command_fn fn;
+};
+
+
+/**
+ * Dispatch command.
+ */
+bool dispatch(const config_t *cfg)
 {
         bool ret = false;
-        ASSERT(cfg_.cmd_str != NULL);
+        ASSERT(cfg->cmd_str != NULL);
 
-        
-        if (strcmp(cfg_.cmd_str, "mklog") == 0) {
-                ret = format_log_dev();
-        } else if (strcmp(cfg_.cmd_str, "catlog") == 0) {
-                ret = cat_log();
-        } else if (strcmp(cfg_.cmd_str, "printlog") == 0) {
-                ret = print_log();
-        } else if (strcmp(cfg_.cmd_str, "printwlog") == 0) {
-                ret = print_wlog();
-        } else if (strcmp(cfg_.cmd_str, "set_oldest_lsid") == 0) {
-                ret = set_oldest_lsid();
-        } else if (strcmp(cfg_.cmd_str, "get_oldest_lsid") == 0) {
-                ret = get_oldest_lsid();
+        struct map_str_to_fn map[] = {
+                { "format_ldev", do_format_ldev },
+                /* { "create_wdev", do_create_wdev }, */
+                /* { "create_snapshot", do_create_snapshot }, */
+                /* { "delete_snapshot", do_delete_snapshot }, */
+                /* { "num_snapshot", do_num_snapshot }, */
+                /* { "list_snapshot", do_list_snapshot }, */
+                /* { "checkpoint", do_checkpoint }, */
+                { "cat_wldev", do_cat_wldev },
+                { "show_wlog", do_show_wlog },
+                { "show_wldev", do_show_wldev },
+                { "redo_wlog", do_redo_wlog },
+                { "set_oldest_lsid", do_set_oldest_lsid },
+                { "get_oldest_lsid", do_get_oldest_lsid },
+        };
+        int array_size = sizeof(map)/sizeof(map[0]);
+
+        int i;
+        for (i = 0; i < array_size; i ++) {
+                if (strcmp(cfg->cmd_str, map[i].str) == 0) {
+                        ret = (*map[i].fn)(cfg);
+                        break;
+                }
         }
+        
         return ret;
 }
 
 int main(int argc, char* argv[])
 {
+        config_t cfgt;
+
         init_random();
-        init_config(&cfg_);
+        init_config(&cfgt);
         
-        if (parse_opt(argc, argv) != 0) {
+        if (parse_opt(argc, argv, &cfgt) != 0) {
                 return 1;
         }
         
-        if (! dispatch()) {
+        if (! dispatch(&cfgt)) {
                 LOG("operation failed.\n");
         }
         
