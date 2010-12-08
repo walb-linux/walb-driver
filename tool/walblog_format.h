@@ -33,8 +33,8 @@ typedef struct walblog_header
 
         /* lsid. */
         u64 begin_lsid;
-        u64 end_lsid;
-
+        u64 end_lsid; /* may be larger than lsid of
+                         the next of the end logpack. */
 } walblog_header_t;
 
 /**
