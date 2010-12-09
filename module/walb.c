@@ -2162,6 +2162,227 @@ static int walb_release(struct gendisk *gd, fmode_t mode)
 	return 0;
 }
 
+
+/**
+ * Allocate memory and call @copy_from_user().
+ */
+static void* walb_alloc_and_copy_from_user(
+        void __user *userbuf,
+        size_t buf_size,
+        gfp_t gfp_mask)
+{
+        void *buf;
+        
+        if (buf_size == 0 || userbuf == NULL) {
+                goto error0;
+        }
+
+        buf = kmalloc(buf_size, gfp_mask);
+        if (buf == NULL) {
+                printk_e("memory allocation for walb_ctl.u2k.buf failed.\n");
+                goto error0;
+        }
+
+        if (copy_from_user(buf, userbuf, buf_size)) {
+                printk_e("copy_from_user failed\n");
+                goto error1;
+        }
+        return buf;
+
+error1:
+        kfree(buf);
+error0:
+        return NULL;
+}
+
+/**
+ * Call @copy_to_user() and free memory.
+ *
+ * @return 0 in success, or -1.
+ *         kfree(buf) is also executed in error.
+ */
+static int walb_copy_to_user_and_free(
+        void __user *userbuf,
+        void *buf,
+        size_t buf_size)
+{
+        if (buf_size == 0 || userbuf == NULL || buf == NULL) {
+                goto error0;
+        }
+
+        if (copy_to_user(userbuf, buf, buf_size)) {
+                goto error0;
+        }
+        
+        kfree(buf);
+        return 0;
+
+error0:
+        kfree(buf);
+        return -1;
+}
+
+/**
+ * Alloc required memory and copy userctl data.
+ *
+ * @userctl userctl pointer.
+ * @return gfp_mask mask for kmalloc.
+ */
+static struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
+{
+        struct walb_ctl *ctl;
+        
+        /* Allocate walb_ctl memory. */
+        ctl = kzalloc(sizeof(struct walb_ctl), gfp_mask);
+        if (ctl == NULL) {
+                printk_e("memory allocation for walb_ctl failed.\n");
+                goto error0;
+        }
+
+        /* Copy ctl. */
+        if (copy_from_user(ctl, userctl, sizeof(struct walb_ctl))) {
+                printk_e("copy_from_user failed.\n");
+                goto error1;
+        }
+
+        /* Allocate and copy ctl->u2k.__buf. */
+        if (ctl->u2k.buf_size > 0) {
+                ctl->u2k.__buf = walb_alloc_and_copy_from_user
+                        ((void __user *)ctl->u2k.buf,
+                         ctl->u2k.buf_size, gfp_mask);
+                if (ctl->u2k.__buf == NULL) {
+                        goto error1;
+                }
+        }
+        /* Allocate ctl->k2u.__buf. */
+        if (ctl->k2u.buf_size > 0) {
+                ctl->k2u.__buf = kzalloc(ctl->k2u.buf_size, gfp_mask);
+                if (ctl->k2u.__buf == NULL) {
+                        goto error2;
+                }
+        }
+        return ctl;
+
+/* error3: */
+/*         if (ctl->k2u.buf_size > 0) { */
+/*                 kfree(ctl->k2u.__buf); */
+/*         } */
+error2:
+        if (ctl->u2k.buf_size > 0) {
+                kfree(ctl->u2k.__buf);
+        }
+error1:
+        kfree(ctl);
+error0:
+        return NULL;
+}
+
+/**
+ * Copy ctl data to userland and deallocate memory.
+ *
+ * @userctl userctl pointer.
+ * @ctl ctl to put.
+ *
+ * @return 0 in success, or false.
+ */
+static int walb_put_ctl(void __user *userctl, struct walb_ctl *ctl)
+{
+        /* Free ctl->u2k.__buf. */
+        if (ctl->u2k.buf_size > 0) {
+                kfree(ctl->u2k.__buf);
+        }
+
+        /* Copy and free ctl->k2u.__buf. */
+        if (ctl->k2u.buf_size > 0) {
+                if (walb_copy_to_user_and_free
+                    (ctl->k2u.buf, ctl->k2u.__buf, ctl->k2u.buf_size) != 0) {
+                        goto error0;
+                }
+        }
+
+        /* Copy ctl. */
+        if (copy_to_user(userctl, ctl, sizeof(struct walb_ctl))) {
+                printk_e("copy_to_user failed.\n");
+                goto error0;
+        }
+        
+        kfree(ctl);
+        return 0;
+        
+error0:
+        kfree(ctl);
+        return -1;
+}
+
+/**
+ * Execute ioctl for WALB_IOCTL_WDEV.
+ *
+ *
+ *
+ * return 0 in success, or -EFAULT.
+ */
+static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
+{
+        int ret = -EFAULT;
+        struct walb_ctl *ctl;
+
+        u64 oldest_lsid, lsid;
+
+        /* Get ctl data. */
+        ctl = walb_get_ctl(userctl, GFP_KERNEL);
+        if (ctl == NULL) {
+                printk_e("walb_get_ctl failed.\n");
+                goto error0;
+        }
+        
+        /* Execute each command. */
+        switch(ctl->command) {
+        
+        case WALB_IOCTL_OLDEST_LSID_GET:
+
+                printk_n("WALB_IOCTL_OLDEST_LSID_GET\n");
+                spin_lock(&wdev->oldest_lsid_lock);
+                oldest_lsid = wdev->oldest_lsid;
+                spin_unlock(&wdev->oldest_lsid_lock);
+
+                ctl->val_u64 = oldest_lsid;
+                ret = 0;
+                break;
+                
+        case WALB_IOCTL_OLDEST_LSID_SET:
+                
+                printk_n("WALB_IOCTL_OLDEST_LSID_SET\n");
+                lsid = ctl->val_u64;
+                
+                if (walb_check_lsid_valid(wdev, lsid) == 0) {
+                        spin_lock(&wdev->oldest_lsid_lock);
+                        wdev->oldest_lsid = lsid;
+                        spin_unlock(&wdev->oldest_lsid_lock);
+                        
+                        walb_sync_super_block(wdev);
+                        ret = 0;
+                } else {
+                        printk_e("lsid %llu is not valid.\n", lsid);
+                }
+                break;
+                
+        default:
+                printk_n("WALB_IOCTL_WDEV %d is not supported.\n",
+                         ctl->command);
+        }
+
+        /* Put ctl data. */
+        if (walb_put_ctl(userctl, ctl) != 0) {
+                printk_e("walb_put_ctl failed.\n");
+                goto error0;
+        }
+        
+        return ret;
+
+error0:
+        return -EFAULT;
+}
+
 /*
  * The ioctl() implementation
  */
@@ -2171,11 +2392,11 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 	long size;
 	struct hd_geometry geo;
 	struct walb_dev *wdev = bdev->bd_disk->private_data;
-        int ret;
+        int ret = -ENOTTY;
         u32 version;
-        u64 lsid, oldest_lsid;
 
-        ret = -ENOTTY;
+        printk_d("walb_ioctl begin.\n");
+        printk_d("cmd: %08x\n", cmd);
         
 	switch(cmd) {
         case HDIO_GETGEO:
@@ -2192,50 +2413,25 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 		geo.start = 4;
 		if (copy_to_user((void __user *) arg, &geo, sizeof(geo)))
 			return -EFAULT;
-		return 0;
+		ret = 0;
+                break;
 
         case WALB_IOCTL_VERSION:
                 
                 version = WALB_VERSION;
                 ret = __put_user(version, (int __user *)arg);
                 break;
-                
-        case WALB_IOCTL_GET_OLDESTLSID:
 
-                printk_n("WALB_IOCTL_GET_OLDESTLSID\n");
-                spin_lock(&wdev->oldest_lsid_lock);
-                oldest_lsid = wdev->oldest_lsid;
-                spin_unlock(&wdev->oldest_lsid_lock);
-                ret = __put_user(oldest_lsid, (u64 __user *)arg);
-                break;
-                
-        case WALB_IOCTL_SET_OLDESTLSID:
-                
-                ret = __get_user(lsid, (u64 __user *)arg);
-                if (ret != 0) break;
+        case WALB_IOCTL_WDEV:
 
-                if (walb_check_lsid_valid(wdev, lsid) == 0) {
-                        spin_lock(&wdev->oldest_lsid_lock);
-                        wdev->oldest_lsid = lsid;
-                        spin_unlock(&wdev->oldest_lsid_lock);
-                        
-                        walb_sync_super_block(wdev);
-                } else {
-                        printk_e("lsid %llu is not valid.\n", lsid);
-                        ret = -EFAULT;
-                }
-                break;
-                
-        case WALB_IOCTL_SEARCH_LSID:
-
-                /* not yet implemented. */
-                
+                ret = walb_dispatch_ioctl_wdev(wdev, (void __user *)arg);
                 break;
 	}
         
-	return ret;
-}
+        printk_d("walb_ioctl end.\n");
 
+        return ret;
+}
 
 
 /*

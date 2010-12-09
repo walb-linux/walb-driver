@@ -849,13 +849,19 @@ bool do_set_oldest_lsid(const config_t *cfg)
                 goto error0;
         }
 
-        u64 lsid = cfg->lsid;
-        int ret = ioctl(fd, WALB_IOCTL_SET_OLDESTLSID, &lsid);
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_OLDEST_LSID_SET,
+                .val_u64 = cfg->lsid,
+                .u2k = { .buf_size = 0 },
+                .k2u = { .buf_size = 0 },
+        };
+        
+        int ret = ioctl(fd, WALB_IOCTL_WDEV, &ctl);
         if (ret < 0) {
                 LOG("set_oldest_lsid: ioctl failed.\n");
                 goto error1;
         }
-        printf("oldest_lsid is set to %"PRIu64" successfully.\n", lsid);
+        printf("oldest_lsid is set to %"PRIu64" successfully.\n", cfg->lsid);
         close(fd);
         return true;
         
@@ -882,13 +888,18 @@ bool do_get_oldest_lsid(const config_t *cfg)
                 goto error0;
         }
 
-        u64 lsid;
-        int ret = ioctl(fd, WALB_IOCTL_GET_OLDESTLSID, &lsid);
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_OLDEST_LSID_GET,
+                .u2k = { .buf_size = 0 },
+                .k2u = { .buf_size = 0 },
+        };
+        
+        int ret = ioctl(fd, WALB_IOCTL_WDEV, &ctl);
         if (ret < 0) {
                 LOG("get_oldest_lsid: ioctl failed.\n");
                 goto error1;
         }
-        printf("oldest_lsid is %"PRIu64"\n", lsid);
+        printf("oldest_lsid is %"PRIu64"\n", ctl.val_u64);
         close(fd);
         return true;
         
@@ -897,6 +908,42 @@ error1:
 error0:
         return false;
 }        
+
+/**
+ * Get walb version.
+ */
+bool do_get_version(const config_t *cfg)
+{
+        ASSERT(strcmp(cfg->cmd_str, "get_version") == 0);
+        
+        if (check_bdev(cfg->wdev_name) < 0) {
+                LOG("device check failed.");
+                goto error0;
+        }
+
+        int fd = open(cfg->wdev_name, O_RDONLY);
+        if (fd < 0) {
+                perror("open failed");
+                goto error0;
+        }
+        
+        u32 version;
+        int ret = ioctl(fd, WALB_IOCTL_VERSION, &version);
+        if (ret < 0) {
+                LOG("get version failed.\n");
+                goto error1;
+        }
+
+        printf("walb version: %"PRIu32"\n", version);
+        close(fd);
+        return true;
+
+
+error1:
+        close(fd);
+error0:
+        return false;
+}
 
 
 /**
@@ -932,6 +979,7 @@ bool dispatch(const config_t *cfg)
                 { "redo_wlog", do_redo_wlog },
                 { "set_oldest_lsid", do_set_oldest_lsid },
                 { "get_oldest_lsid", do_get_oldest_lsid },
+                { "get_version", do_get_version },
         };
         int array_size = sizeof(map)/sizeof(map[0]);
 
@@ -960,6 +1008,6 @@ int main(int argc, char* argv[])
         if (! dispatch(&cfgt)) {
                 LOG("operation failed.\n");
         }
-        
+
         return 0;
 }
