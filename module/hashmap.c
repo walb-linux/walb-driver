@@ -64,19 +64,26 @@ static unsigned int get_n_bits(u32 val)
 
 /**
  * Lookup cell from hashmap.
+ *
+ * @hmap hash map.
+ * @key pointer to key.
+ * @key_size key size.
+ *
+ * @return hash cell if found, or NULL.
  */
 static struct hash_cell* hashmap_lookup_cell(const struct hash_map *hmap,
                                              const u8* key, int key_size)
 {
         u32 idx;
-        struct hash_cell *cell, *tmp_cell, *ret;
+        struct hlist_node *node, *next;
+        struct hash_cell *cell, *ret;
         
         ASSERT_HASHMAP(hmap);
 
         idx = hashmap_get_index(hmap, key, key_size);
 
         ret = NULL;
-        list_for_each_entry_safe(cell, tmp_cell, &hmap->bucket[idx], list) {
+        hlist_for_each_entry_safe(cell, node, next, &hmap->bucket[idx], list) {
 
                 ASSERT_HASHCELL(cell);
                 if (cell->key_size == key_size &&
@@ -93,27 +100,33 @@ static struct hash_cell* hashmap_lookup_cell(const struct hash_map *hmap,
 /**
  * Get bucket index of the key.
  *
+ * @hmap hash map.
  * @key pointer to key data.
  * @key_size key size.
- * @bucket_size bucket size.
  *
  * @return index in the bucket.
  */
 static u32 hashmap_get_index(const struct hash_map *hmap, const u8* key, int key_size)
 {
-        u32 idx;
+        u32 idx, sum;
 
         ASSERT_HASHMAP(hmap);
-        
-        idx = hash_32(get_sum(key, key_size), hmap->n_bits);
-        ASSERT(idx < hmap->bucket_size);
 
-        /* printk_d("hashmap_get_index end\n"); */
+        sum = get_sum(key, key_size);
+        idx = hash_32(sum, hmap->n_bits);
+        ASSERT(idx < hmap->bucket_size);
+        
+        /* printk_d("sum %08x idx %u\n", sum, idx); */
         return idx;
 }
 
 /**
  * Get simple checksum of byte array.
+ *
+ * @data pointer to data.
+ * @size data size.
+ *
+ * @return simple checksum.
  */
 static u32 get_sum(const u8* data, int size)
 {
@@ -156,11 +169,11 @@ struct hash_map* hashmap_create(int bucket_size, gfp_t gfp_mask)
 
         hmap->bucket_size = bucket_size;
         hmap->n_bits = get_n_bits((u32)(bucket_size - 1));
-        hmap->bucket = kzalloc(sizeof(struct list_head) * bucket_size, gfp_mask);
+        hmap->bucket = kzalloc(sizeof(struct hlist_head) * bucket_size, gfp_mask);
         if (hmap->bucket == NULL) { goto error1; }
 
         for (i = 0; i < hmap->bucket_size; i ++) {
-                INIT_LIST_HEAD(&hmap->bucket[i]);
+                INIT_HLIST_HEAD(&hmap->bucket[i]);
         }
 
         ASSERT_HASHMAP(hmap);
@@ -191,21 +204,22 @@ void hashmap_destroy(struct hash_map *hmap)
 void hashmap_empty(struct hash_map *hmap)
 {
         int i;
-        struct hash_cell *cell, *tmp_cell;
+        struct hlist_node *node, *next;
+        struct hash_cell *cell;
 
         printk_d("hashmap_empty begin\n");
         ASSERT_HASHMAP(hmap);
         
         for (i = 0; i < hmap->bucket_size; i ++) {
 
-                list_for_each_entry_safe(cell, tmp_cell, &hmap->bucket[i], list) {
+                hlist_for_each_entry_safe(cell, node, next, &hmap->bucket[i], list) {
 
                         ASSERT_HASHCELL(cell);
                         kfree(cell->key);
-                        list_del(&cell->list);
+                        hlist_del(&cell->list);
                         kfree(cell);
                 }
-                ASSERT(list_empty(&hmap->bucket[i]));
+                ASSERT(hlist_empty(&hmap->bucket[i]));
         }
         printk_d("hashmap_empty end\n");
 }
@@ -252,7 +266,7 @@ int hashmap_add(struct hash_map *hmap,
 
         /* Add to hashmap. */
         idx = hashmap_get_index(hmap, key, key_size);
-        list_add(&cell->list, &hmap->bucket[idx]);
+        hlist_add_head(&cell->list, &hmap->bucket[idx]);
         
         /* printk_d("hashmap_add end\n"); */
         return 0;
@@ -298,7 +312,7 @@ void* hashmap_del(struct hash_map *hmap, const u8* key, int key_size)
         cell = hashmap_lookup_cell(hmap, key, key_size);
         if (cell != NULL) {
                 val = cell->val;
-                list_del(&cell->list);
+                hlist_del(&cell->list);
                 kfree(cell->key);
                 kfree(cell);
         }
@@ -318,19 +332,31 @@ void* hashmap_del(struct hash_map *hmap, const u8* key, int key_size)
 int hashmap_n_items(const struct hash_map *hmap)
 {
         int i;
-        struct hash_cell *cell, *tmp_cell;
+        struct hlist_node *node, *next;
+        struct hash_cell *cell;
         int n = 0;
+        int n_min = INT_MAX;
+        int n_max = 0;
+        int n_local = 0;
 
         ASSERT_HASHMAP(hmap);
+
         
         for (i = 0; i < hmap->bucket_size; i ++) {
 
-                list_for_each_entry_safe(cell, tmp_cell, &hmap->bucket[i], list) {
+                n_local = 0;
+                hlist_for_each_entry_safe(cell, node, next, &hmap->bucket[i], list) {
 
                         ASSERT_HASHCELL(cell);
+                        n_local ++;
                         n ++;
                 }
+                if (n_local < n_min) { n_min = n_local; }
+                if (n_max < n_local) { n_max = n_local; }
         }
+
+        printk_d("n_min %d n_max %d n_avg %d, n_total %d\n",
+                 n_min, n_max, n / hmap->bucket_size, n);
         return n;
 }
 
@@ -344,41 +370,41 @@ int hashmap_test(void)
         char buf[10];
         void *p;
 
-        int bucket_size = PAGE_SIZE / sizeof(struct list_head);
-        
         printk_d("hashmap_test begin\n");
 
-        printk_d("list_head: %u\n"
-                 "hash_map: %u\n"
-                 "hash_cell: %u\n"
-                 "max bucket_size: %u\n",
+        printk_d("list_head: %zu\n"
+                 "hlist_head: %zu\n"
+                 "hash_map: %zu\n"
+                 "hash_cell: %zu\n"
+                 "max bucket_size: %d\n",
                  sizeof(struct list_head),
+                 sizeof(struct hlist_head),
                  sizeof(struct hash_map),
                  sizeof(struct hash_cell),
-                 bucket_size);
+                 HASHMAP_MAX_BUCKET_SIZE_IN_PAGE);
         
-        hmap = hashmap_create(64, GFP_KERNEL);
+        hmap = hashmap_create(HASHMAP_MAX_BUCKET_SIZE_IN_PAGE, GFP_KERNEL);
         if (hmap == NULL) { return -1; }
 
         printk_d("n_items: %d\n", hashmap_n_items(hmap));
 
-        for (i = 0; i < 10000; i ++) {
-                snprintf(buf, 10, "abcde%04d", i);
+        for (i = 0; i < 100000; i ++) {
+                snprintf(buf, 10, "abcd%05d", i);
                 ASSERT(hashmap_add(hmap, buf, 9, buf + i, GFP_KERNEL) == 0);
         }
 
         printk_d("n_items: %d\n", hashmap_n_items(hmap));
 
-        for (i = 0; i < 10000; i ++) {
-                snprintf(buf, 10, "abcde%04d", i);
+        for (i = 0; i < 100000; i ++) {
+                snprintf(buf, 10, "abcd%05d", i);
                 p = hashmap_lookup(hmap, buf, 9);
                 ASSERT(p ==  buf + i);
         }
 
         printk_d("n_items: %d\n", hashmap_n_items(hmap));
 
-        for (i = 0; i < 10000; i ++) {
-                snprintf(buf, 10, "abcde%04d", i);
+        for (i = 0; i < 100000; i ++) {
+                snprintf(buf, 10, "abcd%05d", i);
                 if (i % 2 == 0) {
                         p = hashmap_del(hmap, buf, 9);
                 } else {
