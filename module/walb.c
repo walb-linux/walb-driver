@@ -26,6 +26,7 @@
 
 #include "walb_kern.h"
 #include "hashtbl.h"
+#include "walb_control.h"
 
 #include "../include/walb_ioctl.h"
 #include "../include/walb_log_device.h"
@@ -2997,6 +2998,11 @@ static int __init walb_init(void)
 		return -EBUSY;
 	}
         printk_i("walb_start with major id %d\n", walb_major);
+
+        /*
+         * Init control device.
+         */
+        walb_control_init();
         
 	/*
 	 * Allocate the device array, and initialize each one.
@@ -3058,6 +3064,11 @@ static void walb_exit(void)
 	unregister_blkdev(walb_major, "walb");
 	kfree(Devices);
 
+        /*
+         * Exit control device.
+         */
+        walb_control_exit();
+        
         printk_i("walb exit.\n");
 }
 	

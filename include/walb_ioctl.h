@@ -106,21 +106,4 @@ enum {
 };
 
 
-/**
- * Prorotypes.
- * These are implemented in walb_control.c
- */
-void* walb_alloc_and_copy_from_user(
-        void __user *userbuf,
-        size_t buf_size,
-        gfp_t gfp_mask);
-int walb_copy_to_user_and_free(
-        void __user *userbuf,
-        void *buf,
-        size_t buf_size);
-struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask);
-int walb_put_ctl(void __user *userctl, struct walb_ctl *ctl);
-
-
-
 #endif /* _WALB_IOCTL_H */

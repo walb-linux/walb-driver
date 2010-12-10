@@ -38,7 +38,7 @@ struct hash_tbl {
  * Currently max bucket size is limited to the following.
  * To get over the limitation, multi-level hashing is required.
  */
-#define HASHTBL_MAX_BUCKET_SIZE_IN_PAGE (PAGE_SIZE / sizeof(struct hlist_head))
+#define HASHTBL_MAX_BUCKET_SIZE (PAGE_SIZE / sizeof(struct hlist_head))
 
 /**
  * Prototypes
@@ -51,6 +51,8 @@ int hashtbl_add(struct hash_tbl *htbl,
 void* hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size);
 void* hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size);
 void hashtbl_empty(struct hash_tbl *htbl);
+
+int hashtbl_n_items(const struct hash_tbl *htbl);
 
 int hashtbl_test(void); /* For test. */
 

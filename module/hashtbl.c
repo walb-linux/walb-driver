@@ -340,7 +340,6 @@ int hashtbl_n_items(const struct hash_tbl *htbl)
         int n_local = 0;
 
         ASSERT_HASHTBL(htbl);
-
         
         for (i = 0; i < htbl->bucket_size; i ++) {
 
@@ -376,14 +375,14 @@ int hashtbl_test(void)
                  "hlist_head: %zu\n"
                  "hash_tbl: %zu\n"
                  "hash_cell: %zu\n"
-                 "max bucket_size: %d\n",
+                 "max bucket_size: %ld\n",
                  sizeof(struct list_head),
                  sizeof(struct hlist_head),
                  sizeof(struct hash_tbl),
                  sizeof(struct hash_cell),
-                 HASHTBL_MAX_BUCKET_SIZE_IN_PAGE);
+                 HASHTBL_MAX_BUCKET_SIZE);
         
-        htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE_IN_PAGE, GFP_KERNEL);
+        htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
         if (htbl == NULL) { return -1; }
 
         printk_d("n_items: %d\n", hashtbl_n_items(htbl));

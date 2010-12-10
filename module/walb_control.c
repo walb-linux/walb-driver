@@ -9,12 +9,27 @@
 #include <linux/miscdevice.h>
 #include <linux/slab.h>
 #include <linux/compat.h>
+#include <linux/rwsem.h>
+#include <linux/uaccess.h>
 
 #include "walb_kern.h"
 #include "hashtbl.h"
+#include "walb_control.h"
 
 #include "../include/walb_ioctl.h"
 
+/**
+ * Hash tables to get wdev by name or uuid.
+ *
+ * htbl_name's key size is 64.
+ *             value is pointer to struct walb_dev.
+ * htbl_uuid's key size is 16.
+ *             value is pointer to struct walb_dev.
+ * htbl_lock_ is for both hash tables.
+ */
+static struct hash_tbl *htbl_name_;
+static struct hash_tbl *htbl_uuid_;
+static DECLARE_RWSEM(htbl_lock_);
 
 /**
  * Allocate memory and call @copy_from_user().
@@ -180,24 +195,22 @@ error0:
 static int ctl_ioctl(uint command, struct walb_ctl __user *user)
 {
         struct walb_ctl *ctl;
-        
+
         if (command != WALB_IOCTL_CONTROL) {
-                printk_e("ioctl cmd must be %08x but %08x\n",
+                printk_e("ioctl cmd must be %08lx but %08x\n",
                          WALB_IOCTL_CONTROL, command);
                 return -ENOTTY;
         }
 
         ctl = walb_get_ctl(user, GFP_KERNEL);
-        if (ctl == NULL) {
-                goto error0;
-        }
+        if (ctl == NULL) { goto error0; }
 
+        
         /* now editing */
         
-        if (walb_put_ctl(user, ctl) != 0) {
-                goto error0;
-        }
 
+        
+        if (walb_put_ctl(user, ctl) != 0) { goto error0; }
         return 0;
         
 error0:
@@ -206,7 +219,16 @@ error0:
 
 static long walb_ctl_ioctl(struct file *file, uint command, ulong u)
 {
-        return (long)ctl_ioctl(command, (struct walb_ioctl __user *)u); 
+        int ret;
+        u32 version;
+        
+        if (command == WALB_IOCTL_VERSION) {
+                version = WALB_VERSION;
+                ret = __put_user(version, (u32 __user *)u);
+        } else {
+                ret = (long)ctl_ioctl(command, (struct walb_ctl __user *)u);
+        }
+        return ret;
 }
 
 #ifdef CONFIG_COMPAT
@@ -232,30 +254,56 @@ static struct miscdevice walb_misc_ = {
         .fops = &ctl_fops_,
 };
 
-
 /**
  * Init walb control device.
+ *
+ * @return 0 in success, or -1.
  */
-int __init walb_control_init()
+int __init walb_control_init(void)
 {
         int ret;
-        ret = misc_register(&walb_misc_);
-        if (ret < 0) {
-                
-        }
 
-        /* now editing */
-        
+        htbl_name_ = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
+        if (htbl_name_ == NULL) { goto error0; }
+        htbl_uuid_ = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
+        if (htbl_uuid_ == NULL) { goto error1; }
+
+        ret = misc_register(&walb_misc_);
+        if (ret < 0) { goto error2; }
+
+        printk_i("walb control device minor %u\n", walb_misc_.minor);
+        return 0;
+
+error2:
+        hashtbl_destroy(htbl_uuid_);
+error1:
+        hashtbl_destroy(htbl_name_);
+error0:
+        return -1;
 }
 
 /**
  * Exit walb control device.
  */
-void walb_control_exit()
+void walb_control_exit(void)
 {
-        misc_deregister(&walb_misc_);
+        /* Call this after all walb devices stop. */
+retry:
+        down_read(&htbl_lock_);
+        
+        if (hashtbl_n_items(htbl_uuid_) != 0 ||
+            hashtbl_n_items(htbl_name_) != 0) {
 
-        /* now editing */
+                up_read(&htbl_lock_);
+                
+                schedule();
+                goto retry;
+        }
+        
+        hashtbl_destroy(htbl_uuid_);
+        hashtbl_destroy(htbl_name_);
+        
+        misc_deregister(&walb_misc_);
 }
 
 MODULE_LICENSE("Dual BSD/GPL");
