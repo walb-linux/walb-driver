@@ -1,5 +1,5 @@
 /**
- * hashmap.c - Hash map implementation.
+ * hashtbl.c - Hash table implementation.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
  * Written by: Takashi HOSHINO <hoshino@labs.cybozu.co.jp>
@@ -12,7 +12,7 @@
 #include <linux/hash.h>
 
 #include "walb_util.h" /* for debug */
-#include "hashmap.h"
+#include "hashtbl.h"
 
 #ifdef ASSERT
 #undef ASSERT
@@ -21,10 +21,10 @@
 #define ASSERT(cond) BUG_ON(!(cond))
 
 
-#define ASSERT_HASHMAP(hmap) ASSERT((hmap) != NULL &&               \
-                                    (hmap)->bucket != NULL &&       \
-                                    (hmap)->bucket_size > 0 &&      \
-                                    (hmap)->n_bits > 0)
+#define ASSERT_HASHTBL(htbl) ASSERT((htbl) != NULL &&               \
+                                    (htbl)->bucket != NULL &&       \
+                                    (htbl)->bucket_size > 0 &&      \
+                                    (htbl)->n_bits > 0)
 #define ASSERT_HASHCELL(hcell) ASSERT((hcell) != NULL &&            \
                                       (hcell)->key != NULL &&       \
                                       (hcell)->key_size > 0 &&      \
@@ -35,9 +35,9 @@
  */
 static u32 get_sum(const u8* data, int size);
 static unsigned int get_n_bits(u32 val);
-static struct hash_cell* hashmap_lookup_cell(const struct hash_map *hmap,
+static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
                                              const u8* key, int key_size);
-static u32 hashmap_get_index(const struct hash_map *hmap,
+static u32 hashtbl_get_index(const struct hash_tbl *htbl,
                              const u8* key, int key_size);
 
 
@@ -63,27 +63,27 @@ static unsigned int get_n_bits(u32 val)
 }
 
 /**
- * Lookup cell from hashmap.
+ * Lookup cell from hashtbl.
  *
- * @hmap hash map.
+ * @htbl hash table.
  * @key pointer to key.
  * @key_size key size.
  *
  * @return hash cell if found, or NULL.
  */
-static struct hash_cell* hashmap_lookup_cell(const struct hash_map *hmap,
+static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
                                              const u8* key, int key_size)
 {
         u32 idx;
         struct hlist_node *node, *next;
         struct hash_cell *cell, *ret;
         
-        ASSERT_HASHMAP(hmap);
+        ASSERT_HASHTBL(htbl);
 
-        idx = hashmap_get_index(hmap, key, key_size);
+        idx = hashtbl_get_index(htbl, key, key_size);
 
         ret = NULL;
-        hlist_for_each_entry_safe(cell, node, next, &hmap->bucket[idx], list) {
+        hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[idx], list) {
 
                 ASSERT_HASHCELL(cell);
                 if (cell->key_size == key_size &&
@@ -93,28 +93,28 @@ static struct hash_cell* hashmap_lookup_cell(const struct hash_map *hmap,
                         return cell;
                 }                
         }
-        /* printk_d("hashmap_lookup_cell end\n"); */
+        /* printk_d("hashtbl_lookup_cell end\n"); */
         return ret;
 }
 
 /**
  * Get bucket index of the key.
  *
- * @hmap hash map.
+ * @htbl hash table.
  * @key pointer to key data.
  * @key_size key size.
  *
  * @return index in the bucket.
  */
-static u32 hashmap_get_index(const struct hash_map *hmap, const u8* key, int key_size)
+static u32 hashtbl_get_index(const struct hash_tbl *htbl, const u8* key, int key_size)
 {
         u32 idx, sum;
 
-        ASSERT_HASHMAP(hmap);
+        ASSERT_HASHTBL(htbl);
 
         sum = get_sum(key, key_size);
-        idx = hash_32(sum, hmap->n_bits);
-        ASSERT(idx < hmap->bucket_size);
+        idx = hash_32(sum, htbl->n_bits);
+        ASSERT(idx < htbl->bucket_size);
         
         /* printk_d("sum %08x idx %u\n", sum, idx); */
         return idx;
@@ -154,80 +154,80 @@ static u32 get_sum(const u8* data, int size)
 }
 
 /**
- * Create hash map.
+ * Create hash table.
  */
-struct hash_map* hashmap_create(int bucket_size, gfp_t gfp_mask)
+struct hash_tbl* hashtbl_create(int bucket_size, gfp_t gfp_mask)
 {
         int i;
-        struct hash_map *hmap;
+        struct hash_tbl *htbl;
 
-        printk_d("hashmap_create begin\n");
+        printk_d("hashtbl_create begin\n");
         ASSERT(bucket_size > 0);
         
-        hmap = kzalloc(sizeof(struct hash_map), gfp_mask);
-        if (hmap == NULL) { goto error0; }
+        htbl = kzalloc(sizeof(struct hash_tbl), gfp_mask);
+        if (htbl == NULL) { goto error0; }
 
-        hmap->bucket_size = bucket_size;
-        hmap->n_bits = get_n_bits((u32)(bucket_size - 1));
-        hmap->bucket = kzalloc(sizeof(struct hlist_head) * bucket_size, gfp_mask);
-        if (hmap->bucket == NULL) { goto error1; }
+        htbl->bucket_size = bucket_size;
+        htbl->n_bits = get_n_bits((u32)(bucket_size - 1));
+        htbl->bucket = kzalloc(sizeof(struct hlist_head) * bucket_size, gfp_mask);
+        if (htbl->bucket == NULL) { goto error1; }
 
-        for (i = 0; i < hmap->bucket_size; i ++) {
-                INIT_HLIST_HEAD(&hmap->bucket[i]);
+        for (i = 0; i < htbl->bucket_size; i ++) {
+                INIT_HLIST_HEAD(&htbl->bucket[i]);
         }
 
-        ASSERT_HASHMAP(hmap);
-        printk_d("hashmap_create end\n");
-        return hmap;
+        ASSERT_HASHTBL(htbl);
+        printk_d("hashtbl_create end\n");
+        return htbl;
         
 error1:
-        kfree(hmap);
+        kfree(htbl);
 error0:
         return NULL;
 }
 
 /**
- * Destroy hash map.
+ * Destroy hash talbe.
  */
-void hashmap_destroy(struct hash_map *hmap)
+void hashtbl_destroy(struct hash_tbl *htbl)
 {
-        printk_d("hashmap_destroy begin\n");
-        hashmap_empty(hmap);
-        kfree(hmap->bucket);
-        kfree(hmap);
-        printk_d("hashmap_destroy end\n");
+        printk_d("hashtbl_destroy begin\n");
+        hashtbl_empty(htbl);
+        kfree(htbl->bucket);
+        kfree(htbl);
+        printk_d("hashtbl_destroy end\n");
 }
 
 /**
- * Delete all cells in the hash map.
+ * Delete all cells in the hash table.
  */
-void hashmap_empty(struct hash_map *hmap)
+void hashtbl_empty(struct hash_tbl *htbl)
 {
         int i;
         struct hlist_node *node, *next;
         struct hash_cell *cell;
 
-        printk_d("hashmap_empty begin\n");
-        ASSERT_HASHMAP(hmap);
+        printk_d("hashtbl_empty begin\n");
+        ASSERT_HASHTBL(htbl);
         
-        for (i = 0; i < hmap->bucket_size; i ++) {
+        for (i = 0; i < htbl->bucket_size; i ++) {
 
-                hlist_for_each_entry_safe(cell, node, next, &hmap->bucket[i], list) {
+                hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
 
                         ASSERT_HASHCELL(cell);
                         kfree(cell->key);
                         hlist_del(&cell->list);
                         kfree(cell);
                 }
-                ASSERT(hlist_empty(&hmap->bucket[i]));
+                ASSERT(hlist_empty(&htbl->bucket[i]));
         }
-        printk_d("hashmap_empty end\n");
+        printk_d("hashtbl_empty end\n");
 }
 
 /**
- * Put data to hash map.
+ * Put data to hash table.
  *
- * @hmap hash map.
+ * @htbl hash table.
  * @key pointer to key data.
  * @key_size key size.
  * @val pointer to value. MUST NOT be NULL.
@@ -235,20 +235,20 @@ void hashmap_empty(struct hash_map *hmap)
  * 
  * @return 0 in success, or -1.
  */
-int hashmap_add(struct hash_map *hmap,
+int hashtbl_add(struct hash_tbl *htbl,
                 const u8* key, int key_size, const void *val, gfp_t gfp_mask)
 {
         struct hash_cell *cell;
         u32 idx;
 
         if (val == NULL) {
-                printk(KERN_ERR "add_to_hashmap: val must not be NULL.\n");
+                printk(KERN_ERR "add_to_hashtbl: val must not be NULL.\n");
                 goto error0;
         }
 
-        ASSERT_HASHMAP(hmap);
+        ASSERT_HASHTBL(htbl);
 
-        if (hashmap_lookup_cell(hmap, key, key_size) != NULL) {
+        if (hashtbl_lookup_cell(htbl, key, key_size) != NULL) {
                 /* Already key exists. */
                 goto error0;
         }
@@ -264,11 +264,11 @@ int hashmap_add(struct hash_map *hmap,
         memcpy(cell->key, key, key_size);
         cell->val = (void *)val;
 
-        /* Add to hashmap. */
-        idx = hashmap_get_index(hmap, key, key_size);
-        hlist_add_head(&cell->list, &hmap->bucket[idx]);
+        /* Add to hashtbl. */
+        idx = hashtbl_get_index(htbl, key, key_size);
+        hlist_add_head(&cell->list, &htbl->bucket[idx]);
         
-        /* printk_d("hashmap_add end\n"); */
+        /* printk_d("hashtbl_add end\n"); */
         return 0;
 
 error1:
@@ -278,58 +278,58 @@ error0:
 }
 
 /**
- * Get data from hash map.
+ * Get data from hash table.
  *
- * @hmap hash map.
+ * @htbl hash table.
  * @key pointer to key data.
  * @key_size key size.
  *
  * @return pointer to value if found, or NULL.
  */
-void* hashmap_lookup(const struct hash_map *hmap, const u8* key, int key_size)
+void* hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size)
 {
         struct hash_cell *cell;
         
-        cell = hashmap_lookup_cell(hmap, key, key_size);
-        /* printk_d("hashmap_lookup end\n"); */
+        cell = hashtbl_lookup_cell(htbl, key, key_size);
+        /* printk_d("hashtbl_lookup end\n"); */
         return (cell == NULL ? NULL : cell->val);
 }
 
 /**
- * Delete data from hash map.
+ * Delete data from hash table.
  *
- * @hmap hash map.
+ * @htbl hash table.
  * @key_size key size.
  * @key pointer to key data.
  *
  * @return pointer to value if found, or NULL.
  */
-void* hashmap_del(struct hash_map *hmap, const u8* key, int key_size)
+void* hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
 {
         struct hash_cell *cell;
         void *val = NULL;
         
-        cell = hashmap_lookup_cell(hmap, key, key_size);
+        cell = hashtbl_lookup_cell(htbl, key, key_size);
         if (cell != NULL) {
                 val = cell->val;
                 hlist_del(&cell->list);
                 kfree(cell->key);
                 kfree(cell);
         }
-        /* printk_d("hashmap_del end\n"); */
+        /* printk_d("hashtbl_del end\n"); */
         return val;
 }
 
 
 /**
- * Get number of cells in the hashmap.
+ * Get number of cells in the hashtbl.
  * This is slow, just for test.
  *
- * @hmap hash map.
+ * @htbl hash table.
  *
- * @return number of cells in the hash map.
+ * @return number of cells in the hash table.
  */
-int hashmap_n_items(const struct hash_map *hmap)
+int hashtbl_n_items(const struct hash_tbl *htbl)
 {
         int i;
         struct hlist_node *node, *next;
@@ -339,13 +339,13 @@ int hashmap_n_items(const struct hash_map *hmap)
         int n_max = 0;
         int n_local = 0;
 
-        ASSERT_HASHMAP(hmap);
+        ASSERT_HASHTBL(htbl);
 
         
-        for (i = 0; i < hmap->bucket_size; i ++) {
+        for (i = 0; i < htbl->bucket_size; i ++) {
 
                 n_local = 0;
-                hlist_for_each_entry_safe(cell, node, next, &hmap->bucket[i], list) {
+                hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
 
                         ASSERT_HASHCELL(cell);
                         n_local ++;
@@ -356,71 +356,71 @@ int hashmap_n_items(const struct hash_map *hmap)
         }
 
         printk_d("n_min %d n_max %d n_avg %d, n_total %d\n",
-                 n_min, n_max, n / hmap->bucket_size, n);
+                 n_min, n_max, n / htbl->bucket_size, n);
         return n;
 }
 
 /**
- * Test hashmap for debug.
+ * Test hashtbl for debug.
  */
-int hashmap_test(void)
+int hashtbl_test(void)
 {
         int i;
-        struct hash_map *hmap;
+        struct hash_tbl *htbl;
         char buf[10];
         void *p;
 
-        printk_d("hashmap_test begin\n");
+        printk_d("hashtbl_test begin\n");
 
         printk_d("list_head: %zu\n"
                  "hlist_head: %zu\n"
-                 "hash_map: %zu\n"
+                 "hash_tbl: %zu\n"
                  "hash_cell: %zu\n"
                  "max bucket_size: %d\n",
                  sizeof(struct list_head),
                  sizeof(struct hlist_head),
-                 sizeof(struct hash_map),
+                 sizeof(struct hash_tbl),
                  sizeof(struct hash_cell),
-                 HASHMAP_MAX_BUCKET_SIZE_IN_PAGE);
+                 HASHTBL_MAX_BUCKET_SIZE_IN_PAGE);
         
-        hmap = hashmap_create(HASHMAP_MAX_BUCKET_SIZE_IN_PAGE, GFP_KERNEL);
-        if (hmap == NULL) { return -1; }
+        htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE_IN_PAGE, GFP_KERNEL);
+        if (htbl == NULL) { return -1; }
 
-        printk_d("n_items: %d\n", hashmap_n_items(hmap));
+        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
 
         for (i = 0; i < 100000; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
-                ASSERT(hashmap_add(hmap, buf, 9, buf + i, GFP_KERNEL) == 0);
+                ASSERT(hashtbl_add(htbl, buf, 9, buf + i, GFP_KERNEL) == 0);
         }
 
-        printk_d("n_items: %d\n", hashmap_n_items(hmap));
+        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
 
         for (i = 0; i < 100000; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
-                p = hashmap_lookup(hmap, buf, 9);
+                p = hashtbl_lookup(htbl, buf, 9);
                 ASSERT(p ==  buf + i);
         }
 
-        printk_d("n_items: %d\n", hashmap_n_items(hmap));
+        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
 
         for (i = 0; i < 100000; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
                 if (i % 2 == 0) {
-                        p = hashmap_del(hmap, buf, 9);
+                        p = hashtbl_del(htbl, buf, 9);
                 } else {
-                        p = hashmap_lookup(hmap, buf, 9);
+                        p = hashtbl_lookup(htbl, buf, 9);
                 }
                 ASSERT(p != NULL && p == buf + i);
                 if (i % 2 == 0) {
-                        p = hashmap_lookup(hmap, buf, 9);
+                        p = hashtbl_lookup(htbl, buf, 9);
                         ASSERT(p == NULL);
                 }
         }
-        printk_d("n_items: %d\n", hashmap_n_items(hmap));
-        hashmap_empty(hmap);
-        printk_d("n_items: %d\n", hashmap_n_items(hmap));
-        hashmap_destroy(hmap);
-        printk_d("hashmap_test end\n");
+        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
+        hashtbl_empty(htbl);
+        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
+        hashtbl_destroy(htbl);
+        printk_d("hashtbl_test end\n");
         return 0;
 }
 

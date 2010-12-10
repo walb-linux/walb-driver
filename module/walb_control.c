@@ -11,7 +11,7 @@
 #include <linux/compat.h>
 
 #include "walb_kern.h"
-#include "hashmap.h"
+#include "hashtbl.h"
 
 #include "../include/walb_ioctl.h"
 

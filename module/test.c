@@ -2,14 +2,14 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 
-#include "hashmap.h"
+#include "hashtbl.h"
 
 static int __init test_init(void)
 {
         printk(KERN_INFO "test_init begin\n");
         
         /* Hashmap test for debug. */
-        if (hashmap_test()) {
+        if (hashtbl_test()) {
                 printk(KERN_ERR "hashmap_test() failed.\n");
         }
 
