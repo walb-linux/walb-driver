@@ -12,26 +12,7 @@
 #include <linux/kernel.h>
 
 #include "../include/walb_log_device.h"
-
-/**
- * For debug
- */
-#if defined(WALB_DEBUG)
-#define printk_d(fmt, args...) \
-        printk(KERN_DEBUG "walb: " fmt, ##args)
-#else
-#define printk_d(fmt, args...)
-#endif
-
-#define printk_e(fmt, args...)                  \
-        printk(KERN_ERR "walb: " fmt, ##args)
-#define printk_w(fmt, args...)                  \
-        printk(KERN_WARNING "walb: " fmt, ##args)
-#define printk_n(fmt, args...)                  \
-        printk(KERN_NOTICE "walb: " fmt, ##args)
-#define printk_i(fmt, args...)                  \
-        printk(KERN_INFO "walb: " fmt, ##args)
-
+#include "walb_util.h"
 
 /*
  * The different "request modes" we can use.
@@ -67,6 +48,7 @@ struct walb_dev {
 
         atomic_t is_read_only;          /* Write always fails if true */
 
+        struct list_head list; /* member of all_wdevs */
         
         /* Max number of snapshots.
            This is const after log device is initialized. */

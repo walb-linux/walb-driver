@@ -19,6 +19,21 @@
 #define ASSERT(cond) assert(cond)
 #endif /* __KERNEL__ */
 
+/**
+ * Device name prefix/suffix.
+ *
+ * walb control: /dev/walb/control
+ * walb device: /dev/walb/NAME
+ * walblog device: /dev/walb/NAME_log
+ */
+#define WALB_NAME "walb"
+#define WALB_DIR_NAME "walb"
+#define WALB_CONTROL_NAME "control"
+#define WALBLOG_NAME_SUFFIX "_log"
+
+/**
+ * Identification to confirm sector type.
+ */
 #define SECTOR_TYPE_SUPER    0x0001
 #define SECTOR_TYPE_SNAPSHOT 0x0002
 #define SECTOR_TYPE_LOGPACK  0x0003

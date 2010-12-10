@@ -14,7 +14,10 @@ EXTRA_CFLAGS += -I..
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 
-obj-m	:= walb.o
+walb-mod-objs := hashmap.o walb_control.o walb.o 
+test-mod-objs := test.o hashmap.o
+
+obj-m := walb-mod.o test-mod.o
 
 else
 
@@ -25,7 +28,6 @@ default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
 endif
-
 
 
 clean:

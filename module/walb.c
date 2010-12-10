@@ -25,6 +25,8 @@
 #include <linux/spinlock.h>
 
 #include "walb_kern.h"
+#include "hashmap.h"
+
 #include "../include/walb_ioctl.h"
 #include "../include/walb_log_device.h"
 #include "../include/bitmap.h"
@@ -50,8 +52,14 @@ module_param(ddev_minor, int, 0);
 static int request_mode = RM_FULL;
 module_param(request_mode, int, 0);
 
-
 static struct walb_dev *Devices = NULL;
+
+
+/* List of struct walb_dev. */
+static LIST_HEAD(all_wdevs_);
+static DEFINE_SPINLOCK(all_wdevs_lock_);
+
+
 
 /* Prototypes */
 static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask);
@@ -2163,156 +2171,6 @@ static int walb_release(struct gendisk *gd, fmode_t mode)
 }
 
 
-/**
- * Allocate memory and call @copy_from_user().
- */
-static void* walb_alloc_and_copy_from_user(
-        void __user *userbuf,
-        size_t buf_size,
-        gfp_t gfp_mask)
-{
-        void *buf;
-        
-        if (buf_size == 0 || userbuf == NULL) {
-                goto error0;
-        }
-
-        buf = kmalloc(buf_size, gfp_mask);
-        if (buf == NULL) {
-                printk_e("memory allocation for walb_ctl.u2k.buf failed.\n");
-                goto error0;
-        }
-
-        if (copy_from_user(buf, userbuf, buf_size)) {
-                printk_e("copy_from_user failed\n");
-                goto error1;
-        }
-        return buf;
-
-error1:
-        kfree(buf);
-error0:
-        return NULL;
-}
-
-/**
- * Call @copy_to_user() and free memory.
- *
- * @return 0 in success, or -1.
- *         kfree(buf) is also executed in error.
- */
-static int walb_copy_to_user_and_free(
-        void __user *userbuf,
-        void *buf,
-        size_t buf_size)
-{
-        if (buf_size == 0 || userbuf == NULL || buf == NULL) {
-                goto error0;
-        }
-
-        if (copy_to_user(userbuf, buf, buf_size)) {
-                goto error0;
-        }
-        
-        kfree(buf);
-        return 0;
-
-error0:
-        kfree(buf);
-        return -1;
-}
-
-/**
- * Alloc required memory and copy userctl data.
- *
- * @userctl userctl pointer.
- * @return gfp_mask mask for kmalloc.
- */
-static struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
-{
-        struct walb_ctl *ctl;
-        
-        /* Allocate walb_ctl memory. */
-        ctl = kzalloc(sizeof(struct walb_ctl), gfp_mask);
-        if (ctl == NULL) {
-                printk_e("memory allocation for walb_ctl failed.\n");
-                goto error0;
-        }
-
-        /* Copy ctl. */
-        if (copy_from_user(ctl, userctl, sizeof(struct walb_ctl))) {
-                printk_e("copy_from_user failed.\n");
-                goto error1;
-        }
-
-        /* Allocate and copy ctl->u2k.__buf. */
-        if (ctl->u2k.buf_size > 0) {
-                ctl->u2k.__buf = walb_alloc_and_copy_from_user
-                        ((void __user *)ctl->u2k.buf,
-                         ctl->u2k.buf_size, gfp_mask);
-                if (ctl->u2k.__buf == NULL) {
-                        goto error1;
-                }
-        }
-        /* Allocate ctl->k2u.__buf. */
-        if (ctl->k2u.buf_size > 0) {
-                ctl->k2u.__buf = kzalloc(ctl->k2u.buf_size, gfp_mask);
-                if (ctl->k2u.__buf == NULL) {
-                        goto error2;
-                }
-        }
-        return ctl;
-
-/* error3: */
-/*         if (ctl->k2u.buf_size > 0) { */
-/*                 kfree(ctl->k2u.__buf); */
-/*         } */
-error2:
-        if (ctl->u2k.buf_size > 0) {
-                kfree(ctl->u2k.__buf);
-        }
-error1:
-        kfree(ctl);
-error0:
-        return NULL;
-}
-
-/**
- * Copy ctl data to userland and deallocate memory.
- *
- * @userctl userctl pointer.
- * @ctl ctl to put.
- *
- * @return 0 in success, or false.
- */
-static int walb_put_ctl(void __user *userctl, struct walb_ctl *ctl)
-{
-        /* Free ctl->u2k.__buf. */
-        if (ctl->u2k.buf_size > 0) {
-                kfree(ctl->u2k.__buf);
-        }
-
-        /* Copy and free ctl->k2u.__buf. */
-        if (ctl->k2u.buf_size > 0) {
-                if (walb_copy_to_user_and_free
-                    (ctl->k2u.buf, ctl->k2u.__buf, ctl->k2u.buf_size) != 0) {
-                        goto error0;
-                }
-        }
-
-        /* Copy ctl. */
-        if (copy_to_user(userctl, ctl, sizeof(struct walb_ctl))) {
-                printk_e("copy_to_user failed.\n");
-                goto error0;
-        }
-        
-        kfree(ctl);
-        return 0;
-        
-error0:
-        kfree(ctl);
-        return -1;
-}
 
 /**
  * Execute ioctl for WALB_IOCTL_WDEV.
@@ -3126,8 +2984,6 @@ out_ldev:
         return -1;
 }
 
-
-
 static int __init walb_init(void)
 {
         int ret = 0;
@@ -3155,7 +3011,7 @@ static int __init walb_init(void)
                 printk_e("setup_device failed\n");
                 goto out_unregister;
         }
-    
+
 	return 0;
 
 out_unregister:
