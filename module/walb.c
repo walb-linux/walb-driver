@@ -2992,36 +2992,41 @@ static int __init walb_init(void)
 	/*
 	 * Get registered.
 	 */
-	walb_major = register_blkdev(walb_major, "walb");
+	walb_major = register_blkdev(walb_major, WALB_NAME);
 	if (walb_major <= 0) {
-		printk_w("unable to get major number\n");
+		printk_w("unable to get major number.\n");
 		return -EBUSY;
 	}
-        printk_i("walb_start with major id %d\n", walb_major);
+        printk_i("walb_start with major id %d.\n", walb_major);
 
         /*
          * Init control device.
          */
-        walb_control_init();
+        if (walb_control_init() != 0) {
+                printk_e("walb_control_init failed.\n");
+                goto out_unregister;
+        }
         
 	/*
 	 * Allocate the device array, and initialize each one.
 	 */
 	Devices = kmalloc(ndevices*sizeof (struct walb_dev), GFP_KERNEL);
 	if (Devices == NULL)
-		goto out_unregister;
+		goto out_control_exit;
 	for (i = 0; i < ndevices; i++) {
                 ret = setup_device(Devices + i, i);
         }
         if (ret) {
                 printk_e("setup_device failed\n");
-                goto out_unregister;
+                goto out_control_exit;
         }
 
 	return 0;
 
+out_control_exit:
+        walb_control_exit();
 out_unregister:
-	unregister_blkdev(walb_major, "walb");
+	unregister_blkdev(walb_major, WALB_NAME);
 	return -ENOMEM;
 }
 
@@ -3061,7 +3066,7 @@ static void walb_exit(void)
                          MAJOR(wdev->ddev->bd_dev),
                          MINOR(wdev->ddev->bd_dev));
 	}
-	unregister_blkdev(walb_major, "walb");
+	unregister_blkdev(walb_major, WALB_NAME);
 	kfree(Devices);
 
         /*
@@ -3076,6 +3081,6 @@ module_init(walb_init);
 module_exit(walb_exit);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("Block-level WAL");
-MODULE_ALIAS("walb");
+MODULE_ALIAS(WALB_NAME);
 /* MODULE_ALIAS_BLOCKDEV_MAJOR(WALB_MAJOR); */
 
