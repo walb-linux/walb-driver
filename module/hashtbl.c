@@ -233,7 +233,9 @@ void hashtbl_empty(struct hash_tbl *htbl)
  * @val pointer to value. MUST NOT be NULL.
  * @gfp_mask GFP_*
  * 
- * @return 0 in success, or -1.
+ * @return 0 in success,
+ *         -EPERM when key already exists,
+ *         -ENOMEM in memory allocation failure.
  */
 int hashtbl_add(struct hash_tbl *htbl,
                 const u8* key, int key_size, const void *val, gfp_t gfp_mask)
@@ -241,23 +243,19 @@ int hashtbl_add(struct hash_tbl *htbl,
         struct hash_cell *cell;
         u32 idx;
 
-        if (val == NULL) {
-                printk(KERN_ERR "add_to_hashtbl: val must not be NULL.\n");
-                goto error0;
-        }
-
+        ASSERT(val != NULL);
         ASSERT_HASHTBL(htbl);
 
         if (hashtbl_lookup_cell(htbl, key, key_size) != NULL) {
                 /* Already key exists. */
-                goto error0;
+                goto key_exists;
         }
 
         /* Allocate cell. */
         cell = kmalloc(sizeof(struct hash_cell), gfp_mask);
-        if (cell == NULL) { goto error0; }
+        if (cell == NULL) { goto nomem0; }
         cell->key = kmalloc(key_size, gfp_mask);
-        if (cell->key == NULL) { goto error1; }
+        if (cell->key == NULL) { goto nomem1; }
 
         /* Fill cell. */
         cell->key_size = key_size;
@@ -271,10 +269,13 @@ int hashtbl_add(struct hash_tbl *htbl,
         /* printk_d("hashtbl_add end\n"); */
         return 0;
 
-error1:
+nomem1:
         kfree(cell);
-error0:
-        return -1;
+nomem0:
+        return -ENOMEM;
+
+key_exists:
+        return -EPERM;
 }
 
 /**
