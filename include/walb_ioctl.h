@@ -15,6 +15,11 @@
 #endif /* __KERNEL__ */
 
 /**
+ * If you assign device minor automatically, specify this.
+ */
+#define WALB_DYNAMIC_MINOR (-1U)
+
+/**
  * Data structure for walb ioctl.
  */
 struct walb_ctl_data {
@@ -29,7 +34,11 @@ struct walb_ctl_data {
         
         /* These are used for other struct for each control command. */
         size_t buf_size; /* buffer size. */
+#ifdef __KERNEL__
+        void __user *buf;
+#else
         void *buf; /* buffer pointer if data_size > 0. */
+#endif
         void *__buf; /* used inside kernel. */
 } __attribute__((packed));
 
@@ -46,6 +55,8 @@ struct walb_ctl {
         u32 val_u32;
         u64 val_u64;
 
+        int error; /* error no. */
+        
         /* For userland --> kernel. */
         struct walb_ctl_data u2k;
 

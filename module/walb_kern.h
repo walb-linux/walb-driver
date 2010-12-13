@@ -14,6 +14,14 @@
 #include "../include/walb_log_device.h"
 #include "walb_util.h"
 
+
+/**
+ * Walb device major.
+ */
+extern int walb_major;
+
+
+
 /*
  * The different "request modes" we can use.
  */
@@ -35,8 +43,8 @@ enum {
  */
 /* #define KERNEL_SECTOR_SIZE	512 */
 
-/*
- * The internal representation of our device.
+/**
+ * The internal representation of walb and walblog device.
  */
 struct walb_dev {
         u64 size;                       /* Device size in bytes */
@@ -48,7 +56,7 @@ struct walb_dev {
 
         atomic_t is_read_only;          /* Write always fails if true */
 
-        struct list_head list; /* member of all_wdevs */
+        struct list_head list; /* member of all_wdevs_ */
         
         /* Max number of snapshots.
            This is const after log device is initialized. */
@@ -321,5 +329,14 @@ struct walb_datapack_request_entry {
 
         struct list_head bioc_list;
 };
+
+/**
+ * Prototypes defined in walb.c
+ */
+struct walb_dev* prepare_wdev(unsigned int minor, dev_t ldevt, dev_t ddevt);
+void destroy_wdev(struct walb_dev *wdev);
+void register_wdev(struct walb_dev *wdev);
+void unregister_wdev(struct walb_dev *wdev);
+
 
 #endif /* _WALB_KERN_H */

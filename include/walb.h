@@ -11,11 +11,13 @@
 #ifdef __KERNEL__
 #include <linux/types.h>
 #include <linux/kdev_t.h>
+#include <linux/genhd.h>
 #define ASSERT(cond) BUG_ON(!(cond))
 #else /* __KERNEL__ */
 #include "userland.h"
 #include <assert.h>
 #include <string.h>
+#define DISK_NAME_LEN 32
 #define ASSERT(cond) assert(cond)
 #endif /* __KERNEL__ */
 
@@ -30,6 +32,15 @@
 #define WALB_DIR_NAME "walb"
 #define WALB_CONTROL_NAME "control"
 #define WALBLOG_NAME_SUFFIX "_log"
+
+/**
+ * Maximum length of the device name.
+ * This must include WALB_DIR_NAME, "/" and '\0' terminator.
+ *
+ * walb device file:    ("%s/%s",  WALB_DIR_NAME, name)
+ * walblog device file: ("%s/L%s", WALB_DIR_NAME, name)
+ */
+#define WALB_DEV_NAME_MAX_LEN (DISK_NAME_LEN - sizeof(WALB_DIR_NAME) - 3)
 
 /**
  * Identification to confirm sector type.

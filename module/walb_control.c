@@ -15,21 +15,9 @@
 #include "walb_kern.h"
 #include "hashtbl.h"
 #include "walb_control.h"
+#include "walb_alldevs.h"
 
 #include "../include/walb_ioctl.h"
-
-/**
- * Hash tables to get wdev by name or uuid.
- *
- * htbl_name's key size is 64.
- *             value is pointer to struct walb_dev.
- * htbl_uuid's key size is 16.
- *             value is pointer to struct walb_dev.
- * htbl_lock_ is for both hash tables.
- */
-static struct hash_tbl *htbl_name_;
-static struct hash_tbl *htbl_uuid_;
-static DECLARE_RWSEM(htbl_lock_);
 
 /**
  * Allocate memory and call @copy_from_user().
@@ -183,6 +171,119 @@ error0:
 }
 
 /**
+ * Start walb device.
+ *
+ * @ctl walb_ctl data.
+ *      command == WALB_IOCTL_DEV_START
+ *      Input:
+ *        u2k
+ *          log_devt, data_devt,
+ *          minor (even value --> v    : wdev minor,
+ *                                v + 1: wlog minor,
+ *                 WALB_DYNAMIC_MINOR means automatic assignment),
+ *          buf_size (<= 64),
+ *          (char *)__buf (name of walb device. terminated by '\0').
+ *      Output:
+ *        error: 0 in success.
+ *        k2u
+ *          walb_devt
+ *          minor
+ *
+ * @return 0 in success, or -EFAULT.
+ */
+static int ioctl_dev_start(struct walb_ctl *ctl)
+{
+        dev_t ldevt, ddevt;
+        unsigned int minor;
+        struct walb_dev *wdev;
+        
+        
+        ASSERT(ctl->command == WALB_IOCTL_DEV_START);
+        
+        ldevt = ctl->u2k.log_devt;
+        ddevt = ctl->u2k.data_devt;
+
+        wdev = prepare_wdev(minor, ldevt, ddevt);
+        if (wdev == NULL) {
+                goto error0;
+        }
+        
+        alldevs_write_lock();
+        
+        if (ctl->u2k.minor == WALB_DYNAMIC_MINOR) {
+                minor = get_free_minor();
+        } else {
+                minor = ctl->u2k.minor;
+                ASSERT(minor % 2 == 0);
+        }
+
+        if (alldevs_add(wdev) != 0) {
+                goto error1;
+        }
+        
+        register_wdev(wdev);
+        alldevs_write_unlock();
+
+        /* Return values to userland. */
+        ctl->k2u.minor = minor;
+        ctl->k2u.walb_devt = wdev->devt;
+        ctl->error = 0;
+        
+        return 0;
+        
+        /* not tested */
+
+/* error2: */
+/*         alldevs_dell(wdev); */
+error1:
+        destroy_wdev(wdev);
+error0:
+        return -EFAULT;
+}
+
+/**
+ *
+ * @ctl walb_ctl data.
+ *
+ * @return 0 in success, or -EFAULT.
+ */
+static int ioctl_dev_stop(struct walb_ctl *ctl)
+{
+        /* now editing */
+        
+        return -EFAULT;
+}
+
+/**
+ * Dispatcher WALB_IOCTL_CONTROL
+ *
+ * @ctl walb_ctl data.
+ *
+ * @return 0 in success,
+ *         -ENOTTY in invalid command,
+ *         -EFAULT in command failed.
+ */
+static int dispatch_ioctl(struct walb_ctl *ctl)
+{
+        int ret = 0;
+        ASSERT(ctl != NULL);
+        
+        switch(ctl->command) {
+        case WALB_IOCTL_DEV_START:
+                ret = ioctl_dev_start(ctl);
+                break;
+        case WALB_IOCTL_DEV_STOP:
+                ret = ioctl_dev_stop(ctl);
+                break;
+        default:
+                printk_e("dispatch_ioctl: command %d is not supported.\n",
+                         ctl->command);
+                ret = -ENOTTY;
+        }
+        return ret;
+}
+
+/**
  * Execute ioctl for /dev/walb/control.
  *
  * @command ioctl command.
@@ -194,6 +295,7 @@ error0:
  */
 static int ctl_ioctl(uint command, struct walb_ctl __user *user)
 {
+        int ret = 0;
         struct walb_ctl *ctl;
 
         if (command != WALB_IOCTL_CONTROL) {
@@ -205,14 +307,14 @@ static int ctl_ioctl(uint command, struct walb_ctl __user *user)
         ctl = walb_get_ctl(user, GFP_KERNEL);
         if (ctl == NULL) { goto error0; }
 
+        ret = dispatch_ioctl(ctl);
         
-        /* now editing */
-        
+        if (walb_put_ctl(user, ctl) != 0) {
+                printk_e("walb_put_ctl failed.\n");
+                goto error0;
+        }
+        return ret;
 
-        
-        if (walb_put_ctl(user, ctl) != 0) { goto error0; }
-        return 0;
-        
 error0:
         return -EFAULT;
 }
@@ -263,21 +365,12 @@ int __init walb_control_init(void)
 {
         int ret;
 
-        htbl_name_ = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
-        if (htbl_name_ == NULL) { goto error0; }
-        htbl_uuid_ = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
-        if (htbl_uuid_ == NULL) { goto error1; }
-
         ret = misc_register(&walb_misc_);
-        if (ret < 0) { goto error2; }
+        if (ret < 0) { goto error0; }
 
         printk_i("walb control device minor %u\n", walb_misc_.minor);
         return 0;
 
-error2:
-        hashtbl_destroy(htbl_uuid_);
-error1:
-        hashtbl_destroy(htbl_name_);
 error0:
         return -1;
 }
@@ -287,23 +380,6 @@ error0:
  */
 void walb_control_exit(void)
 {
-        /* Call this after all walb devices stop. */
-retry:
-        down_read(&htbl_lock_);
-        
-        if (hashtbl_n_items(htbl_uuid_) != 0 ||
-            hashtbl_n_items(htbl_name_) != 0) {
-
-                up_read(&htbl_lock_);
-                
-                schedule();
-                goto retry;
-        }
-
-        up_read(&htbl_lock_);
-        
-        hashtbl_destroy(htbl_uuid_);
-        hashtbl_destroy(htbl_name_);
         
         misc_deregister(&walb_misc_);
 }

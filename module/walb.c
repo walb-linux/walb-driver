@@ -23,6 +23,7 @@
 #include <linux/buffer_head.h>	/* invalidate_bdev */
 #include <linux/bio.h>
 #include <linux/spinlock.h>
+#include <linux/rwsem.h>
 
 #include "walb_kern.h"
 #include "hashtbl.h"
@@ -32,7 +33,10 @@
 #include "../include/walb_log_device.h"
 #include "../include/bitmap.h"
 
-static int walb_major = 0;
+/**
+ * Device major of walb.
+ */
+int walb_major = 0;
 module_param(walb_major, int, 0);
 static int ndevices = 1;
 module_param(ndevices, int, 0);
@@ -56,13 +60,7 @@ module_param(request_mode, int, 0);
 static struct walb_dev *Devices = NULL;
 
 
-/* List of struct walb_dev. */
-static LIST_HEAD(all_wdevs_);
-static DEFINE_SPINLOCK(all_wdevs_lock_);
-
-
-
-/* Prototypes */
+/* Prototypes of local functions. */
 static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask);
 static void walb_free_sector(void *p);
 static int walb_rq_count_bio(struct request *req);
@@ -80,6 +78,10 @@ walb_create_bioclist_work(struct walb_dev *wdev,
                           gfp_t gfp_mask);
 static void walb_destroy_bioclist_work(struct walb_bioclist_work *wk);
 
+
+/*******************************************************************************
+ * Local functions.
+ *******************************************************************************/
 
 /**
  * Open and claim underlying block device.
@@ -2602,37 +2604,37 @@ error0:
  * 3. Sync log device super block.
  * </pre>
  *
- * @dev walb device struct.
+ * @wdev walb device struct.
  * @return 0 in success, or -1.
  */
-static int walb_ldev_init(struct walb_dev *dev)
+static int walb_ldev_init(struct walb_dev *wdev)
 {
         walb_super_sector_t *lsuper0_tmp;
-        ASSERT(dev != NULL);
+        ASSERT(wdev != NULL);
 
         /*
          * 1. Read log device metadata
          */
         
-        dev->lsuper0 = walb_read_super_sector(dev);
-        if (dev->lsuper0 == NULL) {
+        wdev->lsuper0 = walb_read_super_sector(wdev);
+        if (wdev->lsuper0 == NULL) {
                 printk_e("walb_ldev_init: read super sector failed\n");
                 goto error0;
         }
 
-        if (walb_write_super_sector(dev, dev->lsuper0) != 0) {
+        if (walb_write_super_sector(wdev, wdev->lsuper0) != 0) {
                 printk_e("walb_ldev_init: write super sector failed\n");
                 goto error1;
         }
 
-        lsuper0_tmp = walb_read_super_sector(dev);
+        lsuper0_tmp = walb_read_super_sector(wdev);
         if (lsuper0_tmp == NULL) {
                 printk_e("walb_ldev_init: read lsuper0_tmp failed\n");
                 kfree(lsuper0_tmp);
                 goto error1;
         }
 
-        if (memcmp(dev->lsuper0, lsuper0_tmp, dev->physical_bs) != 0) {
+        if (memcmp(wdev->lsuper0, lsuper0_tmp, wdev->physical_bs) != 0) {
                 printk_e("walb_ldev_init: memcmp NG\n");
         } else {
                 printk_e("walb_ldev_init: memcmp OK\n");
@@ -2664,7 +2666,7 @@ static int walb_ldev_init(struct walb_dev *dev)
         return 0;
 
 error1:
-        walb_free_sector(dev->lsuper0);
+        walb_free_sector(wdev->lsuper0);
 error0:
         return -1;
 }
@@ -2756,7 +2758,7 @@ error0:
 /**
  * Setup walblog device.
  */
-static int walblog_setup_device(struct walb_dev *wdev, int which)
+static int walblog_prepare_device(struct walb_dev *wdev, const char* name)
 {
         wdev->log_queue = blk_alloc_queue(GFP_KERNEL);
         if (wdev->log_queue == NULL)
@@ -2773,13 +2775,13 @@ static int walblog_setup_device(struct walb_dev *wdev, int which)
                 goto error1;
         }
         wdev->log_gd->major = walb_major;
-        wdev->log_gd->first_minor = which * WALB_MINORS + 1;
+        wdev->log_gd->first_minor = MINOR(wdev->devt) + 1;
         wdev->log_gd->queue = wdev->log_queue;
         wdev->log_gd->fops = &walblog_ops;
         wdev->log_gd->private_data = wdev;
         set_capacity(wdev->log_gd, wdev->ldev_size);
-        snprintf(wdev->log_gd->disk_name, 32, "walblog%d", which);
-        add_disk(wdev->log_gd);
+        snprintf(wdev->log_gd->disk_name, DISK_NAME_LEN,
+                 "%s/L%s", WALB_DIR_NAME, name);
         
         return 0;
 
@@ -2792,20 +2794,62 @@ error0:
 }
 
 /**
- * Finalize walblog device
- *
+ * Finalize walblog wrapper device.
  */
-static int walblog_finalize_device(struct walb_dev *wdev)
+static void walblog_finalize_device(struct walb_dev *wdev)
 {
         if (wdev->log_gd) {
-                del_gendisk(wdev->log_gd);
                 put_disk(wdev->log_gd);
         }
         if (wdev->log_queue) {
                 kobject_put(&wdev->log_queue->kobj);
         }
-        return 0;
 }
+
+/**
+ * Unregister walblog wrapper device.
+ */
+static void walblog_unregister_device(struct walb_dev *wdev)
+{
+        if (wdev->log_gd) {
+                del_gendisk(wdev->log_gd);
+        }
+}
+
+/**
+ * Finalize walb wrapper device.
+ */
+static void walb_finalize_device(struct walb_dev *wdev)
+{
+        if (wdev->gd) {
+                put_disk(wdev->gd);
+        }
+        if (wdev->queue) {
+                if (request_mode == RM_NOQUEUE)
+                        kobject_put(&wdev->queue->kobj);
+                else
+                        blk_cleanup_queue(wdev->queue);
+        }
+        walb_finalize_super_block(wdev);
+                
+        if (wdev->ddev)
+                walb_unlock_bdev(wdev->ddev);
+        if (wdev->ldev)
+                walb_unlock_bdev(wdev->ldev);
+
+        kfree(wdev->lsuper0);
+}
+
+/**
+ * Unregister walb wrapper device.
+ */
+static void walb_unregister_device(struct walb_dev *wdev)
+{
+        if (wdev->gd) {
+                del_gendisk(wdev->gd);
+        }
+}
+
 
 
 /**
@@ -2813,182 +2857,26 @@ static int walblog_finalize_device(struct walb_dev *wdev)
  *
  * @return 0 in success, or -1.
  */
-static int setup_device(struct walb_dev *dev, int which)
+static int setup_device(unsigned int minor)
 {
         dev_t ldevt, ddevt;
-        u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
+        struct walb_dev *wdev;
 
-	/*
-	 * Initialize walb_dev.
-	 */
-	memset(dev, 0, sizeof (struct walb_dev));
-	spin_lock_init(&dev->lock);
-        spin_lock_init(&dev->latest_lsid_lock);
-        spin_lock_init(&dev->lsuper0_lock);
-        /* spin_lock_init(&dev->logpack_list_lock); */
-        /* INIT_LIST_HEAD(&dev->logpack_list); */
-        spin_lock_init(&dev->datapack_list_lock);
-        INIT_LIST_HEAD(&dev->datapack_list);
-        atomic_set(&dev->is_read_only, 0);
-	
-        /*
-         * Open underlying log device.
-         */
         ldevt = MKDEV(ldev_major, ldev_minor);
-        if (walb_lock_bdev(&dev->ldev, ldevt) != 0) {
-                printk_e("walb_lock_bdev failed (%d:%d for log)\n",
-                         ldev_major, ldev_minor);
-                return -1;
-        }
-        dev->ldev_size = get_capacity(dev->ldev->bd_disk);
-        ldev_lbs = bdev_logical_block_size(dev->ldev);
-        ldev_pbs = bdev_physical_block_size(dev->ldev);
-        printk_i("log disk (%d:%d)\n", ldev_major, ldev_minor);
-        printk_i("log disk size %llu\n", dev->ldev_size);
-        printk_i("log logical sector size %u\n", ldev_lbs);
-        printk_i("log physical sector size %u\n", ldev_pbs);
-        
-        /*
-         * Open underlying data device.
-         */
         ddevt = MKDEV(ddev_major, ddev_minor);
-        if (walb_lock_bdev(&dev->ddev, ddevt) != 0) {
-                printk_e("walb_lock_bdev failed (%d:%d for data)\n",
-                         ddev_major, ddev_minor);
-                goto out_ldev;
+        wdev = prepare_wdev(minor, ldevt, ddevt);
+        if (wdev == NULL) {
+                goto error0;
         }
-        dev->ddev_size = get_capacity(dev->ddev->bd_disk);
-        ddev_lbs = bdev_logical_block_size(dev->ddev);
-        ddev_pbs = bdev_physical_block_size(dev->ddev);
-        printk_i("data disk (%d:%d)\n", ddev_major, ddev_minor);
-        printk_i("data disk size %llu\n", dev->ddev_size);
-        printk_i("data logical sector size %u\n", ddev_lbs);
-        printk_i("data physical sector size %u\n", ddev_pbs);
+        register_wdev(wdev);
+        return 0;
 
-        /* Check compatibility of log device and data devic. */
-        if (ldev_lbs != ddev_lbs || ldev_pbs != ddev_pbs) {
-                printk_e("Sector size of data and log must be same.\n");
-                goto out_ldev;
-        }
-        dev->logical_bs = ldev_lbs;
-        dev->physical_bs = ldev_pbs;
-	dev->size = dev->ddev_size * (u64)dev->logical_bs;
-
-        /* Load log device metadata. */
-        if (walb_ldev_init(dev) != 0) {
-                printk_e("ldev init failed.\n");
-                goto out_ldev;
-        }
-        dev->written_lsid = dev->lsuper0->written_lsid;
-        dev->oldest_lsid = dev->lsuper0->oldest_lsid;
-        
-        /*
-         * Redo
-         * 1. Read logpack from written_lsid.
-         * 2. Write the corresponding data of the logpack to data device.
-         * 3. Update written_lsid and latest_lsid;
-         */
-
-        /* Redo feature is not implemented yet. */
-
-
-        /* latest_lsid is written_lsid after redo. */
-        dev->latest_lsid = dev->written_lsid;
-
-        /* For padding test in the end of ring buffer. */
-        /* 64KB ring buffer */
-        /* dev->lsuper0->ring_buffer_size = 128; */
-        
-	/*
-	 * The I/O queue, depending on whether we are using our own
-	 * make_request function or not.
-	 */
-	switch (request_mode) {
-        case RM_NOQUEUE:
-		dev->queue = blk_alloc_queue(GFP_KERNEL);
-		if (dev->queue == NULL)
-			goto out_ddev;
-		blk_queue_make_request(dev->queue, walb_make_request);
-		break;
-
-        case RM_FULL:
-		dev->queue = blk_init_queue(walb_full_request2, &dev->lock);
-		if (dev->queue == NULL)
-			goto out_ddev;
-                if (elevator_change(dev->queue, "noop"))
-                        goto out_queue;
-		break;
-
-        default:
-		printk_i("Bad request mode %d, using simple\n", request_mode);
-                BUG();
-	}
-	blk_queue_logical_block_size(dev->queue, dev->logical_bs);
-	blk_queue_physical_block_size(dev->queue, dev->physical_bs);
-	dev->queue->queuedata = dev;
-        /*
-         * 1. Bio(s) that can belong to a request should be packed.
-         * 2. Parallel (independent) writes should be packed.
-         *
-         * 'unplug_thresh' is prcatically max requests in a log pack.
-         * 'unplug_delay' should be as small as possible to minimize latency.
-         */
-        dev->queue->unplug_thresh = 16;
-        dev->queue->unplug_delay = msecs_to_jiffies(1);
-        printk_d("1ms = %lu jiffies\n", msecs_to_jiffies(1)); /* debug */
-        dev->queue->unplug_fn = walb_unplug_all;
-	/*
-	 * And the gendisk structure.
-	 */
-	/* dev->gd = alloc_disk(WALB_MINORS); */
-        dev->gd = alloc_disk(1);
-	if (! dev->gd) {
-		printk_n("alloc_disk failure\n");
-		goto out_queue;
-	}
-	dev->gd->major = walb_major;
-	dev->gd->first_minor = which * WALB_MINORS;
-        dev->devt = MKDEV(dev->gd->major, dev->gd->first_minor);
-	dev->gd->fops = &walb_ops;
-	dev->gd->queue = dev->queue;
-	dev->gd->private_data = dev;
-	snprintf (dev->gd->disk_name, 32, "walb%d", which);
-	set_capacity(dev->gd, dev->ddev_size);
-	add_disk(dev->gd);
-
-        if (walblog_setup_device(dev, which) != 0) {
-                goto out_walbdev;
-        }
-        
-	return 0;
-
-out_walbdev:
-        if (dev->gd) {
-                del_gendisk(dev->gd);
-                put_disk(dev->gd);
-        }
-out_queue:
-        if (dev->queue) {
-                if (request_mode == RM_NOQUEUE)
-                        kobject_put(&dev->queue->kobj);
-                else
-                        blk_cleanup_queue(dev->queue);
-        }
-out_ddev:
-        if (dev->ddev) {
-                walb_unlock_bdev(dev->ddev);
-        }
-out_ldev:
-        if (dev->ldev) {
-                walb_unlock_bdev(dev->ldev);
-        }
+error0:
         return -1;
 }
 
 static int __init walb_init(void)
 {
-        int ret = 0;
-	int i;
 	/*
 	 * Get registered.
 	 */
@@ -3010,17 +2898,11 @@ static int __init walb_init(void)
 	/*
 	 * Allocate the device array, and initialize each one.
 	 */
-	Devices = kmalloc(ndevices*sizeof (struct walb_dev), GFP_KERNEL);
-	if (Devices == NULL)
-		goto out_control_exit;
-	for (i = 0; i < ndevices; i++) {
-                ret = setup_device(Devices + i, i);
-        }
-        if (ret) {
-                printk_e("setup_device failed\n");
+        if (setup_device(0) != 0) {
+		printk_e("setup_device failed.\n");
                 goto out_control_exit;
         }
-
+        
 	return 0;
 
 out_control_exit:
@@ -3032,42 +2914,14 @@ out_unregister:
 
 static void walb_exit(void)
 {
-	int i;
+        struct walb_dev *wdev;
 
-	for (i = 0; i < ndevices; i++) {
-		struct walb_dev *wdev = Devices + i;
-
-                walblog_finalize_device(wdev);
+        wdev = Devices;
+        unregister_wdev(wdev);
+        destroy_wdev(wdev);
                 
-		if (wdev->gd) {
-			del_gendisk(wdev->gd);
-			put_disk(wdev->gd);
-		}
-		if (wdev->queue) {
-			if (request_mode == RM_NOQUEUE)
-                                kobject_put(&wdev->queue->kobj);
-			else
-				blk_cleanup_queue(wdev->queue);
-		}
-                walb_finalize_super_block(wdev);
-                
-                if (wdev->ddev)
-                        walb_unlock_bdev(wdev->ddev);
-                if (wdev->ldev)
-                        walb_unlock_bdev(wdev->ldev);
 
-                kfree(wdev->lsuper0);
-
-                printk_i("walb stop (wrap %d:%d log %d:%d data %d:%d)\n",
-                         MAJOR(wdev->devt),
-                         MINOR(wdev->devt),
-                         MAJOR(wdev->ldev->bd_dev),
-                         MINOR(wdev->ldev->bd_dev),
-                         MAJOR(wdev->ddev->bd_dev),
-                         MINOR(wdev->ddev->bd_dev));
-	}
 	unregister_blkdev(walb_major, WALB_NAME);
-	kfree(Devices);
 
         /*
          * Exit control device.
@@ -3076,7 +2930,262 @@ static void walb_exit(void)
         
         printk_i("walb exit.\n");
 }
+
+
+/*******************************************************************************
+ * Global functions.
+ *******************************************************************************/
+
+/**
+ * Prepare walb device.
+ * You must call @register_wdev() after calling this.
+ */
+struct walb_dev* prepare_wdev(unsigned int minor, dev_t ldevt, dev_t ddevt)
+{
+        struct walb_dev *wdev;
+        u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
+        char *name;
+
+	/*
+	 * Initialize walb_dev.
+	 */
+        wdev = kzalloc(sizeof(struct walb_dev), GFP_KERNEL);
+        if (wdev == NULL) {
+                printk_e("kmalloc failed.\n");
+                goto out;
+        }
+	spin_lock_init(&wdev->lock);
+        spin_lock_init(&wdev->latest_lsid_lock);
+        spin_lock_init(&wdev->lsuper0_lock);
+        /* spin_lock_init(&wdev->logpack_list_lock); */
+        /* INIT_LIST_HEAD(&wdev->logpack_list); */
+        spin_lock_init(&wdev->datapack_list_lock);
+        INIT_LIST_HEAD(&wdev->datapack_list);
+        atomic_set(&wdev->is_read_only, 0);
 	
+        /*
+         * Open underlying log device.
+         */
+        if (walb_lock_bdev(&wdev->ldev, ldevt) != 0) {
+                printk_e("walb_lock_bdev failed (%u:%u for log)\n",
+                         MAJOR(ldevt), MINOR(ldevt));
+                goto out_free;
+        }
+        wdev->ldev_size = get_capacity(wdev->ldev->bd_disk);
+        ldev_lbs = bdev_logical_block_size(wdev->ldev);
+        ldev_pbs = bdev_physical_block_size(wdev->ldev);
+        printk_i("log disk (%u:%u)\n"
+                 "log disk size %llu\n"
+                 "log logical sector size %u\n"
+                 "log physical sector size %u\n",
+                 MAJOR(ldevt), MINOR(ldevt),
+                 wdev->ldev_size,
+                 ldev_lbs, ldev_pbs);
+        
+        /*
+         * Open underlying data device.
+         */
+        if (walb_lock_bdev(&wdev->ddev, ddevt) != 0) {
+                printk_e("walb_lock_bdev failed (%u:%u for data)\n",
+                         MAJOR(ddevt), MINOR(ddevt));
+                goto out_ldev;
+        }
+        wdev->ddev_size = get_capacity(wdev->ddev->bd_disk);
+        ddev_lbs = bdev_logical_block_size(wdev->ddev);
+        ddev_pbs = bdev_physical_block_size(wdev->ddev);
+        printk_i("data disk (%d:%d)\n"
+                 "data disk size %llu\n"
+                 "data logical sector size %u\n"
+                 "data physical sector size %u\n",
+                 MAJOR(ddevt), MINOR(ddevt),
+                 wdev->ddev_size,
+                 ddev_lbs, ddev_pbs);
+
+        /* Check compatibility of log device and data device. */
+        if (ldev_lbs != ddev_lbs || ldev_pbs != ddev_pbs) {
+                printk_e("Sector size of data and log must be same.\n");
+                goto out_ddev;
+        }
+        wdev->logical_bs = ldev_lbs;
+        wdev->physical_bs = ldev_pbs;
+	wdev->size = wdev->ddev_size * (u64)wdev->logical_bs;
+
+        /* Load log device metadata. */
+        if (walb_ldev_init(wdev) != 0) {
+                printk_e("ldev init failed.\n");
+                goto out_ddev;
+        }
+        wdev->written_lsid = wdev->lsuper0->written_lsid;
+        wdev->oldest_lsid = wdev->lsuper0->oldest_lsid;
+
+        /* Set default device name if name is not set. */
+        name = wdev->lsuper0->name;
+        if (strnlen(name, DISK_NAME_LEN) == 0) {
+                snprintf(wdev->lsuper0->name, DISK_NAME_LEN,
+                         "%u", minor);
+        }
+        /* Check device name length. */
+        if (strnlen(name, DISK_NAME_LEN) > WALB_DEV_NAME_MAX_LEN) {
+                printk_e("Device name is too long: %s.\n",
+                         name);
+                goto out_ddev;
+        }
+        
+        /*
+         * Redo
+         * 1. Read logpack from written_lsid.
+         * 2. Write the corresponding data of the logpack to data device.
+         * 3. Update written_lsid and latest_lsid;
+         */
+
+        /* Redo feature is not implemented yet. */
+
+
+        /* latest_lsid is written_lsid after redo. */
+        wdev->latest_lsid = wdev->written_lsid;
+        
+        /* For padding test in the end of ring buffer. */
+        /* 64KB ring buffer */
+        /* dev->lsuper0->ring_buffer_size = 128; */
+        
+	/*
+	 * The I/O queue, depending on whether we are using our own
+	 * make_request function or not.
+	 */
+	switch (request_mode) {
+        case RM_NOQUEUE:
+		wdev->queue = blk_alloc_queue(GFP_KERNEL);
+		if (wdev->queue == NULL)
+			goto out_ddev;
+		blk_queue_make_request(wdev->queue, walb_make_request);
+		break;
+
+        case RM_FULL:
+		wdev->queue = blk_init_queue(walb_full_request2, &wdev->lock);
+		if (wdev->queue == NULL)
+			goto out_ddev;
+                if (elevator_change(wdev->queue, "noop"))
+                        goto out_queue;
+		break;
+
+        default:
+		printk_e("Bad request mode %d.\n", request_mode);
+                BUG();
+	}
+	blk_queue_logical_block_size(wdev->queue, wdev->logical_bs);
+	blk_queue_physical_block_size(wdev->queue, wdev->physical_bs);
+	wdev->queue->queuedata = wdev;
+        /*
+         * 1. Bio(s) that can belong to a request should be packed.
+         * 2. Parallel (independent) writes should be packed.
+         *
+         * 'unplug_thresh' is prcatically max requests in a log pack.
+         * 'unplug_delay' should be as small as possible to minimize latency.
+         */
+        wdev->queue->unplug_thresh = 16;
+        wdev->queue->unplug_delay = msecs_to_jiffies(1);
+        printk_d("1ms = %lu jiffies\n", msecs_to_jiffies(1)); /* debug */
+        wdev->queue->unplug_fn = walb_unplug_all;
+	/*
+	 * And the gendisk structure.
+	 */
+	/* dev->gd = alloc_disk(WALB_MINORS); */
+        wdev->gd = alloc_disk(1);
+	if (! wdev->gd) {
+		printk_e("alloc_disk failure.\n");
+		goto out_queue;
+	}
+	wdev->gd->major = walb_major;
+	wdev->gd->first_minor = minor;
+        wdev->devt = MKDEV(wdev->gd->major, wdev->gd->first_minor);
+	wdev->gd->fops = &walb_ops;
+	wdev->gd->queue = wdev->queue;
+	wdev->gd->private_data = wdev;
+	set_capacity(wdev->gd, wdev->ddev_size);
+        
+        snprintf(wdev->gd->disk_name, DISK_NAME_LEN,
+                 "%s/%s", WALB_DIR_NAME, name);
+        
+        if (walblog_prepare_device(wdev, name) != 0) {
+                goto out_walbdev;
+        }
+        
+	return wdev;
+
+out_walbdev:
+        if (wdev->gd) {
+                /* del_gendisk(wdev->gd); */
+                put_disk(wdev->gd);
+        }
+out_queue:
+        if (wdev->queue) {
+                if (request_mode == RM_NOQUEUE)
+                        kobject_put(&wdev->queue->kobj);
+                else
+                        blk_cleanup_queue(wdev->queue);
+        }
+out_ddev:
+        if (wdev->ddev) {
+                walb_unlock_bdev(wdev->ddev);
+        }
+out_ldev:
+        if (wdev->ldev) {
+                walb_unlock_bdev(wdev->ldev);
+        }
+out_free:
+        kfree(wdev);
+out:
+        return NULL;
+}
+
+/**
+ * Destroy wdev structure.
+ * You must call @unregister_wdev() before calling this.
+ */
+void destroy_wdev(struct walb_dev *wdev)
+{
+        walblog_finalize_device(wdev);
+        walb_finalize_device(wdev);
+        
+        printk_i("destroy_wdev (wrap %u:%u log %u:%u data %u:%u)\n",
+                 MAJOR(wdev->devt),
+                 MINOR(wdev->devt),
+                 MAJOR(wdev->ldev->bd_dev),
+                 MINOR(wdev->ldev->bd_dev),
+                 MAJOR(wdev->ddev->bd_dev),
+                 MINOR(wdev->ddev->bd_dev));
+
+        kfree(wdev);
+}
+
+/**
+ * Register wdev.
+ * You must call @prepare_wdev() before calling this.
+ */
+void register_wdev(struct walb_dev *wdev)
+{
+        ASSERT(wdev != NULL);
+        ASSERT(wdev->gd != NULL);
+        ASSERT(wdev->log_gd != NULL);
+        
+        add_disk(wdev->log_gd);
+        add_disk(wdev->gd);
+}
+
+/**
+ * Unregister wdev.
+ * You must call @destroy_wdev() after calling this.
+ */
+void unregister_wdev(struct walb_dev *wdev)
+{
+        walblog_unregister_device(wdev);
+        walb_unregister_device(wdev);
+}
+
+/*******************************************************************************
+ * Module definitions.
+ *******************************************************************************/
+
 module_init(walb_init);
 module_exit(walb_exit);
 MODULE_LICENSE("Dual BSD/GPL");

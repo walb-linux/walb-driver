@@ -99,7 +99,7 @@
  */
 typedef struct walb_super_sector {
 
-        /* (4 * 4) + (2 * 4) + 16 + (8 * 5) = 80 bytes */
+        /* (4 * 4) + (2 * 4) + 16 + 64 + (8 * 5) = 144 bytes */
 
         /*
          * Constant value inside the kernel.
@@ -133,6 +133,10 @@ typedef struct walb_super_sector {
 
         /* UUID of the wal device. */
         u8 uuid[16];
+
+        /* Name of the walb device.
+         * terminated by '\0'. */
+        char name[DISK_NAME_LEN];
 
         /* sector type */
         u16 sector_type;
