@@ -299,6 +299,8 @@ retry:
                 schedule();
                 goto retry;
         }
+
+        up_read(&htbl_lock_);
         
         hashtbl_destroy(htbl_uuid_);
         hashtbl_destroy(htbl_name_);
