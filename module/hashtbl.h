@@ -52,6 +52,7 @@ void* hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size);
 void* hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size);
 void hashtbl_empty(struct hash_tbl *htbl);
 
+int hashtbl_is_empty(const struct hash_tbl *htbl);
 int hashtbl_n_items(const struct hash_tbl *htbl);
 
 int hashtbl_test(void); /* For test. */

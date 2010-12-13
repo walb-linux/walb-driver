@@ -320,6 +320,26 @@ void* hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
         return val;
 }
 
+/**
+ * Check hash table is empty or not.
+ *
+ * @htbl hash table to check.
+ *
+ * @return 1 if the hash table is empty, or 0.
+ */
+int hashtbl_is_empty(const struct hash_tbl *htbl)
+{
+        int i;
+        
+        ASSERT_HASHTBL(htbl);
+        
+        for (i = 0; i < htbl->bucket_size; i ++) {
+                if (! hlist_empty(&htbl->bucket[i])) {
+                        return 0;
+                }
+        }
+        return 1;
+}
 
 /**
  * Get number of cells in the hashtbl.
