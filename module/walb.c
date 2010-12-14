@@ -2857,7 +2857,7 @@ static void walb_unregister_device(struct walb_dev *wdev)
  *
  * @return 0 in success, or -1.
  */
-static int setup_device(unsigned int minor)
+static int setup_device_tmp(unsigned int minor)
 {
         dev_t ldevt, ddevt;
         struct walb_dev *wdev;
@@ -2898,7 +2898,7 @@ static int __init walb_init(void)
 	/*
 	 * Allocate the device array, and initialize each one.
 	 */
-        if (setup_device(0) != 0) {
+        if (setup_device_tmp(0) != 0) {
 		printk_e("setup_device failed.\n");
                 goto out_control_exit;
         }
