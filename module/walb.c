@@ -2811,9 +2811,11 @@ static void walblog_finalize_device(struct walb_dev *wdev)
  */
 static void walblog_unregister_device(struct walb_dev *wdev)
 {
+        printk_d("walblog_unregister_device begin.\n");
         if (wdev->log_gd) {
                 del_gendisk(wdev->log_gd);
         }
+        printk_d("walblog_unregister_device end.\n");
 }
 
 /**
@@ -2845,9 +2847,11 @@ static void walb_finalize_device(struct walb_dev *wdev)
  */
 static void walb_unregister_device(struct walb_dev *wdev)
 {
+        printk_d("walb_unregister_device begin.\n");
         if (wdev->gd) {
                 del_gendisk(wdev->gd);
         }
+        printk_d("walb_unregister_device end.\n");
 }
 
 
@@ -2869,6 +2873,9 @@ static int setup_device_tmp(unsigned int minor)
                 goto error0;
         }
         register_wdev(wdev);
+
+        Devices = wdev;
+        
         return 0;
 
 error0:
@@ -2905,7 +2912,6 @@ static int __init walb_init(void)
 		printk_e("setup_device failed.\n");
                 goto out_control_exit;
         }
-        
 	return 0;
 
 out_control_exit:
@@ -2923,12 +2929,9 @@ static void walb_exit(void)
         unregister_wdev(wdev);
         destroy_wdev(wdev);
                 
-
 	unregister_blkdev(walb_major, WALB_NAME);
 
-        /*
-         * Exit control device.
-         */
+        /* Exit control device. */
         walb_control_exit();
         
         printk_i("walb exit.\n");
@@ -3147,9 +3150,6 @@ out:
  */
 void destroy_wdev(struct walb_dev *wdev)
 {
-        walblog_finalize_device(wdev);
-        walb_finalize_device(wdev);
-        
         printk_i("destroy_wdev (wrap %u:%u log %u:%u data %u:%u)\n",
                  MAJOR(wdev->devt),
                  MINOR(wdev->devt),
@@ -3158,7 +3158,11 @@ void destroy_wdev(struct walb_dev *wdev)
                  MAJOR(wdev->ddev->bd_dev),
                  MINOR(wdev->ddev->bd_dev));
 
+        walblog_finalize_device(wdev);
+        walb_finalize_device(wdev);
+
         kfree(wdev);
+        printk_d("destroy_wdev done.\n");
 }
 
 /**
@@ -3181,6 +3185,7 @@ void register_wdev(struct walb_dev *wdev)
  */
 void unregister_wdev(struct walb_dev *wdev)
 {
+        ASSERT(wdev != NULL);
         walblog_unregister_device(wdev);
         walb_unregister_device(wdev);
 }
