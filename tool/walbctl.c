@@ -54,10 +54,10 @@ void show_help()
                "  format_ldev LDEV DDEV (NSNAP) (NAME) (SIZE)\n"
                "      Format log device.\n"
                "\n"
-               "  (NIY)create_wdev LDEV DDEV NAME\n"
+               "  create_wdev LDEV DDEV (NAME)\n"
                "      Make walb/walblog device.\n"
                "\n"
-               "  (NIY)delete_wdev WDEV\n"
+               "  delete_wdev WDEV\n"
                "      Delete walb/walblog device.\n"
                "\n"
                "  (NIY)create_snapshot WDEV NAME\n"
@@ -324,7 +324,7 @@ bool do_format_ldev(const config_t *cfg)
 {
         ASSERT(cfg->cmd_str);
         ASSERT(strcmp(cfg->cmd_str, "format_ldev") == 0);
-
+        
         /*
          * Check devices.
          */
@@ -403,6 +403,141 @@ error0:
         return false;
 }
 
+/**
+ * Create walb device.
+ */
+bool do_create_wdev(const config_t *cfg)
+{
+        ASSERT(cfg->cmd_str);
+        ASSERT(strcmp(cfg->cmd_str, "create_wdev") == 0);
+
+        /*
+         * Check devices.
+         */
+        if (check_bdev(cfg->ldev_name) < 0) {
+                LOG("create_wdev: check log device failed %s.\n",
+                    cfg->ldev_name);
+        }
+        if (check_bdev(cfg->ddev_name) < 0) {
+                LOG("create_wdev: check data device failed %s.\n",
+                    cfg->ddev_name);
+        }
+
+        dev_t ldevt = get_bdev_devt(cfg->ldev_name);
+        dev_t ddevt = get_bdev_devt(cfg->ddev_name);
+        ASSERT(ldevt != (dev_t)(-1) && ddevt != (dev_t)(-1));
+        
+        /*
+         * Open control device.
+         */
+        LOG("control path: %s\n", WALB_CONTROL_PATH);
+        int fd = open(WALB_CONTROL_PATH, O_RDWR);
+        if (fd < 0) {
+                perror("open failed.");
+                goto error0;
+        }
+        
+        /*
+         * Make ioctl data.
+         */
+        char u2k_buf[DISK_NAME_LEN];
+        char k2u_buf[DISK_NAME_LEN];
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_DEV_START,
+                .u2k = { .wminor = WALB_DYNAMIC_MINOR,
+                         .lmajor = MAJOR(ldevt),
+                         .lminor = MINOR(ldevt),
+                         .dmajor = MAJOR(ddevt),
+                         .dminor = MINOR(ddevt),
+                         .buf_size = DISK_NAME_LEN, .buf = u2k_buf, },
+                .k2u = { .buf_size = DISK_NAME_LEN, .buf = k2u_buf, },
+        };
+        if (cfg->name == NULL) {
+                strncpy(u2k_buf, "", DISK_NAME_LEN);
+        } else {
+                strncpy(u2k_buf, cfg->name, DISK_NAME_LEN);
+        }
+        
+        print_walb_ctl(&ctl); /* debug */
+        
+        int ret = ioctl(fd, WALB_IOCTL_CONTROL, &ctl);
+        if (ret < 0) {
+                LOG("create_wdev: ioctl failed with error %d.\n",
+                    ctl.error);
+                goto error1;
+        }
+        ASSERT(ctl.error == 0);
+        ASSERT(strnlen(ctl.k2u.buf, DISK_NAME_LEN) < DISK_NAME_LEN);
+        printf("create_wdev is done successfully.\n"
+               "name: %s\n"
+               "major: %u\n"
+               "minor: %u\n",
+               (char *)ctl.k2u.buf,
+               ctl.k2u.wmajor, ctl.k2u.wminor);
+        close(fd);
+        print_walb_ctl(&ctl); /* debug */
+        return true;
+        
+error1:
+        close(fd);
+error0:
+        return false;
+}
+
+/**
+ * Delete walb device.
+ */
+bool do_delete_wdev(const config_t *cfg)
+{
+        ASSERT(cfg->cmd_str);
+        ASSERT(strcmp(cfg->cmd_str, "delete_wdev") == 0);
+
+        /*
+         * Check devices.
+         */
+        if (check_bdev(cfg->wdev_name) < 0) {
+                LOG("delete_wdev: check walb device failed %s.\n",
+                    cfg->wdev_name);
+        }
+        dev_t wdevt = get_bdev_devt(cfg->wdev_name);
+        ASSERT(wdevt != (dev_t)(-1));
+        
+        /*
+         * Open control device.
+         */
+        int fd = open(WALB_CONTROL_PATH, O_RDWR);
+        if (fd < 0) {
+                perror("open failed.");
+                goto error0;
+        }
+        
+        /*
+         * Make ioctl data.
+         */
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_DEV_STOP,
+                .u2k = { .wmajor = MAJOR(wdevt),
+                         .wminor = MINOR(wdevt),
+                         .buf_size = 0, },
+                .k2u = { .buf_size = 0, },
+        };
+        
+        int ret = ioctl(fd, WALB_IOCTL_CONTROL, &ctl);
+        if (ret < 0) {
+                LOG("delete_wdev: ioctl failed with error %d.\n",
+                    ctl.error);
+                goto error1;
+        }
+        ASSERT(ctl.error == 0);
+        printf("delete_wdev is done successfully.\n");
+        close(fd);
+        return true;
+        
+error1:
+        close(fd);
+error0:
+        return false;
+}
 
 /**
  * Cat logpack in specified range.
@@ -985,7 +1120,8 @@ bool dispatch(const config_t *cfg)
 
         struct map_str_to_fn map[] = {
                 { "format_ldev", do_format_ldev },
-                /* { "create_wdev", do_create_wdev }, */
+                { "create_wdev", do_create_wdev },
+                { "delete_wdev", do_delete_wdev },
                 /* { "create_snapshot", do_create_snapshot }, */
                 /* { "delete_snapshot", do_delete_snapshot }, */
                 /* { "num_snapshot", do_num_snapshot }, */

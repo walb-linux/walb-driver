@@ -37,14 +37,22 @@ void print_binary_hex(const u8* data, size_t size)
         }
 }
 
-
+/**
+ * Check block device.
+ *
+ * @return 0 in success, or -1.
+ */
 int check_bdev(const char* path)
 {
         struct stat sb;
         dev_t devt;
         size_t sector_size, dev_size, size;
         
-        ASSERT(path != NULL);
+        if (path == NULL) {
+                LOG("path is null.\n");
+                return -1;
+        }
+        
         if (stat(path, &sb) == -1) {
                 LOG("stat failed.\n");
                 perror("");

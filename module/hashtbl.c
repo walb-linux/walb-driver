@@ -234,6 +234,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
  * @gfp_mask GFP_*
  * 
  * @return 0 in success,
+ *         -EINVAL when parameters are invalid.
  *         -EPERM when key already exists,
  *         -ENOMEM in memory allocation failure.
  */
@@ -243,11 +244,15 @@ int hashtbl_add(struct hash_tbl *htbl,
         struct hash_cell *cell;
         u32 idx;
 
-        ASSERT(val != NULL);
         ASSERT_HASHTBL(htbl);
 
+        /* Validation */
+        if (key == NULL || key_size <= 0 || val == NULL) {
+                goto parameters_invalid;
+        }
+
+        /* Duplication check */
         if (hashtbl_lookup_cell(htbl, key, key_size) != NULL) {
-                /* Already key exists. */
                 goto key_exists;
         }
 
@@ -273,9 +278,10 @@ nomem1:
         kfree(cell);
 nomem0:
         return -ENOMEM;
-
 key_exists:
         return -EPERM;
+parameters_invalid:
+        return -EINVAL;
 }
 
 /**

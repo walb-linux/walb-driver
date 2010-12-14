@@ -19,9 +19,14 @@ typedef int32_t  s32;
 typedef int64_t  s64;
 
 /* dev_t,
-   major(), minor(), makedev() */
+   major(), minor(), makedev(),
+
+   Do not share dev_t variables by kernel and userland.
+   sizeof(dev_t) is different.
+   Use pairs of unsigned int as major and minor,
+   and macros MAJOR, MINOR, MKDEV to share code.
+*/
 #include <sys/types.h>
-#define dev_t u32 /* sizeof(dev_t) on userland is 8 in 64bit system. */
 #define MAJOR(dev) major(dev)
 #define MINOR(dev) minor(dev)
 #define MKDEV(dev) makedev(dev)

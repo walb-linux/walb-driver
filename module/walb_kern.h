@@ -333,7 +333,8 @@ struct walb_datapack_request_entry {
 /**
  * Prototypes defined in walb.c
  */
-struct walb_dev* prepare_wdev(unsigned int minor, dev_t ldevt, dev_t ddevt);
+struct walb_dev* prepare_wdev(unsigned int minor,
+                              dev_t ldevt, dev_t ddevt, const char* name);
 void destroy_wdev(struct walb_dev *wdev);
 void register_wdev(struct walb_dev *wdev);
 void unregister_wdev(struct walb_dev *wdev);

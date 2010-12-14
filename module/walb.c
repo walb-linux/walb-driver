@@ -28,6 +28,7 @@
 #include "walb_kern.h"
 #include "hashtbl.h"
 #include "walb_control.h"
+#include "walb_alldevs.h"
 
 #include "../include/walb_ioctl.h"
 #include "../include/walb_log_device.h"
@@ -2868,7 +2869,7 @@ static int setup_device_tmp(unsigned int minor)
 
         ldevt = MKDEV(ldev_major, ldev_minor);
         ddevt = MKDEV(ddev_major, ddev_minor);
-        wdev = prepare_wdev(minor, ldevt, ddevt);
+        wdev = prepare_wdev(minor, ldevt, ddevt, NULL);
         if (wdev == NULL) {
                 goto error0;
         }
@@ -2898,24 +2899,38 @@ static int __init walb_init(void)
         printk_i("walb_start with major id %d.\n", walb_major);
 
         /*
+         * Alldevs.
+         */
+        if (alldevs_init() != 0) {
+                printk_e("alldevs_init failed.\n");
+                goto out_unregister;
+        }
+        
+        /*
          * Init control device.
          */
         if (walb_control_init() != 0) {
                 printk_e("walb_control_init failed.\n");
-                goto out_unregister;
+                goto out_alldevs_exit;
         }
         
 	/*
 	 * Allocate the device array, and initialize each one.
 	 */
+#if 0
         if (setup_device_tmp(0) != 0) {
 		printk_e("setup_device failed.\n");
                 goto out_control_exit;
         }
+#endif
+        
 	return 0;
-
+#if 0
 out_control_exit:
         walb_control_exit();
+#endif
+out_alldevs_exit:
+        alldevs_exit();
 out_unregister:
 	unregister_blkdev(walb_major, WALB_NAME);
 	return -ENOMEM;
@@ -2925,14 +2940,27 @@ static void walb_exit(void)
 {
         struct walb_dev *wdev;
 
+#if 0
         wdev = Devices;
         unregister_wdev(wdev);
         destroy_wdev(wdev);
+#endif
+        
+        alldevs_write_lock();
+        wdev = alldevs_pop();
+        while (wdev != NULL) {
+
+                unregister_wdev(wdev);
+                destroy_wdev(wdev);
                 
+                wdev = alldevs_pop();
+        }
+        alldevs_write_unlock();
+        
 	unregister_blkdev(walb_major, WALB_NAME);
 
-        /* Exit control device. */
         walb_control_exit();
+        alldevs_exit();
         
         printk_i("walb exit.\n");
 }
@@ -2945,13 +2973,27 @@ static void walb_exit(void)
 /**
  * Prepare walb device.
  * You must call @register_wdev() after calling this.
+ *
+ * @minor minor id of the device (must not be WALB_DYNAMIC_MINOR).
+ *        walblog device minor will be (minor + 1).
+ * @ldevt device id of log device.
+ * @ddevt device id of data device.
+ * @name name of the device, or NULL to use default.
+ *
+ * @return allocated and prepared walb_dev data, or NULL.
  */
-struct walb_dev* prepare_wdev(unsigned int minor, dev_t ldevt, dev_t ddevt)
+struct walb_dev* prepare_wdev(unsigned int minor, dev_t ldevt, dev_t ddevt, const char* name)
 {
         struct walb_dev *wdev;
         u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
-        char *name;
+        char *dev_name;
 
+        /* Minor id check. */
+        if (minor == WALB_DYNAMIC_MINOR) {
+                printk_e("Do not specify WALB_DYNAMIC_MINOR.\n");
+                goto out;
+        }
+        
 	/*
 	 * Initialize walb_dev.
 	 */
@@ -3025,15 +3067,24 @@ struct walb_dev* prepare_wdev(unsigned int minor, dev_t ldevt, dev_t ddevt)
         wdev->oldest_lsid = wdev->lsuper0->oldest_lsid;
 
         /* Set default device name if name is not set. */
-        name = wdev->lsuper0->name;
-        if (strnlen(name, DISK_NAME_LEN) == 0) {
-                snprintf(wdev->lsuper0->name, DISK_NAME_LEN,
-                         "%u", minor);
+        if (name == NULL || strnlen(name, DISK_NAME_LEN) == 0) {
+                if (strnlen(wdev->lsuper0->name, DISK_NAME_LEN) == 0) {
+                        snprintf(wdev->lsuper0->name, DISK_NAME_LEN,
+                                 "%u", minor);
+                }
+                dev_name = wdev->lsuper0->name;
+                printk_d("minor %u wdev->lsuper0->name: %s dev_name %s\n",
+                         minor, wdev->lsuper0->name, dev_name);
+        } else {
+                dev_name = (char *)name;
+                strncpy(wdev->lsuper0->name, dev_name, DISK_NAME_LEN);
         }
+        printk_d("dev_name: %s\n", dev_name);
+        
         /* Check device name length. */
-        if (strnlen(name, DISK_NAME_LEN) > WALB_DEV_NAME_MAX_LEN) {
+        if (strnlen(dev_name, DISK_NAME_LEN) > WALB_DEV_NAME_MAX_LEN) {
                 printk_e("Device name is too long: %s.\n",
-                         name);
+                         dev_name);
                 goto out_ddev;
         }
         
@@ -3110,9 +3161,11 @@ struct walb_dev* prepare_wdev(unsigned int minor, dev_t ldevt, dev_t ddevt)
 	set_capacity(wdev->gd, wdev->ddev_size);
         
         snprintf(wdev->gd->disk_name, DISK_NAME_LEN,
-                 "%s/%s", WALB_DIR_NAME, name);
+                 "%s/%s", WALB_DIR_NAME, dev_name);
+        printk_d("device path: %s, device name: %s\n",
+                 wdev->gd->disk_name, dev_name);
         
-        if (walblog_prepare_device(wdev, name) != 0) {
+        if (walblog_prepare_device(wdev, dev_name) != 0) {
                 goto out_walbdev;
         }
         

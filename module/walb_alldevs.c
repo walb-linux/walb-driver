@@ -39,8 +39,22 @@ static struct hash_tbl *htbl_uuid_;
 /**
  * For debug.
  */
-static atomic_t counter_ = ATOMIC_INIT(0);
+static atomic_t is_available_ = ATOMIC_INIT(0);
 
+#define START()                                                        \
+        do {                                                           \
+                if (atomic_inc_return(&is_available_) != 1) { BUG(); } \
+        } while (0)
+
+#define STOP()                                                         \
+        do {                                                           \
+                if (atomic_dec_return(&is_available_) != 0) { BUG(); } \
+        } while (0)
+
+#define CHECK()                                                   \
+        do {                                                      \
+                if (atomic_read(&is_available_) != 1) { BUG(); }  \
+        } while (0)                             
 
 /*******************************************************************************
  * Static functions.
@@ -71,8 +85,6 @@ static size_t get_wdev_name_len(const struct walb_dev *wdev)
  */
 int alldevs_init(void)
 {
-        if (atomic_inc_return(&counter_) != 1) { BUG(); }
-        
         INIT_LIST_HEAD(&all_wdevs_);
 
         htbl_name_ = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
@@ -83,6 +95,8 @@ int alldevs_init(void)
 
         htbl_minor_ = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
         if (htbl_minor_ == NULL) { goto error2; }
+        
+        START();
         
         return 0;
 
@@ -99,7 +113,7 @@ error0:
  */
 void alldevs_exit(void)
 {
-        if (atomic_dec_return(&counter_) != 0) { BUG(); }
+        STOP();
         
         /* Call this after all walb devices has stopped. */
 
@@ -146,6 +160,7 @@ struct walb_dev* search_wdev_with_minor(unsigned int minor)
  */
 struct walb_dev* search_wdev_with_minor(unsigned int minor)
 {
+        CHECK();
         return hashtbl_lookup(htbl_minor_,
                               (const u8 *)&minor, sizeof(unsigned int));
 }
@@ -159,7 +174,8 @@ struct walb_dev* search_wdev_with_minor(unsigned int minor)
 struct walb_dev* search_wdev_with_name(const char* name)
 {
         size_t len;
-        
+
+        CHECK();
         len = strnlen(name, WALB_DEV_NAME_MAX_LEN - 1);
         return hashtbl_lookup(htbl_name_, (const u8 *)name, len);
 }
@@ -172,6 +188,7 @@ struct walb_dev* search_wdev_with_name(const char* name)
  */
 struct walb_dev* search_wdev_with_uuid(const u8* uuid)
 {
+        CHECK();
         return hashtbl_lookup(htbl_uuid_, uuid, 16);
 }
 
@@ -194,6 +211,7 @@ int alldevs_add(struct walb_dev* wdev)
         char buf[16 * 2 + 1];
         unsigned int minor;
 
+        CHECK();
         minor = MINOR(wdev->devt);
         ret = hashtbl_add(htbl_minor_,
                           (const u8 *)&minor, sizeof(unsigned int),
@@ -238,7 +256,7 @@ int alldevs_add(struct walb_dev* wdev)
 error2:
         hashtbl_del(htbl_name_, wdev->lsuper0->name, len);
 error1:
-        hashtbl_del(htbl_minor_, (const u8 *)&wdev->devt, sizeof(unsigned int));
+        hashtbl_del(htbl_minor_, (const u8 *)&minor, sizeof(unsigned int));
 error0:
         return ret;
 }
@@ -254,14 +272,44 @@ void alldevs_del(struct walb_dev* wdev)
 {
         size_t len;
         struct walb_dev *tmp0, *tmp1, *tmp2;
+        unsigned int wminor;
+
+        CHECK();
 
         len = get_wdev_name_len(wdev);
+        wminor = MINOR(wdev->devt);
+        
         tmp0 = hashtbl_del(htbl_uuid_, wdev->lsuper0->uuid, 16);
         tmp1 = hashtbl_del(htbl_name_, wdev->lsuper0->name, len);
-        tmp2 = hashtbl_del(htbl_minor_, (const u8 *)&wdev->devt, sizeof(unsigned int));
+        tmp2 = hashtbl_del(htbl_minor_, (const u8 *)&wminor, sizeof(unsigned int));
 
-        ASSERT(wdev == tmp0 && wdev == tmp1 && wdev == tmp2);
+        ASSERT(wdev == tmp0);
+        ASSERT(wdev == tmp1);
+        ASSERT(wdev == tmp2);
         list_del(&wdev->list);
+}
+
+/**
+ * Return any of walb devices in the list and
+ * delete it from alldevs list and hash tables.
+ *
+ * @return
+ *
+ * @LOCK write lock required.
+ */
+struct walb_dev* alldevs_pop(void)
+{
+        struct walb_dev *wdev;
+        
+        CHECK();
+        if (list_empty(&all_wdevs_)) {
+                return NULL;
+        }
+
+        wdev = list_first_entry(&all_wdevs_, struct walb_dev, list);
+        alldevs_del(wdev);
+        
+        return wdev;
 }
 
 /**
@@ -274,6 +322,7 @@ unsigned int get_free_minor()
 {
         unsigned int minor = 0;
 
+        CHECK();
         while (hashtbl_lookup(htbl_minor_,
                               (const u8 *)&minor, sizeof(unsigned int))) {
                 minor += 2;
@@ -286,6 +335,7 @@ unsigned int get_free_minor()
  */
 void alldevs_read_lock(void)
 {
+        CHECK();
         down_read(&all_wdevs_lock_);
 }
 
@@ -294,6 +344,7 @@ void alldevs_read_lock(void)
  */
 void alldevs_read_unlock(void)
 {
+        CHECK();
         up_read(&all_wdevs_lock_);
 }
 
@@ -302,6 +353,7 @@ void alldevs_read_unlock(void)
  */
 void alldevs_write_lock(void)
 {
+        CHECK();
         down_write(&all_wdevs_lock_);
 }
 
@@ -310,5 +362,6 @@ void alldevs_write_lock(void)
  */
 void alldevs_write_unlock(void)
 {
+        CHECK();
         up_write(&all_wdevs_lock_);
 }

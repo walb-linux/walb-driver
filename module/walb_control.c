@@ -177,47 +177,65 @@ error0:
  *      command == WALB_IOCTL_DEV_START
  *      Input:
  *        u2k
- *          log_devt, data_devt,
- *          minor (even value --> v    : wdev minor,
- *                                v + 1: wlog minor,
+ *          wminor (even value --> v    : wdev minor,
+ *                                 v + 1: wlog minor,
  *                 WALB_DYNAMIC_MINOR means automatic assignment),
- *          buf_size (<= 64),
+ *          lmajor, lminor,
+ *          dmajor, dminor,
+ *          buf_size (<= DISK_NAME_LEN),
  *          (char *)__buf (name of walb device. terminated by '\0').
  *      Output:
  *        error: 0 in success.
  *        k2u
- *          walb_devt
- *          minor
+ *          wmajor, wminor
+ *          buf_size (<= DISK_NAME_LEN)
+ *          (char *)__buf (name of walb device. terminated by '\0')
  *
  * @return 0 in success, or -EFAULT.
  */
 static int ioctl_dev_start(struct walb_ctl *ctl)
 {
         dev_t ldevt, ddevt;
-        unsigned int minor;
+        unsigned int wminor;
         struct walb_dev *wdev;
-        
+        char *name;
         
         ASSERT(ctl->command == WALB_IOCTL_DEV_START);
-        
-        ldevt = ctl->u2k.log_devt;
-        ddevt = ctl->u2k.data_devt;
 
-        wdev = prepare_wdev(minor, ldevt, ddevt);
+        print_walb_ctl(ctl); /* debug */
+        
+        ldevt = MKDEV(ctl->u2k.lmajor, ctl->u2k.lminor);
+        ddevt = MKDEV(ctl->u2k.dmajor, ctl->u2k.dminor);
+        printk_d("ioctl_dev_start: (ldevt %u:%u) (ddevt %u:%u)\n",
+                 MAJOR(ldevt), MINOR(ldevt),
+                 MAJOR(ddevt), MINOR(ddevt));
+        if (ctl->u2k.buf_size > 0) {
+                name = (char *)ctl->u2k.__buf;
+                printk_d("name len: %zu\n", strnlen(name, DISK_NAME_LEN));
+        } else {
+                name = NULL;
+        }
+
+        alldevs_write_lock();
+        
+        if (ctl->u2k.wminor == WALB_DYNAMIC_MINOR) {
+                wminor = get_free_minor();
+        } else {
+                wminor = ctl->u2k.wminor;
+                if (wminor % 2 != 0) { wminor --; }
+        }
+        printk_d("ioctl_dev_start: wminor: %u\n", wminor);
+        
+        wdev = prepare_wdev(wminor, ldevt, ddevt, name);
         if (wdev == NULL) {
+                alldevs_write_unlock();
+                ctl->error = -1;
                 goto error0;
         }
         
-        alldevs_write_lock();
-        
-        if (ctl->u2k.minor == WALB_DYNAMIC_MINOR) {
-                minor = get_free_minor();
-        } else {
-                minor = ctl->u2k.minor;
-                ASSERT(minor % 2 == 0);
-        }
-
         if (alldevs_add(wdev) != 0) {
+                alldevs_write_unlock();
+                ctl->error = -2;
                 goto error1;
         }
         
@@ -225,10 +243,12 @@ static int ioctl_dev_start(struct walb_ctl *ctl)
         alldevs_write_unlock();
 
         /* Return values to userland. */
-        ctl->k2u.minor = minor;
-        ctl->k2u.walb_devt = wdev->devt;
+        ctl->k2u.wmajor = walb_major;
+        ctl->k2u.wminor = wminor;
+        strncpy(ctl->k2u.__buf, wdev->lsuper0->name, DISK_NAME_LEN);
         ctl->error = 0;
-        
+
+        print_walb_ctl(ctl); /* debug */
         return 0;
         
         /* not tested */
@@ -242,15 +262,62 @@ error0:
 }
 
 /**
+ * Stop walb device.
  *
  * @ctl walb_ctl data.
+ *      command == WALB_IOCTL_DEV_STOP
+ *      Input:
+ *        u2k
+ *          wmajor, wminor,
+ *      Output:
+ *        error: 0 in success.
  *
  * @return 0 in success, or -EFAULT.
  */
 static int ioctl_dev_stop(struct walb_ctl *ctl)
 {
-        /* now editing */
+        dev_t wdevt;
+        unsigned int wmajor, wminor;
+        struct walb_dev *wdev;
         
+        ASSERT(ctl->command == WALB_IOCTL_DEV_STOP);
+
+        /* Input */
+        wmajor = ctl->u2k.wmajor;
+        wminor = ctl->u2k.wminor;
+        if (wmajor != walb_major) {
+                printk_e("Device major id is invalid.\n");
+                goto error0;
+        }
+        wdevt = MKDEV(wmajor, wminor);
+
+        alldevs_read_lock();
+        wdev = search_wdev_with_minor(wminor);
+        alldevs_read_unlock();
+
+        if (wdev == NULL) {
+                printk_e("Walb dev with minor %u not found.\n",
+                         wminor);
+                ctl->error = -1;
+                goto error0;
+        }
+
+        unregister_wdev(wdev);
+        
+        alldevs_write_lock();
+        alldevs_del(wdev);
+        alldevs_write_unlock();
+        
+        destroy_wdev(wdev);
+
+        /* Set result */
+        ctl->error = 0;
+
+        return 0;
+        
+        /* not tested */
+        
+error0:        
         return -EFAULT;
 }
 

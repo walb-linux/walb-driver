@@ -11,6 +11,7 @@
 #ifdef __KERNEL__
 #include <linux/types.h>
 #include <linux/kdev_t.h>
+#include "inttypes_kern.h"
 #define ASSERT(cond) BUG_ON(!(cond))
 #else /* __KERNEL__ */
 #include "userland.h"
@@ -41,6 +42,7 @@
 #define WALB_DIR_NAME "walb"
 #define WALB_CONTROL_NAME "control"
 #define WALBLOG_NAME_SUFFIX "_log"
+#define WALB_CONTROL_PATH "/dev/" WALB_DIR_NAME "/" WALB_CONTROL_NAME
 
 /**
  * Maximum length of the device name.
