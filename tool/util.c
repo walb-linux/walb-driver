@@ -379,10 +379,12 @@ void print_super_sector(const walb_super_sector_t* super_sect)
                super_sect->snapshot_metadata_size);
         print_uuid(super_sect->uuid);
         printf("\n"
+               "name: \"%s\"\n"
                "ring_buffer_size: %lu\n"
                "oldest_lsid: %lu\n"
                "written_lsid: %lu\n"
                "device_size: %lu\n",
+               super_sect->name,
                super_sect->ring_buffer_size,
                super_sect->oldest_lsid,
                super_sect->written_lsid,
@@ -551,6 +553,24 @@ error1:
         free(buf);
 error0:
         return false;
+}
+
+/**
+ * Set super sector name.
+ *
+ * @super_sect super sector.
+ * @name name or NULL.
+ *
+ * @return pointer to result name.
+ */
+char* set_super_sector_name(walb_super_sector_t* super_sect, const char *name)
+{
+        if (name == NULL) {
+                super_sect->name[0] = '\0';
+        } else {
+                strncpy(super_sect->name, name, DISK_NAME_LEN);
+        }
+        return super_sect->name;
 }
 
 /**

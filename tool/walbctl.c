@@ -41,6 +41,8 @@ typedef struct config
 
         u64 lsid0; /* from lsid */
         u64 lsid1; /* to lsid */
+
+        char *name; /* name of stuff */
         
 } config_t;
 
@@ -49,7 +51,7 @@ void show_help()
         printf("Usage: walbctl COMMAND OPTIONS\n"
                "\n"
                "COMMAND:\n"
-               "  format_ldev LDEV DDEV (NSNAP) (SIZE)\n"
+               "  format_ldev LDEV DDEV (NSNAP) (NAME) (SIZE)\n"
                "      Format log device.\n"
                "\n"
                "  (NIY)create_wdev LDEV DDEV NAME\n"
@@ -117,6 +119,8 @@ void init_config(config_t* cfg)
 
         cfg->lsid0 = (u64)(-1);
         cfg->lsid1 = (u64)(-1);
+
+        cfg->name = NULL;
 }
 
 
@@ -128,7 +132,8 @@ enum {
         OPT_WLDEV,
         OPT_LSID,
         OPT_LSID0,
-        OPT_LSID1
+        OPT_LSID1,
+        OPT_NAME,
 };
 
 
@@ -147,6 +152,7 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
                         {"lsid", 1, 0, OPT_LSID}, /* lsid */
                         {"lsid0", 1, 0, OPT_LSID0},
                         {"lsid1", 1, 0, OPT_LSID1},
+                        {"name", 1, 0, OPT_NAME},
                         {0, 0, 0, 0}
                 };
 
@@ -181,6 +187,9 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
                 case OPT_LSID1:
                         cfg->lsid1 = atoll(optarg);
                         break;
+                case OPT_NAME:
+                        cfg->name = strdup(optarg);
+                        break;
                 default:
                         LOG("unknown option.\n");
                 }
@@ -212,11 +221,13 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
  * @ddev_lb device size [logical block].
  * @ldev_lb log device size [logical block]
  * @n_snapshots number of snapshots to keep.
+ * @name name of the walb device, or NULL.
  *
  * @return true in success, or false.
  */
 bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
-                        u64 ddev_lb, u64 ldev_lb, int n_snapshots)
+                        u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+                        const char *name)
 {
         ASSERT(fd >= 0);
         ASSERT(logical_bs > 0);
@@ -252,7 +263,11 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
         super_sect.oldest_lsid = 0;
         super_sect.written_lsid = 0;
         super_sect.device_size = ddev_lb;
-
+        char *rname = set_super_sector_name(&super_sect, name);
+        if (name != NULL && strlen(name) != strlen(rname)) {
+                printf("name %s is pruned to %s.\n", name, rname);
+        }
+        
         /* Write super sector */
         if (! write_super_sector(fd, &super_sect)) {
                 LOG("write super sector failed.\n");
@@ -373,7 +388,7 @@ bool do_format_ldev(const config_t *cfg)
         if (! init_walb_metadata(fd, logical_bs, physical_bs,
                                  ddev_size / logical_bs,
                                  ldev_size / logical_bs,
-                                 cfg->n_snapshots)) {
+                                 cfg->n_snapshots, cfg->name)) {
 
                 LOG("initialize walb log device failed.\n");
                 goto error1;
