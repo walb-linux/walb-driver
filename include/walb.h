@@ -11,15 +11,24 @@
 #ifdef __KERNEL__
 #include <linux/types.h>
 #include <linux/kdev_t.h>
-#include <linux/genhd.h>
 #define ASSERT(cond) BUG_ON(!(cond))
 #else /* __KERNEL__ */
 #include "userland.h"
 #include <assert.h>
 #include <string.h>
-#define DISK_NAME_LEN 32
 #define ASSERT(cond) assert(cond)
 #endif /* __KERNEL__ */
+
+/**
+ * Disk name length.
+ */
+#define DISK_NAME_LEN_USER 32
+#ifdef __KERNEL__
+#include <linux/genhd.h>
+#else
+#define DISK_NAME_LEN DISK_NAME_LEN_USER
+#endif
+#define ASSERT_DISK_NAME_LEN() ASSERT(DISK_NAME_LEN == DISK_NAME_LEN_USER)
 
 /**
  * Device name prefix/suffix.

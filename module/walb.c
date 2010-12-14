@@ -2877,6 +2877,9 @@ error0:
 
 static int __init walb_init(void)
 {
+        /* DISK_NAME_LEN assersion */
+        ASSERT_DISK_NAME_LEN();
+        
 	/*
 	 * Get registered.
 	 */
