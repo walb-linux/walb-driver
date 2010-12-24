@@ -87,6 +87,9 @@ void show_help()
                "  redo_wlog DDEV (LRANGE) < WLOG\n"
                "      Redo wlog to data device.\n"
                "\n"
+               "  redo LDEV DDEV\n"
+               "      Redo logs and get consistent data device.\n"
+               "\n"
                "  set_oldest_lsid WDEV LSID\n"
                "      Delete old logs in the device.\n"
                "\n"
@@ -575,6 +578,10 @@ bool do_cat_wldev(const config_t *cfg)
                 LOG("read super sector0 failed.\n");
                 goto error1;
         }
+        if (! is_valid_super_sector(super_sectp, physical_bs)) {
+                LOG("read super sector is not valid.\n");
+                goto error1;
+        }
         
         walb_logpack_header_t *logpack =
                 (walb_logpack_header_t *)alloc_sector(physical_bs);
@@ -805,6 +812,134 @@ error2:
         free(wh);
 error1:
         close(fd);
+error0:
+        return false;
+}
+
+/**
+ * Redo
+ *
+ * Redo logs which are still not written to data device
+ * and get consistent data device.
+ * Please run this command before creating walb device if need.
+ *
+ * --ldev (required)
+ * --ddev (required)
+ */
+bool do_redo(const config_t *cfg)
+{
+        ASSERT(cfg->cmd_str);
+        ASSERT(strcmp(cfg->cmd_str, "redo") == 0);
+        
+        /*
+         * Check devices.
+         */
+        if (check_bdev(cfg->ldev_name) < 0 || check_bdev(cfg->ddev_name) < 0) {
+                LOG("%s or %s is not block device.\n", cfg->ldev_name, cfg->ddev_name);
+                goto error0;
+        }
+
+        LOG("hogehoge1\n");
+
+        if (! is_same_block_size(cfg->ldev_name, cfg->ddev_name)) {
+                LOG("block size is not the same.\n");
+                goto error0;
+        }
+
+        LOG("hogehoge2\n");
+        
+        /* Block size. */
+        int lbs = get_bdev_logical_block_size(cfg->ldev_name);
+        int pbs = get_bdev_physical_block_size(cfg->ldev_name);
+
+        /* Open devices. */
+        int lfd = open(cfg->ldev_name, O_RDWR);
+        if (lfd < 0) { perror("open failed."); goto error0; }
+        int dfd = open(cfg->ddev_name, O_RDWR);
+        if (dfd < 0) { perror("open failed."); goto error1; }
+
+        LOG("hogehoge3\n");
+
+        /* Read super sector. */
+        walb_super_sector_t *super = (walb_super_sector_t *)alloc_sector(pbs);
+        if (super == NULL) { goto error2; }
+        u64 off0 = get_super_sector0_offset(pbs);
+        if (! read_sector(lfd, (u8 *)super, pbs, off0)) {
+                LOG("Read super sector failed.\n");
+                goto error3;
+        }
+        if (! is_valid_super_sector(super, pbs)) { goto error3; }
+
+        LOG("hogehoge4\n");
+        
+        size_t bufsize = 1024 * 1024; /* 1MB */
+        ASSERT(bufsize % pbs == 0);
+        u8 *buf = alloc_sectors(pbs, bufsize / pbs);
+        if (buf == NULL) { goto error3; }
+
+        walb_logpack_header_t *logpack =
+                (walb_logpack_header_t *)alloc_sector(pbs);
+        if (logpack == NULL) { goto error4; }
+        
+        u64 lsid = super->written_lsid;
+        u64 begin_lsid = lsid;
+        /* Read logpack header */
+        while (read_logpack_header_from_wldev(lfd, super, lsid, logpack)) {
+                
+                LOG("logpack %"PRIu64"\n", logpack->logpack_lsid);
+                
+                /* Realloc buf if bufsize is not enough. */
+                if (bufsize / pbs < logpack->total_io_size) {
+                        if (! realloc_sectors(&buf, pbs, logpack->total_io_size)) {
+                                LOG("realloc_sectors failed.\n");
+                                goto error5;
+                        }
+                        bufsize = (u32)logpack->total_io_size * pbs;
+                        LOG("realloc_sectors called. %zu bytes\n", bufsize);
+                }
+
+                /* Read logpack data from log device. */
+                if (! read_logpack_data_from_wldev(lfd, super, logpack, buf, bufsize)) {
+                        LOG("read logpack data failed.\n");
+                        goto error5;
+                }
+
+                /* Write logpack to data device. */
+                if (! redo_logpack(dfd, lbs, pbs, logpack, buf)) {
+                        LOG("redo_logpack failed.\n");
+                        goto error5;
+                }
+                
+                lsid += logpack->total_io_size + 1;
+        }
+
+        /* Set new written_lsid and sync down. */
+        u64 end_lsid = lsid;
+        super->written_lsid = end_lsid;
+        if (! write_super_sector(lfd, super)) {
+                LOG("write super sector failed.\n");
+                goto error5;
+        }
+        printf("Redo from lsid %"PRIu64" to %"PRIu64"\n",
+               begin_lsid, end_lsid);
+        
+        close(dfd);
+        close(lfd);
+
+        /* not tested yet */
+        
+        return true;
+
+error5:
+        free(logpack);
+error4:
+        free(buf);
+error3:
+        free(super);
+error2:
+        close(dfd);
+error1:
+        close(lfd);
 error0:
         return false;
 }
@@ -1131,6 +1266,7 @@ bool dispatch(const config_t *cfg)
                 { "show_wlog", do_show_wlog },
                 { "show_wldev", do_show_wldev },
                 { "redo_wlog", do_redo_wlog },
+                { "redo", do_redo },
                 { "set_oldest_lsid", do_set_oldest_lsid },
                 { "get_oldest_lsid", do_get_oldest_lsid },
                 { "get_version", do_get_version },

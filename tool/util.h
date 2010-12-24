@@ -47,6 +47,7 @@ bool read_super_sector(int fd, walb_super_sector_t* super_sect,
                        u32 sector_size, u32 n_snapshots);
 
 char* set_super_sector_name(walb_super_sector_t* super_sect, const char *name);
+bool is_valid_super_sector(const walb_super_sector_t* super, int physical_bs);
 
 void print_snapshot_record(const walb_snapshot_record_t* snap_rec);
 void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_size);
@@ -56,8 +57,12 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
 bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
                           walb_snapshot_sector_t* snap_sect, u32 idx);
 
+/* basic IO functions. */
 bool read_data(int fd, u8* data, size_t size);
 bool write_data(int fd, const u8* data, size_t size);
+
+/* blocksize function. */
+bool is_same_block_size(const char* devpath1, const char* devpath2);
 
 
 #endif /* _WALB_UTIL_H */

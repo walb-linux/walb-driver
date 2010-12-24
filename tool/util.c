@@ -582,6 +582,43 @@ char* set_super_sector_name(walb_super_sector_t* super_sect, const char *name)
 }
 
 /**
+ * Check super sector.
+ */
+bool is_valid_super_sector(const walb_super_sector_t* super, int physical_bs)
+{
+        /* checksum */
+        if (checksum((const u8 *)super, physical_bs) != 0) {
+                LOG("checksum is not valid.\n");
+                return false;
+        }
+        /* sector type */
+        if (super->sector_type != SECTOR_TYPE_SUPER) {
+                LOG("sector type is not valid %d.\n", super->sector_type);
+                return false;
+        }
+        /* physical block size */
+        if (super->physical_bs != (u32)physical_bs) {
+                LOG("physical block size is not same %d %d.\n",
+                    (int)super->physical_bs, physical_bs);
+                return false;
+        }
+        /* physical/logical block size */
+        if (! (super->physical_bs >= super->logical_bs &&
+               super->physical_bs % super->logical_bs == 0)) {
+                LOG("physical/logical block size is not valid. (physical %u, logical %u)\n",
+                    super->physical_bs, super->logical_bs);
+                return false;
+        }
+        /* lsid consistency. */
+        if (! (super->oldest_lsid <= super->written_lsid &&
+               super->written_lsid - super->oldest_lsid <= super->ring_buffer_size)) {
+                LOG("oldest_lsid, written_lsid, ring_buffer_size is not consistent.\n");
+                return false;
+        }
+        return true;
+}
+
+/**
  * Print bitmap data.
  */
 void print_bitmap(const u8* bitmap, size_t size)
@@ -787,6 +824,23 @@ bool write_data(int fd, const u8* data, size_t size)
         }
         ASSERT(w == size);
         return true;
+}
+
+/**
+ * Check block size of two devices.
+ *
+ * @return true when two devices has compatible block sizes, or false.
+ */
+bool is_same_block_size(const char* devpath1, const char* devpath2)
+{
+        ASSERT(check_bdev(devpath1) == 0 && check_bdev(devpath2) == 0);
+
+        int lbs1 = get_bdev_logical_block_size(devpath1);
+        int lbs2 = get_bdev_logical_block_size(devpath2);
+        int pbs1 = get_bdev_physical_block_size(devpath1);
+        int pbs2 = get_bdev_physical_block_size(devpath2);
+
+        return (lbs1 == lbs2 && pbs1 == pbs2);
 }
 
 
