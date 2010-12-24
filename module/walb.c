@@ -42,6 +42,13 @@ module_param(walb_major, int, 0);
 static int ndevices = 1;
 module_param(ndevices, int, 0);
 
+/**
+ * Set 1 if you want to sync down superblock in disassemble device.
+ * Set 0 if not.
+ */
+static int is_sync_superblock = 1;
+module_param(is_sync_superblock, int, S_IRUGO | S_IWUSR);
+
 /*
  * Underlying devices.
  * ldev (log device) and ddev (data device).
@@ -2746,9 +2753,13 @@ static int walb_finalize_super_block(struct walb_dev *wdev)
         wdev->written_lsid = latest_lsid;
         spin_unlock(&wdev->datapack_list_lock);
 
-        
-        if (walb_sync_super_block(wdev) != 0) {
-                goto error0;
+        if (is_sync_superblock) {
+                printk_n("is_sync_superblock is on\n");
+                if (walb_sync_super_block(wdev) != 0) {
+                        goto error0;
+                }
+        } else {
+                printk_n("is_sync_superblock is off\n");
         }
         return 0;
 
