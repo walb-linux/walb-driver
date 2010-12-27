@@ -2345,6 +2345,26 @@ static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 	return -ENOTTY;
 }
 
+/**
+ * Unplug walblog device.
+ *
+ * Just unplug underlying log device.
+ */
+static void walblog_unplug(struct request_queue *q)
+{
+        struct walb_dev *wdev = q->queuedata;
+        struct request_queue *lq;
+        
+        ASSERT(wdev != NULL);
+
+        lq = bdev_get_queue(wdev->ldev);
+        ASSERT(lq != NULL);
+        
+        generic_unplug_device(q);
+        if (lq)
+                blk_unplug(lq);
+}
+
 static struct block_device_operations walblog_ops = {
         .owner   = THIS_MODULE,
         .open    = walblog_open,
@@ -2781,6 +2801,7 @@ static int walblog_prepare_device(struct walb_dev *wdev, const char* name)
         blk_queue_logical_block_size(wdev->log_queue, wdev->logical_bs);
         blk_queue_physical_block_size(wdev->log_queue, wdev->physical_bs);
         wdev->log_queue->queuedata = wdev;
+        wdev->log_queue->unplug_fn = walblog_unplug;
 
         wdev->log_gd = alloc_disk(1);
         if (! wdev->log_gd) {
