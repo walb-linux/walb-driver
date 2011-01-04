@@ -24,6 +24,10 @@
 #include "walblog_format.h"
 
 
+/*******************************************************************************
+ * Typedefs.
+ *******************************************************************************/
+
 typedef struct config
 {
         char *cmd_str; /* command string */
@@ -43,8 +47,15 @@ typedef struct config
         u64 lsid1; /* to lsid */
 
         char *name; /* name of stuff */
+
+        size_t size; /* (size_t)(-1) means undefined. */
         
 } config_t;
+
+
+/*******************************************************************************
+ * Helper functions.
+ *******************************************************************************/
 
 void show_help()
 {
@@ -72,8 +83,12 @@ void show_help()
                "  (NIY)list_snapshot WDEV (LRANGE | TRANGE | SRANGE)\n"
                "      Get list of snapshots.\n"
                "\n"
-               "  (NIY)checkpoint WDEV\n"
-               "      Make checkpoint to reduce redo time after crash.\n"
+               "  set_checkpoint_interval WDEV SIZE\n"
+               "      Set checkpoint interval in [ms].\n"
+               "\n"
+               "  get_checkpoint_interval WDEV\n"
+               "      Get checkpoint interval in [ms].\n"
+               /* "      Make checkpoint to reduce redo time after crash.\n" */
                "\n"
                "  cat_wldev WLDEV (LRANGE) > WLOG\n"
                "      Extract wlog from walblog device.\n"
@@ -124,9 +139,13 @@ void init_config(config_t* cfg)
         cfg->lsid1 = (u64)(-1);
 
         cfg->name = NULL;
+
+        cfg->size = (size_t)(-1);
 }
 
-
+/**
+ * For getopt.
+ */
 enum {
         OPT_LDEV = 1,
         OPT_DDEV,
@@ -137,9 +156,12 @@ enum {
         OPT_LSID0,
         OPT_LSID1,
         OPT_NAME,
+        OPT_SIZE,
 };
 
-
+/**
+ * Parse options.
+ */
 int parse_opt(int argc, char* const argv[], config_t *cfg)
 {
         int c;
@@ -156,6 +178,7 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
                         {"lsid0", 1, 0, OPT_LSID0},
                         {"lsid1", 1, 0, OPT_LSID1},
                         {"name", 1, 0, OPT_NAME},
+                        {"size", 1, 0, OPT_SIZE},
                         {0, 0, 0, 0}
                 };
 
@@ -192,6 +215,9 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
                         break;
                 case OPT_NAME:
                         cfg->name = strdup(optarg);
+                        break;
+                case OPT_SIZE:
+                        cfg->size = atoll(optarg);
                         break;
                 default:
                         LOG("unknown option.\n");
@@ -317,6 +343,47 @@ error0:
         return false;
 }
 
+/**
+ * Invoke ioctl to WALB_IOCTL_WDEV.
+ *
+ * @cfg configuration.
+ *      This is for command that requires WDEV option.
+ * @ctl data for input/output.
+ * @is_write open flag.
+ *
+ * @return true in success, or false.
+ */
+bool invoke_ioctl(const config_t *cfg, struct walb_ctl *ctl, bool is_write)
+{
+        if (check_bdev(cfg->wdev_name) < 0) {
+                LOG("invoke_ioctl: check walb device failed %s.\n",
+                    cfg->wdev_name);
+        }
+        int open_flag = (is_write ? O_RDWR : O_RDONLY);
+        
+        int fd = open(cfg->wdev_name, open_flag);
+        if (fd < 0) {
+                perror("open failed");
+                goto error0;
+        }
+
+        int ret = ioctl(fd, WALB_IOCTL_WDEV, ctl);
+        if (ret < 0) {
+                LOG("invoke_ioctl: ioctl failed.\n");
+                goto error1;
+        }
+        close(fd);
+        return true;
+        
+error1:
+        close(fd);
+error0:
+        return false;
+}
+
+/*******************************************************************************
+ * Commands.
+ *******************************************************************************/
 
 /**
  * Execute log device format.
@@ -540,6 +607,62 @@ error1:
         close(fd);
 error0:
         return false;
+}
+
+/**
+ * Set checkpoint interval.
+ *
+ * @return true in success, or false.
+ */
+bool do_set_checkpoint_interval(const config_t *cfg)
+{
+        ASSERT(strcmp(cfg->cmd_str, "set_checkpoint_interval") == 0);
+
+        if (cfg->size == (size_t)(-1)) {
+                printf("Specify checkpoint interval.\n");
+                return false;
+        }
+        if (cfg->size > (size_t)UINT32_MAX) {
+                printf("Given interval is too big.\n");
+                return false;
+        }
+        
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_CHECKPOINT_INTERVAL_SET,
+                .val_u32 = (u32)cfg->size,
+                .u2k = { .buf_size = 0 },
+                .k2u = { .buf_size = 0 },
+        };
+        
+        if (invoke_ioctl(cfg, &ctl, true)) {
+                printf("checkpoint interval is set to %"PRIu32" successfully.\n", ctl.val_u32);
+                return true;
+        } else {
+                return false;
+        }
+}
+
+/**
+ * Get checkpoint interval.
+ *
+ * @return true in success, or false.
+ */
+bool do_get_checkpoint_interval(const config_t *cfg)
+{
+        ASSERT(strcmp(cfg->cmd_str, "get_checkpoint_interval") == 0);
+
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_CHECKPOINT_INTERVAL_GET,
+                .u2k = { .buf_size = 0 },
+                .k2u = { .buf_size = 0 },
+        };
+        
+        if (invoke_ioctl(cfg, &ctl, true)) {
+                printf("checkpoint interval is %"PRIu32".\n", ctl.val_u32);
+                return true;
+        } else {
+                return false;
+        }
 }
 
 /**
@@ -1127,16 +1250,6 @@ bool do_set_oldest_lsid(const config_t *cfg)
 {
         ASSERT(strcmp(cfg->cmd_str, "set_oldest_lsid") == 0);
         
-        if (check_bdev(cfg->wdev_name) < 0) {
-                LOG("set_oldest_lsid: check walb device failed %s.\n",
-                    cfg->wdev_name);
-        }
-        int fd = open(cfg->wdev_name, O_RDWR);
-        if (fd < 0) {
-                perror("open failed");
-                goto error0;
-        }
-
         struct walb_ctl ctl = {
                 .command = WALB_IOCTL_OLDEST_LSID_SET,
                 .val_u64 = cfg->lsid,
@@ -1144,19 +1257,12 @@ bool do_set_oldest_lsid(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        int ret = ioctl(fd, WALB_IOCTL_WDEV, &ctl);
-        if (ret < 0) {
-                LOG("set_oldest_lsid: ioctl failed.\n");
-                goto error1;
+        if (invoke_ioctl(cfg, &ctl, true)) {
+                printf("oldest_lsid is set to %"PRIu64" successfully.\n", cfg->lsid);
+                return true;
+        } else {
+                return false;
         }
-        printf("oldest_lsid is set to %"PRIu64" successfully.\n", cfg->lsid);
-        close(fd);
-        return true;
-        
-error1:
-        close(fd);
-error0:
-        return false;
 }
 
 /**
@@ -1166,35 +1272,18 @@ bool do_get_oldest_lsid(const config_t *cfg)
 {
         ASSERT(strcmp(cfg->cmd_str, "get_oldest_lsid") == 0);
         
-        if (check_bdev(cfg->wdev_name) < 0) {
-                LOG("get_oldest_lsid: check walb device failed %s.\n",
-                    cfg->wdev_name);
-        }
-        int fd = open(cfg->wdev_name, O_RDONLY);
-        if (fd < 0) {
-                perror("open failed");
-                goto error0;
-        }
-
         struct walb_ctl ctl = {
                 .command = WALB_IOCTL_OLDEST_LSID_GET,
                 .u2k = { .buf_size = 0 },
                 .k2u = { .buf_size = 0 },
         };
         
-        int ret = ioctl(fd, WALB_IOCTL_WDEV, &ctl);
-        if (ret < 0) {
-                LOG("get_oldest_lsid: ioctl failed.\n");
-                goto error1;
+        if (invoke_ioctl(cfg, &ctl, false)) {
+                printf("oldest_lsid is %"PRIu64"\n", ctl.val_u64);
+                return true;
+        } else {
+                return false;
         }
-        printf("oldest_lsid is %"PRIu64"\n", ctl.val_u64);
-        close(fd);
-        return true;
-        
-error1:
-        close(fd);
-error0:
-        return false;
 }        
 
 /**
@@ -1262,6 +1351,8 @@ bool dispatch(const config_t *cfg)
                 /* { "num_snapshot", do_num_snapshot }, */
                 /* { "list_snapshot", do_list_snapshot }, */
                 /* { "checkpoint", do_checkpoint }, */
+                { "set_checkpoint_interval", do_set_checkpoint_interval },
+                { "get_checkpoint_interval", do_get_checkpoint_interval },
                 { "cat_wldev", do_cat_wldev },
                 { "show_wlog", do_show_wlog },
                 { "show_wldev", do_show_wldev },
