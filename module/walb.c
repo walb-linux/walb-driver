@@ -3381,8 +3381,9 @@ fin:
 /**
  * Start checkpointing.
  *
- * Do nothing if wdev->is_checkpoint_running is 1 or
- *               wdev->checkpoint_interval is 0.
+ * Do nothing if
+ *   wdev->is_checkpoint_running is 1 or
+ *   wdev->checkpoint_interval is 0.
  */
 static void start_checkpointing(struct walb_dev *wdev)
 {
@@ -3400,7 +3401,8 @@ static void start_checkpointing(struct walb_dev *wdev)
         }
         interval = wdev->checkpoint_interval;
         if (interval == 0) {
-                printk_w("checkpoint_interval is 0.\n");
+                /* This is not error. */
+                printk_n("checkpoint_interval is 0.\n");
                 goto error;
         }
         ASSERT(interval > 0);
@@ -3421,8 +3423,9 @@ error:
 /**
  * Stop checkpointing.
  *
- * wdev->is_checkpoint_running must be 1.
- * wdev->should_checkpoint_stop must be 0.
+ * Do nothing if 
+ *   wdev->is_checkpoint_running is not 1 or
+ *   wdev->should_checkpoint_stop is not 0.
  */
 static void stop_checkpointing(struct walb_dev *wdev)
 {
