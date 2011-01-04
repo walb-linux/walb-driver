@@ -2772,6 +2772,12 @@ static int walb_sync_super_block(struct walb_dev *wdev)
         }
 
         walb_free_sector(lsuper_tmp);
+
+        /* Update previously written lsid. */
+        spin_lock(&wdev->datapack_list_lock);
+        wdev->prev_written_lsid = written_lsid;
+        spin_unlock(&wdev->datapack_list_lock);
+        
         return 0;
 
 error1:
@@ -3132,6 +3138,7 @@ struct walb_dev* prepare_wdev(unsigned int minor, dev_t ldevt, dev_t ddevt, cons
                 goto out_ddev;
         }
         wdev->written_lsid = wdev->lsuper0->written_lsid;
+        wdev->prev_written_lsid = wdev->written_lsid;
         wdev->oldest_lsid = wdev->lsuper0->oldest_lsid;
 
         /* Set default device name if name is not set. */
@@ -3302,6 +3309,7 @@ static void do_checkpointing(struct work_struct *work)
         long delay, sync_time, next_delay;
         int ret;
         u8 should_stop;
+        u64 written_lsid, prev_written_lsid;
         
         struct delayed_work *dwork =
                 container_of(work, struct delayed_work, work);
@@ -3310,6 +3318,13 @@ static void do_checkpointing(struct work_struct *work)
 
         printk_d("do_checkpointing called.\n");
 
+        /* Get written_lsid and prev_written_lsid. */
+        spin_lock(&wdev->datapack_list_lock);
+        written_lsid = wdev->written_lsid;
+        prev_written_lsid = wdev->prev_written_lsid;
+        spin_unlock(&wdev->datapack_list_lock);
+
+        /* Lock */
         down_write(&wdev->checkpoint_lock);
         ASSERT(wdev->is_checkpoint_running == 1);
         interval = wdev->checkpoint_interval;
@@ -3322,10 +3337,21 @@ static void do_checkpointing(struct work_struct *work)
         }
 
         j0 = jiffies;
-        /* Write superblock */
 
-        /* now editing */
-        msleep(10); /* debug */
+        /*
+         * Write superblock
+         */
+        if (written_lsid == prev_written_lsid) {
+
+                printk_d("skip superblock sync.\n");
+        } else {
+                if (walb_sync_super_block(wdev) != 0) {
+
+                        atomic_set(&wdev->is_read_only, 1);
+                        printk_e("superblock sync failed.\n");
+                        goto fin;
+                }
+        }
 
         j1 = jiffies;
 

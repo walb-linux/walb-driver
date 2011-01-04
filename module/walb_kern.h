@@ -112,6 +112,7 @@ struct walb_dev {
         spinlock_t datapack_list_lock;
         struct list_head datapack_list;
         u64 written_lsid;
+        u64 prev_written_lsid; /* previously sync down lsid. */
 
         spinlock_t oldest_lsid_lock;
         u64 oldest_lsid;
