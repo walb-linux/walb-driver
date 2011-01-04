@@ -1555,6 +1555,11 @@ static int walb_make_and_write_logpack(struct walb_dev *wdev,
 {
         struct walb_make_logpack_work *wk;
 
+        if (atomic_read(&wdev->is_read_only)) {
+                printk_d("Currently read-only mode. write failed.\n");
+                goto error0;
+        }
+        
         wk = kmalloc(sizeof(struct walb_make_logpack_work), GFP_ATOMIC);
         if (! wk) { goto error0; }
 
@@ -1995,7 +2000,7 @@ static void walb_full_request2(struct request_queue *q)
                            add log pack.
                          */
 
-                        printk_d("walb: WRITE\n");
+                        printk_d("WRITE %ld %d\n", blk_rq_pos(req), blk_rq_bytes(req));
                         
                         if (n_req == max_n_req) {
                                 if (walb_make_and_write_logpack(wdev, reqp_ary, n_req) != 0) {
@@ -2021,8 +2026,8 @@ static void walb_full_request2(struct request_queue *q)
                 } else {
                         /* Read.
                            Just forward to data device. */
-
-                        printk_d("walb: READ\n");
+                        
+                        printk_d("READ %ld %d\n", blk_rq_pos(req), blk_rq_bytes(req));
 
                         switch (1) {
                         case 0:
