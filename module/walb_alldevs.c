@@ -95,6 +95,8 @@ int alldevs_init(void)
 
         htbl_minor_ = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
         if (htbl_minor_ == NULL) { goto error2; }
+
+        init_rwsem(&all_wdevs_lock_);
         
         START();
         
