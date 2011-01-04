@@ -3309,12 +3309,11 @@ static void do_checkpointing(struct work_struct *work)
         ASSERT(wdev->is_checkpoint_running == 1);
         interval = wdev->checkpoint_interval;
         should_stop = wdev->should_checkpoint_stop;
-        up_write(&wdev->checkpoint_lock);
 
         ASSERT(interval > 0);
         if (should_stop) {
                 printk_d("do_checkpointing should stop.\n");
-                return;
+                goto fin;
         }
 
         j0 = jiffies;
@@ -3343,6 +3342,9 @@ static void do_checkpointing(struct work_struct *work)
         INIT_DELAYED_WORK(&wdev->checkpoint_work, do_checkpointing);
         ret = schedule_delayed_work(&wdev->checkpoint_work, next_delay);
         ASSERT(ret);
+
+fin:
+        up_write(&wdev->checkpoint_lock);
 }
 
 /**
