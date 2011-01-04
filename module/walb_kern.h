@@ -38,6 +38,12 @@ enum {
 #define DEVNUM(kdevnum)	(MINOR(kdev_t_to_nr(kdevnum)) >> MINOR_SHIFT
 
 /*
+ * Default checkpoint interval [ms]
+ */
+#define WALB_DEFAULT_CHECKPOINT_INTERVAL 10000
+#define WALB_MAX_CHECKPOINT_INTERVAL (24 * 60 * 60 * 1000) /* 1 day */
+
+/*
  * We can tweak our hardware sector size, but the kernel talks to us
  * in terms of small sectors, always.
  */
@@ -117,6 +123,26 @@ struct walb_dev {
         /* spinlock_t log_queue_lock; */
         struct request_queue *log_queue;
         struct gendisk *log_gd;
+
+        /*
+         * For checkpointing.
+         *
+         * start_checkpointing(): register handler.
+         * stop_checkpointing():  unregister handler.
+         * do_checkpointing():    checkpoint handler.
+         *
+         * do_checkpointing() is serialized so lock is not required.
+         *
+         * checkpoint_lock is used for
+         *   checkpoint_interval,
+         *   should_checkpoint_stop, and
+         *   is_checkpoint_running.
+         */
+        struct rw_semaphore checkpoint_lock;
+        u32 checkpoint_interval; /* [ms]. 0 means never do checkpointing. */
+        u8 should_checkpoint_stop; /* 0 or 1 */
+        u8 is_checkpoint_running; /* 0 or 1 */
+        struct delayed_work checkpoint_work;
 };
 
 

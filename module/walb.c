@@ -24,6 +24,7 @@
 #include <linux/bio.h>
 #include <linux/spinlock.h>
 #include <linux/rwsem.h>
+#include <asm/atomic.h>
 
 #include "walb_kern.h"
 #include "hashtbl.h"
@@ -85,6 +86,11 @@ walb_create_bioclist_work(struct walb_dev *wdev,
                           struct request *req,
                           gfp_t gfp_mask);
 static void walb_destroy_bioclist_work(struct walb_bioclist_work *wk);
+
+
+static void start_checkpointing(struct walb_dev *wdev);
+static void stop_checkpointing(struct walb_dev *wdev);
+static void reset_checkpointing(struct walb_dev *wdev);
 
 
 /*******************************************************************************
@@ -2196,6 +2202,7 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
         struct walb_ctl *ctl;
 
         u64 oldest_lsid, lsid;
+        u32 interval;
 
         /* Get ctl data. */
         ctl = walb_get_ctl(userctl, GFP_KERNEL);
@@ -2232,6 +2239,30 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
                         ret = 0;
                 } else {
                         printk_e("lsid %llu is not valid.\n", lsid);
+                }
+                break;
+                
+        case WALB_IOCTL_CHECKPOINT_INTERVAL_GET:
+
+                printk_n("WALB_IOCTL_CHECKPOINT_INTERVAL_GET\n");
+                down_read(&wdev->checkpoint_lock);
+                ctl->val_u32 = wdev->checkpoint_interval;
+                up_read(&wdev->checkpoint_lock);
+                ret = 0;
+                break;
+                
+        case WALB_IOCTL_CHECKPOINT_INTERVAL_SET:
+
+                printk_n("WALB_IOCTL_CHECKPOINT_INTERVAL_SET\n");
+                interval = ctl->val_u32;
+                if (interval <= WALB_MAX_CHECKPOINT_INTERVAL) {
+                        down_write(&wdev->checkpoint_lock);
+                        wdev->checkpoint_interval = interval;
+                        up_write(&wdev->checkpoint_lock);
+                        reset_checkpointing(wdev);
+                        ret = 0;
+                } else {
+                        printk_e("Checkpiont interval is too big.\n");
                 }
                 break;
                 
@@ -3119,6 +3150,12 @@ struct walb_dev* prepare_wdev(unsigned int minor, dev_t ldevt, dev_t ddevt, cons
                          dev_name);
                 goto out_ddev;
         }
+
+        /* For checkpoint */
+        init_rwsem(&wdev->checkpoint_lock);
+        wdev->should_checkpoint_stop = 0;
+        wdev->is_checkpoint_running = 0;
+        wdev->checkpoint_interval = WALB_DEFAULT_CHECKPOINT_INTERVAL;
         
         /*
          * Redo
@@ -3251,6 +3288,146 @@ void destroy_wdev(struct walb_dev *wdev)
 }
 
 /**
+ * Do checkpointing.
+ */
+static void do_checkpointing(struct work_struct *work)
+{
+        unsigned long j0, j1;
+        unsigned long interval;
+        long delay, sync_time, next_delay;
+        int ret;
+        u8 should_stop;
+        
+        struct delayed_work *dwork =
+                container_of(work, struct delayed_work, work);
+        struct walb_dev *wdev =
+                container_of(dwork, struct walb_dev, checkpoint_work);
+
+        printk_d("do_checkpointing called.\n");
+
+        down_write(&wdev->checkpoint_lock);
+        ASSERT(wdev->is_checkpoint_running == 1);
+        interval = wdev->checkpoint_interval;
+        should_stop = wdev->should_checkpoint_stop;
+        up_write(&wdev->checkpoint_lock);
+
+        ASSERT(interval > 0);
+        if (should_stop) {
+                printk_d("do_checkpointing should stop.\n");
+                return;
+        }
+
+        j0 = jiffies;
+        /* Write superblock */
+
+        /* now editing */
+        msleep(10); /* debug */
+
+        j1 = jiffies;
+
+        delay = msecs_to_jiffies(interval);
+        sync_time = (long)(j1 - j0);
+        next_delay = (long)delay - sync_time;
+
+        printk_d("do_checkpinting: delay %ld sync_time %ld next_delay %ld\n",
+                 delay, sync_time, next_delay);
+
+        if (next_delay <= 0) {
+                printk_w("Checkpoint interval is too small. "
+                         "Should be more than %d.\n", jiffies_to_msecs(sync_time));
+                next_delay = 1;
+        }
+        ASSERT(next_delay > 0);
+
+        /* Register delayed work for next time */
+        INIT_DELAYED_WORK(&wdev->checkpoint_work, do_checkpointing);
+        ret = schedule_delayed_work(&wdev->checkpoint_work, next_delay);
+        ASSERT(ret);
+}
+
+/**
+ * Start checkpointing.
+ *
+ * Do nothing if wdev->is_checkpoint_running is 1 or
+ *               wdev->checkpoint_interval is 0.
+ */
+static void start_checkpointing(struct walb_dev *wdev)
+{
+        unsigned long delay;
+        unsigned long interval;
+
+        down_write(&wdev->checkpoint_lock);
+        if (wdev->is_checkpoint_running != 0) {
+                printk_w("Checkpointing is running.\n");
+                goto error;
+        }
+        if (wdev->should_checkpoint_stop != 0) {
+                printk_w("Checkpoint is shutting down.\n");
+                goto error;
+        }
+        interval = wdev->checkpoint_interval;
+        if (interval == 0) {
+                printk_w("checkpoint_interval is 0.\n");
+                goto error;
+        }
+        ASSERT(interval > 0);
+        wdev->is_checkpoint_running ++;
+        up_write(&wdev->checkpoint_lock);
+        
+        delay = msecs_to_jiffies(interval);
+        ASSERT(delay > 0);
+
+        INIT_DELAYED_WORK(&wdev->checkpoint_work, do_checkpointing);
+        schedule_delayed_work(&wdev->checkpoint_work, delay);
+        
+        return;
+error:
+        up_write(&wdev->checkpoint_lock);
+}
+
+/**
+ * Stop checkpointing.
+ *
+ * wdev->is_checkpoint_running must be 1.
+ * wdev->should_checkpoint_stop must be 0.
+ */
+static void stop_checkpointing(struct walb_dev *wdev)
+{
+        int ret;
+
+        down_write(&wdev->checkpoint_lock);
+        if (wdev->is_checkpoint_running != 1) {
+                printk_w("Checkpointing is not running.\n");
+                goto fin;
+        }
+        if (wdev->should_checkpoint_stop != 0) {
+                printk_w("Checkpointing is shutting down.\n");
+                goto fin;
+        }
+        wdev->should_checkpoint_stop ++;
+        up_write(&wdev->checkpoint_lock);
+
+        /* We must unlock before calling this to avoid deadlock. */
+        ret = cancel_delayed_work_sync(&wdev->checkpoint_work);
+        printk_d("cancel_delayed_work_sync: %d\n", ret);
+
+        down_write(&wdev->checkpoint_lock);
+        wdev->should_checkpoint_stop = 0;
+        wdev->is_checkpoint_running = 0;
+fin:
+        up_write(&wdev->checkpoint_lock);
+}
+
+/**
+ * Reset checkpointing.
+ */
+static void reset_checkpointing(struct walb_dev *wdev)
+{
+        stop_checkpointing(wdev);
+        start_checkpointing(wdev);
+}
+
+/**
  * Register wdev.
  * You must call @prepare_wdev() before calling this.
  */
@@ -3259,7 +3436,8 @@ void register_wdev(struct walb_dev *wdev)
         ASSERT(wdev != NULL);
         ASSERT(wdev->gd != NULL);
         ASSERT(wdev->log_gd != NULL);
-        
+
+        start_checkpointing(wdev);
         add_disk(wdev->log_gd);
         add_disk(wdev->gd);
 }
@@ -3271,6 +3449,8 @@ void register_wdev(struct walb_dev *wdev)
 void unregister_wdev(struct walb_dev *wdev)
 {
         ASSERT(wdev != NULL);
+
+        stop_checkpointing(wdev);
         walblog_unregister_device(wdev);
         walb_unregister_device(wdev);
 }
