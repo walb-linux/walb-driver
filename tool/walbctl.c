@@ -57,80 +57,98 @@ typedef struct config
  * Helper functions.
  *******************************************************************************/
 
+static const char *helpstr_options_ = 
+        "OPTIONS:\n"
+        "  N_SNAP: --n_snap [max number of snapshots]\n"
+        "  SIZE:   --size [size of stuff]\n"
+        "  LRANGE: --lsid0 [from lsid] --lsid1 [to lsid]\n"
+        "  TRANGE: --time0 [from time] --time1 [to time]\n"
+        "  SRANGE: --snap0 [from snapshot] --snap1 [to snapshot]\n"
+        "  LSID:   --lsid [lsid]\n"
+        "  DDEV:   --ddev [data device path]\n"
+        "  LDEV:   --ldev [log device path]\n"
+        "  WDEV:   --wdev [walb device path]\n"
+        "  WLDEV:  --wldev [walblog device path]\n"
+        "  NAME:   --name [name of stuff]\n"
+        "  WLOG:   walb log data as stream\n";
+
+typedef struct
+{
+        const char *cmdline;
+        const char *description;
+} cmdhelp_t;
+
+static cmdhelp_t cmdhelps[] = {
+        { "format_ldev LDEV DDEV (NSNAP) (NAME) (SIZE)", 
+          "Format log device." },
+        { "create_wdev LDEV DDEV (NAME)",
+          "Make walb/walblog device." },
+        { "delete_wdev WDEV",
+          "Delete walb/walblog device." },
+        { "(NIY)create_snapshot WDEV NAME",
+          "Create snapshot." },
+        { "(NIY)delete_snapshot WDEV NAME",
+          "Delete snapshot." },
+        { "(NIY)num_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
+          "Get number of snapshots." },
+        { "(NIY)list_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
+          "Get list of snapshots." },
+        { "set_checkpoint_interval WDEV SIZE",
+          "Set checkpoint interval in [ms]." },
+        { "get_checkpoint_interval WDEV",
+          "Get checkpoint interval in [ms]."
+          /* "Make checkpoint to reduce redo time after crash." */ },
+        { "cat_wldev WLDEV (LRANGE) > WLOG",
+          "Extract wlog from walblog device." },
+        { "show_wldev WLDEV (LRANGE)",
+          "Show wlog in walblog device." },
+        { "show_wlog (LRANGE) < WLOG",
+          "Show wlog in stdin." },
+        { "redo_wlog DDEV (LRANGE) < WLOG",
+          "Redo wlog to data device." },
+        { "redo LDEV DDEV",
+          "Redo logs and get consistent data device." },
+        { "set_oldest_lsid WDEV LSID",
+          "Delete old logs in the device." },
+        { "get_oldest_lsid WDEV",
+          "Get oldest_lsid in the device." },
+        { "get_written_lsid WDEV",
+          "Get written_lsid in the device." },
+        { "get_version",
+          "Get walb version."},
+};
+
+void show_shorthelp()
+{
+        printf("Usage: walbctl COMMAND OPTIONS\n"
+               "COMMAND:\n");
+        int size = sizeof(cmdhelps) / sizeof(cmdhelp_t);
+        int i;
+        for (i = 0; i < size; i ++) {
+                printf("  %s\n", cmdhelps[i].cmdline);
+        }
+        printf("%s"
+               "NIY: Not Implemented Yet.\n",
+               helpstr_options_);
+}
+
 void show_help()
 {
         printf("Usage: walbctl COMMAND OPTIONS\n"
-               "\n"
-               "COMMAND:\n"
-               "  format_ldev LDEV DDEV (NSNAP) (NAME) (SIZE)\n"
-               "      Format log device.\n"
-               "\n"
-               "  create_wdev LDEV DDEV (NAME)\n"
-               "      Make walb/walblog device.\n"
-               "\n"
-               "  delete_wdev WDEV\n"
-               "      Delete walb/walblog device.\n"
-               "\n"
-               "  (NIY)create_snapshot WDEV NAME\n"
-               "      Create snapshot.\n"
-               "\n"
-               "  (NIY)delete_snapshot WDEV NAME\n"
-               "      Delete snapshot.\n"
-               "\n"
-               "  (NIY)num_snapshot WDEV (LRANGE | TRANGE | SRANGE)\n"
-               "      Get number of snapshots.\n"
-               "\n"
-               "  (NIY)list_snapshot WDEV (LRANGE | TRANGE | SRANGE)\n"
-               "      Get list of snapshots.\n"
-               "\n"
-               "  set_checkpoint_interval WDEV SIZE\n"
-               "      Set checkpoint interval in [ms].\n"
-               "\n"
-               "  get_checkpoint_interval WDEV\n"
-               "      Get checkpoint interval in [ms].\n"
-               /* "      Make checkpoint to reduce redo time after crash.\n" */
-               "\n"
-               "  cat_wldev WLDEV (LRANGE) > WLOG\n"
-               "      Extract wlog from walblog device.\n"
-               "\n"
-               "  show_wldev WLDEV (LRANGE)\n"
-               "      Show wlog in walblog device.\n"
-               "\n"
-               "  show_wlog (LRANGE) < WLOG\n"
-               "      Show wlog in stdin.\n"
-               "\n"
-               "  redo_wlog DDEV (LRANGE) < WLOG\n"
-               "      Redo wlog to data device.\n"
-               "\n"
-               "  redo LDEV DDEV\n"
-               "      Redo logs and get consistent data device.\n"
-               "\n"
-               "  set_oldest_lsid WDEV LSID\n"
-               "      Delete old logs in the device.\n"
-               "\n"
-               "  get_oldest_lsid WDEV\n"
-               "      Get oldest_lsid in the device.\n"
-               "\n"
-               "  get_written_lsid WDEV\n"
-               "      Get written_lsid in the device.\n"
-               "\n"
-               "OPTIONS:\n"
-               "  N_SNAP: --n_snap [max number of snapshots]\n"
-               "  SIZE:   --size [size of stuff]\n"
-               "  LRANGE: --lsid0 [from lsid] --lsid1 [to lsid]\n"
-               "  TRANGE: --time0 [from time] --time1 [to time]\n"
-               "  SRANGE: --snap0 [from snapshot] --snap1 [to snapshot]\n"
-               "  LSID:   --lsid [lsid]\n"
-               "  DDEV:   --ddev [data device path]\n"
-               "  LDEV:   --ldev [log device path]\n"
-               "  WDEV:   --wdev [walb device path]\n"
-               "  WLDEV:  --wldev [walblog device path]\n"
-               "  NAME:   --name [name of stuff]\n"
-               "  WLOG:   walb log data as stream\n"
-               "\n"
-               "NIY: Not Implemented Yet.\n"
-                );
+               "COMMAND:\n");
+        int size = sizeof(cmdhelps) / sizeof(cmdhelp_t);
+        int i;
+        for (i = 0; i < size; i ++) {
+                printf("  %s\n"
+                       "      %s\n",
+                       cmdhelps[i].cmdline,
+                       cmdhelps[i].description);
+        }
+        printf("%s"
+               "NIY: Not Implemented Yet.\n",
+               helpstr_options_);
 }
+
 
 void init_config(config_t* cfg)
 {
@@ -160,6 +178,7 @@ enum {
         OPT_LSID1,
         OPT_NAME,
         OPT_SIZE,
+        OPT_HELP,
 };
 
 /**
@@ -182,6 +201,7 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
                         {"lsid1", 1, 0, OPT_LSID1},
                         {"name", 1, 0, OPT_NAME},
                         {"size", 1, 0, OPT_SIZE},
+                        {"help", 0, 0, OPT_HELP},
                         {0, 0, 0, 0}
                 };
 
@@ -222,6 +242,9 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
                 case OPT_SIZE:
                         cfg->size = atoll(optarg);
                         break;
+                case OPT_HELP:
+                        cfg->cmd_str = "help";
+                        return 0;
                 default:
                         LOG("unknown option.\n");
                 }
@@ -236,7 +259,7 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
                 }
                 LOG("\n");
         } else {
-                show_help();
+                show_shorthelp();
                 return -1;
         }
 
@@ -1345,6 +1368,14 @@ error0:
         return false;
 }
 
+/**
+ * Show help message.
+ */
+bool do_help(__attribute__((unused)) const config_t *cfg)
+{
+        show_help();
+        return true;
+}
 
 /**
  * For command string to function.
@@ -1385,6 +1416,7 @@ bool dispatch(const config_t *cfg)
                 { "get_oldest_lsid", do_get_oldest_lsid },
                 { "get_written_lsid", do_get_written_lsid },
                 { "get_version", do_get_version },
+                { "help", do_help },
         };
         int array_size = sizeof(map)/sizeof(map[0]);
 
