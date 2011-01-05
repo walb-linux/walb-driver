@@ -1454,7 +1454,7 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         lhead = walb_alloc_sector(wdev, GFP_NOIO);
         if (lhead == NULL) {
                 printk_e("walb_alloc_sector() failed\n");
-                goto fin;
+                goto error0;
         }
         memset(lhead, 0, wdev->physical_bs);
 
