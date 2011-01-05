@@ -352,17 +352,16 @@ error0:
  * @cfg configuration.
  *      This is for command that requires WDEV option.
  * @ctl data for input/output.
- * @is_write open flag.
+ * @open_flag open flag.
  *
  * @return true in success, or false.
  */
-bool invoke_ioctl(const config_t *cfg, struct walb_ctl *ctl, bool is_write)
+bool invoke_ioctl(const config_t *cfg, struct walb_ctl *ctl, int open_flag)
 {
         if (check_bdev(cfg->wdev_name) < 0) {
                 LOG("invoke_ioctl: check walb device failed %s.\n",
                     cfg->wdev_name);
         }
-        int open_flag = (is_write ? O_RDWR : O_RDONLY);
         
         int fd = open(cfg->wdev_name, open_flag);
         if (fd < 0) {
@@ -637,7 +636,7 @@ bool do_set_checkpoint_interval(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg, &ctl, true)) {
+        if (invoke_ioctl(cfg, &ctl, O_RDWR)) {
                 printf("checkpoint interval is set to %"PRIu32" successfully.\n", ctl.val_u32);
                 return true;
         } else {
@@ -660,7 +659,7 @@ bool do_get_checkpoint_interval(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg, &ctl, true)) {
+        if (invoke_ioctl(cfg, &ctl, O_RDWR)) {
                 printf("checkpoint interval is %"PRIu32".\n", ctl.val_u32);
                 return true;
         } else {
@@ -1260,7 +1259,7 @@ bool do_set_oldest_lsid(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg, &ctl, true)) {
+        if (invoke_ioctl(cfg, &ctl, O_RDWR)) {
                 printf("oldest_lsid is set to %"PRIu64" successfully.\n", cfg->lsid);
                 return true;
         } else {
@@ -1281,7 +1280,7 @@ bool do_get_oldest_lsid(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg, &ctl, false)) {
+        if (invoke_ioctl(cfg, &ctl, O_RDONLY)) {
                 printf("oldest_lsid is %"PRIu64"\n", ctl.val_u64);
                 return true;
         } else {
@@ -1302,7 +1301,7 @@ bool do_get_written_lsid(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg, &ctl, false)) {
+        if (invoke_ioctl(cfg, &ctl, O_RDONLY)) {
                 printf("%"PRIu64"\n", ctl.val_u64);
                 return true;
         } else {
