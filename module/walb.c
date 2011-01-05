@@ -1516,9 +1516,12 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         /* Normally completed log/data writes. */
         walb_end_requests(wk->reqp_ary, wk->n_req, 0);
 
-
         /* Update written_lsid. */
         spin_lock(&wdev->datapack_list_lock);
+        if (next_logpack_lsid <= wdev->written_lsid) {
+                printk_e("Logpack/data write order is not kept.\n");
+                atomic_set(&wdev->is_read_only, 1);
+        } /* This is almost assertion. */
         wdev->written_lsid = next_logpack_lsid;
         spin_unlock(&wdev->datapack_list_lock);
 
