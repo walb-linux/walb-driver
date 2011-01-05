@@ -20,8 +20,6 @@
  */
 extern int walb_major;
 
-
-
 /*
  * The different "request modes" we can use.
  */
@@ -36,6 +34,11 @@ enum {
 #define WALB_MINORS	  16
 #define WALB_MINORS_SHIFT  4
 #define DEVNUM(kdevnum)	(MINOR(kdev_t_to_nr(kdevnum)) >> MINOR_SHIFT
+
+/**
+ * Workqueue name.
+ */
+#define WALB_WORKQUEUE_NAME "walb_wq"
 
 /*
  * Default checkpoint interval [ms]

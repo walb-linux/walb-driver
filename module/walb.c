@@ -68,6 +68,11 @@ module_param(request_mode, int, 0);
 
 static struct walb_dev *Devices = NULL;
 
+/**
+ * Workqueue for read/write.
+ */
+static struct workqueue_struct *wq_ = NULL;
+
 
 /* Prototypes of local functions. */
 static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask);
@@ -273,7 +278,7 @@ static void walb_ddev_end_io(struct bio *bio, int error)
         struct request *req = dbio->req;
         struct walb_ddev_bio *tmp, *next;
         struct list_head *head;
-        struct walb_submit_bio_work *wq;
+        struct walb_submit_bio_work *wk;
         unsigned long irq_flags;
 
         int is_last = 1;
@@ -300,8 +305,8 @@ static void walb_ddev_end_io(struct bio *bio, int error)
 
         /* Check whether it's the last bio in the request finished
            or error or not finished. */
-        wq = container_of(head, struct walb_submit_bio_work, list);
-        spin_lock_irqsave(&wq->lock, irq_flags);
+        wk = container_of(head, struct walb_submit_bio_work, list);
+        spin_lock_irqsave(&wk->lock, irq_flags);
         list_for_each_entry_safe(tmp, next, head, list) {
 
                 /* printk_d("status: %d\n", tmp->status); */
@@ -323,7 +328,7 @@ static void walb_ddev_end_io(struct bio *bio, int error)
                         break;
                 }
         }
-        spin_unlock_irqrestore(&wq->lock, irq_flags);
+        spin_unlock_irqrestore(&wk->lock, irq_flags);
 
         /* Finalize the request of wrapper device. */
         if (is_last) {
@@ -335,7 +340,7 @@ static void walb_ddev_end_io(struct bio *bio, int error)
                         blk_end_request_all(req, 0);
                 }
 
-                spin_lock_irqsave(&wq->lock, irq_flags);
+                spin_lock_irqsave(&wk->lock, irq_flags);
                 list_for_each_entry_safe(tmp, next, head, list) {
                         BUG_ON(tmp->bio != NULL);
                         BUG_ON(tmp->status == WALB_BIO_INIT);
@@ -343,13 +348,13 @@ static void walb_ddev_end_io(struct bio *bio, int error)
                         kfree(tmp);
                 }
                 /* confirm the list is empty */
-                if (! list_empty(&wq->list)) {
-                        printk_e("wq->list must be empty.\n");
+                if (! list_empty(&wk->list)) {
+                        printk_e("wk->list must be empty.\n");
                         BUG();
                 }
-                spin_unlock_irqrestore(&wq->lock, irq_flags);
+                spin_unlock_irqrestore(&wk->lock, irq_flags);
 
-                kfree(wq);
+                kfree(wk);
         }
 
         printk_d("ddev_end_io() end\n");
@@ -361,18 +366,18 @@ static void walb_ddev_end_io(struct bio *bio, int error)
  */
 static void walb_submit_bio_task(struct work_struct *work)
 {
-        struct walb_submit_bio_work *wq;
+        struct walb_submit_bio_work *wk;
         struct walb_ddev_bio *dbio, *next;
 
         printk_d("submit_bio_task begin\n");
         
-        wq = container_of(work, struct walb_submit_bio_work, work);
+        wk = container_of(work, struct walb_submit_bio_work, work);
         
-        if (list_empty(&wq->list)) {
+        if (list_empty(&wk->list)) {
                 printk_w("list is empty\n");
         }
         
-        list_for_each_entry_safe(dbio, next, &wq->list, list) {
+        list_for_each_entry_safe(dbio, next, &wk->list, list) {
 
                 printk_d("submit_bio_task %ld %d\n",
                        (long)dbio->bio->bi_sector, dbio->bio->bi_size);
@@ -1571,7 +1576,7 @@ static int walb_make_and_write_logpack(struct walb_dev *wdev,
         wk->n_req = n_req;
         wk->wdev = wdev;
         INIT_WORK(&wk->work, walb_make_logpack_and_submit_task);
-        schedule_work(&wk->work);
+        queue_work(wq_, &wk->work);
         
         return 0;
 
@@ -1780,7 +1785,7 @@ static void walb_forward_request_to_ddev(struct walb_dev *wdev,
         }
 
         INIT_WORK(&wk->work, walb_bios_work_task);
-        schedule_work(&wk->work);
+        queue_work(wq_, &wk->work);
 }
 
 /**
@@ -1898,7 +1903,7 @@ static void walb_forward_request_to_ddev2(struct walb_dev *wdev,
                 __blk_end_request_all(req, -EIO);
         } else {
                 INIT_WORK(&wk->work, walb_bioclist_work_task);
-                schedule_work(&wk->work);
+                queue_work(wq_, &wk->work);
         }
 }
 
@@ -1916,14 +1921,14 @@ static void walb_make_ddev_request(struct walb_dev *wdev, struct request *req)
         struct bio *bio;
         struct walb_ddev_bio *dbio, *next;
         int bio_nr = 0;
-        struct walb_submit_bio_work *wq;
+        struct walb_submit_bio_work *wk;
 
         printk_d("make_ddev_request() called\n");
 
-        wq = kmalloc(sizeof(struct walb_submit_bio_work), GFP_ATOMIC);
-        if (! wq) { goto error0; }
-        INIT_LIST_HEAD(&wq->list);
-        spin_lock_init(&wq->lock);
+        wk = kmalloc(sizeof(struct walb_submit_bio_work), GFP_ATOMIC);
+        if (! wk) { goto error0; }
+        INIT_LIST_HEAD(&wk->list);
+        spin_lock_init(&wk->lock);
         
         __rq_for_each_bio(bio, req) {
 
@@ -1937,28 +1942,28 @@ static void walb_make_ddev_request(struct walb_dev *wdev, struct request *req)
                 dbio->bio->bi_private = dbio;
                 dbio->req = req;
                 dbio->status = WALB_BIO_INIT;
-                dbio->head = &wq->list;
+                dbio->head = &wk->list;
                 
-                list_add_tail(&dbio->list, &wq->list);
+                list_add_tail(&dbio->list, &wk->list);
                 bio_nr ++;
                 printk_d("dbio->status: %d\n", dbio->status);
         }
 
         printk_d("bio_nr: %d\n", bio_nr);
-        ASSERT(! list_empty(&wq->list));
+        ASSERT(! list_empty(&wk->list));
 
-        INIT_WORK(&wq->work, walb_submit_bio_task);
-        schedule_work(&wq->work);
+        INIT_WORK(&wk->work, walb_submit_bio_task);
+        queue_work(wq_, &wk->work);
         
         printk_d("make_ddev_request() end\n");
         return;
 
 error1:
-        list_for_each_entry_safe(dbio, next, &wq->list, list) {
+        list_for_each_entry_safe(dbio, next, &wk->list, list) {
                 bio_put(dbio->bio);
                 kfree(dbio);
         }
-        kfree(wq);
+        kfree(wk);
 error0:
         printk_e("make_ddev_request failed\n");
         __blk_end_request_all(req, -EIO);
@@ -2972,11 +2977,20 @@ static int __init walb_init(void)
         printk_i("walb_start with major id %d.\n", walb_major);
 
         /*
+         * Workqueue.
+         */
+        wq_ = create_workqueue(WALB_WORKQUEUE_NAME);
+        if (wq_ == NULL) {
+                printk_e("create workqueue failed.\n");
+                goto out_unregister;
+        }
+        
+        /*
          * Alldevs.
          */
         if (alldevs_init() != 0) {
                 printk_e("alldevs_init failed.\n");
-                goto out_unregister;
+                goto out_workqueue;
         }
         
         /*
@@ -2986,7 +3000,7 @@ static int __init walb_init(void)
                 printk_e("walb_control_init failed.\n");
                 goto out_alldevs_exit;
         }
-        
+
 	/*
 	 * Allocate the device array, and initialize each one.
 	 */
@@ -2996,14 +3010,16 @@ static int __init walb_init(void)
                 goto out_control_exit;
         }
 #endif
-        
 	return 0;
+        
 #if 0
 out_control_exit:
         walb_control_exit();
 #endif
 out_alldevs_exit:
         alldevs_exit();
+out_workqueue:
+        if (wq_) { destroy_workqueue(wq_); }
 out_unregister:
 	unregister_blkdev(walb_major, WALB_NAME);
 	return -ENOMEM;
@@ -3029,6 +3045,9 @@ static void walb_exit(void)
                 wdev = alldevs_pop();
         }
         alldevs_write_unlock();
+
+        flush_workqueue(wq_); /* can omit this? */
+        destroy_workqueue(wq_);
         
 	unregister_blkdev(walb_major, WALB_NAME);
 
@@ -3376,7 +3395,7 @@ static void do_checkpointing(struct work_struct *work)
         if (wdev->checkpoint_state == CP_RUNNING) {
                 /* Register delayed work for next time */
                 INIT_DELAYED_WORK(&wdev->checkpoint_work, do_checkpointing);
-                ret = schedule_delayed_work(&wdev->checkpoint_work, next_delay);
+                ret = queue_delayed_work(wq_, &wdev->checkpoint_work, next_delay);
                 ASSERT(ret);
                 wdev->checkpoint_state = CP_WAITING;
         } else {
@@ -3417,7 +3436,7 @@ static void start_checkpointing(struct walb_dev *wdev)
         ASSERT(delay > 0);
         INIT_DELAYED_WORK(&wdev->checkpoint_work, do_checkpointing);
 
-        schedule_delayed_work(&wdev->checkpoint_work, delay);
+        queue_delayed_work(wq_, &wdev->checkpoint_work, delay);
         wdev->checkpoint_state = CP_WAITING;
         printk_d("state change to CP_WAITING\n");
         up_write(&wdev->checkpoint_lock);
