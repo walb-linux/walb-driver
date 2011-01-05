@@ -2297,6 +2297,13 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
                 ctl->val_u64 = get_written_lsid(wdev);
                 ret = 0;
                 break;
+
+        case WALB_IOCTL_LOG_CAPACITY_GET:
+
+                printk_n("WALB_IOCTL_LOG_CAPACITY_GET\n");
+                ctl->val_u64 = get_log_capacity(wdev);
+                ret = 0;
+                break;
                 
         default:
                 printk_n("WALB_IOCTL_WDEV %d is not supported.\n",

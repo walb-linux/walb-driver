@@ -114,6 +114,10 @@ static cmdhelp_t cmdhelps[] = {
           "Get oldest_lsid in the device." },
         { "get_written_lsid WDEV",
           "Get written_lsid in the device." },
+        { "get_log_usage WDEV",
+          "Get log usage in the log device." },
+        { "get_log_capacity WDEV",
+          "Get log capacity in the log device." },
         { "get_version",
           "Get walb version."},
 };
@@ -372,21 +376,20 @@ error0:
 /**
  * Invoke ioctl to WALB_IOCTL_WDEV.
  *
- * @cfg configuration.
- *      This is for command that requires WDEV option.
+ * @wdev_name walb device name.
  * @ctl data for input/output.
  * @open_flag open flag.
  *
  * @return true in success, or false.
  */
-bool invoke_ioctl(const config_t *cfg, struct walb_ctl *ctl, int open_flag)
+bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_flag)
 {
-        if (check_bdev(cfg->wdev_name) < 0) {
+        if (check_bdev(wdev_name) < 0) {
                 LOG("invoke_ioctl: check walb device failed %s.\n",
-                    cfg->wdev_name);
+                    wdev_name);
         }
         
-        int fd = open(cfg->wdev_name, open_flag);
+        int fd = open(wdev_name, open_flag);
         if (fd < 0) {
                 perror("open failed");
                 goto error0;
@@ -404,6 +407,66 @@ error1:
         close(fd);
 error0:
         return false;
+}
+
+/**
+ * Get oldest_lsid.
+ *
+ * @return oldest_lsid in success, or (u64)(-1).
+ */
+u64 get_oldest_lsid(const char* wdev_name)
+{
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_OLDEST_LSID_GET,
+                .u2k = { .buf_size = 0 },
+                .k2u = { .buf_size = 0 },
+        };
+        
+        if (invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
+                return ctl.val_u64;
+        } else {
+                return (u64)(-1);
+        }
+}
+
+/**
+ * Get written_lsid.
+ *
+ * @return written_lsid in success, or (u64)(-1).
+ */
+u64 get_written_lsid(const char* wdev_name)
+{
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_WRITTEN_LSID_GET,
+                .u2k = { .buf_size = 0 },
+                .k2u = { .buf_size = 0 },
+        };
+        
+        if (invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
+                return ctl.val_u64;
+        } else {
+                return (u64)(-1);
+        }
+}
+
+/**
+ * Get log capacity.
+ *
+ * @return log capacity [physical sector] in success, or (u64)(-1).
+ */
+u64 get_log_capacity(const char* wdev_name)
+{
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_LOG_CAPACITY_GET,
+                .u2k = { .buf_size = 0 },
+                .k2u = { .buf_size = 0 },
+        };
+        
+        if (invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
+                return ctl.val_u64;
+        } else {
+                return (u64)(-1);
+        }
 }
 
 /*******************************************************************************
@@ -659,7 +722,7 @@ bool do_set_checkpoint_interval(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg, &ctl, O_RDWR)) {
+        if (invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
                 printf("checkpoint interval is set to %"PRIu32" successfully.\n", ctl.val_u32);
                 return true;
         } else {
@@ -682,7 +745,7 @@ bool do_get_checkpoint_interval(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg, &ctl, O_RDWR)) {
+        if (invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
                 printf("checkpoint interval is %"PRIu32".\n", ctl.val_u32);
                 return true;
         } else {
@@ -1282,7 +1345,7 @@ bool do_set_oldest_lsid(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg, &ctl, O_RDWR)) {
+        if (invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
                 printf("oldest_lsid is set to %"PRIu64" successfully.\n", cfg->lsid);
                 return true;
         } else {
@@ -1297,14 +1360,9 @@ bool do_get_oldest_lsid(const config_t *cfg)
 {
         ASSERT(strcmp(cfg->cmd_str, "get_oldest_lsid") == 0);
         
-        struct walb_ctl ctl = {
-                .command = WALB_IOCTL_OLDEST_LSID_GET,
-                .u2k = { .buf_size = 0 },
-                .k2u = { .buf_size = 0 },
-        };
-        
-        if (invoke_ioctl(cfg, &ctl, O_RDONLY)) {
-                printf("oldest_lsid is %"PRIu64"\n", ctl.val_u64);
+        u64 oldest_lsid = get_oldest_lsid(cfg->wdev_name);
+        if (oldest_lsid != (u64)(-1)) {
+                printf("%"PRIu64"\n", oldest_lsid);
                 return true;
         } else {
                 return false;
@@ -1318,19 +1376,58 @@ bool do_get_written_lsid(const config_t *cfg)
 {
         ASSERT(strcmp(cfg->cmd_str, "get_written_lsid") == 0);
         
-        struct walb_ctl ctl = {
-                .command = WALB_IOCTL_WRITTEN_LSID_GET,
-                .u2k = { .buf_size = 0 },
-                .k2u = { .buf_size = 0 },
-        };
-        
-        if (invoke_ioctl(cfg, &ctl, O_RDONLY)) {
-                printf("%"PRIu64"\n", ctl.val_u64);
+        u64 written_lsid = get_written_lsid(cfg->wdev_name);
+        if (written_lsid != (u64)(-1)) {
+                printf("%"PRIu64"\n", written_lsid);
                 return true;
         } else {
                 return false;
         }
-}        
+}
+
+/**
+ * Get log usage.
+ */
+bool do_get_log_usage(const config_t *cfg)
+{
+        ASSERT(strcmp(cfg->cmd_str, "get_log_usage") == 0);
+
+        /* This is not strict usage, because
+           there is no method to get oldest_lsid and
+           written_lsid atomically. */
+        u64 oldest_lsid = get_oldest_lsid(cfg->wdev_name);
+        u64 written_lsid = get_written_lsid(cfg->wdev_name);
+
+        if (oldest_lsid == (u64)(-1) || written_lsid == (u64)(-1)) {
+                return false;
+        }
+        if (oldest_lsid > written_lsid) {
+                LOG("This does not satisfy oldest_lsid <= written_lsid "
+                    "%"PRIu64" %"PRIu64"\n",
+                    oldest_lsid, written_lsid);
+                return false;
+        }
+
+        printf("%"PRIu64"\n", written_lsid - oldest_lsid);
+        return true;
+}
+
+/**
+ * Get log capacity.
+ */
+bool do_get_log_capacity(const config_t *cfg)
+{
+        ASSERT(strcmp(cfg->cmd_str, "get_log_capacity") == 0);
+
+        u64 log_capacity = get_log_capacity(cfg->wdev_name);
+
+        if (log_capacity == (u64)(-1)) {
+                return false;
+        }
+
+        printf("%"PRIu64"\n", log_capacity);
+        return true;
+}
 
 /**
  * Get walb version.
@@ -1377,6 +1474,10 @@ bool do_help(__attribute__((unused)) const config_t *cfg)
         return true;
 }
 
+/*******************************************************************************
+ * Functions for main.
+ *******************************************************************************/
+
 /**
  * For command string to function.
  */
@@ -1415,6 +1516,8 @@ bool dispatch(const config_t *cfg)
                 { "set_oldest_lsid", do_set_oldest_lsid },
                 { "get_oldest_lsid", do_get_oldest_lsid },
                 { "get_written_lsid", do_get_written_lsid },
+                { "get_log_usage", do_get_log_usage },
+                { "get_log_capacity", do_get_log_capacity },
                 { "get_version", do_get_version },
                 { "help", do_help },
         };
