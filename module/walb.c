@@ -1468,7 +1468,6 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         /*
          * Fill log records for for each request.
          */
-
         ringbuf_off = get_ring_buffer_offset_2(wdev->lsuper0);
         ringbuf_size = get_log_capacity(wdev);
         /*
@@ -1532,8 +1531,6 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
                 goto error0;
         }
 
-        /* now editing */
-
         /* Normally completed log/data writes. */
         walb_end_requests(wk->reqp_ary, wk->n_req, 0);
 
@@ -1547,16 +1544,10 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         spin_unlock(&wdev->datapack_list_lock);
 
         goto fin;
-        
 
 error0:
         walb_end_requests(wk->reqp_ary, wk->n_req, -EIO);
 fin:        
-        /* temporarl deallocation */
-        /* msleep(100); */
-        /* for (i = 0; i < wk->n_req; i ++) { */
-        /*         blk_end_request_all(wk->reqp_ary[i], 0); */
-        /* } */
         kfree(wk->reqp_ary);
         kfree(wk);
         walb_free_sector(lhead);
@@ -2010,20 +2001,19 @@ static void walb_full_request2(struct request_queue *q)
                 }
 
                 if (req->cmd_flags & REQ_FLUSH) {
-                        printk_n("REQ_FLUSH\n");
+                        printk_d("REQ_FLUSH\n");
                 }
                 if (req->cmd_flags & REQ_HARDBARRIER) {
-                        printk_n("REQ_HARDBARRIER\n");
+                        printk_d("REQ_HARDBARRIER\n");
                 }
                 if (req->cmd_flags & REQ_DISCARD) {
-                        printk_n("REQ_DISCARD\n");
+                        printk_d("REQ_DISCARD\n");
                 }
 
                 if (req->cmd_flags & REQ_WRITE) {
                         /* Write.
                            Make log record and
-                           add log pack.
-                         */
+                           add log pack. */
 
                         printk_d("WRITE %ld %d\n", blk_rq_pos(req), blk_rq_bytes(req));
                         
@@ -2864,13 +2854,15 @@ error0:
 }
 
 /**
- * Get written lsid of walb device.
+ * Get written lsid of a walb device.
  *
  * @return written_lsid of the walb device.
  */
 static u64 get_written_lsid(struct walb_dev *wdev)
 {
         u64 ret;
+
+        ASSERT(wdev != NULL);
 
         spin_lock(&wdev->datapack_list_lock);
         ret = wdev->written_lsid;
