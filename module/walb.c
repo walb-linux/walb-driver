@@ -1436,7 +1436,7 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         struct walb_make_logpack_work *wk;
         struct walb_logpack_header *lhead;
         int logpack_size;
-        u64 logpack_lsid, next_logpack_lsid;
+        u64 logpack_lsid, next_logpack_lsid, oldest_lsid;
         u64 ringbuf_off, ringbuf_size;
         struct walb_dev *wdev;
 
@@ -1458,6 +1458,13 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         }
         memset(lhead, 0, wdev->physical_bs);
 
+        /*
+         * Get oldest_lsid.
+         */
+        spin_lock(&wdev->oldest_lsid_lock);
+        oldest_lsid = wdev->oldest_lsid;
+        spin_unlock(&wdev->oldest_lsid_lock);
+        
         /*
          * Fill log records for for each request.
          */
@@ -1483,6 +1490,13 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
                 goto error0;
         }
         next_logpack_lsid = logpack_lsid + logpack_size;
+        if (next_logpack_lsid - oldest_lsid > ringbuf_size) {
+                /* Ring buffer overflow. */
+                printk_e("There is not enough space to write log for %d:%d !\n",
+                         MAJOR(wdev->devt), MINOR(wdev->devt));
+                spin_unlock(&wdev->latest_lsid_lock);
+                goto error0;
+        }
         wdev->latest_lsid = next_logpack_lsid;
         spin_unlock(&wdev->latest_lsid_lock);
 
