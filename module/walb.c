@@ -98,6 +98,8 @@ static void stop_checkpointing(struct walb_dev *wdev);
 static u32 get_checkpoint_interval(struct walb_dev *wdev);
 static void set_checkpoint_interval(struct walb_dev *wdev, u32 val);
 
+static u64 get_written_lsid(struct walb_dev *wdev);
+
 
 /*******************************************************************************
  * Local functions.
@@ -2274,6 +2276,13 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
                         printk_e("Checkpoint interval is too big.\n");
                 }
                 break;
+
+        case WALB_IOCTL_WRITTEN_LSID_GET:
+
+                printk_n("WALB_IOCTL_WRITTEN_LSID_GET\n");
+                ctl->val_u64 = get_written_lsid(wdev);
+                ret = 0;
+                break;
                 
         default:
                 printk_n("WALB_IOCTL_WDEV %d is not supported.\n",
@@ -2831,6 +2840,22 @@ static int walb_finalize_super_block(struct walb_dev *wdev)
 
 error0:
         return -1;
+}
+
+/**
+ * Get written lsid of walb device.
+ *
+ * @return written_lsid of the walb device.
+ */
+static u64 get_written_lsid(struct walb_dev *wdev)
+{
+        u64 ret;
+
+        spin_lock(&wdev->datapack_list_lock);
+        ret = wdev->written_lsid;
+        spin_unlock(&wdev->datapack_list_lock);
+        
+        return ret;
 }
 
 /**

@@ -111,6 +111,9 @@ void show_help()
                "  get_oldest_lsid WDEV\n"
                "      Get oldest_lsid in the device.\n"
                "\n"
+               "  get_written_lsid WDEV\n"
+               "      Get written_lsid in the device.\n"
+               "\n"
                "OPTIONS:\n"
                "  N_SNAP: --n_snap [max number of snapshots]\n"
                "  SIZE:   --size [size of stuff]\n"
@@ -1287,6 +1290,27 @@ bool do_get_oldest_lsid(const config_t *cfg)
 }        
 
 /**
+ * Get written_lsid.
+ */
+bool do_get_written_lsid(const config_t *cfg)
+{
+        ASSERT(strcmp(cfg->cmd_str, "get_written_lsid") == 0);
+        
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_WRITTEN_LSID_GET,
+                .u2k = { .buf_size = 0 },
+                .k2u = { .buf_size = 0 },
+        };
+        
+        if (invoke_ioctl(cfg, &ctl, false)) {
+                printf("%"PRIu64"\n", ctl.val_u64);
+                return true;
+        } else {
+                return false;
+        }
+}        
+
+/**
  * Get walb version.
  */
 bool do_get_version(const config_t *cfg)
@@ -1360,6 +1384,7 @@ bool dispatch(const config_t *cfg)
                 { "redo", do_redo },
                 { "set_oldest_lsid", do_set_oldest_lsid },
                 { "get_oldest_lsid", do_get_oldest_lsid },
+                { "get_written_lsid", do_get_written_lsid },
                 { "get_version", do_get_version },
         };
         int array_size = sizeof(map)/sizeof(map[0]);
