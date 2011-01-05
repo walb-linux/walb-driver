@@ -92,13 +92,13 @@ walb_create_bioclist_work(struct walb_dev *wdev,
                           gfp_t gfp_mask);
 static void walb_destroy_bioclist_work(struct walb_bioclist_work *wk);
 
-
 static void start_checkpointing(struct walb_dev *wdev);
 static void stop_checkpointing(struct walb_dev *wdev);
 static u32 get_checkpoint_interval(struct walb_dev *wdev);
 static void set_checkpoint_interval(struct walb_dev *wdev, u32 val);
 
 static u64 get_written_lsid(struct walb_dev *wdev);
+static u64 get_log_capacity(struct walb_dev *wdev);
 
 
 /*******************************************************************************
@@ -1463,7 +1463,7 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
          */
 
         ringbuf_off = get_ring_buffer_offset_2(wdev->lsuper0);
-        ringbuf_size = wdev->lsuper0->ring_buffer_size;
+        ringbuf_size = get_log_capacity(wdev);
         /*
          * 1. Lock latest_lsid_lock.
          * 2. Get latest_lsid 
@@ -2856,6 +2856,18 @@ static u64 get_written_lsid(struct walb_dev *wdev)
         spin_unlock(&wdev->datapack_list_lock);
         
         return ret;
+}
+
+/**
+ * Get log capacity of a walb device.
+ *
+ * @return ring_buffer_size of the walb device.
+ */
+static u64 get_log_capacity(struct walb_dev *wdev)
+{
+        ASSERT(wdev != NULL);
+        ASSERT(wdev->lsuper0 != NULL);
+        return wdev->lsuper0->ring_buffer_size;
 }
 
 /**
