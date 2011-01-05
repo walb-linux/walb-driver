@@ -11,8 +11,12 @@
 #include "walb.h"
 #include "walb_log_device.h"
 
+#ifdef DEBUG
 #define LOG(fmt, ...)                                                   \
         fprintf(stderr, "DEBUG(%s:%d) " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
+#else
+#define LOG(fmt, ...)
+#endif
 
 /* utility */
 void print_binary_hex(const u8* data, size_t size);
