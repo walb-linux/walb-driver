@@ -50,6 +50,25 @@ enum {
 /* #define KERNEL_SECTOR_SIZE	512 */
 
 /**
+ * Checkpointing state.
+ *
+ * Permitted state transition:
+ *   stoppped -> waiting @start_checkpionting()
+ *   waiting -> running  @do_checkpointing()
+ *   running -> waiting  @do_checkpointing()
+ *   waiting -> stopped  @do_checkpointing()
+ *   waiting -> stopping @stop_checkpointing()
+ *   running -> stopping @stop_checkpointing()
+ *   stopping -> stopped @stop_checkpointing()
+ */
+enum {
+        CP_STOPPED = 0,
+        CP_STOPPING,
+        CP_WAITING,
+        CP_RUNNING,
+};
+
+/**
  * The internal representation of walb and walblog device.
  */
 struct walb_dev {
@@ -132,17 +151,16 @@ struct walb_dev {
          * stop_checkpointing():  unregister handler.
          * do_checkpointing():    checkpoint handler.
          *
-         * do_checkpointing() is serialized so lock is not required.
-         *
-         * checkpoint_lock is used for
+         * checkpoint_lock is used to access 
          *   checkpoint_interval,
-         *   should_checkpoint_stop, and
-         *   is_checkpoint_running.
+         *   checkpoint_state.
+         *
+         * checkpoint_work accesses are automatically
+         * serialized by checkpoint_state.
          */
         struct rw_semaphore checkpoint_lock;
         u32 checkpoint_interval; /* [ms]. 0 means never do checkpointing. */
-        u8 should_checkpoint_stop; /* 0 or 1 */
-        u8 is_checkpoint_running; /* 0 or 1 */
+        u8 checkpoint_state;
         struct delayed_work checkpoint_work;
 };
 
