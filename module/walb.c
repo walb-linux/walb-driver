@@ -3037,7 +3037,7 @@ static int __init walb_init(void)
         /*
          * Workqueue.
          */
-        wq_ = create_workqueue(WALB_WORKQUEUE_NAME);
+        wq_ = create_singlethread_workqueue(WALB_WORKQUEUE_NAME);
         if (wq_ == NULL) {
                 printk_e("create workqueue failed.\n");
                 goto out_unregister;
