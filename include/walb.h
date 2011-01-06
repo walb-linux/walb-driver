@@ -12,7 +12,11 @@
 #include <linux/types.h>
 #include <linux/kdev_t.h>
 #include "inttypes_kern.h"
+#ifdef WALB_DEBUG
 #define ASSERT(cond) BUG_ON(!(cond))
+#else /* WALB_DEBUG */
+#define ASSERT(cond)
+#endif /* WALB_DEBUG */
 #else /* __KERNEL__ */
 #include "userland.h"
 #include <assert.h>
