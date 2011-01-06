@@ -12,5 +12,6 @@ SCRIPT_DIR=$(cd $(dirname $0);pwd)
 scp -p ${SCRIPT_DIR}/module/walb-mod.ko  ${TARGET}:;
 scp -p ${SCRIPT_DIR}/module/insmod.sh    ${TARGET}:;
 scp -p ${SCRIPT_DIR}/module/test-mod.ko  ${TARGET}:;
+scp -p ${SCRIPT_DIR}/module/test2-mod.ko ${TARGET}:;
 scp -p ${SCRIPT_DIR}/tool/walbctl        ${TARGET}:;
 scp -p ${SCRIPT_DIR}/tool/test_rw        ${TARGET}:;
