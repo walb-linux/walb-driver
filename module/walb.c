@@ -2004,9 +2004,6 @@ static void walb_full_request2(struct request_queue *q)
                 if (req->cmd_flags & REQ_FLUSH) {
                         printk_d("REQ_FLUSH\n");
                 }
-                if (req->cmd_flags & REQ_HARDBARRIER) {
-                        printk_d("REQ_HARDBARRIER\n");
-                }
                 if (req->cmd_flags & REQ_DISCARD) {
                         printk_d("REQ_DISCARD\n");
                 }
