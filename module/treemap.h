@@ -15,7 +15,7 @@
  * defined in <linux/rbtree.h>.
  *
  * key: u64 value. Key must be unique in the tree.
- * val: pointer. must not be NULL.
+ * val: void pointer which must not be NULL.
  */
 
 /**

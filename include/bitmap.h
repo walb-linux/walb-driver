@@ -20,14 +20,15 @@
 #define PRINT(fmt, args...) printf(fmt, ##args)
 #endif
 
-
-
+/**
+ * Bitmap structure for walb.
+ */
 typedef struct walb_bitmap
 {
         u8 *ary;
         size_t size;
 #ifdef __KERNEL__
-        spinlock_t lock;
+        spinlock_t lock; /* User can use this lock. */
 #endif
 } walb_bitmap_t;
 

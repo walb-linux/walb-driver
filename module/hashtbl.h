@@ -9,6 +9,19 @@
 #include <linux/list.h>
 
 /**
+ * DOC: Hash table.
+ *
+ * key: byte array with size_t length and u8[length].
+ * val: void pointer which must not be NULL.
+ */
+
+/**
+ * Currently max bucket size is limited to the following definition.
+ * To get over the limitation, multi-level hashing is required.
+ */
+#define HASHTBL_MAX_BUCKET_SIZE (PAGE_SIZE / sizeof(struct hlist_head))
+
+/**
  * Hash cell.
  */
 struct hash_cell {
@@ -33,12 +46,6 @@ struct hash_tbl {
         /* n_bits to store 0 to bucket_size - 1. */
         unsigned int n_bits;
 };
-
-/**
- * Currently max bucket size is limited to the following.
- * To get over the limitation, multi-level hashing is required.
- */
-#define HASHTBL_MAX_BUCKET_SIZE (PAGE_SIZE / sizeof(struct hlist_head))
 
 /**
  * Prototypes
