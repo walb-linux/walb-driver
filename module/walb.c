@@ -30,6 +30,7 @@
 #include "hashtbl.h"
 #include "walb_control.h"
 #include "walb_alldevs.h"
+#include "walb_snapshot.h"
 
 #include "../include/walb_ioctl.h"
 #include "../include/walb_log_device.h"
