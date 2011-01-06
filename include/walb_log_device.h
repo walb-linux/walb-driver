@@ -195,20 +195,18 @@ typedef struct walb_snapshot_sector {
         /* Checksum of snapshot sector */
         u32 checksum;
 
-        /* Allocation bitmap of the continuous records
-           stored in the sector.
-           (i + 1)'th record exists when (bitmap & (1 << i)) != 0.
-        */
-        u32 bitmap;
-
         u16 sector_type;
         u16 reserved1;
-        u16 reserved2;
-        u16 reserved3;
+        
+        /* Allocation bitmap of the continuous records
+           stored in the sector.
+           i'th record exists when (bitmap & (1 << i)) != 0.
+        */
+        u64 bitmap;
 
         walb_snapshot_record_t record[0];
         /* The continuous data have records.
-           The number of records is up to 32 or sector size */
+           The number of records is up to 64 or sector size */
         
 } __attribute__((packed)) walb_snapshot_sector_t;
 
@@ -228,9 +226,13 @@ static inline int max_n_snapshots_in_sector(int sector_size)
         
         size = (sector_size - sizeof(walb_snapshot_sector_t))
                 / sizeof(walb_snapshot_record_t);
+#ifdef __KERNEL__
+        printk(KERN_DEBUG "walb: sector size %d max num of records %d\n",
+               sector_size, size);
+#endif
         
         /* It depends on bitmap length. */
-        return (size < 32 ? size : 32);
+        return (size < 64 ? size : 64);
 }
 
 
