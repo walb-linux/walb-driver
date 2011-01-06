@@ -11,11 +11,15 @@ static int __init test_init(void)
         /* Hashmap test for debug. */
         if (hashtbl_test()) {
                 printk(KERN_ERR "hashmap_test() failed.\n");
+                goto error;
         }
 
         printk(KERN_INFO "test_init end\n");
 
         return 0;
+        
+error:
+        return -1;
 }
 
 static void test_exit(void)

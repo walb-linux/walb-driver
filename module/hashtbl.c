@@ -14,17 +14,11 @@
 #include "walb_util.h" /* for debug */
 #include "hashtbl.h"
 
-#ifdef ASSERT
-#undef ASSERT
-#endif
-
-#define ASSERT(cond) BUG_ON(!(cond))
-
-
 #define ASSERT_HASHTBL(htbl) ASSERT((htbl) != NULL &&               \
                                     (htbl)->bucket != NULL &&       \
                                     (htbl)->bucket_size > 0 &&      \
                                     (htbl)->n_bits > 0)
+
 #define ASSERT_HASHCELL(hcell) ASSERT((hcell) != NULL &&            \
                                       (hcell)->key != NULL &&       \
                                       (hcell)->key_size > 0 &&      \
@@ -388,10 +382,12 @@ int hashtbl_n_items(const struct hash_tbl *htbl)
 
 /**
  * Test hashtbl for debug.
+ *
+ * @return 0 in success, or -1.
  */
 int hashtbl_test(void)
 {
-        int i;
+        int i, n;
         struct hash_tbl *htbl;
         char buf[10];
         void *p;
@@ -408,27 +404,34 @@ int hashtbl_test(void)
                  sizeof(struct hash_tbl),
                  sizeof(struct hash_cell),
                  HASHTBL_MAX_BUCKET_SIZE);
-        
+
+        /* Create. */
         htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
-        if (htbl == NULL) { return -1; }
+        WALB_CHECK(htbl != NULL);
+        n = hashtbl_n_items(htbl);
+        WALB_CHECK(n == 0);
+        WALB_CHECK(hashtbl_is_empty(htbl));
 
-        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
-
+        /* Insert */
         for (i = 0; i < 100000; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
-                ASSERT(hashtbl_add(htbl, buf, 9, buf + i, GFP_KERNEL) == 0);
+                WALB_CHECK(hashtbl_add(htbl, buf, 9, buf + i, GFP_KERNEL) == 0);
         }
+        n = hashtbl_n_items(htbl);
+        WALB_CHECK(n == 100000);
+        WALB_CHECK(! hashtbl_is_empty(htbl));
 
-        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
-
+        /* Lookup */
         for (i = 0; i < 100000; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
                 p = hashtbl_lookup(htbl, buf, 9);
-                ASSERT(p ==  buf + i);
+                WALB_CHECK(p ==  buf + i);
         }
+        n = hashtbl_n_items(htbl);
+        WALB_CHECK(n == 100000);
+        WALB_CHECK(! hashtbl_is_empty(htbl));
 
-        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
-
+        /* Delete */
         for (i = 0; i < 100000; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
                 if (i % 2 == 0) {
@@ -436,18 +439,45 @@ int hashtbl_test(void)
                 } else {
                         p = hashtbl_lookup(htbl, buf, 9);
                 }
-                ASSERT(p != NULL && p == buf + i);
+                WALB_CHECK(p != NULL && p == buf + i);
                 if (i % 2 == 0) {
                         p = hashtbl_lookup(htbl, buf, 9);
-                        ASSERT(p == NULL);
+                        WALB_CHECK(p == NULL);
                 }
         }
-        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
+        n = hashtbl_n_items(htbl);
+        WALB_CHECK(n == 50000);
+        WALB_CHECK(! hashtbl_is_empty(htbl));
+
+        /* Empty */
         hashtbl_empty(htbl);
-        printk_d("n_items: %d\n", hashtbl_n_items(htbl));
+        n = hashtbl_n_items(htbl);
+        WALB_CHECK(n == 0);
+        WALB_CHECK(hashtbl_is_empty(htbl));
+
+        /* 2nd empty. */
+        hashtbl_empty(htbl);
+        n = hashtbl_n_items(htbl);
+        WALB_CHECK(n == 0);
+        WALB_CHECK(hashtbl_is_empty(htbl));
+
+        /* Insert */
+        for (i = 0; i < 100; i ++) {
+                snprintf(buf, 10, "abcd%05d", i);
+                WALB_CHECK(hashtbl_add(htbl, buf, 9, buf + i, GFP_KERNEL) == 0);
+        }
+        n = hashtbl_n_items(htbl);
+        WALB_CHECK(n == 100);
+        WALB_CHECK(! hashtbl_is_empty(htbl));
+
+        /* Empty and destroy. */
         hashtbl_destroy(htbl);
+        
         printk_d("hashtbl_test end\n");
         return 0;
+
+error:
+        return -1;
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

@@ -27,4 +27,29 @@
         printk(KERN_INFO "walb: " fmt, ##args)
 
 
+#ifdef ASSERT
+#undef ASSERT
+#endif
+
+#ifdef WALB_DEBUG
+#define ASSERT(cond) BUG_ON(!(cond))
+#else
+#define ASSERT(cond)
+#endif
+
+/**
+ * For test.
+ */
+#ifdef WALB_CHECK
+#undef WALB_CHECK
+#endif
+#define WALB_CHECK(cond) do {                                           \
+                if (! (cond)) {                                         \
+                        printk_e("CHECK FAILED in %s:%d:%s.\n",    \
+                                 __FILE__, __LINE__, __func__);         \
+                        goto error;                                     \
+                }                                                       \
+        } while(0)
+
+
 #endif /* _WALB_UTIL_H */
