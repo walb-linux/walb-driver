@@ -15,8 +15,14 @@
  * defined in <linux/rbtree.h>.
  *
  * key: u64 value. Key must be unique in the tree.
- * val: void pointer which must not be NULL.
+ * val: unsigned long value that can be a pointer.
  */
+
+/**
+ * Invalid value.
+ */
+#define INVALID_VAL ((unsigned long)(-1))
+
 
 /**
  * Tree node.
@@ -25,7 +31,7 @@ struct tree_node {
 
         struct rb_node node;
         u64 key;
-        void* val;
+        unsigned long val;
 };
 
 /**
@@ -37,14 +43,14 @@ struct tree_map {
 };
 
 /**
- * Prototypes
+ * Prototypes of treemap operations.
  */
 struct tree_map* treemap_create(gfp_t gfp_mask);
 void treemap_destroy(struct tree_map *tmap);
 
-int treemap_add(struct tree_map *tmap, u64 key, const void* val, gfp_t gfp_mask);
-void* treemap_lookup(const struct tree_map *tmap, u64 key);
-void* treemap_del(struct tree_map *tmap, u64 key);
+int treemap_add(struct tree_map *tmap, u64 key, unsigned long val, gfp_t gfp_mask);
+unsigned long treemap_lookup(const struct tree_map *tmap, u64 key);
+unsigned long treemap_del(struct tree_map *tmap, u64 key);
 void treemap_empty(struct tree_map *tmap);
 
 int treemap_is_empty(const struct tree_map *tmap);

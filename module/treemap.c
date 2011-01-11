@@ -15,8 +15,8 @@
 
 #define ASSERT_TREEMAP(tmap) ASSERT((tmap) != NULL)
 
-#define ASSERT_TREENODE(tnode) ASSERT((tnode) != NULL &&        \
-                                      (tnode)->val != NULL)
+#define ASSERT_TREENODE(tnode) ASSERT((tnode) != NULL && \
+                                      (tnode)->val != INVALID_VAL)
 
 /**
  * Prototypes of static functions.
@@ -65,26 +65,26 @@ void treemap_destroy(struct tree_map *tmap)
  *
  * @return 0 in success, or -1.
  */
-int treemap_add(struct tree_map *tmap, u64 key, const void* val, gfp_t gfp_mask)
+int treemap_add(struct tree_map *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 {
         struct tree_node *newnode, *t;
         struct rb_node **childp, *parent;
         
         ASSERT_TREEMAP(tmap);
 
-        if (val == NULL) {
-                printk_e("treemap_add: val must not be NULL.\n");
+        if (val == INVALID_VAL) {
+                printk_e("Val must not be INVALID_VAL.\n");
                 goto error0;
         }
 
         /* Generate new node. */
         newnode = kmalloc(sizeof(struct tree_node), gfp_mask);
         if (newnode == NULL) {
-                printk_e("treemap_add: kmalloc failed.\n");
+                printk_e("kmalloc failed.\n");
                 goto error0;
         }
         newnode->key = key;
-        newnode->val = (void *)val;
+        newnode->val = val;
 
         /* Figure out where to put new node. */
         childp = &(tmap->root.rb_node);
@@ -117,9 +117,9 @@ error0:
 /**
  * Lookup value with the key in the tree map.
  *
- * @return value if found, or NULL.
+ * @return value if found, or INVALID_VAL.
  */
-void* treemap_lookup(const struct tree_map *tmap, u64 key)
+unsigned long treemap_lookup(const struct tree_map *tmap, u64 key)
 {
         struct tree_node *t;
 
@@ -130,7 +130,7 @@ void* treemap_lookup(const struct tree_map *tmap, u64 key)
                 ASSERT_TREENODE(t);
                 return t->val;
         } else {
-                return NULL;
+                return INVALID_VAL;
         }
 }
 
@@ -164,12 +164,12 @@ static struct tree_node* treemap_lookup_node(const struct tree_map *tmap, u64 ke
 /**
  * Delete key-value pair from the tree map.
  *
- * @return value if found, or NULL.
+ * @return value if found, or INVALID_VAL.
  */
-void* treemap_del(struct tree_map *tmap, u64 key)
+unsigned long treemap_del(struct tree_map *tmap, u64 key)
 {
         struct tree_node *t;
-        void *val = NULL;
+        unsigned long val = INVALID_VAL;
 
         ASSERT_TREEMAP(tmap);
 
@@ -211,7 +211,7 @@ void treemap_empty(struct tree_map *tmap)
 }
 
 /**
- * Check tree map is empt or not.
+ * Check tree map is empty or not.
  *
  * @return 1 if empty, or 0.
  */
@@ -264,11 +264,10 @@ static u32 get_random_u32(void)
  */
 int treemap_test(void)
 {
-        
         struct tree_map *tmap;
         int i, n, count;
         u64 key;
-        void *p;
+        unsigned long val;
         
         printk_d("treemap_test begin\n");
         printk_d("tree_map: %zu\n"
@@ -283,16 +282,16 @@ int treemap_test(void)
         WALB_CHECK(n == 0);
         WALB_CHECK(treemap_is_empty(tmap));
 
-        /* Returns error if val is NULL. */
-        WALB_CHECK(treemap_add(tmap, 0, NULL, GFP_KERNEL) != 0);
+        /* Returns error if val is INVALID_VAL. */
+        WALB_CHECK(treemap_add(tmap, 0, INVALID_VAL, GFP_KERNEL) != 0);
 
         /* Insert records. */
         for (i = 0; i < 10000; i ++) {
                 key = (u64)i;
                 /* Succeed. */
-                WALB_CHECK(treemap_add(tmap, key, &key + i, GFP_KERNEL) == 0);
+                WALB_CHECK(treemap_add(tmap, key, key + i, GFP_KERNEL) == 0);
                 /* Fail due to key exists. */
-                WALB_CHECK(treemap_add(tmap, key, &key + i, GFP_KERNEL) != 0);
+                WALB_CHECK(treemap_add(tmap, key, key + i, GFP_KERNEL) != 0);
         }
         n = treemap_n_items(tmap);
         WALB_CHECK(n == 10000);
@@ -303,15 +302,15 @@ int treemap_test(void)
                 key = (u64)i;
                 
                 if (i % 2 == 0) {
-                        p = treemap_del(tmap, key);
+                        val = treemap_del(tmap, key);
                 } else {
-                        p = treemap_lookup(tmap, key);
+                        val = treemap_lookup(tmap, key);
                 }
-                WALB_CHECK(p != NULL);
-                WALB_CHECK(p == &key + i);
+                WALB_CHECK(val != INVALID_VAL);
+                WALB_CHECK(val == key + i);
                 if (i % 2 == 0) {
-                        p = treemap_lookup(tmap, key);
-                        WALB_CHECK(p == NULL);
+                        val = treemap_lookup(tmap, key);
+                        WALB_CHECK(val == INVALID_VAL);
                 }
         }
         n = treemap_n_items(tmap);
@@ -333,7 +332,7 @@ int treemap_test(void)
         count = 0;
         for (i = 0; i < 10000; i ++) {
                 key = get_random_u32() % 10000;
-                if(treemap_add(tmap, key, &key + i, GFP_KERNEL) == 0) {
+                if(treemap_add(tmap, key, key + i, GFP_KERNEL) == 0) {
                         count ++;
                 }
         }
