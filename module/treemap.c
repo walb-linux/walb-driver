@@ -98,7 +98,7 @@ int treemap_add(struct tree_map *tmap, u64 key, const void* val, gfp_t gfp_mask)
                         childp = &(parent->rb_right);
                 } else {
                         ASSERT(key == t->key);
-                        goto error0;
+                        goto error1;
                 }
         }
 
@@ -107,6 +107,9 @@ int treemap_add(struct tree_map *tmap, u64 key, const void* val, gfp_t gfp_mask)
         rb_insert_color(&newnode->node, &tmap->root);
 
         return 0;
+
+error1:
+        kfree(newnode);
 error0:
         return -1;
 }
