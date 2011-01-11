@@ -7,6 +7,7 @@
 #define _TREEMAP_H
 
 #include <linux/rbtree.h>
+#include <linux/list.h>
 
 /**
  * DOC: Tree map using B+Tree.
@@ -57,5 +58,44 @@ int treemap_is_empty(const struct tree_map *tmap);
 int treemap_n_items(const struct tree_map *tmap);
 
 int treemap_test(void); /* For unit test. */
+
+
+/**
+ * Prototypes for multimap operations.
+ *
+ * key: u64 value.
+ * val: hlist_head
+ *      assumption: (sizeof(struct hlist_head) == sizeof(unsigned long)).
+ */
+
+/**
+ * Tree cell to deal with multiple value.
+ *
+ * This data structre is created by @multimap_add()
+ * and deleted by @multimap_del() or @multimap_del_key().
+ * Do not allocate/deallocate by yourself.
+ */
+struct tree_cell {
+        
+        struct hlist_node list;
+        unsigned long val;
+};
+
+struct tree_map* multimap_create(gfp_t gfp_mask);
+void multimap_destroy(struct tree_map *tmap);
+
+int multimap_add(struct tree_map *tmap, u64 key, unsigned long val, gfp_t gfp_mask);
+struct hlist_head* multimap_lookup(const struct tree_map *tmap, u64 key);
+unsigned long multimap_lookup_any(const struct tree_map *tmap, u64 key);
+int multimap_lookup_n(const struct tree_map *tmap, u64 key);
+unsigned long multimap_del(struct tree_map *tmap, u64 key, unsigned long val);
+int multimap_del_key(struct tree_map *tmap, u64 key);
+void multimap_empty(struct tree_map *tmap);
+
+int multimap_is_empty(const struct tree_map *tmap);
+int multimap_n_items(const struct tree_map *tmap);
+
+int multimap_test(void); /* For unit test. */
+
 
 #endif /* _TREEMAP_H */

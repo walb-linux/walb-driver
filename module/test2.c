@@ -14,7 +14,10 @@ static int __init test2_init(void)
                 goto error;
         }
 
-        printk(KERN_INFO "test2_init end\n");
+        if (multimap_test()) {
+                printk(KERN_ERR "multimap_test() failed.\n");
+                goto error;
+        }
 
         printk(KERN_INFO "test2_init end\n");
 
