@@ -15,8 +15,6 @@ static int __init test_init(void)
         }
 
         printk(KERN_INFO "test_init end\n");
-
-        return 0;
         
 error:
         return -1;
