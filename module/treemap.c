@@ -29,6 +29,11 @@
 static struct tree_node* treemap_lookup_node(const struct tree_map *tmap, u64 key);
 static u32 get_random_u32(void);
 
+
+/*******************************************************************************
+ * Treemap_* functions.
+ *******************************************************************************/
+
 /**
  * Create tree map.
  */
