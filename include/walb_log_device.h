@@ -177,11 +177,16 @@ typedef struct walb_super_sector {
  */
 typedef struct walb_snapshot_record {
 
-        /* 8 + 8 + 64 = 80 bytes */
+        /* 8 + 8 + 4 + 64 = 84 bytes */
         
         u64 lsid;
         u64 timestamp; /* in seconds (the same as 'time' system call output). */
-        u8 name[64]; /* '\0' means end of string */
+        u32 snapshot_id; /* Identifier of the snapshot. */
+
+        /* Each character must be [-_0-9a-zA-Z].
+           Terminated by '\0'.
+           So the length of name must be from 1 to 63. */
+        char name[64];
         
 } __attribute__((packed)) walb_snapshot_record_t;
 
