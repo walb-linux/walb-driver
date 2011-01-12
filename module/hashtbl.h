@@ -12,7 +12,7 @@
  * DOC: Hash table.
  *
  * key: byte array with size_t length and u8[length].
- * val: void pointer which must not be NULL.
+ * val: unsigned long value which can be pointer.
  */
 
 /**
@@ -20,6 +20,11 @@
  * To get over the limitation, multi-level hashing is required.
  */
 #define HASHTBL_MAX_BUCKET_SIZE (PAGE_SIZE / sizeof(struct hlist_head))
+
+/**
+ * Invalid value.
+ */
+#define HASHTBL_INVALID_VAL ((unsigned long)(-1))
 
 /**
  * Hash cell.
@@ -30,8 +35,7 @@ struct hash_cell {
         int key_size;
         u8 *key;
         
-        void *val; /* This pointer is not managed
-                      by hashtbl_* functions. */
+        unsigned long val;
 };
 
 /**
@@ -54,9 +58,9 @@ struct hash_tbl* hashtbl_create(int bucket_size, gfp_t gfp_mask);
 void hashtbl_destroy(struct hash_tbl *htbl);
 
 int hashtbl_add(struct hash_tbl *htbl,
-                const u8* key, int key_size, const void *val, gfp_t gfp_mask);
-void* hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size);
-void* hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size);
+                const u8* key, int key_size, unsigned long val, gfp_t gfp_mask);
+unsigned long hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size);
+unsigned long hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size);
 void hashtbl_empty(struct hash_tbl *htbl);
 
 int hashtbl_is_empty(const struct hash_tbl *htbl);

@@ -22,7 +22,7 @@
 #define ASSERT_HASHCELL(hcell) ASSERT((hcell) != NULL &&            \
                                       (hcell)->key != NULL &&       \
                                       (hcell)->key_size > 0 &&      \
-                                      (hcell)->val != NULL)
+                                      (hcell)->val != HASHTBL_INVALID_VAL)
 
 /**
  * Prototypes of static functions.
@@ -224,7 +224,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
  * @htbl hash table.
  * @key pointer to key data.
  * @key_size key size.
- * @val pointer to value. MUST NOT be NULL.
+ * @val value. MUST NOT be HASHTBL_INVALID_VAL.
  * @gfp_mask GFP_*
  * 
  * @return 0 in success,
@@ -233,7 +233,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
  *         -ENOMEM in memory allocation failure.
  */
 int hashtbl_add(struct hash_tbl *htbl,
-                const u8* key, int key_size, const void *val, gfp_t gfp_mask)
+                const u8* key, int key_size, unsigned long val, gfp_t gfp_mask)
 {
         struct hash_cell *cell;
         u32 idx;
@@ -241,7 +241,7 @@ int hashtbl_add(struct hash_tbl *htbl,
         ASSERT_HASHTBL(htbl);
 
         /* Validation */
-        if (key == NULL || key_size <= 0 || val == NULL) {
+        if (key == NULL || key_size <= 0 || val == HASHTBL_INVALID_VAL) {
                 goto parameters_invalid;
         }
 
@@ -259,7 +259,7 @@ int hashtbl_add(struct hash_tbl *htbl,
         /* Fill cell. */
         cell->key_size = key_size;
         memcpy(cell->key, key, key_size);
-        cell->val = (void *)val;
+        cell->val = val;
 
         /* Add to hashtbl. */
         idx = hashtbl_get_index(htbl, key, key_size);
@@ -285,15 +285,15 @@ parameters_invalid:
  * @key pointer to key data.
  * @key_size key size.
  *
- * @return pointer to value if found, or NULL.
+ * @return value if found, or HASHTBL_INVALID_VAL.
  */
-void* hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size)
+unsigned long hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size)
 {
         struct hash_cell *cell;
         
         cell = hashtbl_lookup_cell(htbl, key, key_size);
         /* printk_d("hashtbl_lookup end\n"); */
-        return (cell == NULL ? NULL : cell->val);
+        return (cell == NULL ? HASHTBL_INVALID_VAL : cell->val);
 }
 
 /**
@@ -303,12 +303,12 @@ void* hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size)
  * @key_size key size.
  * @key pointer to key data.
  *
- * @return pointer to value if found, or NULL.
+ * @return value if found, or HASHTBL_INVALID_VAL.
  */
-void* hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
+unsigned long hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
 {
         struct hash_cell *cell;
-        void *val = NULL;
+        unsigned long val = HASHTBL_INVALID_VAL;
         
         cell = hashtbl_lookup_cell(htbl, key, key_size);
         if (cell != NULL) {
@@ -390,7 +390,7 @@ int hashtbl_test(void)
         int i, n;
         struct hash_tbl *htbl;
         char buf[10];
-        void *p;
+        unsigned long val;
 
         printk_d("hashtbl_test begin\n");
 
@@ -415,7 +415,7 @@ int hashtbl_test(void)
         /* Insert */
         for (i = 0; i < 100000; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
-                WALB_CHECK(hashtbl_add(htbl, buf, 9, buf + i, GFP_KERNEL) == 0);
+                WALB_CHECK(hashtbl_add(htbl, buf, 9, i, GFP_KERNEL) == 0);
         }
         n = hashtbl_n_items(htbl);
         WALB_CHECK(n == 100000);
@@ -424,8 +424,8 @@ int hashtbl_test(void)
         /* Lookup */
         for (i = 0; i < 100000; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
-                p = hashtbl_lookup(htbl, buf, 9);
-                WALB_CHECK(p ==  buf + i);
+                val = hashtbl_lookup(htbl, buf, 9);
+                WALB_CHECK(val ==  i);
         }
         n = hashtbl_n_items(htbl);
         WALB_CHECK(n == 100000);
@@ -435,14 +435,14 @@ int hashtbl_test(void)
         for (i = 0; i < 100000; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
                 if (i % 2 == 0) {
-                        p = hashtbl_del(htbl, buf, 9);
+                        val = hashtbl_del(htbl, buf, 9);
                 } else {
-                        p = hashtbl_lookup(htbl, buf, 9);
+                        val = hashtbl_lookup(htbl, buf, 9);
                 }
-                WALB_CHECK(p != NULL && p == buf + i);
+                WALB_CHECK(val != HASHTBL_INVALID_VAL && val == i);
                 if (i % 2 == 0) {
-                        p = hashtbl_lookup(htbl, buf, 9);
-                        WALB_CHECK(p == NULL);
+                        val = hashtbl_lookup(htbl, buf, 9);
+                        WALB_CHECK(val == HASHTBL_INVALID_VAL);
                 }
         }
         n = hashtbl_n_items(htbl);
@@ -464,7 +464,7 @@ int hashtbl_test(void)
         /* Insert */
         for (i = 0; i < 100; i ++) {
                 snprintf(buf, 10, "abcd%05d", i);
-                WALB_CHECK(hashtbl_add(htbl, buf, 9, buf + i, GFP_KERNEL) == 0);
+                WALB_CHECK(hashtbl_add(htbl, buf, 9, i, GFP_KERNEL) == 0);
         }
         n = hashtbl_n_items(htbl);
         WALB_CHECK(n == 100);

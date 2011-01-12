@@ -163,8 +163,9 @@ struct walb_dev* search_wdev_with_minor(unsigned int minor)
 struct walb_dev* search_wdev_with_minor(unsigned int minor)
 {
         CHECK_RUNNING();
-        return hashtbl_lookup(htbl_minor_,
-                              (const u8 *)&minor, sizeof(unsigned int));
+        return (struct walb_dev *)
+                hashtbl_lookup(htbl_minor_,
+                               (const u8 *)&minor, sizeof(unsigned int));
 }
 
 /**
@@ -179,7 +180,8 @@ struct walb_dev* search_wdev_with_name(const char* name)
 
         CHECK_RUNNING();
         len = strnlen(name, WALB_DEV_NAME_MAX_LEN - 1);
-        return hashtbl_lookup(htbl_name_, (const u8 *)name, len);
+        return (struct walb_dev *)
+                hashtbl_lookup(htbl_name_, (const u8 *)name, len);
 }
 
 /**
@@ -191,7 +193,7 @@ struct walb_dev* search_wdev_with_name(const char* name)
 struct walb_dev* search_wdev_with_uuid(const u8* uuid)
 {
         CHECK_RUNNING();
-        return hashtbl_lookup(htbl_uuid_, uuid, 16);
+        return (struct walb_dev *)hashtbl_lookup(htbl_uuid_, uuid, 16);
 }
 
 
@@ -217,7 +219,7 @@ int alldevs_add(struct walb_dev* wdev)
         minor = MINOR(wdev->devt);
         ret = hashtbl_add(htbl_minor_,
                           (const u8 *)&minor, sizeof(unsigned int),
-                          wdev, GFP_KERNEL);
+                          (unsigned long)wdev, GFP_KERNEL);
         if (ret != 0) {
                 if (ret == -EPERM) {
                         printk_e("alldevs_add: minor %u is already registered.\n",
@@ -229,7 +231,7 @@ int alldevs_add(struct walb_dev* wdev)
         len = get_wdev_name_len(wdev);
         ret = hashtbl_add(htbl_name_,
                           wdev->lsuper0->name, len,
-                          wdev, GFP_KERNEL);
+                          (unsigned long)wdev, GFP_KERNEL);
         if (ret != 0) {
                 if (ret == -EPERM) {
                         printk_e("alldevs_add: name %s is already registered.\n",
@@ -240,7 +242,7 @@ int alldevs_add(struct walb_dev* wdev)
 
         ret = hashtbl_add(htbl_uuid_,
                           wdev->lsuper0->uuid, 16,
-                          wdev, GFP_KERNEL);
+                          (unsigned long)wdev, GFP_KERNEL);
         if (ret != 0) {
                 if (ret == -EPERM) {
                         sprint_uuid(buf, wdev->lsuper0->uuid);
@@ -281,9 +283,12 @@ void alldevs_del(struct walb_dev* wdev)
         len = get_wdev_name_len(wdev);
         wminor = MINOR(wdev->devt);
         
-        tmp0 = hashtbl_del(htbl_uuid_, wdev->lsuper0->uuid, 16);
-        tmp1 = hashtbl_del(htbl_name_, wdev->lsuper0->name, len);
-        tmp2 = hashtbl_del(htbl_minor_, (const u8 *)&wminor, sizeof(unsigned int));
+        tmp0 = (struct walb_dev *)
+                hashtbl_del(htbl_uuid_, wdev->lsuper0->uuid, 16);
+        tmp1 = (struct walb_dev *)
+                hashtbl_del(htbl_name_, wdev->lsuper0->name, len);
+        tmp2 = (struct walb_dev *)
+                hashtbl_del(htbl_minor_, (const u8 *)&wminor, sizeof(unsigned int));
 
         ASSERT(wdev == tmp0);
         ASSERT(wdev == tmp1);
