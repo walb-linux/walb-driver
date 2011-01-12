@@ -22,7 +22,7 @@
 /**
  * Invalid value.
  */
-#define INVALID_VAL ((unsigned long)(-1))
+#define TREEMAP_INVALID_VAL ((unsigned long)(-1))
 
 
 /**

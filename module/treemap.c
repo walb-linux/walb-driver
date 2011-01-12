@@ -18,10 +18,10 @@
 #define ASSERT_TREEMAP(tmap) ASSERT((tmap) != NULL)
 
 #define ASSERT_TREENODE(tnode) ASSERT((tnode) != NULL && \
-                                      (tnode)->val != INVALID_VAL)
+                                      (tnode)->val != TREEMAP_INVALID_VAL)
 
 #define ASSERT_TREECELL(tcell) ASSERT((tcell) != NULL && \
-                                      (tcell)->val != INVALID_VAL)
+                                      (tcell)->val != TREEMAP_INVALID_VAL)
 
 /**
  * Prototypes of static functions.
@@ -82,8 +82,8 @@ int treemap_add(struct tree_map *tmap, u64 key, unsigned long val, gfp_t gfp_mas
         
         ASSERT_TREEMAP(tmap);
 
-        if (val == INVALID_VAL) {
-                printk_e("Val must not be INVALID_VAL.\n");
+        if (val == TREEMAP_INVALID_VAL) {
+                printk_e("Val must not be TREEMAP_INVALID_VAL.\n");
                 goto error0;
         }
 
@@ -127,7 +127,7 @@ error0:
 /**
  * Lookup value with the key in the tree map.
  *
- * @return value if found, or INVALID_VAL.
+ * @return value if found, or TREEMAP_INVALID_VAL.
  */
 unsigned long treemap_lookup(const struct tree_map *tmap, u64 key)
 {
@@ -140,7 +140,7 @@ unsigned long treemap_lookup(const struct tree_map *tmap, u64 key)
                 ASSERT_TREENODE(t);
                 return t->val;
         } else {
-                return INVALID_VAL;
+                return TREEMAP_INVALID_VAL;
         }
 }
 
@@ -174,12 +174,12 @@ static struct tree_node* treemap_lookup_node(const struct tree_map *tmap, u64 ke
 /**
  * Delete key-value pair from the tree map.
  *
- * @return value if found, or INVALID_VAL.
+ * @return value if found, or TREEMAP_INVALID_VAL.
  */
 unsigned long treemap_del(struct tree_map *tmap, u64 key)
 {
         struct tree_node *t;
-        unsigned long val = INVALID_VAL;
+        unsigned long val = TREEMAP_INVALID_VAL;
 
         ASSERT_TREEMAP(tmap);
 
@@ -292,8 +292,8 @@ int treemap_test(void)
         WALB_CHECK(n == 0);
         WALB_CHECK(treemap_is_empty(tmap));
 
-        /* Returns error if val is INVALID_VAL. */
-        WALB_CHECK(treemap_add(tmap, 0, INVALID_VAL, GFP_KERNEL) != 0);
+        /* Returns error if val is TREEMAP_INVALID_VAL. */
+        WALB_CHECK(treemap_add(tmap, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) != 0);
 
         /* Insert records. */
         for (i = 0; i < 10000; i ++) {
@@ -316,11 +316,11 @@ int treemap_test(void)
                 } else {
                         val = treemap_lookup(tmap, key);
                 }
-                WALB_CHECK(val != INVALID_VAL);
+                WALB_CHECK(val != TREEMAP_INVALID_VAL);
                 WALB_CHECK(val == key + i);
                 if (i % 2 == 0) {
                         val = treemap_lookup(tmap, key);
-                        WALB_CHECK(val == INVALID_VAL);
+                        WALB_CHECK(val == TREEMAP_INVALID_VAL);
                 }
         }
         n = treemap_n_items(tmap);
@@ -401,8 +401,8 @@ int multimap_add(struct tree_map *tmap, u64 key, unsigned long val, gfp_t gfp_ma
         struct hlist_node *node, *next;
         int found;
 
-        if (val == INVALID_VAL) {
-                printk_e("Val must not be INVALID_VAL.\n");
+        if (val == TREEMAP_INVALID_VAL) {
+                printk_e("Val must not be TREEMAP_INVALID_VAL.\n");
                 goto error0;
         }
         
@@ -475,7 +475,7 @@ struct hlist_head* multimap_lookup(const struct tree_map *tmap, u64 key)
 /**
  * Lookup first found value with the key in the multimap.
  *
- * @return first found value, or INVALID_VAL.
+ * @return first found value, or TREEMAP_INVALID_VAL.
  */
 unsigned long multimap_lookup_any(const struct tree_map *tmap, u64 key)
 {
@@ -485,7 +485,7 @@ unsigned long multimap_lookup_any(const struct tree_map *tmap, u64 key)
         head = multimap_lookup(tmap, key);
 
         if (head == NULL) {
-                return INVALID_VAL;
+                return TREEMAP_INVALID_VAL;
         } else {
                 ASSERT(! hlist_empty(head));
                 cell = hlist_entry(head->first, struct tree_cell, list);
@@ -522,7 +522,7 @@ int multimap_lookup_n(const struct tree_map *tmap, u64 key)
 /**
  * Delete key-value pair from the multimap.
  *
- * @return value if found, or INVALID_VAL.
+ * @return value if found, or TREEMAP_INVALID_VAL.
  */
 unsigned long multimap_del(struct tree_map *tmap, u64 key, unsigned long val)
 {
@@ -531,10 +531,10 @@ unsigned long multimap_del(struct tree_map *tmap, u64 key, unsigned long val)
         struct hlist_head *head;
         struct hlist_node *hlnode, *hlnext;
         int found;
-        unsigned long retval = INVALID_VAL, ret;
+        unsigned long retval = TREEMAP_INVALID_VAL, ret;
         
         t = treemap_lookup_node(tmap, key);
-        if (t == NULL) { return INVALID_VAL; }
+        if (t == NULL) { return TREEMAP_INVALID_VAL; }
         
         ASSERT(t->key == key);
         head = (struct hlist_head *)(&t->val);
@@ -554,7 +554,7 @@ unsigned long multimap_del(struct tree_map *tmap, u64 key, unsigned long val)
 
         if (hlist_empty(head)) {
                 ret = treemap_del(tmap, key);
-                ASSERT(ret != INVALID_VAL);
+                ASSERT(ret != TREEMAP_INVALID_VAL);
         }
         return retval;
 }
@@ -691,8 +691,8 @@ int multimap_test(void)
         WALB_CHECK(n == 0);
         WALB_CHECK(multimap_is_empty(tm));
 
-        /* Returns error if val is INVALID_VAL. */
-        WALB_CHECK(multimap_add(tm, 0, INVALID_VAL, GFP_KERNEL) != 0);
+        /* Returns error if val is TREEMAP_INVALID_VAL. */
+        WALB_CHECK(multimap_add(tm, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) != 0);
 
         /* Insert records. */
         for (i = 0; i < 10000; i ++) {
@@ -717,7 +717,7 @@ int multimap_test(void)
                 
                 if (i % 2 == 0) {
                         val = multimap_del(tm, key, key + i);
-                        WALB_CHECK(val != INVALID_VAL);
+                        WALB_CHECK(val != TREEMAP_INVALID_VAL);
                         WALB_CHECK(val == key + i);
                 } else {
                         head = multimap_lookup(tm, key);
