@@ -8,9 +8,15 @@ static int __init test2_init(void)
 {
         printk(KERN_INFO "test2_init begin\n");
         
-        /* Hashmap test for debug. */
-        if (treemap_test()) {
-                printk(KERN_ERR "treemap_test() failed.\n");
+        /* Treemap test for debug. */
+        
+        if (map_test()) {
+                printk(KERN_ERR "map_test() failed.\n");
+                goto error;
+        }
+
+        if (map_curser_test()) {
+                printk(KERN_ERR "map_curser_test() failed.\n");
                 goto error;
         }
 

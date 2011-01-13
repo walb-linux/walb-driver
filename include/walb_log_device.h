@@ -240,7 +240,6 @@ static inline int max_n_snapshots_in_sector(int sector_size)
         return (size < 64 ? size : 64);
 }
 
-
 /**
  * Get metadata size
  *

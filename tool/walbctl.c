@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include "walb.h"
 #include "walb_log_device.h"
@@ -86,7 +87,7 @@ static cmdhelp_t cmdhelps[] = {
           "Make walb/walblog device." },
         { "delete_wdev WDEV",
           "Delete walb/walblog device." },
-        { "(NIY)create_snapshot WDEV NAME",
+        { "create_snapshot WDEV NAME",
           "Create snapshot." },
         { "(NIY)delete_snapshot WDEV NAME",
           "Delete snapshot." },
@@ -159,6 +160,8 @@ void init_config(config_t* cfg)
 {
         ASSERT(cfg != NULL);
 
+        /* memset(cfg, 0, sizeof(config_t)); */
+        
         cfg->n_snapshots = 10000;
 
         cfg->lsid0 = (u64)(-1);
@@ -385,9 +388,14 @@ error0:
  */
 bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_flag)
 {
+        if (wdev_name == NULL) {
+                LOGe("Specify walb device.\n");
+                goto error0;
+        }
         if (check_bdev(wdev_name) < 0) {
                 LOGe("invoke_ioctl: check walb device failed %s.\n",
-                    wdev_name);
+                     wdev_name);
+                goto error0;
         }
         
         int fd = open(wdev_name, open_flag);
@@ -699,6 +707,58 @@ bool do_delete_wdev(const config_t *cfg)
         
 error1:
         close(fd);
+error0:
+        return false;
+}
+
+/**
+ * Create snapshot.
+ *
+ * Input: NAME (default: datetime string).
+ * Output: Nothing.
+ */
+bool do_create_snapshot(const config_t *cfg)
+{
+        ASSERT(strcmp(cfg->cmd_str, "create_snapshot") == 0);
+
+        char name[SNAPSHOT_NAME_MAX_LEN + 1];
+        name[SNAPSHOT_NAME_MAX_LEN] = '\0';
+
+        time_t timestamp = time(0);
+
+        /* Check config. */
+        if (cfg->name == NULL) {
+                if (! get_datetime_str(timestamp, name, SNAPSHOT_NAME_MAX_LEN)) {
+                        ASSERT(false);
+                }
+        } else {
+                strncpy(name, cfg->name, SNAPSHOT_NAME_MAX_LEN);
+        }
+        if (! is_valid_snapshot_name(name)) {
+                LOGe("snapshot name %s is not valid.\n", name);
+                goto error0;
+        }
+        LOGd("name: %s\n", name);
+        
+        /* Prepare control data. */
+        walb_snapshot_record_t record;
+        record.lsid = INVALID_LSID;
+        record.timestamp = (u64)timestamp;
+        record.snapshot_id = INVALID_SNAPSHOT_ID;
+        strncpy(record.name, name, SNAPSHOT_NAME_MAX_LEN);
+        
+        struct walb_ctl ctl = {
+                .command = WALB_IOCTL_SNAPSHOT_CREATE,
+                .u2k = { .buf_size = sizeof(walb_snapshot_record_t),
+                         .buf = (u8 *)&record },
+                .k2u = { .buf_size = 0 },
+        };
+        
+        if (! invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+        LOGn("Create snapshot succeeded.\n");
+        
+        return true;
+
 error0:
         return false;
 }
@@ -1521,7 +1581,7 @@ bool dispatch(const config_t *cfg)
                 { "format_ldev", do_format_ldev },
                 { "create_wdev", do_create_wdev },
                 { "delete_wdev", do_delete_wdev },
-                /* { "create_snapshot", do_create_snapshot }, */
+                { "create_snapshot", do_create_snapshot },
                 /* { "delete_snapshot", do_delete_snapshot }, */
                 /* { "num_snapshot", do_num_snapshot }, */
                 /* { "list_snapshot", do_list_snapshot }, */

@@ -66,6 +66,18 @@
 #define SECTOR_TYPE_WALBLOG_HEADER  0x0004
 
 /**
+ * Constants for lsid.
+ */
+#define INVALID_LSID ((u64)(-1))
+#define MAX_LSID     ((u64)(-2))
+
+/**
+ * Constants for snapshot_id.
+ */
+#define INVALID_SNAPSHOT_ID ((u32)(-1))
+#define MAX_SNAPSHOT_ID     ((u32)(-2))
+
+/**
  * Max length of snapshot name.
  */
 #define SNAPSHOT_NAME_MAX_LEN 64

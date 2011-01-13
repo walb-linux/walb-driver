@@ -2292,6 +2292,35 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
                 ctl->val_u64 = get_log_capacity(wdev);
                 ret = 0;
                 break;
+
+        case WALB_IOCTL_SNAPSHOT_CREATE:
+
+                printk_n("WALB_IOCTL_SNAPSHOT_CREATE\n");
+
+                (walb_snapshot_record_t *)ctl->u2k.__buf;
+                /* now editing */
+                
+                break;
+                
+        case WALB_IOCTL_SNAPSHOT_DELETE:
+
+                printk_n("WALB_IOCTL_SNAPSHOT_DELETE\n");
+                break;
+                
+        case WALB_IOCTL_SNAPSHOT_GET:
+
+                printk_n("WALB_IOCTL_SNAPSHOT_GET\n");
+                break;
+                
+        case WALB_IOCTL_SNAPSHOT_NUM:
+
+                printk_n("WALB_IOCTL_SNAPSHOT_NUM\n");
+                break;
+                
+        case WALB_IOCTL_SNAPSHOT_LIST:
+
+                printk_n("WALB_IOCTL_SNAPSHOT_LIST\n");
+                break;
                 
         default:
                 printk_n("WALB_IOCTL_WDEV %d is not supported.\n",
