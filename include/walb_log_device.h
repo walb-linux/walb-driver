@@ -185,8 +185,8 @@ typedef struct walb_snapshot_record {
 
         /* Each character must be [-_0-9a-zA-Z].
            Terminated by '\0'.
-           So the length of name must be from 1 to 63. */
-        char name[64];
+           So the length of name must be from 1 to SNAPSHOT_NAME_MAX_LEN - 1. */
+        char name[SNAPSHOT_NAME_MAX_LEN];
         
 } __attribute__((packed)) walb_snapshot_record_t;
 
