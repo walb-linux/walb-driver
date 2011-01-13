@@ -222,7 +222,7 @@ static inline int max_n_snapshots_in_sector(int sector_size)
 {
         int size;
 
-#if 0
+#if 0 && !defined(__KERNEL__)
         printf("walb_snapshot_sector_t size: %zu\n",
                sizeof(walb_snapshot_sector_t));
         printf("walb_snapshot_record_t size: %zu\n",
@@ -231,7 +231,7 @@ static inline int max_n_snapshots_in_sector(int sector_size)
         
         size = (sector_size - sizeof(walb_snapshot_sector_t))
                 / sizeof(walb_snapshot_record_t);
-#ifdef __KERNEL__
+#if defined(__KERNEL__) && defined(WALB_DEBUG)
         printk(KERN_DEBUG "walb: sector size %d max num of records %d\n",
                sector_size, size);
 #endif

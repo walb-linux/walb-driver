@@ -144,8 +144,8 @@ enum {
         /*
          * For WALB_IOCTL_CONTROL
          */
-        WALB_IOCTL_DEV_START, /* NIY */
-        WALB_IOCTL_DEV_STOP, /* NIY */
+        WALB_IOCTL_DEV_START,
+        WALB_IOCTL_DEV_STOP,
         WALB_IOCTL_DEV_LIST, /* NIY */
         WALB_IOCTL_NUM_DEV_GET, /* NIY */
 
