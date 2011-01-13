@@ -11,12 +11,19 @@
 #include "walb.h"
 #include "walb_log_device.h"
 
+#define LOG0(level, fmt, ...)                                            \
+        fprintf(stderr, "%s(%s:%d) " fmt, level, __FILE__, __LINE__, ##__VA_ARGS__)
+#define LOG1(level, fmt, ...)                                            \
+        fprintf(stderr, "%s " fmt, level, ##__VA_ARGS__)
+
 #ifdef DEBUG
-#define LOG(fmt, ...)                                                   \
-        fprintf(stderr, "DEBUG(%s:%d) " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
+#define LOGd(fmt, ...) LOG0("DEBUG",   fmt, ##__VA_ARGS__)
 #else
-#define LOG(fmt, ...)
+#define LOGd(fmt, ...)
 #endif
+#define LOGn(fmt, ...) LOG1("NOTICE",  fmt, ##__VA_ARGS__)
+#define LOGw(fmt, ...) LOG1("WARNING", fmt, ##__VA_ARGS__)
+#define LOGe(fmt, ...) LOG1("ERROR",   fmt, ##__VA_ARGS__)
 
 /* utility */
 void print_binary_hex(const u8* data, size_t size);

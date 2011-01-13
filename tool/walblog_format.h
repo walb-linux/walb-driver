@@ -74,19 +74,19 @@ inline void print_wlog_header(walblog_header_t* wh)
 inline bool check_wlog_header(walblog_header_t* wh)
 {
         if (checksum((const u8 *)wh, WALBLOG_HEADER_SIZE) != 0) {
-                LOG("wlog checksum is invalid.\n");
+                LOGe("wlog checksum is invalid.\n");
                 goto error0;
         }
         if (wh->sector_type != SECTOR_TYPE_WALBLOG_HEADER) {
-                LOG("wlog header sector type is invalid.\n");
+                LOGe("wlog header sector type is invalid.\n");
                 goto error0;
         }
         if (wh->version != WALB_VERSION) {
-                LOG("wlog header version is invalid.\n");
+                LOGe("wlog header version is invalid.\n");
                 goto error0;
         }
         if (wh->begin_lsid >= wh->end_lsid) {
-                LOG("wlog header does not satisfy begin_lsid < end_lsid.\n");
+                LOGe("wlog header does not satisfy begin_lsid < end_lsid.\n");
                 goto error0;
         }
 

@@ -25,17 +25,17 @@ bool check_logpack_header(const walb_logpack_header_t* logpack,
         if (logpack->n_records == 0 ||
             logpack->total_io_size == 0 ||
             logpack->sector_type != SECTOR_TYPE_LOGPACK) {
-                LOG("log pack header is invalid "
-                    "(n_records: %u total_io_size %u sector_type %u).\n",
-                    logpack->n_records, logpack->total_io_size,
-                    logpack->sector_type);
+                LOGe("log pack header is invalid "
+                     "(n_records: %u total_io_size %u sector_type %u).\n",
+                     logpack->n_records, logpack->total_io_size,
+                     logpack->sector_type);
                 goto error0;
         }
         
         /* confirm checksum */
         if (checksum((const u8 *)logpack, physical_bs) != 0) {
-                LOG("logpack header checksum is invalid (lsid %"PRIu64").\n",
-                    logpack->logpack_lsid);
+                LOGe("logpack header checksum is invalid (lsid %"PRIu64").\n",
+                     logpack->logpack_lsid);
                 goto error0;
         }
 
@@ -68,19 +68,19 @@ bool read_logpack_header_from_wldev(int fd,
 
         /* read sector */
         if (! read_sector(fd, (u8 *)logpack, super_sectp->physical_bs, off)) {
-                LOG("read logpack header (lsid %"PRIu64") failed.\n", lsid);
+                LOGe("read logpack header (lsid %"PRIu64") failed.\n", lsid);
                 goto error0;
         }
 
         /* check lsid */
         if (lsid != logpack->logpack_lsid) {
-                LOG("lsid (given %"PRIu64" read %"PRIu64") is invalid.\n",
-                    lsid, logpack->logpack_lsid);
+                LOGe("lsid (given %"PRIu64" read %"PRIu64") is invalid.\n",
+                     lsid, logpack->logpack_lsid);
                 goto error0;
         }
 
         if (! check_logpack_header(logpack, super_sectp->physical_bs)) {
-                LOG("check logpack header failed.\n");
+                LOGe("check logpack header failed.\n");
                 goto error0;
         }
 
@@ -171,7 +171,7 @@ bool read_logpack_data_from_wldev(int fd,
         ASSERT(physical_bs % logical_bs == 0);
 
         if (logpack->total_io_size * physical_bs > (ssize_t)bufsize) {
-                LOG("buffer size is not enough.\n");
+                LOGe("buffer size is not enough.\n");
                 return false;
         }
 
@@ -194,24 +194,24 @@ bool read_logpack_data_from_wldev(int fd,
 
                 log_off = get_offset_of_lsid_2
                         (super_sectp, logpack->record[i].lsid);
-                LOG("lsid: %"PRIu64" log_off: %"PRIu64"\n",
-                    logpack->record[i].lsid,
-                    log_off);
+                LOGd("lsid: %"PRIu64" log_off: %"PRIu64"\n",
+                     logpack->record[i].lsid,
+                     log_off);
 
                 buf_off = buf + (total_pb * physical_bs);
                 if (logpack->record[i].is_padding == 0) {
 
                         /* Read data for the log record. */
                         if (! read_sectors(fd, buf_off, physical_bs, log_off, log_pb)) {
-                                LOG("read sectors failed.\n");
+                                LOGe("read sectors failed.\n");
                                 goto error0;
                         }
 
                         /* Confirm checksum */
                         u32 csum = checksum((const u8 *)buf_off, logical_bs * log_lb);
                         if (csum != logpack->record[i].checksum) {
-                                LOG("log header checksum is invalid. %08x %08x\n",
-                                    csum, logpack->record[i].checksum);
+                                LOGe("log header checksum is invalid. %08x %08x\n",
+                                     csum, logpack->record[i].checksum);
                                 goto error0;
                         }
                 } else {
@@ -274,7 +274,7 @@ bool read_logpack_data(int fd,
         const int n_lb_in_pb = physical_bs / logical_bs;
 
         if (logpack->total_io_size * physical_bs > (ssize_t)bufsize) {
-                LOG("buffer size is not enough.\n");
+                LOGe("buffer size is not enough.\n");
                 goto error0;
         }
 
@@ -295,15 +295,15 @@ bool read_logpack_data(int fd,
 
                         /* Read data of the log record. */
                         if (! read_data(fd, buf_off, log_pb * physical_bs)) {
-                                LOG("read log data failed.\n");
+                                LOGe("read log data failed.\n");
                                 goto error0;
                         }
 
                         /* Confirm checksum. */
                         u32 csum = checksum((const u8 *)buf_off, log_lb * logical_bs);
                         if (csum != logpack->record[i].checksum) {
-                                LOG("log header checksum in invalid. %08x %08x\n",
-                                    csum, logpack->record[i].checksum);
+                                LOGe("log header checksum in invalid. %08x %08x\n",
+                                     csum, logpack->record[i].checksum);
                                 goto error0;
                         }
                 } else {
@@ -346,7 +346,7 @@ bool redo_logpack(int fd,
                 int size_lb = logpack->record[i].io_size;
 
                 if (! write_sectors(fd, buf + buf_off, logical_bs, off_lb, size_lb)) {
-                        LOG("write sectors failed.\n");
+                        LOGe("write sectors failed.\n");
                         goto error0;
                 }
         }

@@ -24,6 +24,8 @@
 #include "walblog_format.h"
 
 
+#define NOMEM_STR "Memory allocation failed.\n"
+
 /*******************************************************************************
  * Typedefs.
  *******************************************************************************/
@@ -51,7 +53,6 @@ typedef struct config
         size_t size; /* (size_t)(-1) means undefined. */
         
 } config_t;
-
 
 /*******************************************************************************
  * Helper functions.
@@ -216,11 +217,11 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
                 switch (c) {
                 case OPT_LDEV:
                         cfg->ldev_name = strdup(optarg);
-                        LOG("ldev: %s\n", optarg);
+                        LOGd("ldev: %s\n", optarg);
                         break;
                 case OPT_DDEV:
                         cfg->ddev_name = strdup(optarg);
-                        LOG("ddev: %s\n", optarg);
+                        LOGd("ddev: %s\n", optarg);
                         break;
                 case OPT_N_SNAP:
                         cfg->n_snapshots = atoi(optarg);
@@ -250,18 +251,18 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
                         cfg->cmd_str = "help";
                         return 0;
                 default:
-                        LOG("unknown option.\n");
+                        LOGw("unknown option.\n");
                 }
         }
 
         if (optind < argc) {
-                LOG("command: ");
+                LOGd("command: ");
                 while (optind < argc) {
                         cfg->cmd_str = strdup(argv[optind]);
-                        LOG("%s ", argv[optind]);
+                        LOGd("%s ", argv[optind]);
                         optind ++;
                 }
-                LOG("\n");
+                LOGd("\n");
         } else {
                 show_shorthelp();
                 return -1;
@@ -305,7 +306,7 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
         int t = max_n_snapshots_in_sector(physical_bs);
         n_sectors = (n_snapshots + t - 1) / t;
 
-        LOG("metadata_size: %d\n", n_sectors);
+        LOGd("metadata_size: %d\n", n_sectors);
 
         /* Prepare super sector */
         memset(&super_sect, 0, sizeof(super_sect));
@@ -329,7 +330,7 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
         
         /* Write super sector */
         if (! write_super_sector(fd, &super_sect)) {
-                LOG("write super sector failed.\n");
+                LOGe("write super sector failed.\n");
                 goto error0;
         }
 
@@ -385,7 +386,7 @@ error0:
 bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_flag)
 {
         if (check_bdev(wdev_name) < 0) {
-                LOG("invoke_ioctl: check walb device failed %s.\n",
+                LOGe("invoke_ioctl: check walb device failed %s.\n",
                     wdev_name);
         }
         
@@ -397,7 +398,7 @@ bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_flag)
 
         int ret = ioctl(fd, WALB_IOCTL_WDEV, ctl);
         if (ret < 0) {
-                LOG("invoke_ioctl: ioctl failed.\n");
+                LOGe("invoke_ioctl: ioctl failed.\n");
                 goto error1;
         }
         close(fd);
@@ -487,12 +488,14 @@ bool do_format_ldev(const config_t *cfg)
          * Check devices.
          */
         if (check_bdev(cfg->ldev_name) < 0) {
-                LOG("format_ldev: check log device failed %s.\n",
+                LOGe("format_ldev: check log device failed %s.\n",
                     cfg->ldev_name);
+                goto error0;
         }
         if (check_bdev(cfg->ddev_name) < 0) {
-                LOG("format_ldev: check data device failed %s.\n",
+                LOGe("format_ldev: check data device failed %s.\n",
                     cfg->ddev_name);
+                goto error0;
         }
 
         /*
@@ -504,7 +507,7 @@ bool do_format_ldev(const config_t *cfg)
         int ddev_physical_bs = get_bdev_physical_block_size(cfg->ddev_name);
         if (ldev_logical_bs != ddev_logical_bs ||
             ldev_physical_bs != ddev_physical_bs) {
-                LOG("logical or physical block size is different.\n");
+                LOGe("logical or physical block size is different.\n");
                 goto error0;
         }
         int logical_bs = ldev_logical_bs;
@@ -519,7 +522,7 @@ bool do_format_ldev(const config_t *cfg)
         /*
          * Debug print.
          */
-        LOG("logical_bs: %d\n"
+        LOGd("logical_bs: %d\n"
             "physical_bs: %d\n"
             "ddev_size: %zu\n"
             "ldev_size: %zu\n",
@@ -527,12 +530,12 @@ bool do_format_ldev(const config_t *cfg)
         
         if (logical_bs <= 0 || physical_bs <= 0 ||
             ldev_size == (u64)(-1) || ldev_size == (u64)(-1) ) {
-                LOG("getting block device parameters failed.\n");
+                LOGe("getting block device parameters failed.\n");
                 goto error0;
         }
         if (ldev_size % logical_bs != 0 ||
             ddev_size % logical_bs != 0) {
-                LOG("device size is not multiple of logical_bs\n");
+                LOGe("device size is not multiple of logical_bs\n");
                 goto error0;
         }
         
@@ -548,7 +551,7 @@ bool do_format_ldev(const config_t *cfg)
                                  ldev_size / logical_bs,
                                  cfg->n_snapshots, cfg->name)) {
 
-                LOG("initialize walb log device failed.\n");
+                LOGe("initialize walb log device failed.\n");
                 goto error1;
         }
         
@@ -573,12 +576,14 @@ bool do_create_wdev(const config_t *cfg)
          * Check devices.
          */
         if (check_bdev(cfg->ldev_name) < 0) {
-                LOG("create_wdev: check log device failed %s.\n",
+                LOGe("create_wdev: check log device failed %s.\n",
                     cfg->ldev_name);
+                goto error0;
         }
         if (check_bdev(cfg->ddev_name) < 0) {
-                LOG("create_wdev: check data device failed %s.\n",
+                LOGe("create_wdev: check data device failed %s.\n",
                     cfg->ddev_name);
+                goto error0;
         }
 
         dev_t ldevt = get_bdev_devt(cfg->ldev_name);
@@ -588,7 +593,7 @@ bool do_create_wdev(const config_t *cfg)
         /*
          * Open control device.
          */
-        LOG("control path: %s\n", WALB_CONTROL_PATH);
+        LOGd("control path: %s\n", WALB_CONTROL_PATH);
         int fd = open(WALB_CONTROL_PATH, O_RDWR);
         if (fd < 0) {
                 perror("open failed.");
@@ -620,8 +625,8 @@ bool do_create_wdev(const config_t *cfg)
         
         int ret = ioctl(fd, WALB_IOCTL_CONTROL, &ctl);
         if (ret < 0) {
-                LOG("create_wdev: ioctl failed with error %d.\n",
-                    ctl.error);
+                LOGe("create_wdev: ioctl failed with error %d.\n",
+                     ctl.error);
                 goto error1;
         }
         ASSERT(ctl.error == 0);
@@ -654,8 +659,9 @@ bool do_delete_wdev(const config_t *cfg)
          * Check devices.
          */
         if (check_bdev(cfg->wdev_name) < 0) {
-                LOG("delete_wdev: check walb device failed %s.\n",
-                    cfg->wdev_name);
+                LOGe("delete_wdev: check walb device failed %s.\n",
+                     cfg->wdev_name);
+                goto error0;
         }
         dev_t wdevt = get_bdev_devt(cfg->wdev_name);
         ASSERT(wdevt != (dev_t)(-1));
@@ -682,12 +688,12 @@ bool do_delete_wdev(const config_t *cfg)
         
         int ret = ioctl(fd, WALB_IOCTL_CONTROL, &ctl);
         if (ret < 0) {
-                LOG("delete_wdev: ioctl failed with error %d.\n",
-                    ctl.error);
+                LOGe("delete_wdev: ioctl failed with error %d.\n",
+                     ctl.error);
                 goto error1;
         }
         ASSERT(ctl.error == 0);
-        printf("delete_wdev is done successfully.\n");
+        LOGn("delete_wdev is done successfully.\n");
         close(fd);
         return true;
         
@@ -707,12 +713,12 @@ bool do_set_checkpoint_interval(const config_t *cfg)
         ASSERT(strcmp(cfg->cmd_str, "set_checkpoint_interval") == 0);
 
         if (cfg->size == (size_t)(-1)) {
-                printf("Specify checkpoint interval.\n");
-                return false;
+                LOGe("Specify checkpoint interval.\n");
+                goto error0;
         }
         if (cfg->size > (size_t)UINT32_MAX) {
-                printf("Given interval is too big.\n");
-                return false;
+                LOGe("Given interval is too big.\n");
+                goto error0;
         }
         
         struct walb_ctl ctl = {
@@ -722,12 +728,12 @@ bool do_set_checkpoint_interval(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
-                printf("checkpoint interval is set to %"PRIu32" successfully.\n", ctl.val_u32);
-                return true;
-        } else {
-                return false;
-        }
+        if (! invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+        LOGn("checkpoint interval is set to %"PRIu32" successfully.\n", ctl.val_u32);
+
+        return true;
+error0:
+        return false;
 }
 
 /**
@@ -745,12 +751,12 @@ bool do_get_checkpoint_interval(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
-                printf("checkpoint interval is %"PRIu32".\n", ctl.val_u32);
-                return true;
-        } else {
-                return false;
-        }
+        if (! invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+        printf("checkpoint interval is %"PRIu32".\n", ctl.val_u32);
+
+        return true;
+error0:
+        return false;
 }
 
 /**
@@ -767,8 +773,9 @@ bool do_cat_wldev(const config_t *cfg)
          * Check device.
          */
         if (check_bdev(cfg->wldev_name) < 0) {
-                LOG("cat_wldev: check log device failed %s.\n",
-                    cfg->wldev_name);
+                LOGe("cat_wldev: check log device failed %s.\n",
+                     cfg->wldev_name);
+                goto error0;
         }
         int logical_bs = get_bdev_logical_block_size(cfg->wldev_name);
         int physical_bs = get_bdev_physical_block_size(cfg->wldev_name);
@@ -782,25 +789,31 @@ bool do_cat_wldev(const config_t *cfg)
         /* Allocate memory and read super block */
         walb_super_sector_t *super_sectp = 
                 (walb_super_sector_t *)alloc_sector(physical_bs);
-        if (super_sectp == NULL) { goto error1; }
+        if (super_sectp == NULL) {
+                LOGe(NOMEM_STR);
+                goto error1;
+        }
 
         u64 off0 = get_super_sector0_offset(physical_bs);
         if (! read_sector(fd, (u8 *)super_sectp, physical_bs, off0)) {
-                LOG("read super sector0 failed.\n");
+                LOGe("read super sector0 failed.\n");
                 goto error1;
         }
         if (! is_valid_super_sector(super_sectp, physical_bs)) {
-                LOG("read super sector is not valid.\n");
+                LOGe("read super sector is not valid.\n");
                 goto error1;
         }
         
         walb_logpack_header_t *logpack =
                 (walb_logpack_header_t *)alloc_sector(physical_bs);
-        if (logpack == NULL) { goto error2; }
+        if (logpack == NULL) {
+                LOGe(NOMEM_STR);
+                goto error2;
+        }
 
         /* print_super_sector(super_sectp); */
         u64 oldest_lsid = super_sectp->oldest_lsid;
-        LOG("oldest_lsid: %"PRIu64"\n", oldest_lsid);
+        LOGd("oldest_lsid: %"PRIu64"\n", oldest_lsid);
 
         /* Range check */
         u64 lsid, begin_lsid, end_lsid;
@@ -810,13 +823,13 @@ bool do_cat_wldev(const config_t *cfg)
                 begin_lsid = cfg->lsid0;
         }
         if (cfg->lsid0 < oldest_lsid) {
-                LOG("given lsid0 %"PRIu64" < oldest_lsid %"PRIu64"\n",
-                    cfg->lsid0, oldest_lsid);
+                LOGe("given lsid0 %"PRIu64" < oldest_lsid %"PRIu64"\n",
+                     cfg->lsid0, oldest_lsid);
                 goto error3;
         }
         end_lsid = cfg->lsid1;
         if (begin_lsid > end_lsid) {
-                LOG("lsid0 < lsid1 property is required.\n");
+                LOGe("lsid0 < lsid1 property is required.\n");
                 goto error3;
         }
 
@@ -824,6 +837,7 @@ bool do_cat_wldev(const config_t *cfg)
         ASSERT(bufsize % physical_bs == 0);
         u8 *buf = alloc_sectors(physical_bs, bufsize / physical_bs);
         if (buf == NULL) {
+                LOGe(NOMEM_STR);
                 goto error3;
         }
 
@@ -845,7 +859,7 @@ bool do_cat_wldev(const config_t *cfg)
         wh->checksum = wh_sum;
         /* Write */
         write_data(1, buf, WALBLOG_HEADER_SIZE);
-        LOG("lsid %"PRIu64" to %"PRIu64"\n", begin_lsid, end_lsid);
+        LOGd("lsid %"PRIu64" to %"PRIu64"\n", begin_lsid, end_lsid);
 
         /* Write each logpack to stdout. */
         lsid = begin_lsid;
@@ -855,22 +869,22 @@ bool do_cat_wldev(const config_t *cfg)
                 if (! read_logpack_header_from_wldev(fd, super_sectp, lsid, logpack)) {
                         break;
                 }
-                LOG("logpack %"PRIu64"\n", logpack->logpack_lsid);
+                LOGd("logpack %"PRIu64"\n", logpack->logpack_lsid);
                 write_logpack_header(1, physical_bs, logpack);
                 
                 /* Realloc buffer if buffer size is not enough. */
                 if (bufsize / physical_bs < logpack->total_io_size) {
                         if (! realloc_sectors(&buf, physical_bs, logpack->total_io_size)) {
-                                LOG("realloc_sectors failed.\n");
+                                LOGe("realloc_sectors failed.\n");
                                 goto error3;
                         }
                         bufsize = (u32)logpack->total_io_size * physical_bs;
-                        LOG("realloc_sectors called. %zu bytes\n", bufsize);
+                        LOGd("realloc_sectors called. %zu bytes\n", bufsize);
                 }
 
                 /* Logpack data. */
                 if (! read_logpack_data_from_wldev(fd, super_sectp, logpack, buf, bufsize)) {
-                        LOG("read logpack data failed.\n");
+                        LOGe("read logpack data failed.\n");
                         goto error4;
                 }
                 write_data(1, buf, logpack->total_io_size * physical_bs);
@@ -912,8 +926,9 @@ bool do_redo_wlog(const config_t *cfg)
 
         /* Check data device. */
         if (check_bdev(cfg->ddev_name) < 0) {
-                LOG("redo_wlog: check data device failed %s.\n",
-                    cfg->ddev_name);
+                LOGe("redo_wlog: check data device failed %s.\n",
+                     cfg->ddev_name);
+                goto error0;
         }
 
         /* Open data device. */
@@ -925,7 +940,10 @@ bool do_redo_wlog(const config_t *cfg)
 
         /* Allocate walblog header. */
         walblog_header_t* wh = (walblog_header_t *)malloc(WALBLOG_HEADER_SIZE);
-        if (wh == NULL) { goto error1; }
+        if (wh == NULL) {
+                LOGe(NOMEM_STR);
+                goto error1;
+        }
         
         /* Read wlog header. */
         read_data(0, (u8 *)wh, WALBLOG_HEADER_SIZE);
@@ -936,16 +954,16 @@ bool do_redo_wlog(const config_t *cfg)
         int lbs = wh->logical_bs;
         int pbs = wh->physical_bs;
         if (pbs % lbs != 0) {
-                LOG("physical_bs %% logical_bs must be 0.\n");
+                LOGe("physical_bs %% logical_bs must be 0.\n");
                 goto error2;
         }
 
         int ddev_lbs = get_bdev_logical_block_size(cfg->ddev_name);
         int ddev_pbs = get_bdev_physical_block_size(cfg->ddev_name);
         if (ddev_lbs != lbs || ddev_pbs != pbs) {
-                LOG("block size check is not valid\n"
-                    "(wlog lbs %d, ddev lbs %d, wlog pbs %d, ddev pbs %d.\n",
-                    lbs, ddev_lbs, pbs, ddev_pbs);
+                LOGe("block size check is not valid\n"
+                     "(wlog lbs %d, ddev lbs %d, wlog pbs %d, ddev pbs %d.\n",
+                     lbs, ddev_lbs, pbs, ddev_pbs);
                 goto error2;
         }
 
@@ -965,13 +983,19 @@ bool do_redo_wlog(const config_t *cfg)
         /* Allocate for logpack header. */
         walb_logpack_header_t *logpack =
                 (walb_logpack_header_t *)alloc_sector(pbs);
-        if (logpack == NULL) { goto error2; }
+        if (logpack == NULL) {
+                LOGe(NOMEM_STR);
+                goto error2;
+        }
 
         /* Allocate for logpack data. */
         size_t bufsize = 1024 * 1024; /* 1MB */
         ASSERT(bufsize % pbs == 0);
         u8 *buf = alloc_sectors(pbs, bufsize / pbs);
-        if (buf == NULL) { goto error3; }
+        if (buf == NULL) {
+                LOGe(NOMEM_STR);
+                goto error3;
+        }
         
         u64 lsid = begin_lsid;
         while (lsid < end_lsid) {
@@ -985,13 +1009,13 @@ bool do_redo_wlog(const config_t *cfg)
                 u32 total_io_size = logpack->total_io_size;
                 if (total_io_size * pbs > bufsize) {
                         if (! realloc_sectors(&buf, pbs, total_io_size)) {
-                                LOG("realloc_sectors failed.\n");
+                                LOGe("realloc_sectors failed.\n");
                                 goto error4;
                         }
                         bufsize = total_io_size * pbs;
                 }
                 if (! read_logpack_data(0, lbs, pbs, logpack, buf, bufsize)) {
-                        LOG("read logpack data failed.\n");
+                        LOGe("read logpack data failed.\n");
                         goto error4;
                 }
 
@@ -1000,11 +1024,11 @@ bool do_redo_wlog(const config_t *cfg)
                 if (lsid < begin_lsid) { continue; }
                 if (end_lsid <= lsid) { break; }
                 
-                LOG("logpack %"PRIu64"\n", lsid);
+                LOGd("logpack %"PRIu64"\n", lsid);
 
                 /* Redo */
                 if (! redo_logpack(fd, lbs, pbs, logpack, buf)) {
-                        LOG("redo_logpack failed.\n");
+                        LOGe("redo_logpack failed.\n");
                         goto error4;
                 }
         }
@@ -1046,18 +1070,14 @@ bool do_redo(const config_t *cfg)
          * Check devices.
          */
         if (check_bdev(cfg->ldev_name) < 0 || check_bdev(cfg->ddev_name) < 0) {
-                LOG("%s or %s is not block device.\n", cfg->ldev_name, cfg->ddev_name);
+                LOGe("%s or %s is not block device.\n", cfg->ldev_name, cfg->ddev_name);
                 goto error0;
         }
-
-        LOG("hogehoge1\n");
 
         if (! is_same_block_size(cfg->ldev_name, cfg->ddev_name)) {
-                LOG("block size is not the same.\n");
+                LOGe("block size is not the same.\n");
                 goto error0;
         }
-
-        LOG("hogehoge2\n");
         
         /* Block size. */
         int lbs = get_bdev_logical_block_size(cfg->ldev_name);
@@ -1069,55 +1089,54 @@ bool do_redo(const config_t *cfg)
         int dfd = open(cfg->ddev_name, O_RDWR);
         if (dfd < 0) { perror("open failed."); goto error1; }
 
-        LOG("hogehoge3\n");
-
         /* Read super sector. */
         walb_super_sector_t *super = (walb_super_sector_t *)alloc_sector(pbs);
-        if (super == NULL) { goto error2; }
+        if (super == NULL) { LOGe(NOMEM_STR); goto error2; }
         u64 off0 = get_super_sector0_offset(pbs);
         if (! read_sector(lfd, (u8 *)super, pbs, off0)) {
-                LOG("Read super sector failed.\n");
+                LOGe("Read super sector failed.\n");
                 goto error3;
         }
-        if (! is_valid_super_sector(super, pbs)) { goto error3; }
+        if (! is_valid_super_sector(super, pbs)) {
+                LOGe("super sector is not valid.\n");
+                goto error3;
+        }
 
-        LOG("hogehoge4\n");
-        
         size_t bufsize = 1024 * 1024; /* 1MB */
         ASSERT(bufsize % pbs == 0);
         u8 *buf = alloc_sectors(pbs, bufsize / pbs);
-        if (buf == NULL) { goto error3; }
+        if (buf == NULL) { LOGe(NOMEM_STR); goto error3; }
 
         walb_logpack_header_t *logpack =
                 (walb_logpack_header_t *)alloc_sector(pbs);
-        if (logpack == NULL) { goto error4; }
+        if (logpack == NULL) { LOGe(NOMEM_STR); goto error4; }
         
         u64 lsid = super->written_lsid;
         u64 begin_lsid = lsid;
         /* Read logpack header */
         while (read_logpack_header_from_wldev(lfd, super, lsid, logpack)) {
                 
-                LOG("logpack %"PRIu64"\n", logpack->logpack_lsid);
+                LOGd("logpack %"PRIu64"\n", logpack->logpack_lsid);
                 
                 /* Realloc buf if bufsize is not enough. */
                 if (bufsize / pbs < logpack->total_io_size) {
                         if (! realloc_sectors(&buf, pbs, logpack->total_io_size)) {
-                                LOG("realloc_sectors failed.\n");
+                                LOGe("realloc_sectors failed.\n");
                                 goto error5;
                         }
                         bufsize = (u32)logpack->total_io_size * pbs;
-                        LOG("realloc_sectors called. %zu bytes\n", bufsize);
+                        LOGd("realloc_sectors called. %zu bytes\n", bufsize);
                 }
 
                 /* Read logpack data from log device. */
                 if (! read_logpack_data_from_wldev(lfd, super, logpack, buf, bufsize)) {
-                        LOG("read logpack data failed.\n");
+                        LOGe("read logpack data failed.\n");
                         goto error5;
                 }
 
                 /* Write logpack to data device. */
                 if (! redo_logpack(dfd, lbs, pbs, logpack, buf)) {
-                        LOG("redo_logpack failed.\n");
+                        LOGe("redo_logpack failed.\n");
                         goto error5;
                 }
                 
@@ -1128,17 +1147,15 @@ bool do_redo(const config_t *cfg)
         u64 end_lsid = lsid;
         super->written_lsid = end_lsid;
         if (! write_super_sector(lfd, super)) {
-                LOG("write super sector failed.\n");
+                LOGe("write super sector failed.\n");
                 goto error5;
         }
-        printf("Redo from lsid %"PRIu64" to %"PRIu64"\n",
-               begin_lsid, end_lsid);
+        LOGn("Redo from lsid %"PRIu64" to %"PRIu64"\n",
+             begin_lsid, end_lsid);
         
         close(dfd);
         close(lfd);
 
-        /* not tested yet */
-        
         return true;
 
 error5:
@@ -1165,7 +1182,7 @@ bool do_show_wlog(const config_t *cfg)
         ASSERT(strcmp(cfg->cmd_str, "show_wlog") == 0);
 
         walblog_header_t* wh = (walblog_header_t *)malloc(WALBLOG_HEADER_SIZE);
-        if (wh == NULL) { goto error0; }
+        if (wh == NULL) { LOGe(NOMEM_STR); goto error0; }
         
         /* Read and print wlog header. */
         read_data(0, (u8 *)wh, WALBLOG_HEADER_SIZE);
@@ -1178,19 +1195,19 @@ bool do_show_wlog(const config_t *cfg)
         int logical_bs = wh->logical_bs;
         int physical_bs = wh->physical_bs;
         if (physical_bs % logical_bs != 0) {
-                LOG("physical_bs %% logical_bs must be 0.\n");
+                LOGe("physical_bs %% logical_bs must be 0.\n");
                 goto error1;
         }
 
         /* Buffer for logpack header. */
         struct walb_logpack_header *logpack;
         logpack = (struct walb_logpack_header *)alloc_sector(physical_bs);
-        if (logpack == NULL) { goto error1; }
+        if (logpack == NULL) { LOGe(NOMEM_STR); goto error1; }
 
         /* Buffer for logpack data. */
         size_t bufsize = 1024 * 1024; /* 1MB */
         u8 *buf = alloc_sectors(physical_bs, bufsize / physical_bs);
-        if (buf == NULL) { goto error2; }
+        if (buf == NULL) { LOGe(NOMEM_STR); goto error2; }
 
         /* Range */
         u64 begin_lsid, end_lsid;
@@ -1208,7 +1225,7 @@ bool do_show_wlog(const config_t *cfg)
                 u32 total_io_size = logpack->total_io_size;
                 if (total_io_size * physical_bs > bufsize) {
                         if (! realloc_sectors(&buf, physical_bs, total_io_size)) {
-                                LOG("realloc_sectors failed.\n");
+                                LOGe("realloc_sectors failed.\n");
                                 goto error3;
                         }
                         bufsize = total_io_size * physical_bs;
@@ -1216,7 +1233,7 @@ bool do_show_wlog(const config_t *cfg)
 
                 /* Read logpack data. */
                 if (! read_logpack_data(0, logical_bs, physical_bs, logpack, buf, bufsize)) {
-                        LOG("read logpack data failed.\n");
+                        LOGe("read logpack data failed.\n");
                         goto error3;
                 }
 
@@ -1258,35 +1275,33 @@ bool do_show_wldev(const config_t *cfg)
          * Check device.
          */
         if (check_bdev(cfg->wldev_name) < 0) {
-                LOG("check log device failed %s.\n",
-                    cfg->wldev_name);
+                LOGe("check log device failed %s.\n",
+                     cfg->wldev_name);
+                goto error0;
         }
         int physical_bs = get_bdev_physical_block_size(cfg->wldev_name);
 
         int fd = open(cfg->wldev_name, O_RDONLY);
-        if (fd < 0) {
-                perror("open failed");
-                goto error0;
-        }
+        if (fd < 0) { perror("open failed"); goto error0; }
         
         /* Allocate memory and read super block */
         walb_super_sector_t *super_sectp = 
                 (walb_super_sector_t *)alloc_sector(physical_bs);
-        if (super_sectp == NULL) { goto error1; }
+        if (super_sectp == NULL) { LOGe(NOMEM_STR); goto error1; }
 
         u64 off0 = get_super_sector0_offset(physical_bs);
         if (! read_sector(fd, (u8 *)super_sectp, physical_bs, off0)) {
-                LOG("read super sector0 failed.\n");
+                LOGe("read super sector0 failed.\n");
                 goto error1;
         }
         
         walb_logpack_header_t *logpack =
                 (walb_logpack_header_t *)alloc_sector(physical_bs);
-        if (logpack == NULL) { goto error2; }
+        if (logpack == NULL) { LOGe(NOMEM_STR); goto error2; }
 
         print_super_sector(super_sectp);
         u64 oldest_lsid = super_sectp->oldest_lsid;
-        LOG("oldest_lsid: %"PRIu64"\n", oldest_lsid);
+        LOGd("oldest_lsid: %"PRIu64"\n", oldest_lsid);
 
         /* Range check */
         u64 lsid, begin_lsid, end_lsid;
@@ -1296,13 +1311,13 @@ bool do_show_wldev(const config_t *cfg)
                 begin_lsid = cfg->lsid0;
         }
         if (cfg->lsid0 < oldest_lsid) {
-                LOG("given lsid0 %"PRIu64" < oldest_lsid %"PRIu64"\n",
-                    cfg->lsid0, oldest_lsid);
+                LOGe("given lsid0 %"PRIu64" < oldest_lsid %"PRIu64"\n",
+                     cfg->lsid0, oldest_lsid);
                 goto error3;
         }
         end_lsid = cfg->lsid1;
         if (begin_lsid > end_lsid) {
-                LOG("lsid0 < lsid1 property is required.\n");
+                LOGe("lsid0 < lsid1 property is required.\n");
                 goto error3;
         }
         
@@ -1345,12 +1360,13 @@ bool do_set_oldest_lsid(const config_t *cfg)
                 .k2u = { .buf_size = 0 },
         };
         
-        if (invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
-                printf("oldest_lsid is set to %"PRIu64" successfully.\n", cfg->lsid);
-                return true;
-        } else {
-                return false;
-        }
+        if (! invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+        
+        LOGn("oldest_lsid is set to %"PRIu64" successfully.\n", cfg->lsid);
+
+        return true;
+error0:
+        return false;
 }
 
 /**
@@ -1399,17 +1415,20 @@ bool do_get_log_usage(const config_t *cfg)
         u64 written_lsid = get_written_lsid(cfg->wdev_name);
 
         if (oldest_lsid == (u64)(-1) || written_lsid == (u64)(-1)) {
-                return false;
+                LOGe("Geting oldest_lsid or written_lsid is failed.\n");
+                goto error0;
         }
         if (oldest_lsid > written_lsid) {
-                LOG("This does not satisfy oldest_lsid <= written_lsid "
-                    "%"PRIu64" %"PRIu64"\n",
-                    oldest_lsid, written_lsid);
-                return false;
+                LOGe("This does not satisfy oldest_lsid <= written_lsid "
+                     "%"PRIu64" %"PRIu64"\n",
+                     oldest_lsid, written_lsid);
+                goto error0;
         }
 
         printf("%"PRIu64"\n", written_lsid - oldest_lsid);
         return true;
+error0:
+        return false;
 }
 
 /**
@@ -1422,6 +1441,7 @@ bool do_get_log_capacity(const config_t *cfg)
         u64 log_capacity = get_log_capacity(cfg->wdev_name);
 
         if (log_capacity == (u64)(-1)) {
+                LOGe("Getting log_capacity failed.\n");
                 return false;
         }
 
@@ -1437,7 +1457,7 @@ bool do_get_version(const config_t *cfg)
         ASSERT(strcmp(cfg->cmd_str, "get_version") == 0);
         
         if (check_bdev(cfg->wdev_name) < 0) {
-                LOG("device check failed.");
+                LOGe("device check failed.");
                 goto error0;
         }
 
@@ -1450,7 +1470,7 @@ bool do_get_version(const config_t *cfg)
         u32 version;
         int ret = ioctl(fd, WALB_IOCTL_VERSION, &version);
         if (ret < 0) {
-                LOG("get version failed.\n");
+                LOGe("get version failed.\n");
                 goto error1;
         }
 
@@ -1546,7 +1566,7 @@ int main(int argc, char* argv[])
         }
         
         if (! dispatch(&cfgt)) {
-                LOG("operation failed.\n");
+                LOGe("operation failed.\n");
         }
 
         return 0;

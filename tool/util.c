@@ -49,18 +49,18 @@ int check_bdev(const char* path)
         size_t sector_size, dev_size, size;
         
         if (path == NULL) {
-                LOG("path is null.\n");
+                LOGe("path is null.\n");
                 return -1;
         }
         
         if (stat(path, &sb) == -1) {
-                LOG("stat failed.\n");
+                LOGe("stat failed.\n");
                 perror("");
                 return -1;
         }
 
         if ((sb.st_mode & S_IFMT) != S_IFBLK) {
-                LOG("%s is not block device.\n", path);
+                LOGe("%s is not block device.\n", path);
                 return -1;
         }
 
@@ -69,14 +69,14 @@ int check_bdev(const char* path)
         dev_size = sb.st_blocks;
         size = sb.st_size;
 
-        LOG("devname: %s\n"
-            "device: %d:%d\n"
-            "sector_size: %zu\n"
-            "device_size: %zu\n"
-            "size: %zu\n",
-            path,
-            MAJOR(devt), MINOR(devt),
-            sector_size, dev_size, size);
+        LOGd("devname: %s\n"
+             "device: %d:%d\n"
+             "sector_size: %zu\n"
+             "device_size: %zu\n"
+             "size: %zu\n",
+             path,
+             MAJOR(devt), MINOR(devt),
+             sector_size, dev_size, size);
 
         {
                 int fd;
@@ -86,7 +86,7 @@ int check_bdev(const char* path)
 
                 fd = open(path, O_RDONLY);
                 if (fd < 0) {
-                        LOG("open failed\n");
+                        LOGe("open failed\n");
                         return -1;
                 }
                 ioctl(fd, BLKBSZGET, &bs); /* soft block size */
@@ -95,11 +95,11 @@ int check_bdev(const char* path)
                 ioctl(fd, BLKGETSIZE64, &size); /* size */
                 close(fd);
 
-                LOG("soft block size: %d\n"
-                    "logical sector size: %d\n"
-                    "physical sector size: %u\n"
-                    "device size: %zu\n",
-                    bs, ss, pbs, (size_t)size);
+                LOGd("soft block size: %d\n"
+                     "logical sector size: %d\n"
+                     "physical sector size: %u\n"
+                     "device size: %zu\n",
+                     bs, ss, pbs, (size_t)size);
         }
         
         return 0;
@@ -131,7 +131,7 @@ static int open_blk_dev(const char* devpath)
         }
         
         if ((sb.st_mode & S_IFMT) != S_IFBLK) {
-                LOG("%s is not block device.\n", devpath);
+                LOGe("%s is not block device.\n", devpath);
                 goto close;
         }
 
@@ -222,12 +222,12 @@ dev_t get_bdev_devt(const char *devpath)
         ASSERT(devpath != NULL);
         
         if (stat(devpath, &sb) == -1) {
-                LOG("%s stat failed.\n", devpath);
+                LOGe("%s stat failed.\n", devpath);
                 goto error;
         }
 
         if ((sb.st_mode & S_IFMT) != S_IFBLK) {
-                LOG("%s is not block device.\n", devpath);
+                LOGe("%s is not block device.\n", devpath);
                 goto error;
         }
 
@@ -537,7 +537,7 @@ bool read_super_sector(int fd, walb_super_sector_t* super_sect, u32 sector_size,
                 ret1 = -1;
         }
         if (! ret0 && ! ret1) {
-                LOG("Both superblocks are broken.\n");
+                LOGe("Both superblocks are broken.\n");
                 goto error1;
         } else if (ret0 && ret1) {
                 u64 lsid0 = ((walb_super_sector_t *)buf0)->written_lsid;
@@ -588,34 +588,36 @@ bool is_valid_super_sector(const walb_super_sector_t* super, int physical_bs)
 {
         /* checksum */
         if (checksum((const u8 *)super, physical_bs) != 0) {
-                LOG("checksum is not valid.\n");
-                return false;
+                LOGe("checksum is not valid.\n");
+                goto error0;
         }
         /* sector type */
         if (super->sector_type != SECTOR_TYPE_SUPER) {
-                LOG("sector type is not valid %d.\n", super->sector_type);
-                return false;
+                LOGe("sector type is not valid %d.\n", super->sector_type);
+                goto error0;
         }
         /* physical block size */
         if (super->physical_bs != (u32)physical_bs) {
-                LOG("physical block size is not same %d %d.\n",
-                    (int)super->physical_bs, physical_bs);
-                return false;
+                LOGe("physical block size is not same %d %d.\n",
+                     (int)super->physical_bs, physical_bs);
+                goto error0;
         }
         /* physical/logical block size */
         if (! (super->physical_bs >= super->logical_bs &&
                super->physical_bs % super->logical_bs == 0)) {
-                LOG("physical/logical block size is not valid. (physical %u, logical %u)\n",
-                    super->physical_bs, super->logical_bs);
-                return false;
+                LOGe("physical/logical block size is not valid. (physical %u, logical %u)\n",
+                     super->physical_bs, super->logical_bs);
+                goto error0;
         }
         /* lsid consistency. */
         if (! (super->oldest_lsid <= super->written_lsid &&
                super->written_lsid - super->oldest_lsid <= super->ring_buffer_size)) {
-                LOG("oldest_lsid, written_lsid, ring_buffer_size is not consistent.\n");
-                return false;
+                LOGe("oldest_lsid, written_lsid, ring_buffer_size is not consistent.\n");
+                goto error0;
         }
         return true;
+error0:
+        return false;
 }
 
 /**
@@ -724,7 +726,7 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         u32 sect_sz = super_sect->physical_bs;
         u32 meta_sz = super_sect->snapshot_metadata_size;
         if (idx >= meta_sz) {
-                LOG("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
+                LOGe("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
                 return false;
         }
 
@@ -764,7 +766,7 @@ bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
         u32 sect_sz = super_sect->physical_bs;
         u32 meta_sz = super_sect->snapshot_metadata_size;
         if (idx >= meta_sz) {
-                LOG("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
+                LOGe("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
                 return false;
         }
         
