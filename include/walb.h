@@ -65,6 +65,12 @@
 #define SECTOR_TYPE_LOGPACK  0x0003
 #define SECTOR_TYPE_WALBLOG_HEADER  0x0004
 
+/**
+ * Max length of snapshot name.
+ */
+#define SNAPSHOT_NAME_MAX_LEN 64
+
+
 static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
 {
         u32 n = size / sizeof(u32);
@@ -107,6 +113,36 @@ static inline void sprint_uuid(char *buf, const u8 *uuid)
                 sprintf(tmp, "%02x", uuid[i]);
                 strcat(buf, tmp);
         }
+}
+
+/**
+ * Check the name satisfy snapshot name spec.
+ *
+ * @name name of snapshot.
+ *
+ * @return 1 if valid, or 0.
+ */
+static inline int is_valid_snapshot_name(char *name)
+{
+        size_t len, i;
+        char n;
+
+        /* Length check. */
+        len = strnlen(name, SNAPSHOT_NAME_MAX_LEN);
+        if (len == SNAPSHOT_NAME_MAX_LEN) {
+                return 0;
+        }
+
+        /* Character code check. */
+        for (i = 0; i < len; i ++) {
+                n = name[i];
+                if (! (n == '_' ||
+                       n == '-' ||
+                       ('0' <= n && n <= '9') ||
+                       ('a' <= n && n <= 'z') ||
+                       ('A' <= n && n <= 'Z'))) { return 0; }
+        }
+        return 1;
 }
 
 
