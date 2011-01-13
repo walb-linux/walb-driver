@@ -7,6 +7,7 @@
 #define _WALB_UTIL_H
 
 #include <stdio.h>
+#include <time.h>
 
 #include "walb.h"
 #include "walb_log_device.h"
@@ -27,6 +28,7 @@
 
 /* utility */
 void print_binary_hex(const u8* data, size_t size);
+bool get_datetime_str(time_t t, char* buf, size_t n);
 
 /* for block device information */
 int check_bdev(const char* path);

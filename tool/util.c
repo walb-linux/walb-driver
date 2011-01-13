@@ -12,6 +12,7 @@
 #include <sys/ioctl.h>
 #include <fcntl.h>
 #include <linux/fs.h>
+#include <time.h>
 
 #include "walb.h"
 #include "random.h"
@@ -35,6 +36,39 @@ void print_binary_hex(const u8* data, size_t size)
                         printf("\n");
                 }
         }
+}
+
+/**
+ * Datetime string.
+ *
+ * String format is like `date +%Y%m%d-%H%M%S` using UTC.
+ *
+ * @t unix time.
+ * @buf result buffer.
+ * @n buffer size.
+ *
+ * @return true in success, or false.
+ */
+bool get_datetime_str(time_t t, char* buf, size_t n)
+{
+        struct tm m;
+        int ret;
+        size_t len;
+
+        if (gmtime_r(&t, &m) == NULL) { return false; }
+
+        ret = snprintf(buf, n, "%d%02d%02d-%02d%02d%02d",
+                       m.tm_year + 1900,
+                       m.tm_mon + 1,
+                       m.tm_mday,
+                       m.tm_hour,
+                       m.tm_min,
+                       m.tm_sec);
+        if (ret < 0) { return false; }
+        len = (size_t)ret;
+        
+        ASSERT(len <= n);
+        return (len < n ? true : false);
 }
 
 /**
