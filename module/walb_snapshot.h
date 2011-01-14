@@ -81,12 +81,15 @@ struct snapshot_data
 /**
  * Prototypes.
  */
-
-/* Create/destroy snapshots structure. */
+/* Create/destroy snapshot data structure. */
 struct snapshot_data* snapshot_data_create(
         struct block_device *bdev,
         u64 start_offset, u64 end_offset, gfp_t gfp_mask);
 void snapshot_data_destroy(struct snapshot_data *snapd);
+
+/* Initialize/finalize snapshot data structure. */
+int snapshot_data_initialize(struct snapshot_data *snapd);
+int snapshot_data_finalize(struct snapshot_data *snapd);
 
 /* Snapshot operations. */
 int snapshot_add(struct snapshot_data *snapd, const char *name, u64 lsid, u64 timestamp);

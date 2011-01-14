@@ -104,19 +104,6 @@ nomem0:
 }
 
 /**
- * Scan all snapshot sectors in the log device
- * then fill required data and indexes.
- *
- * @return 1 in success, or 0.
- */
-int snapshot_data_load(struct snapshot_data *snapd)
-{
-        /* not yet implemented. */
-        
-        return 0;
-}
-
-/**
  * NOT TESTED YET.
  *
  * Destroy snapshot_data structure.
@@ -151,6 +138,42 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
 
         /* Deallocate snapshot_data. */
         kfree(snapd);
+}
+
+/**
+ * Scan all snapshot sectors in the log device
+ * then fill required data and indexes.
+ *
+ * @return 1 in success, or 0.
+ */
+int snapshot_data_initialize(struct snapshot_data *snapd)
+{
+        u64 off;
+
+        /* For all snapshot sectors. */
+        for (off = snapd->start_offset; off < snapd->end_offset; off ++) {
+
+                /* now editing */
+                
+        }
+
+
+        /* not yet implemented. */
+        
+        return 1;
+}
+
+/**
+ *
+ *
+ *
+ * @return 1 in success, or 0.
+ */
+int snapshot_data_finalize(struct snapshot_data *snapd)
+{
+        /* not yet implemented. */
+        
+        return 1;
 }
 
 

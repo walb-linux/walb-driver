@@ -165,6 +165,12 @@ struct walb_dev {
         u32 checkpoint_interval; /* [ms]. 0 means never do checkpointing. */
         u8 checkpoint_state;
         struct delayed_work checkpoint_work;
+
+
+        /*
+         * For snapshotting.
+         */
+        struct snapshot_data *snapd;
 };
 
 
