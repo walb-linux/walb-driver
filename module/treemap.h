@@ -41,7 +41,16 @@ typedef struct { struct rb_root root; } map_t;
 typedef struct { struct rb_root root; } multimap_t;
 
 /**
- * Tree cell to deal with multiple value.
+ * Tree cell head for multimap.
+ */
+struct tree_cell_head {
+
+        struct hlist_head head;
+        u64 key;
+};
+
+/**
+ * Tree cell for multimap.
  *
  * This data structre is created by @multimap_add()
  * and deleted by @multimap_del() or @multimap_del_key().
@@ -135,14 +144,13 @@ int map_curser_test(void); /* For unit test. */
  * Prototypes for multimap operations.
  *
  * key: u64 value.
- * val: hlist_head
- *      assumption: (sizeof(struct hlist_head) == sizeof(unsigned long)).
+ * val: pointer to hlist_head
  */
 multimap_t* multimap_create(gfp_t gfp_mask);
 void multimap_destroy(multimap_t *map);
 
 int multimap_add(multimap_t *map, u64 key, unsigned long val, gfp_t gfp_mask);
-struct hlist_head* multimap_lookup(const multimap_t *map, u64 key);
+struct tree_cell_head* multimap_lookup(const multimap_t *map, u64 key);
 unsigned long multimap_lookup_any(const multimap_t *map, u64 key);
 int multimap_lookup_n(const multimap_t *map, u64 key);
 unsigned long multimap_del(multimap_t *map, u64 key, unsigned long val);

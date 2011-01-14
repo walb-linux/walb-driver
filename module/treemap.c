@@ -54,6 +54,11 @@ static void map_curser_invalid(map_curser_t *curser);
 
 static int hlist_len(const struct hlist_head *head);
 
+static int multimap_add_newkey(multimap_t *tmap,
+                               u64 key, struct tree_cell *newcell, gfp_t gfp_mask);
+static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *newcell);
+
+
 /*******************************************************************************
  * Static functions.
  *******************************************************************************/
@@ -973,26 +978,100 @@ void multimap_destroy(multimap_t *tmap)
 }
 
 /**
+ * Add non-existing key into the multimap.
+ *
+ * @tmap multimap.
+ * @key key
+ * @newcell prepared inserted value.
+ *
+ * @return 0 in success, or -1.
+ */
+static int
+multimap_add_newkey(multimap_t *tmap, u64 key, struct tree_cell *newcell, gfp_t gfp_mask)
+{
+        struct tree_cell_head *newhead;
+
+        /* Allocate and initialize new tree cell head. */
+        newhead = kmalloc(sizeof(struct tree_cell_head), gfp_mask);
+        if (newhead == NULL) {
+                printk_e("memory allocation failed.\n");
+                goto error0;
+        }
+        newhead->key = key;
+        INIT_HLIST_HEAD(&newhead->head);
+        hlist_add_head(&newcell->list, &newhead->head);
+        ASSERT(! hlist_empty(&newhead->head));
+                
+        /* Add to the map. */
+        if (map_add((map_t *)tmap, key, (unsigned long)newhead, gfp_mask)) {
+                printk_e("map_add failed.\n");
+                goto error1;
+        }
+        return 0;
+
+error1:
+        kfree(newhead);
+error0:
+        return -1;
+}
+
+/**
+ * Add for existing key into multimap.
+ *
+ * @tree_cell_head tree cell head.
+ * @newcell cell to be added.
+ *
+ * @return 0 in success, -1 when the same key-value pair already exists.
+ */
+static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *newcell)
+{
+        struct tree_cell *cell;
+        struct hlist_head *hlhead;
+        struct hlist_node *hlnode, *hlnext;
+        int found;
+        
+        ASSERT(chead != NULL);
+        ASSERT(newcell != NULL);
+        
+        hlhead = &chead->head;
+        ASSERT(! hlist_empty(hlhead));
+
+        found = 0;
+        hlist_for_each_entry_safe(cell, hlnode, hlnext, hlhead, list) {
+                ASSERT_TREECELL(cell);
+                if (cell->val == newcell->val) { found ++; break; }
+        }
+        if (found == 0) {
+                hlist_add_head(&newcell->list, hlhead);
+                return 0;
+        } else {
+                return -1;
+        }
+}
+
+/**
  * Add key-value pair to the multimap.
  *
  * Different key-value pair can be added.
  * The same key-value pair can not be added.
  *
- * @return 0 in success, or -1.
+ * @return 0 in success.
+ *         1 whe key-value already exists.
+ *         -1 in error.
  */
 int multimap_add(multimap_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 {
         struct tree_node *t;
-        struct hlist_head headt, *head;
-        struct tree_cell *newcell, *cell;
-        struct hlist_node *node, *next;
-        int found;
+        struct tree_cell_head *chead;
+        struct tree_cell *newcell;
+        int ret = 0;
 
         if (val == TREEMAP_INVALID_VAL) {
                 printk_e("Val must not be TREEMAP_INVALID_VAL.\n");
                 goto error0;
         }
-        
+
+        /* Prepare new cell. */
         newcell = kmalloc(sizeof(struct tree_cell), gfp_mask);
         if (newcell == NULL) {
                 printk_e("kmalloc failed.\n");
@@ -1005,39 +1084,23 @@ int multimap_add(multimap_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 
         if (t == NULL) {
                 /* There is no record with that key. */
-                
-                INIT_HLIST_HEAD(&headt);
-                hlist_add_head(&newcell->list, &headt);
-                ASSERT(! hlist_empty(&headt));
-                
-                printk_d("val: %lu\n",
-                         *(unsigned long *)(&headt)); /* debug */
-                         
-                if (map_add((map_t *)tmap, key, *((unsigned long *)(&headt)), gfp_mask)) {
-                        printk_e("map_add failed.\n");
+                if (multimap_add_newkey(tmap, key, newcell, gfp_mask) != 0) {
+                        printk_e("multimap_add_newkey() failed.\n");
                         goto error1;
                 }
         } else {
                 /* There is already record(s) with that key. */
-
                 ASSERT(t->key == key);
-                head = (struct hlist_head *)(&t->val);
-                printk_d("t->val: %lu %p\n", (unsigned long)(t->val), head); /* debug */
-                ASSERT(! hlist_empty(head));
+                /* tree_node's val is pointer to tree_cell_head. */
+                chead = (struct tree_cell_head *)(t->val);
+                ASSERT(chead->key == key);
 
-                found = 0;
-                hlist_for_each_entry_safe(cell, node, next, head, list) {
-                        ASSERT_TREECELL(cell);
-                        if (cell->val == val) { found ++; break; }
-                }
-                if (found == 0) {
-                        hlist_add_head(&newcell->list, head);
-                } else {
-                        goto error1;
+                if (multimap_add_oldkey(chead, newcell) != 0) {
+                        ret = 1;
                 }
         }
-        return 0;
-
+        return ret;
+        
 error1:
         kfree(newcell);
 error0:
@@ -1052,7 +1115,7 @@ error0:
  *         Do not call @multimap_del() or @multimap_del_key()
  *         before scan the list.
  */
-struct hlist_head* multimap_lookup(const multimap_t *tmap, u64 key)
+struct tree_cell_head* multimap_lookup(const multimap_t *tmap, u64 key)
 {
         struct tree_node *t;
 
@@ -1060,7 +1123,7 @@ struct hlist_head* multimap_lookup(const multimap_t *tmap, u64 key)
         if (t == NULL) {
                 return NULL;
         } else {
-                return (struct hlist_head *)(&t->val);
+                return (struct tree_cell_head *)(t->val);
         }
 }
 
@@ -1071,16 +1134,16 @@ struct hlist_head* multimap_lookup(const multimap_t *tmap, u64 key)
  */
 unsigned long multimap_lookup_any(const multimap_t *tmap, u64 key)
 {
-        struct hlist_head *head;
+        struct tree_cell_head *chead;
         struct tree_cell *cell;
 
-        head = multimap_lookup(tmap, key);
+        chead = multimap_lookup(tmap, key);
 
-        if (head == NULL) {
+        if (chead == NULL) {
                 return TREEMAP_INVALID_VAL;
         } else {
-                ASSERT(! hlist_empty(head));
-                cell = hlist_entry(head->first, struct tree_cell, list);
+                ASSERT(! hlist_empty(&chead->head));
+                cell = hlist_entry(chead->head.first, struct tree_cell, list);
                 ASSERT_TREECELL(cell);
                 return cell->val;
         }
@@ -1094,19 +1157,14 @@ unsigned long multimap_lookup_any(const multimap_t *tmap, u64 key)
 int multimap_lookup_n(const multimap_t *tmap, u64 key)
 {
         int count;
-        struct hlist_head *head;
-        struct hlist_node *hlnode;
-        struct tree_cell *cell;
+        struct tree_cell_head *chead;
 
         count = 0;
-        head = multimap_lookup(tmap, key);
-        if (head != NULL) {
-                ASSERT(! hlist_empty(head));
-
-                hlist_for_each_entry(cell, hlnode, head, list) {
-                        ASSERT_TREECELL(cell);
-                        count ++;
-                }
+        chead = multimap_lookup(tmap, key);
+        if (chead != NULL) {
+                ASSERT(! hlist_empty(&chead->head));
+                count = hlist_len(&chead->head);
+                ASSERT(count >= 0);
         }
         return count;
 }
@@ -1120,7 +1178,7 @@ unsigned long multimap_del(multimap_t *tmap, u64 key, unsigned long val)
 {
         struct tree_node *t;
         struct tree_cell *cell;
-        struct hlist_head *head;
+        struct tree_cell_head *chead;
         struct hlist_node *hlnode, *hlnext;
         int found;
         unsigned long retval = TREEMAP_INVALID_VAL, ret;
@@ -1129,11 +1187,12 @@ unsigned long multimap_del(multimap_t *tmap, u64 key, unsigned long val)
         if (t == NULL) { return TREEMAP_INVALID_VAL; }
         
         ASSERT(t->key == key);
-        head = (struct hlist_head *)(&t->val);
-        ASSERT(! hlist_empty(head));
+        chead = (struct tree_cell_head *)(t->val);
+        ASSERT(chead->key == key);
+        ASSERT(! hlist_empty(&chead->head));
 
         found = 0;
-        hlist_for_each_entry_safe(cell, hlnode, hlnext, head, list) {
+        hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
                 ASSERT_TREECELL(cell);
                 if (cell->val == val) {
                         found ++;
@@ -1144,15 +1203,17 @@ unsigned long multimap_del(multimap_t *tmap, u64 key, unsigned long val)
         }
         ASSERT(found == 0 || found == 1);
 
-        if (hlist_empty(head)) {
+        if (hlist_empty(&chead->head)) {
+                ASSERT(found == 1);
                 ret = map_del((map_t *)tmap, key);
                 ASSERT(ret != TREEMAP_INVALID_VAL);
+                kfree(chead);
         }
         return retval;
 }
 
 /**
- * Delete all kay-value pairs with the key from the multimap.
+ * Delete all records with the key from the multimap.
  *
  * @return number of deleted records.
  */
@@ -1160,30 +1221,26 @@ int multimap_del_key(multimap_t *tmap, u64 key)
 {
         int found = 0;
         unsigned long p;
+        struct tree_cell_head *chead;
         struct tree_cell *cell;
-        struct hlist_head *head;
         struct hlist_node *hlnode, *hlnext;
 
         p = map_del((map_t *)tmap, key);
         if (p == TREEMAP_INVALID_VAL) { return 0; }
-        ASSERT(p != 0); /* not NULL */
         
-        head = (struct hlist_head *)(&p);
-        ASSERT(! hlist_empty(head));
+        chead = (struct tree_cell_head *)p;
+        ASSERT(chead != NULL);
+        ASSERT(! hlist_empty(&chead->head));
 
-        printk_d("list length: %d\n", hlist_len(head));
-        printk_d("head %p headt: %lu\n", head, p);
-        hlist_for_each_entry_safe(cell, hlnode, hlnext, head, list) {
+        hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
                 ASSERT_TREECELL(cell);
                 found ++;
                 hlist_del(&cell->list);
-                printk_d("val: %ld found: %d\n", cell->val, found); /* debug */
                 kfree(cell);
-                printk_d("head %p headt: %lu\n", head, p);
         }
-        printk_d("list length: %d\n", hlist_len(head));
-        printk_d("head %p headt: %lu\n", head, p);
-        ASSERT(hlist_empty(head));
+        ASSERT(found > 0);
+        ASSERT(hlist_empty(&chead->head));
+        kfree(chead);
 
         return found;
 }
@@ -1195,8 +1252,8 @@ void multimap_empty(multimap_t *tmap)
 {
         struct tree_node *t;
         struct rb_node *node, *next;
-        struct hlist_head *head;
         struct hlist_node *hlnode, *hlnext;
+        struct tree_cell_head *chead;
         struct tree_cell *cell;
         
         node = rb_first(&tmap->root);
@@ -1205,14 +1262,16 @@ void multimap_empty(multimap_t *tmap)
         while (node) {
                 rb_erase(node, &tmap->root);
                 t = container_of(node, struct tree_node, node);
-                head = (struct hlist_head *)(&t->val);
-
-                hlist_for_each_entry_safe(cell, hlnode, hlnext, head, list) {
+                chead = (struct tree_cell_head *)(t->val);
+                ASSERT(chead != NULL);
+                
+                hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
 
                         ASSERT_TREECELL(cell);
                         hlist_del(&cell->list);
                         kfree(cell);
                 }
+                kfree(chead);
                 kfree(t);
 
                 node = next;
@@ -1241,20 +1300,17 @@ int multimap_n_items(const multimap_t *tmap)
 {
         struct tree_node *t;
         struct rb_node *node;
-        int count;
-        struct hlist_head *head;
-        struct hlist_node *hlnode;
-        struct tree_cell *cell;
+        int count, c;
+        struct tree_cell_head *chead;
 
         count = 0;
         node = rb_first(&tmap->root);
         while (node) {
                 t = container_of(node, struct tree_node, node);
-                head = (struct hlist_head *)(&t->val);
-                hlist_for_each_entry(cell, hlnode, head, list) {
-                        ASSERT_TREECELL(cell);
-                        count ++;
-                }
+                chead = (struct tree_cell_head *)(t->val);
+                c = hlist_len(&chead->head);
+                ASSERT(c > 0);
+                count += c;
                 node = rb_next(node);
         }
         return count;
@@ -1271,18 +1327,20 @@ int multimap_test(void)
         int i, n, count;
         u64 key;
         unsigned long val;
-        struct hlist_head *head;
         struct hlist_node *node;
+        struct tree_cell_head *chead;
         struct tree_cell *cell;
         
         printk_d("multimap_test begin\n");
-        printk_d("hlist_head: %zu\n"
-                 "unsigned long: %zu\n"
-                 "tree_node: %zu\n",
+        printk_d("hlist_head: %zu "
+                 "unsigned long: %zu "
+                 "tree_cell_head: %zu "
+                 "tree_cell: %zu\n",
                  sizeof(struct hlist_head),
                  sizeof(unsigned long),
+                 sizeof(struct tree_cell_head),
                  sizeof(struct tree_cell));
-
+        
         /* Create. */
         printk_d("Create.\n");
         tm = multimap_create(GFP_KERNEL);
@@ -1304,13 +1362,10 @@ int multimap_test(void)
         for (i = 0; i < 10000; i ++) {
                 key = (u64) i;
                 /* Succeed. */
-                printk_d("tryal1.\n");
                 WALB_CHECK(multimap_add(tm, key, key + i, GFP_KERNEL) == 0);
                 /* Fail due to key exists. */
-                printk_d("tryal2.\n");
                 WALB_CHECK(multimap_add(tm, key, key + i, GFP_KERNEL) != 0);
                 /* Succeed due to value is different. */
-                printk_d("tryal3.\n");
                 WALB_CHECK(multimap_add(tm, key, key + i + 1, GFP_KERNEL) == 0);
         }
         n = multimap_n_items(tm);
@@ -1330,8 +1385,10 @@ int multimap_test(void)
                         WALB_CHECK(val != TREEMAP_INVALID_VAL);
                         WALB_CHECK(val == key + i);
                 } else {
-                        head = multimap_lookup(tm, key);
-                        hlist_for_each_entry(cell, node, head, list) {
+                        chead = multimap_lookup(tm, key);
+                        ASSERT(chead != NULL);
+                        ASSERT(chead->key == key);
+                        hlist_for_each_entry(cell, node, &chead->head, list) {
                                 ASSERT_TREECELL(cell);
                                 val = cell->val;
                                 WALB_CHECK(val == key + i || val == key + i + 1);
@@ -1341,8 +1398,10 @@ int multimap_test(void)
                         val = multimap_lookup_any(tm, key);
                         WALB_CHECK(val == key + i + 1);
                         
-                        head = multimap_lookup(tm, key);
-                        hlist_for_each_entry(cell, node, head, list) {
+                        chead = multimap_lookup(tm, key);
+                        ASSERT(chead != NULL);
+                        ASSERT(chead->key == key);
+                        hlist_for_each_entry(cell, node, &chead->head, list) {
                                 ASSERT_TREECELL(cell);
                                 val = cell->val;
                                 WALB_CHECK(val == key + i + 1);
