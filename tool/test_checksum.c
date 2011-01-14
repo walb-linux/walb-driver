@@ -1,9 +1,10 @@
 /**
  * Checksum test code.
  *
+ * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
+ * @license 3-clause BSD, GPL version 2 or later.
  */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>

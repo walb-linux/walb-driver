@@ -2,9 +2,8 @@
  * treemap.c - Tree map implementation.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
- * Written by: Takashi HOSHINO <hoshino@labs.cybozu.co.jp>
+ * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>

@@ -2,7 +2,7 @@
  * hashtbl.c - Hash table implementation.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
- * Written by: Takashi HOSHINO <hoshino@labs.cybozu.co.jp>
+ * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 
 #include <linux/module.h>

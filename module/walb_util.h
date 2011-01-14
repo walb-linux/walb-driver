@@ -3,7 +3,6 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-
 #ifndef _WALB_UTIL_H
 #define _WALB_UTIL_H
 
@@ -45,7 +44,7 @@
 #endif
 #define WALB_CHECK(cond) do {                                           \
                 if (! (cond)) {                                         \
-                        printk_e("CHECK FAILED in %s:%d:%s.\n",    \
+                        printk_e("CHECK FAILED in %s:%d:%s.\n",         \
                                  __FILE__, __LINE__, __func__);         \
                         goto error;                                     \
                 }                                                       \

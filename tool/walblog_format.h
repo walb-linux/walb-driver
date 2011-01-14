@@ -97,4 +97,3 @@ error0:
 }
 
 #endif /* _WALBLOG_FORMAT_H */
-

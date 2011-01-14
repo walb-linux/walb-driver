@@ -2,9 +2,8 @@
  * walb_alldevs.c - for all devices management.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
- * Written by: Takashi HOSHINO <hoshino@labs.cybozu.co.jp>
+ * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-
 #include <linux/list.h>
 #include <linux/rwsem.h>
 

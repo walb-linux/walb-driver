@@ -1,3 +1,9 @@
+/**
+ * test.c - Test module.
+ *
+ * Copyright(C) 2010, Cybozu Labs, Inc.
+ * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
+ */
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>

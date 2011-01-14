@@ -1,7 +1,9 @@
 /**
  * Control walb device.
  *
+ * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
+ * @license 3-clause BSD, GPL version 2 or later.
  */
 #include <stdio.h>
 #include <stdlib.h>

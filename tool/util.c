@@ -1,8 +1,9 @@
 /**
  * General definitions for Walb.
  *
+ * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
- * @license GPLv2 or later.
+ * @license 3-clause BSD, GPL version 2 or later.
  */
 #include <stdio.h>
 #include <assert.h>
