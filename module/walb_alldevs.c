@@ -161,10 +161,19 @@ struct walb_dev* search_wdev_with_minor(unsigned int minor)
  */
 struct walb_dev* search_wdev_with_minor(unsigned int minor)
 {
+        unsigned long p;
+        
         CHECK_RUNNING();
-        return (struct walb_dev *)
-                hashtbl_lookup(htbl_minor_,
-                               (const u8 *)&minor, sizeof(unsigned int));
+        
+        p = hashtbl_lookup(htbl_minor_,
+                             (const u8 *)&minor, sizeof(unsigned int));
+        ASSERT(p != 0);
+
+        if (p == HASHTBL_INVALID_VAL) {
+                return NULL;
+        } else {
+                return (struct walb_dev *)p;
+        } 
 }
 
 /**
@@ -176,11 +185,20 @@ struct walb_dev* search_wdev_with_minor(unsigned int minor)
 struct walb_dev* search_wdev_with_name(const char* name)
 {
         size_t len;
+        unsigned long p;
 
         CHECK_RUNNING();
+        
         len = strnlen(name, WALB_DEV_NAME_MAX_LEN - 1);
-        return (struct walb_dev *)
-                hashtbl_lookup(htbl_name_, (const u8 *)name, len);
+
+        p = hashtbl_lookup(htbl_name_, (const u8 *)name, len);
+        ASSERT(p != 0);
+        
+        if (p == HASHTBL_INVALID_VAL) {
+                return NULL;
+        } else {
+                return (struct walb_dev *)p;
+        }
 }
 
 /**
@@ -191,8 +209,18 @@ struct walb_dev* search_wdev_with_name(const char* name)
  */
 struct walb_dev* search_wdev_with_uuid(const u8* uuid)
 {
+        unsigned long p;
+        
         CHECK_RUNNING();
-        return (struct walb_dev *)hashtbl_lookup(htbl_uuid_, uuid, 16);
+
+        p = hashtbl_lookup(htbl_uuid_, uuid, 16);
+        ASSERT(p != 0);
+        
+        if (p == HASHTBL_INVALID_VAL) {
+                return NULL;
+        } else {
+                return (struct walb_dev *)p;
+        }
 }
 
 
@@ -329,8 +357,8 @@ unsigned int get_free_minor()
         unsigned int minor = 0;
 
         CHECK_RUNNING();
-        while (hashtbl_lookup(htbl_minor_,
-                              (const u8 *)&minor, sizeof(unsigned int))) {
+        while (hashtbl_lookup(htbl_minor_, (const u8 *)&minor,
+                              sizeof(unsigned int)) != HASHTBL_INVALID_VAL) {
                 minor += 2;
         }
         return minor;
