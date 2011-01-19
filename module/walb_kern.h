@@ -335,16 +335,6 @@ get_logpack_header(struct sector_data *sect)
         return (struct walb_logpack_header *)(sect->data);
 }
 
-/**
- * Get snapshot sector.
- */
-static inline struct walb_snapshot_sector*
-get_snapshot_sector(struct sector_data *sect)
-{
-        ASSERT_SECTOR_DATA(sect);
-        return (struct walb_snapshot_sector *)(sect->data);
-}
-
 /*******************************************************************************
  * Prototypes defined in walb.c
  *******************************************************************************/

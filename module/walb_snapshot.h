@@ -12,6 +12,8 @@
 #include "../include/walb_log_device.h"
 #include "treemap.h"
 #include "hashtbl.h"
+#include "walb_sector.h"
+#include "walb_util.h"
 
 /**
  * DOC: Snapshot operations.
@@ -38,7 +40,7 @@ struct snapshot_sector_control
         
         /* Raw image of snapshot sector.
            There is no memory image if NULL. */
-        walb_snapshot_sector_t *image;
+        struct sector_data *sector;
 };
 
 /**
@@ -77,6 +79,25 @@ struct snapshot_data
         /* Index: lsid -> snapshot_id. */
         multimap_t *lsid_idx;
 };
+
+/**
+ * Assersion of (struct sector_data *).
+ */
+#define ASSERT_SNAPSHOT_SECTOR(sect) ASSERT(                            \
+                (sect) != NULL &&                                       \
+                (sect)->size > 0 && (sect)->data != NULL &&             \
+                ((struct walb_snapshot_sector *)                        \
+                 (sect)->data)->sector_type == SECTOR_TYPE_SNAPSHOT)
+
+/**
+ * Get snapshot sector.
+ */
+static inline struct walb_snapshot_sector*
+get_snapshot_sector(struct sector_data *sect)
+{
+        ASSERT_SECTOR_DATA(sect);
+        return (struct walb_snapshot_sector *)(sect->data);
+}
 
 /**
  * Prototypes.

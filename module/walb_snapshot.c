@@ -8,11 +8,73 @@
 #include <linux/kernel.h>
 #include <linux/rwsem.h>
 
+#include "../include/walb_log_device.h"
 #include "walb_util.h"
-#include "walb_snapshot.h"
 #include "walb_io.h"
+#include "walb_sector.h"
 #include "hashtbl.h"
 #include "treemap.h"
+
+#include "walb_snapshot.h"
+
+/*******************************************************************************
+ * Prototypes of static functions.
+ *******************************************************************************/
+
+static int get_n_records_in_snapshot_sector_detail(
+        struct walb_snapshot_sector *snap_sect, int max_n);
+static int get_n_records_in_snapshot_sector(struct sector_data *sect);
+static int get_n_free_records_in_snapshot_sector(struct sector_data *sect);
+
+/*******************************************************************************
+ * Static functions.
+ *******************************************************************************/
+
+/**
+ * Get number of snapshots in the sector.
+ */
+static int get_n_records_in_snapshot_sector_detail(
+        struct walb_snapshot_sector *snap_sect, int max_n)
+{
+        int i, n;
+
+        ASSERT(snap_sect != NULL);
+        ASSERT(snap_sect->sector_type == SECTOR_TYPE_SNAPSHOT);
+        
+        n = 0;
+        for (i = 0; i < max_n; i ++) {
+                if (test_u64bits(i, &snap_sect->bitmap)) {
+                        n ++;
+                }
+        }
+        ASSERT(0 <= n && n <= 64);
+        
+        return n;
+}
+
+/**
+ * Get number of active records in a snapshot sector.
+ */
+static int get_n_records_in_snapshot_sector(struct sector_data *sect)
+{
+        int max_n = max_n_snapshots_in_sector(sect->size);
+        ASSERT_SNAPSHOT_SECTOR(sect);
+        
+        return get_n_records_in_snapshot_sector_detail(
+                get_snapshot_sector(sect), max_n);
+}
+
+/**
+ * Get number of free records in a snapshot sector.
+ */
+static int get_n_free_records_in_snapshot_sector(struct sector_data *sect)
+{
+        int max_n = max_n_snapshots_in_sector(sect->size);
+        ASSERT_SNAPSHOT_SECTOR(sect);
+
+        return max_n - get_n_records_in_snapshot_sector_detail(
+                get_snapshot_sector(sect), max_n);
+}
 
 /*******************************************************************************
  * Create/destroy snapshots structure. 
@@ -62,7 +124,7 @@ struct snapshot_data* snapshot_data_create(
                 if (ctl == NULL) { goto nomem2; }
                 ctl->offset = off;
                 ctl->n_free_records = -1; /* Invalid value. */
-                ctl->image = NULL;
+                ctl->sector = NULL;
 
                 if (map_add(snapd->sectors, off, (unsigned long)ctl, GFP_KERNEL) != 0) {
                         kfree(ctl);
@@ -146,15 +208,14 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
  */
 int snapshot_data_initialize(struct snapshot_data *snapd)
 {
-#if 1
-        return 1;
-#else
         u64 off;
         unsigned long p;
         struct snapshot_sector_control *ctl;
-        void *sectp;
-
-        sectp = walb_alloc_sector(GFP_KERNEL);
+        struct sector_data *sect;
+        
+        sect = sector_alloc(snapd->sector_size, GFP_KERNEL);
+        if (sect == NULL) { goto error0; }
+        ASSERT(snapd->sector_size == sect->size);
 
         /* For all snapshot sectors. */
         for (off = snapd->start_offset; off < snapd->end_offset; off ++) {
@@ -164,33 +225,29 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
                 ASSERT(p != TREEMAP_INVALID_VAL);
                 ctl = (struct snapshot_sector_control *)p;
                 ASSERT(ctl != NULL);
+                ASSERT(ctl->offset == off);
                 
                 /* Load sector. */
-                if (walb_sector_io(READ, snapd->bdev, sectp, off) != 0) {
-                        printk_e("load snapshot sector %"PRIu64" failed.\n", off);
-                        goto error0;
+                if (sector_io(READ, snapd->bdev, off, sect) != 0) {
+                        printk_e("Read snapshot sector %"PRIu64" failed.\n", off);
+                        goto error1;
                 }
                 
-                
-                /* Cal */
-
-                
-                
+                /* Calculate n_free_records. */
+                ctl->n_free_records = get_n_free_records_in_snapshot_sector(sect);
                 
                 /* now editing */
                 
         }
 
-        /* not yet implemented. */
-        
+        sector_free(sect);
+
         return 1;
 
-
 error1:
-        walb_free_sector(sectp);
+        sector_free(sect);
 error0:
         return 0;
-#endif
 }
 
 /**
