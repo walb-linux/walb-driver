@@ -7,7 +7,7 @@ else
 	CFLAGS+=-DNDEBUG -O2
 endif
 
-BINARIES = walbctl test_checksum test_bitmap test_rw
+BINARIES = walbctl test_checksum test_bitmap test_u64bits test_rw
 
 binaries: $(BINARIES)
 
@@ -28,8 +28,12 @@ test_checksum: test_checksum.o
 test_bitmap: test_bitmap.o
 	$(CC) -o $@ $(CFLAGS) test_bitmap.o
 
+test_u64bits: test_u64bits.o
+	$(CC) -o $@ $(CFLAGS) test_u64bits.o
+
 test_rw: test_rw.o util.o
 	$(CC) -o $@ $(CFLAGS) test_rw.o util.o
+
 
 test_bitmap.o: test_bitmap.c ../include/bitmap.h
 util.o: util.c util.h $(HEADER_FILES)
