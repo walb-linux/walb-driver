@@ -244,7 +244,8 @@ static int ioctl_dev_start(struct walb_ctl *ctl)
         /* Return values to userland. */
         ctl->k2u.wmajor = walb_major;
         ctl->k2u.wminor = wminor;
-        strncpy(ctl->k2u.__buf, wdev->lsuper0->name, DISK_NAME_LEN);
+        strncpy(ctl->k2u.__buf, get_super_sector(wdev->lsuper0)->name,
+                DISK_NAME_LEN);
         ctl->error = 0;
 
         print_walb_ctl(ctl); /* debug */

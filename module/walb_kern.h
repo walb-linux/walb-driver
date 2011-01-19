@@ -14,6 +14,7 @@
 #include "../include/walb_log_device.h"
 #include "walb_util.h"
 #include "walb_io.h"
+#include "walb_sector.h"
 
 /**
  * Walb device major.
@@ -121,8 +122,7 @@ struct walb_dev {
          */
         spinlock_t lsuper0_lock;
         /* Super sector of log device. */
-        walb_super_sector_t *lsuper0;
-        /* walb_super_sector_t *lsuper1; */
+        struct sector_data *lsuper0;
 
         /* Log pack list.
            Use spin_lock_irqsave(). */
@@ -311,9 +311,44 @@ struct walb_datapack_request_entry {
         struct list_head bioc_list;
 };
 
+/*******************************************************************************
+ * Sector functions.
+ *******************************************************************************/
+
 /**
- * Prototypes defined in walb.c
+ * Get super sector pointer.
  */
+static inline struct walb_super_sector*
+get_super_sector(struct sector_data *sect)
+{
+        ASSERT_SECTOR_DATA(sect);
+        return (struct walb_super_sector *)(sect->data);
+}
+
+/**
+ * Get logpack header pointer.
+ */
+static inline struct walb_logpack_header*
+get_logpack_header(struct sector_data *sect)
+{
+        ASSERT_SECTOR_DATA(sect);
+        return (struct walb_logpack_header *)(sect->data);
+}
+
+/**
+ * Get snapshot sector.
+ */
+static inline struct walb_snapshot_sector*
+get_snapshot_sector(struct sector_data *sect)
+{
+        ASSERT_SECTOR_DATA(sect);
+        return (struct walb_snapshot_sector *)(sect->data);
+}
+
+/*******************************************************************************
+ * Prototypes defined in walb.c
+ *******************************************************************************/
+
 struct walb_dev* prepare_wdev(unsigned int minor,
                               dev_t ldevt, dev_t ddevt, const char* name);
 void destroy_wdev(struct walb_dev *wdev);

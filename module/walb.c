@@ -31,6 +31,7 @@
 #include "walb_control.h"
 #include "walb_alldevs.h"
 #include "walb_snapshot.h"
+#include "walb_sector.h"
 #include "walb_io.h"
 
 #include "../include/walb_ioctl.h"
@@ -168,19 +169,11 @@ static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 /* Walblog unplug_fn. */
 static void walblog_unplug(struct request_queue *q);
 
-/* Sector functions. */
-static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask);
-static void walb_free_sector(void *p);
-static void walb_copy_sector(struct walb_dev *wdev,
-                             u8 *dst, const u8 *src);
-static int walb_io_sector(int rw, struct block_device *bdev,
-                          void* buf, u64 off);
-
 /* Super sector functions. */
-static void walb_print_super_sector(walb_super_sector_t *lsuper0);
-static walb_super_sector_t* walb_read_super_sector(struct walb_dev *dev);
+static void walb_print_super_sector(struct walb_super_sector *lsuper0);
+static struct sector_data* walb_read_super_sector(struct walb_dev *dev);
 static int walb_write_super_sector(struct walb_dev *dev,
-                                   struct walb_super_sector *lsuper);
+                                   struct sector_data *lsuper);
 static int walb_sync_super_block(struct walb_dev *wdev);
 
 /* Utility functions for walb_dev. */
@@ -687,7 +680,7 @@ static int walb_submit_logpack_request_to_ldev(
         req = req_entry->req_orig;
 
         ldev_off_pb = get_offset_of_lsid_2
-                (req_entry->logpack_entry->wdev->lsuper0,
+                (get_super_sector(req_entry->logpack_entry->wdev->lsuper0),
                  req_entry->logpack_entry->logpack->record[req_entry->idx].lsid);
         
         off_lb = 0;
@@ -764,7 +757,8 @@ static int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
         
         /* We should use lock free data structure and algorithm. */
         /* spin_lock(&wdev->lsuper0_lock); */
-        off_pb = get_offset_of_lsid_2(wdev->lsuper0, logpack_lsid);
+        off_pb = get_offset_of_lsid_2(get_super_sector(wdev->lsuper0),
+                                      logpack_lsid);
         /* spin_unlock(&wdev->lsuper0_lock); */
         off_lb = off_pb * (pbs / lbs);
         bio->bi_sector = off_lb;
@@ -1290,6 +1284,7 @@ static void walb_end_requests(struct request **reqp_ary, int n_req, int error)
 static void walb_make_logpack_and_submit_task(struct work_struct *work)
 {
         struct walb_make_logpack_work *wk;
+        struct sector_data *lhead_sect;
         struct walb_logpack_header *lhead;
         int logpack_size;
         u64 logpack_lsid, next_logpack_lsid, oldest_lsid;
@@ -1307,12 +1302,12 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         /*
          * Allocate memory (sector size) for log pack header.
          */
-        lhead = walb_alloc_sector(wdev, GFP_NOIO);
-        if (lhead == NULL) {
+        lhead_sect = sector_alloc(wdev->physical_bs, GFP_NOIO | __GFP_ZERO);
+        if (lhead_sect == NULL) {
                 printk_e("walb_alloc_sector() failed\n");
                 goto error0;
         }
-        memset(lhead, 0, wdev->physical_bs);
+        lhead = get_logpack_header(lhead_sect);
 
         /*
          * Get oldest_lsid.
@@ -1324,7 +1319,7 @@ static void walb_make_logpack_and_submit_task(struct work_struct *work)
         /*
          * Fill log records for for each request.
          */
-        ringbuf_off = get_ring_buffer_offset_2(wdev->lsuper0);
+        ringbuf_off = get_ring_buffer_offset_2(get_super_sector(wdev->lsuper0));
         ringbuf_size = get_log_capacity(wdev);
         /*
          * 1. Lock latest_lsid_lock.
@@ -1406,7 +1401,7 @@ error0:
 fin:        
         kfree(wk->reqp_ary);
         kfree(wk);
-        walb_free_sector(lhead);
+        sector_free(lhead_sect);
 
         printk_d("walb_make_logpack_and_submit_task end\n");
 }
@@ -1571,19 +1566,22 @@ static int walblog_make_request(struct request_queue *q, struct bio *bio)
  */
 static int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
 {
+        struct sector_data *sect;
         struct walb_logpack_header *logpack;
         u64 off;
 
         ASSERT(wdev != NULL);
-        
-        logpack = walb_alloc_sector(wdev, GFP_NOIO);
-        if (logpack == NULL) {
+
+        sect = sector_alloc(wdev->physical_bs, GFP_NOIO);
+        if (sect == NULL) {
                 printk_e("walb_check_lsid_valid: alloc sector failed.\n");
                 goto error0;
         }
-
-        off = get_offset_of_lsid_2(wdev->lsuper0, lsid);
-        if (walb_io_sector(READ, wdev->ldev, logpack, off) != 0) {
+        ASSERT(is_same_size_sector(sect, wdev->lsuper0));
+        logpack = get_logpack_header(sect);
+        
+        off = get_offset_of_lsid_2(get_super_sector(wdev->lsuper0), lsid);
+        if (sector_io(READ, wdev->ldev, off, sect) != 0) {
                 printk_e("walb_check_lsid_valid: read sector failed.\n");
                 goto error1;
         }
@@ -1603,11 +1601,11 @@ static int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
                 goto error1;
         }
 
-        walb_free_sector(logpack);
+        sector_free(sect);
         return 0;
 
 error1:
-        walb_free_sector(logpack);
+        sector_free(sect);
 error0:
         return -1;
 }
@@ -1854,7 +1852,6 @@ static struct block_device_operations walb_ops = {
 	.ioctl	         = walb_ioctl
 };
 
-
 static int walblog_open(struct block_device *bdev, fmode_t mode)
 {
 	return 0;
@@ -1913,130 +1910,12 @@ static struct block_device_operations walblog_ops = {
         .ioctl   = walblog_ioctl
 };
 
-
-/**
- * Allocate sector.
- *
- * @dev walb device.
- * @flag GFP flag.
- *
- * @return pointer to allocated memory or 
- */
-static void* walb_alloc_sector(struct walb_dev *dev, gfp_t gfp_mask)
-{
-        void *ret;
-        ret = kmalloc(dev->physical_bs, gfp_mask);
-        return ret;
-}
-
-/**
- * Deallocate sector.
- *
- * This must be used for memory allocated with @walb_alloc_sector().
- */
-static void walb_free_sector(void *p)
-{
-        kfree(p);
-}
-
-/**
- * Copy sector image.
- *
- * @wdev walb device.
- * @dst destination buffer
- * @src source buffer
- */
-static void walb_copy_sector(struct walb_dev *wdev,
-                             u8 *dst, const u8 *src)
-{
-        memcpy(dst, src, wdev->physical_bs);
-}
-
-/**
- * Read/write physical sector from/to block device.
- * This is blocked operation.
- * Do not call this function in interuption handlers.
- *
- * @rw READ or WRITE (as same as 1st arg of submit_bio(rw, bio).).
- * @bdev block device, which is already opened.
- * @buf pointer to buffer of physical sector size.
- * @off offset in the block device [physical sector].
- *
- * @return 0 in success, or -1.
- */
-static int walb_io_sector(int rw, struct block_device *bdev, void* buf, u64 off)
-{
-        struct bio *bio;
-        int pbs, lbs;
-        struct page *page;
-        struct walb_bio_with_completion *bioc;
-
-        printk_d("walb_sector_io begin\n");
-
-        ASSERT(rw == READ || rw == WRITE);
-        
-        lbs = bdev_logical_block_size(bdev);
-        pbs = bdev_physical_block_size(bdev);
-
-        bioc = kmalloc(sizeof(struct walb_bio_with_completion), GFP_NOIO);
-        if (bioc == NULL) {
-                goto error0;
-        }
-        init_completion(&bioc->wait);
-        bioc->status = WALB_BIO_INIT;
-        
-        /* Alloc bio */
-        bio = bio_alloc(GFP_NOIO, 1);
-        if (bio == NULL) {
-                printk_e("bio_alloc failed.\n");
-                goto error1;
-        }
-        ASSERT(virt_addr_valid(buf));
-        page = virt_to_page(buf);
-
-        printk_d("sector %lu "
-                 "page %p buf %p sectorsize %d offset %lu rw %d\n",
-                 (unsigned long)(off * (pbs / lbs)),
-                 virt_to_page(buf), buf,
-                 pbs, offset_in_page(buf), rw);
-
-        bio->bi_bdev = bdev;
-        bio->bi_sector = off * (pbs / lbs);
-        bio->bi_end_io = walb_end_io_with_completion;
-        bio->bi_private = bioc;
-        bio_add_page(bio, page, pbs, offset_in_page(buf));
-
-        /* Submit and wait to complete. */
-        submit_bio(rw, bio);
-        wait_for_completion(&bioc->wait);
-
-        /* Check result. */
-        if (bioc->status != WALB_BIO_END) {
-                printk_e("sector io failed.\n");
-                goto error2;
-        }
-
-        /* Cleanup allocated bio and memory. */
-        bio_put(bio);
-        kfree(bioc);
-
-        printk_d("walb_sector_io end\n");
-        return 0;
-
-error2:
-        bio_put(bio);
-error1:
-        kfree(bioc);
-error0:
-        return -1;
-}
-
 /**
  * Print super sector for debug.
  *
  * @lsuper0 super sector.
  */
-static void walb_print_super_sector(walb_super_sector_t *lsuper0)
+static void walb_print_super_sector(struct walb_super_sector *lsuper0)
 {
 #ifdef WALB_DEBUG
         char uuidstr[16 * 2 + 1];
@@ -2072,51 +1951,54 @@ static void walb_print_super_sector(walb_super_sector_t *lsuper0)
  * Read super sector.
  * Currently super sector 0 will be read only (not super sector 1).
  *
- * @dev walb device.
+ * @wdev walb device.
  *
  * @return super sector (internally allocated) or NULL.
  */
-static walb_super_sector_t* walb_read_super_sector(struct walb_dev *dev)
+static struct sector_data* walb_read_super_sector(struct walb_dev *wdev)
 {
         u64 off0;
-        walb_super_sector_t *lsuper0;
+        struct sector_data *lsuper0;
+        struct walb_super_sector *sect;
 
         printk_d("walb_read_super_sector begin\n");
         
-        lsuper0 = walb_alloc_sector(dev, GFP_NOIO);
+        lsuper0 = sector_alloc(wdev->physical_bs, GFP_NOIO);
         if (lsuper0 == NULL) {
                 goto error0;
         }
+        ASSERT_SECTOR_DATA(lsuper0);
+        sect = get_super_sector(lsuper0);
 
         /* Really read. */
-        off0 = get_super_sector0_offset(dev->physical_bs);
-        /* off1 = get_super_sector1_offset(dev->physical_bs, dev->n_snapshots); */
-        if (walb_io_sector(READ, dev->ldev, lsuper0, off0) != 0) {
+        off0 = get_super_sector0_offset(wdev->physical_bs);
+        /* off1 = get_super_sector1_offset(wdev->physical_bs, wdev->n_snapshots); */
+        if (sector_io(READ, wdev->ldev, off0, lsuper0) != 0) {
                 printk_e("read super sector0 failed\n");
                 goto error1;
         }
 
         /* Validate checksum. */
-        if (checksum((u8 *)lsuper0, dev->physical_bs) != 0) {
+        if (checksum((u8 *)sect, lsuper0->size) != 0) {
                 printk_e("walb_read_super_sector: checksum check failed.\n");
                 goto error1;
         }
 
         /* Validate sector type */
-        if (lsuper0->sector_type != SECTOR_TYPE_SUPER) {
+        if (sect->sector_type != SECTOR_TYPE_SUPER) {
                 printk_e("walb_read_super_sector: sector type check failed.\n");
                 goto error1;
         }
 
 #ifdef WALB_DEBUG
-        walb_print_super_sector(lsuper0);
+        walb_print_super_sector(sect);
 #endif
         
         printk_d("walb_read_super_sector end\n");
         return lsuper0;
 
 error1:
-        walb_free_sector(lsuper0);
+        sector_free(lsuper0);
 error0:
         return NULL;
 }
@@ -2125,32 +2007,36 @@ error0:
  * Write super sector.
  * Currently only super sector 0 will be written. (super sector 1 is not.)
  *
- * @dev walb device.
+ * @wdev walb device.
  * @lsuper super sector to write.
  *
  * @return 0 in success, or -1.
  */
-static int walb_write_super_sector(struct walb_dev *dev,
-                                   struct walb_super_sector *lsuper)
+static int walb_write_super_sector(struct walb_dev *wdev,
+                                   struct sector_data *lsuper)
 {
         u64 off0;
         u32 csum;
+        struct walb_super_sector *sect;
 
         printk_d("walb_write_super_sector begin\n");
-        
-        ASSERT(lsuper != NULL);
 
+        ASSERT(wdev != NULL);
+        ASSERT_SECTOR_DATA(lsuper);
+        ASSERT(wdev->physical_bs == lsuper->size);
+        sect = get_super_sector(lsuper);
+        
         /* Set sector_type. */
-        lsuper->sector_type = SECTOR_TYPE_SUPER;
+        sect->sector_type = SECTOR_TYPE_SUPER;
         
         /* Generate checksum. */
-        lsuper->checksum = 0;
-        csum = checksum((u8 *)lsuper, dev->physical_bs);
-        lsuper->checksum = csum;
+        sect->checksum = 0;
+        csum = checksum((u8 *)sect, wdev->physical_bs);
+        sect->checksum = csum;
 
         /* Really write. */
-        off0 = get_super_sector0_offset(dev->physical_bs);
-        if (walb_io_sector(WRITE, dev->ldev, lsuper, off0) != 0) {
+        off0 = get_super_sector0_offset(wdev->physical_bs);
+        if (sector_io(WRITE, wdev->ldev, off0, lsuper) != 0) {
                 printk_e("write super sector0 failed\n");
                 goto error0;
         }
@@ -2168,7 +2054,9 @@ error0:
 static int walb_sync_super_block(struct walb_dev *wdev)
 {
         u64 written_lsid, oldest_lsid;
-        struct walb_super_sector *lsuper_tmp;
+
+        struct sector_data *lsuper_tmp;
+        struct walb_super_sector *sect, *sect_tmp;
 
         /* Get written lsid. */
         spin_lock(&wdev->datapack_list_lock);
@@ -2181,16 +2069,21 @@ static int walb_sync_super_block(struct walb_dev *wdev)
         spin_unlock(&wdev->oldest_lsid_lock);
 
         /* Allocate temporary super block. */
-        lsuper_tmp = walb_alloc_sector(wdev, GFP_NOIO);
+        lsuper_tmp = sector_alloc(wdev->physical_bs, GFP_NOIO);
         if (lsuper_tmp == NULL) {
                 goto error0;
         }
+        ASSERT_SECTOR_DATA(lsuper_tmp);
+        sect_tmp = get_super_sector(lsuper_tmp);
 
         /* Modify super sector and copy. */
         spin_lock(&wdev->lsuper0_lock);
-        wdev->lsuper0->oldest_lsid = oldest_lsid;
-        wdev->lsuper0->written_lsid = written_lsid;
-        walb_copy_sector(wdev, (u8 *)lsuper_tmp, (u8 *)wdev->lsuper0);
+        ASSERT_SECTOR_DATA(wdev->lsuper0);
+        ASSERT(is_same_size_sector(wdev->lsuper0, lsuper_tmp));
+        sect = get_super_sector(wdev->lsuper0);
+        sect->oldest_lsid = oldest_lsid;
+        sect->written_lsid = written_lsid;
+        sector_copy(lsuper_tmp, wdev->lsuper0);
         spin_unlock(&wdev->lsuper0_lock);
         
         if (walb_write_super_sector(wdev, lsuper_tmp) != 0) {
@@ -2198,7 +2091,7 @@ static int walb_sync_super_block(struct walb_dev *wdev)
                 goto error1;
         }
 
-        walb_free_sector(lsuper_tmp);
+        sector_free(lsuper_tmp);
 
         /* Update previously written lsid. */
         spin_lock(&wdev->datapack_list_lock);
@@ -2208,7 +2101,7 @@ static int walb_sync_super_block(struct walb_dev *wdev)
         return 0;
 
 error1:
-        walb_free_sector(lsuper_tmp);
+        sector_free(lsuper_tmp);
 error0:
         return -1;
 }
@@ -2239,8 +2132,8 @@ static u64 get_written_lsid(struct walb_dev *wdev)
 static u64 get_log_capacity(struct walb_dev *wdev)
 {
         ASSERT(wdev != NULL);
-        ASSERT(wdev->lsuper0 != NULL);
-        return wdev->lsuper0->ring_buffer_size;
+        ASSERT_SECTOR_DATA(wdev->lsuper0);
+        return get_super_sector(wdev->lsuper0)->ring_buffer_size;
 }
 
 /**
@@ -2258,8 +2151,8 @@ static int walb_set_name(struct walb_dev *wdev,
         ASSERT(wdev->lsuper0 != NULL);
         
         name_len = strnlen(name, DISK_NAME_LEN);
-        dev_name = wdev->lsuper0->name;
-
+        dev_name = get_super_sector(wdev->lsuper0)->name;
+        
         if (name == NULL || name_len == 0) {
                 if (strnlen(dev_name, DISK_NAME_LEN) == 0) {
                         snprintf(dev_name, DISK_NAME_LEN, "%u", minor / 2);
@@ -2453,7 +2346,7 @@ static void walblog_finalize_device(struct walb_dev *wdev)
 static int walb_ldev_initialize(struct walb_dev *wdev)
 {
         u64 snapshot_begin_pb, snapshot_end_pb;
-        walb_super_sector_t *lsuper0_tmp;
+        struct sector_data *lsuper0_tmp;
         ASSERT(wdev != NULL);
 
         /*
@@ -2474,17 +2367,17 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
         lsuper0_tmp = walb_read_super_sector(wdev);
         if (lsuper0_tmp == NULL) {
                 printk_e("walb_ldev_init: read lsuper0_tmp failed\n");
-                kfree(lsuper0_tmp);
+                sector_free(lsuper0_tmp);
                 goto error1;
         }
 
-        if (memcmp(wdev->lsuper0, lsuper0_tmp, wdev->physical_bs) != 0) {
+        if (sector_compare(wdev->lsuper0, lsuper0_tmp) != 0) {
                 printk_e("walb_ldev_init: memcmp NG\n");
         } else {
                 printk_e("walb_ldev_init: memcmp OK\n");
         }
-
-        walb_free_sector(lsuper0_tmp);
+        
+        sector_free(lsuper0_tmp);
         /* Do not forget calling kfree(dev->lsuper0)
            before releasing the block device. */
 
@@ -2493,7 +2386,7 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
          */
         snapshot_begin_pb = get_metadata_offset(wdev->physical_bs);
         snapshot_end_pb = snapshot_begin_pb +
-                wdev->lsuper0->snapshot_metadata_size;
+                get_super_sector(wdev->lsuper0)->snapshot_metadata_size;
         printk_d("snapshot offset range: [%"PRIu64",%"PRIu64").\n",
                  snapshot_begin_pb, snapshot_end_pb);
         wdev->snapd = snapshot_data_create
@@ -2536,7 +2429,7 @@ out_snapshot_create:
                 snapshot_data_destroy(wdev->snapd);
         }
 error1:
-        walb_free_sector(wdev->lsuper0);
+        sector_free(wdev->lsuper0);
 error0:
         return -1;
 }
@@ -2554,7 +2447,7 @@ static void walb_ldev_finalize(struct walb_dev *wdev)
         snapshot_data_destroy(wdev->snapd);
         
         walb_finalize_super_block(wdev);
-        walb_free_sector(wdev->lsuper0);
+        sector_free(wdev->lsuper0);
 }
 
 /**
@@ -3069,17 +2962,17 @@ struct walb_dev* prepare_wdev(unsigned int minor,
                 printk_e("ldev init failed.\n");
                 goto out_ddev;
         }
-        wdev->written_lsid = wdev->lsuper0->written_lsid;
+        wdev->written_lsid = get_super_sector(wdev->lsuper0)->written_lsid;
         wdev->prev_written_lsid = wdev->written_lsid;
-        wdev->oldest_lsid = wdev->lsuper0->oldest_lsid;
+        wdev->oldest_lsid = get_super_sector(wdev->lsuper0)->oldest_lsid;
 
         /* Set device name. */
         if (walb_set_name(wdev, minor, name) != 0) {
                 printk_e("Set device name failed.\n");
                 goto out_ldev_init;
         }
-        ASSERT(wdev->lsuper0 != NULL);
-        dev_name = wdev->lsuper0->name;
+        ASSERT_SECTOR_DATA(wdev->lsuper0);
+        dev_name = get_super_sector(wdev->lsuper0)->name;
 
         /* For checkpoint */
         init_rwsem(&wdev->checkpoint_lock);
@@ -3211,4 +3104,3 @@ MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("Block-level WAL");
 MODULE_ALIAS(WALB_NAME);
 /* MODULE_ALIAS_BLOCKDEV_MAJOR(WALB_MAJOR); */
-

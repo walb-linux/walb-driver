@@ -69,7 +69,8 @@ static size_t get_wdev_name_len(const struct walb_dev *wdev)
 {
         ASSERT(wdev != NULL);
         ASSERT(wdev->lsuper0 != NULL);
-        return strnlen(wdev->lsuper0->name, WALB_DEV_NAME_MAX_LEN - 1);
+        return strnlen(get_super_sector(wdev->lsuper0)->name,
+                       WALB_DEV_NAME_MAX_LEN - 1);
 }
 
 
@@ -257,22 +258,22 @@ int alldevs_add(struct walb_dev* wdev)
         
         len = get_wdev_name_len(wdev);
         ret = hashtbl_add(htbl_name_,
-                          wdev->lsuper0->name, len,
+                          get_super_sector(wdev->lsuper0)->name, len,
                           (unsigned long)wdev, GFP_KERNEL);
         if (ret != 0) {
                 if (ret == -EPERM) {
                         printk_e("alldevs_add: name %s is already registered.\n",
-                                 wdev->lsuper0->name);
+                                 get_super_sector(wdev->lsuper0)->name);
                 }
                 goto error1;
         }
 
         ret = hashtbl_add(htbl_uuid_,
-                          wdev->lsuper0->uuid, 16,
+                          get_super_sector(wdev->lsuper0)->uuid, 16,
                           (unsigned long)wdev, GFP_KERNEL);
         if (ret != 0) {
                 if (ret == -EPERM) {
-                        sprint_uuid(buf, wdev->lsuper0->uuid);
+                        sprint_uuid(buf, get_super_sector(wdev->lsuper0)->uuid);
                         printk_e("alldevs_add: uuid %s is already registered.\n",
                                  buf);
                 }
@@ -283,9 +284,9 @@ int alldevs_add(struct walb_dev* wdev)
         return 0;
 
 /* error3: */
-/*         hashtbl_del(htbl_uuid_, wdev->lsuper0->uuid, 16); */
+/*         hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, 16); */
 error2:
-        hashtbl_del(htbl_name_, wdev->lsuper0->name, len);
+        hashtbl_del(htbl_name_, get_super_sector(wdev->lsuper0)->name, len);
 error1:
         hashtbl_del(htbl_minor_, (const u8 *)&minor, sizeof(unsigned int));
 error0:
@@ -311,9 +312,9 @@ void alldevs_del(struct walb_dev* wdev)
         wminor = MINOR(wdev->devt);
         
         tmp0 = (struct walb_dev *)
-                hashtbl_del(htbl_uuid_, wdev->lsuper0->uuid, 16);
+                hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, 16);
         tmp1 = (struct walb_dev *)
-                hashtbl_del(htbl_name_, wdev->lsuper0->name, len);
+                hashtbl_del(htbl_name_, get_super_sector(wdev->lsuper0)->name, len);
         tmp2 = (struct walb_dev *)
                 hashtbl_del(htbl_minor_, (const u8 *)&wminor, sizeof(unsigned int));
 
@@ -399,3 +400,5 @@ void alldevs_write_unlock(void)
         CHECK_RUNNING();
         up_write(&all_wdevs_lock_);
 }
+
+MODULE_LICENSE("Dual BSD/GPL");

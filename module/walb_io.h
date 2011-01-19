@@ -1,13 +1,14 @@
 /**
- * walb_io.c - IO operations.
+ * walb_io.h - IO operations.
  *
- * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #ifndef _WALB_IO_H
 #define _WALB_IO_H
 
 #include "../include/bitmap.h"
+#include "walb_util.h"
+#include "walb_sector.h"
 
 /**
  * BIO wrapper flag.
@@ -53,10 +54,6 @@ struct walb_bio_with_completion
         struct list_head list;
 };
 
-
-
-
-
 /**
  * Work to deal with multiple bio(s).
  * Using bitmap instead list.
@@ -73,7 +70,6 @@ struct walb_bios_work
         atomic_t is_fail; /* non-zero if failed. */
 };
 
-
 /**
  * Work to deal with multiple bio(s).
  */
@@ -85,13 +81,16 @@ struct walb_bioclist_work
 };
 
 
-/**
+/*******************************************************************************
  * Prototypes.
- */
+ *******************************************************************************/
 
 /* Utility functions. */
 int walb_rq_count_bio(struct request *req);
 
+/* Sector IO function. */
+int sector_io(int rw, struct block_device *bdev,
+              u64 off, struct sector_data *sect);
 
 /* End IO callback for struct walb_bio_with_completion. */
 void walb_end_io_with_completion(struct bio *bio, int error);
@@ -104,7 +103,9 @@ void walb_submit_bio_task(struct work_struct *work);
 void walb_ddev_end_io(struct bio *bio, int error);
 void walb_init_ddev_bio(struct walb_ddev_bio *dbio);
 
-/* Submit IO function with struct walb_bios_work. */
+
+/* Submit IO function with
+   struct walb_bios_work. */
 void walb_forward_request_to_ddev(struct block_device *bdev,
                                   struct request *req);
 void walb_bios_work_task(struct work_struct *work);
@@ -118,7 +119,8 @@ int walb_clone_bios_work(struct walb_bios_work* wk, gfp_t gfp_mask);
 void walb_submit_bios_work(struct walb_bios_work* wk);
 
 
-/* Submit IO functions with struct walb_bioclist_work. */
+/* Submit IO functions with
+   struct walb_bioclist_work. */
 void walb_forward_request_to_ddev2(struct block_device *bdev,
                                    struct request *req);
 void walb_bioclist_work_task(struct work_struct *work);
