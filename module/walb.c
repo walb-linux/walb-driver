@@ -748,8 +748,6 @@ static int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
         bio = bio_alloc(GFP_NOIO, 1);
         if (! bio) { goto error1; }
 
-        /* This is bad for non-64bit architecture.
-           Use map() and unmap(). */
         ASSERT(virt_addr_valid(logpack_entry->logpack));
         page = virt_to_page(logpack_entry->logpack);
 

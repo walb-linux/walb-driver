@@ -200,7 +200,7 @@ typedef struct walb_snapshot_sector {
         /* Checksum of snapshot sector */
         u32 checksum;
 
-        u16 sector_type;
+        u16 sector_type; /* must be SECTOR_TYPE_SNAPSHOT. */
         u16 reserved1;
         
         /* Allocation bitmap of the continuous records
