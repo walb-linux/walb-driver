@@ -10,6 +10,7 @@
 
 #include "walb_util.h"
 #include "walb_snapshot.h"
+#include "walb_io.h"
 #include "hashtbl.h"
 #include "treemap.h"
 
@@ -113,10 +114,7 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
         struct snapshot_sector_control *ctl;
         map_curser_t curt;
         
-        if (snapd == NULL) {
-                printk_d("snapd is null.\n");
-                return;
-        }
+        ASSERT(snapd != NULL);
 
         /* Deallocate Indexes. */
         multimap_destroy(snapd->lsid_idx); 
@@ -148,19 +146,51 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
  */
 int snapshot_data_initialize(struct snapshot_data *snapd)
 {
+#if 1
+        return 1;
+#else
         u64 off;
+        unsigned long p;
+        struct snapshot_sector_control *ctl;
+        void *sectp;
+
+        sectp = walb_alloc_sector(GFP_KERNEL);
 
         /* For all snapshot sectors. */
         for (off = snapd->start_offset; off < snapd->end_offset; off ++) {
 
+                /* Get control object. */
+                p = map_lookup(snapd->sectors, off);
+                ASSERT(p != TREEMAP_INVALID_VAL);
+                ctl = (struct snapshot_sector_control *)p;
+                ASSERT(ctl != NULL);
+                
+                /* Load sector. */
+                if (walb_sector_io(READ, snapd->bdev, sectp, off) != 0) {
+                        printk_e("load snapshot sector %"PRIu64" failed.\n", off);
+                        goto error0;
+                }
+                
+                
+                /* Cal */
+
+                
+                
+                
                 /* now editing */
                 
         }
 
-
         /* not yet implemented. */
         
         return 1;
+
+
+error1:
+        walb_free_sector(sectp);
+error0:
+        return 0;
+#endif
 }
 
 /**
