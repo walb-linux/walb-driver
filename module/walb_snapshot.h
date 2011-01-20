@@ -113,11 +113,34 @@ int snapshot_data_initialize(struct snapshot_data *snapd);
 int snapshot_data_finalize(struct snapshot_data *snapd);
 
 /* Snapshot operations. */
-int snapshot_add(struct snapshot_data *snapd, const char *name, u64 lsid, u64 timestamp);
-void snapshot_del(struct snapshot_data *snapd, const char *name);
-void snapshot_del_before_lsid(struct snapshot_data *snapd, u64 lsid);
-int snapshot_get(struct snapshot_data *snapd, const char *name);
+int snapshot_add_nolock(struct snapshot_data *snapd,
+                        const struct walb_snapshot_record *rec);
+int snapshot_add(struct snapshot_data *snapd,
+                 const struct walb_snapshot_record *rec);
+
+int snapshot_del_nolock(struct snapshot_data *snapd, const char *name);
+int snapshot_del(struct snapshot_data *snapd, const char *name);
+int snapshot_del_range_nolock(struct snapshot_data *snapd,
+                              u64 lsid0, u64 lsid1);
+int snapshot_del_range(struct snapshot_data *snapd, u64 lsid0, u64 lsid1);
+
+int snapshot_get_nolock(struct snapshot_data *snapd, const char *name,
+                        struct walb_snapshot_record *rec);
+int snapshot_get(struct snapshot_data *snapd, const char *name,
+                 struct walb_snapshot_record *rec);
+
+int snapshot_n_records_range_nolock(struct snapshot_data *snapd,
+                                    u64 lsid0, u64 lsid1);
+int snapshot_n_records_range(struct snapshot_data *snapd,
+                             u64 lsid0, u64 lsid1);
 int snapshot_n_records(struct snapshot_data *snapd);
+
+int snapshot_list_range_nolock(struct snapshot_data *snapd,
+                               u8 *buf, size_t buf_size,
+                               u64 lsid0, u64 lsid1);
+int snapshot_list_range(struct snapshot_data *snapd,
+                        u8 *buf, size_t buf_size,
+                        u64 lsid0, u64 lsid1);
 int snapshot_list(struct snapshot_data *snapd, u8 *buf, size_t buf_size);
 
 /* Lock operations. We use a big lock. */

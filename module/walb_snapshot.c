@@ -259,65 +259,197 @@ int snapshot_data_finalize(struct snapshot_data *snapd)
  *******************************************************************************/
 
 /**
+ * Add snapshot.
  *
- *
+ * @snapd snapshot data.
+ * @rec snapshot record to add.
  *
  * @return 1 in succeed, or 0.
  */
-int snapshot_add(struct snapshot_data *snapd, const char *name, u64 lsid, u64 timestamp)
+int snapshot_add_nolock(struct snapshot_data *snapd,
+                        const struct walb_snapshot_record *rec)
+{
+        /* not yet implemented. */
+          
+        return 0; /* fail */
+}
+
+int snapshot_add(struct snapshot_data *snapd,
+                 const struct walb_snapshot_record *rec)
+{
+        int is_success;
+        
+        ASSERT(snapd != NULL);
+        
+        snapshot_write_lock(snapd);
+        is_success = snapshot_add_nolock(snapd, rec);
+        snapshot_write_unlock(snapd);
+        return is_success;
+}
+
+/**
+ * Delete snapshot with a name.
+ *
+ * @snapd snapshot data.
+ * @name snapshot name to delete.
+ *
+ * @return 1 in success, or 0.
+ */
+int snapshot_del_nolock(struct snapshot_data *snapd, const char *name)
+{
+        /* not yet implemented. */
+
+        return 0;
+}
+
+int snapshot_del(struct snapshot_data *snapd, const char *name)
+{
+        int is_success;
+
+        ASSERT(snapd != NULL);
+        
+        snapshot_write_lock(snapd);
+        is_success = snapshot_del_nolock(snapd, name);
+        snapshot_write_unlock(snapd);
+        return is_success;
+}
+
+/**
+ * Delete snapshots with a lsid range.
+ *
+ * @lsid0 start of the range.
+ * @lsid1 end of the range.
+ *        lsid0 <= lsid < lsid1.
+ *
+ * @return 1 in success, or 0.
+ */
+int snapshot_del_range_nolock(struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
+{
+        /* not yet implemented */
+
+        return 0;
+}
+
+int snapshot_del_range(struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
+{
+        int is_success;
+
+        ASSERT(snapd != NULL);
+
+        snapshot_write_lock(snapd);
+        is_success = snapshot_del_range_nolock(snapd, lsid0, lsid1);
+        snapshot_write_unlock(snapd);
+        return is_success;
+}
+
+/**
+ * Get snapshot record with a name.
+ *
+ * @snapd snapshot data.
+ * @name snapshot name.
+ * @record out: snapshot record with the name.
+ *
+ * @return 1 in success, or 0.
+ */
+int snapshot_get_nolock(struct snapshot_data *snapd, const char *name,
+                        struct walb_snapshot_record *rec)
+{
+        /* not yet implemented. */
+
+        return 0;
+}
+
+int snapshot_get(struct snapshot_data *snapd, const char *name,
+                 struct walb_snapshot_record *rec)
+{
+        int is_success;
+        
+        ASSERT(snapd != NULL);
+        
+        snapshot_read_lock(snapd);
+        is_success = snapshot_get_nolock(snapd, name, rec);
+        snapshot_read_unlock(snapd);
+        
+        return is_success;
+}
+
+/**
+ * Get number of records in a lsid range.
+ *
+ * @snapd snapshot data.
+ * @lsid0 start of the range.
+ * @lsid1 end of the range.
+ *        lsid0 <= lsid < lsid1.
+ *
+ * @return number of records in success, or -1.
+ */
+int snapshot_n_records_range_nolock(
+        struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
+{
+        /* not yet implemented. */
+        
+        return -1;
+}
+
+int snapshot_n_records_range(
+        struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
+{
+        int n;
+
+        ASSERT(snapd != NULL);
+
+        snapshot_read_lock(snapd);
+        n = snapshot_n_records_range(snapd, lsid0, lsid1);
+        snapshot_read_unlock(snapd);
+        return n;
+}
+
+int snapshot_n_records(struct snapshot_data *snapd)
+{
+        return snapshot_n_records_range(snapd, 0, MAX_LSID + 1);
+}
+
+/**
+ * Get list of snapshot with a lsid range.
+ *
+ * You get limited records without enough buffer.
+ *
+ * @snapd snapshot data.
+ * @buf buffer to store result record array.
+ * @buf buffer size.
+ * @lsid0 start of the range.
+ * @lsid1 end of the range.
+ *        lsid0 <= lsid < lsid1.
+ *
+ * @return n records stored to @buf. n >= 0.
+ */
+int snapshot_list_range_nolock(struct snapshot_data *snapd,
+                               u8 *buf, size_t buf_size,
+                               u64 lsid0, u64 lsid1)
 {
         /* not yet implemented. */
         
         return 0;
 }
 
-/**
- *
- */
-void snapshot_del(struct snapshot_data *snapd, const char *name)
+int snapshot_list_range(struct snapshot_data *snapd,
+                        u8 *buf, size_t buf_size,
+                        u64 lsid0, u64 lsid1)
 {
-        /* not yet implemented. */
+        int n_rec;
 
+        ASSERT(snapd != NULL);
+        
+        snapshot_read_lock(snapd);
+        n_rec = snapshot_list_range_nolock
+                (snapd, buf, buf_size, lsid0, lsid1);
+        snapshot_read_unlock(snapd);
+        return n_rec;
 }
 
-/**
- *
- */
-void snapshot_del_before_lsid(struct snapshot_data *snapd, u64 lsid)
-{
-        /* not yet implemented. */
-
-}
-
-/**
- *
- */
-int snapshot_get(struct snapshot_data *snapd, const char *name)
-{
-        /* not yet implemented. */
-
-        return 0;
-}
-
-/**
- *
- */
-int snapshot_n_records(struct snapshot_data *snapd)
-{
-        /* not yet implemented. */
-
-        return -1;
-}
-
-/**
- *
- */
 int snapshot_list(struct snapshot_data *snapd, u8 *buf, size_t buf_size)
 {
-
-        /* not yet implemented. */
-
-        return -1;
+        return snapshot_list_range(snapd, buf, buf_size, 0, MAX_LSID + 1);
 }
 
 /*******************************************************************************
