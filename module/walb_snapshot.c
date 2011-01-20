@@ -99,13 +99,12 @@ struct snapshot_data* snapshot_data_create(
         struct snapshot_data *snapd;
         struct snapshot_sector_control *ctl;
         u64 off;
-        map_curser_t curt;
 
         ASSERT(start_offset < end_offset);
 
         /* Allocate snapshot data. */
         snapd = kmalloc(sizeof(struct snapshot_data), gfp_mask);
-        if (snapd == NULL) { goto nomem0; }
+        if (snapd == NULL) { goto nomem; }
 
         /* Initialize snapshot data. */
         init_rwsem(&snapd->lock);
@@ -116,53 +115,36 @@ struct snapshot_data* snapshot_data_create(
 
         /* Create sector controls. */
         snapd->sectors = map_create(GFP_KERNEL);
-        if (snapd->sectors == NULL) { goto nomem1; }
+        if (snapd->sectors == NULL) { goto nomem; }
 
         /* Allocate each snapshot sector control data. */
         for (off = start_offset; off < end_offset; off ++) {
                 ctl = kmalloc(sizeof(struct snapshot_sector_control), gfp_mask);
-                if (ctl == NULL) { goto nomem2; }
+                if (ctl == NULL) { goto nomem; }
                 ctl->offset = off;
                 ctl->n_free_records = -1; /* Invalid value. */
                 ctl->sector = NULL;
 
                 if (map_add(snapd->sectors, off, (unsigned long)ctl, GFP_KERNEL) != 0) {
                         kfree(ctl);
-                        goto nomem2;
+                        goto nomem;
                 }
         }
 
         /* Create indexes. */
         snapd->id_idx = map_create(GFP_KERNEL);
-        if (snapd->id_idx == NULL) { goto nomem2; }
+        if (snapd->id_idx == NULL) { goto nomem; }
 
         snapd->name_idx = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
-        if (snapd->name_idx == NULL) { goto nomem3; }
+        if (snapd->name_idx == NULL) { goto nomem; }
         
         snapd->lsid_idx = multimap_create(GFP_KERNEL);
-        if (snapd->lsid_idx == NULL) { goto nomem4; }
+        if (snapd->lsid_idx == NULL) { goto nomem; }
         
         return snapd;
 
-/* nomem5: */
-/*         multimap_destroy(snapd->lsid_idx); */
-nomem4:
-        hashtbl_destroy(snapd->name_idx);
-nomem3:
-        map_destroy(snapd->id_idx);
-nomem2:
-        map_curser_init(snapd->sectors, &curt);
-        map_curser_search(&curt, 0, MAP_SEARCH_BEGIN);
-        while (map_curser_next(&curt)) {
-                ctl = (void *)map_curser_get(&curt);
-                ASSERT(ctl != NULL && ctl != (void *)TREEMAP_INVALID_VAL);
-                kfree(ctl);
-        }
-        ASSERT(map_curser_is_end(&curt));
-        map_destroy(snapd->sectors);
-nomem1:
-        kfree(snapd);
-nomem0:
+nomem:
+        snapshot_data_destroy(snapd);
         return NULL;
 }
 
@@ -175,26 +157,34 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
 {
         struct snapshot_sector_control *ctl;
         map_curser_t curt;
-        
-        ASSERT(snapd != NULL);
+
+        if (snapd == NULL) { return; }
 
         /* Deallocate Indexes. */
-        multimap_destroy(snapd->lsid_idx); 
-        hashtbl_destroy(snapd->name_idx);
-        map_destroy(snapd->id_idx);
-
-        /* Deallocate all snapshot sector control data. */
-        map_curser_init(snapd->sectors, &curt);
-        map_curser_search(&curt, 0, MAP_SEARCH_BEGIN);
-        while (map_curser_next(&curt)) {
-                ctl = (void *)map_curser_get(&curt);
-                ASSERT(ctl != NULL && ctl != (void *)TREEMAP_INVALID_VAL);
-                kfree(ctl);
+        if (snapd->lsid_idx) {
+                multimap_destroy(snapd->lsid_idx);
         }
-        ASSERT(map_curser_is_end(&curt));
+        if (snapd->name_idx) {
+                hashtbl_destroy(snapd->name_idx);
+        }
+        if (snapd->id_idx) {
+                map_destroy(snapd->id_idx);
+        }
 
-        /* Deallocate sectors data. */
-        map_destroy(snapd->sectors);
+        if (snapd->sectors) {
+                /* Deallocate all snapshot sector control data. */
+                map_curser_init(snapd->sectors, &curt);
+                map_curser_search(&curt, 0, MAP_SEARCH_BEGIN);
+                while (map_curser_next(&curt)) {
+                        ctl = (void *)map_curser_get(&curt);
+                        ASSERT(ctl != NULL && ctl != (void *)TREEMAP_INVALID_VAL);
+                        kfree(ctl);
+                }
+                ASSERT(map_curser_is_end(&curt));
+
+                /* Deallocate sectors data. */
+                map_destroy(snapd->sectors);
+        }
 
         /* Deallocate snapshot_data. */
         kfree(snapd);
