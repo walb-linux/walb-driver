@@ -172,6 +172,9 @@ typedef struct walb_super_sector {
         
 } __attribute__((packed)) walb_super_sector_t;
 
+
+#define INVALID_SNAPSHOT_ID ((u32)(-1))
+
 /**
  * Each snapshot information.
  */
@@ -181,7 +184,8 @@ typedef struct walb_snapshot_record {
         
         u64 lsid;
         u64 timestamp; /* in seconds (the same as 'time' system call output). */
-        u32 snapshot_id; /* Identifier of the snapshot. */
+        u32 snapshot_id; /* Identifier of the snapshot.
+                            INVALID_SNAPSHOT_ID means invalid. */
 
         /* Each character must be [-_0-9a-zA-Z].
            Terminated by '\0'.
@@ -238,6 +242,51 @@ static inline int max_n_snapshots_in_sector(int sector_size)
         
         /* It depends on bitmap length. */
         return (size < 64 ? size : 64);
+}
+
+/**
+ * Initialize snapshot record.
+ */
+static inline void snapshot_record_init(
+        struct walb_snapshot_record *rec)
+{
+        ASSERT(rec != NULL);
+
+        rec->snapshot_id = INVALID_SNAPSHOT_ID;
+        rec->lsid = INVALID_LSID;
+        rec->timestamp = 0;
+        memset(rec->name, 0, SNAPSHOT_NAME_MAX_LEN);
+}
+
+/**
+ * Assign snapshot record.
+ */
+static inline void snapshot_record_assign(
+        struct walb_snapshot_record *rec,
+        const char *name, u64 lsid, u64 timestamp)
+{
+        ASSERT(rec != NULL);
+
+        ASSERT(rec->snapshot_id != INVALID_SNAPSHOT_ID);
+        rec->lsid = lsid;
+        rec->timestamp = timestamp;
+        memcpy(rec->name, name, SNAPSHOT_NAME_MAX_LEN);
+}
+
+/**
+ * Check snapshot record.
+ *
+ * @rec snapshot record to check.
+ *
+ * @return non-zero if valid, or 0.
+ */
+static inline int is_valid_snapshot_record(
+        const struct walb_snapshot_record *rec)
+{
+        return (rec != NULL &&
+                rec->snapshot_id != INVALID_SNAPSHOT_ID &&
+                rec->lsid != INVALID_LSID &&
+                is_valid_snapshot_name(rec->name));
 }
 
 /**

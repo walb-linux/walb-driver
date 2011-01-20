@@ -21,7 +21,7 @@
  * @sector_size sector size.
  * @flag GFP flag.
  *
- * @return pointer to allocated sector data.
+ * @return pointer to allocated sector data in success, or NULL.
  */
 struct sector_data* sector_alloc(int sector_size, gfp_t gfp_mask)
 {

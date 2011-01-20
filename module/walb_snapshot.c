@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/rwsem.h>
+#include <linux/list.h>
 
 #include "../include/walb_log_device.h"
 #include "walb_util.h"
@@ -21,10 +22,61 @@
  * Prototypes of static functions.
  *******************************************************************************/
 
+/* Search free records. */
 static int get_n_records_in_snapshot_sector_detail(
         struct walb_snapshot_sector *snap_sect, int max_n);
 static int get_n_records_in_snapshot_sector(struct sector_data *sect);
 static int get_n_free_records_in_snapshot_sector(struct sector_data *sect);
+
+/* Sector operations */
+static int sector_load(struct snapshot_data *snapd, u64 off);
+static int sector_sync(struct snapshot_data *snapd, u64 off);
+static int sector_all_sync(struct snapshot_data *snapd);
+/**/static int sector_all_evict(struct snapshot_data *snapd);
+static int is_valid_snapshot_sector(const struct sector_data *sect);
+
+/* Functions for internal snapshot sector. */
+static int get_idx_in_snapshot_sector(
+        const struct sector_data *sect, u32 snapshot_id);
+
+/* Record allocation. */
+static u32 record_alloc(struct snapshot_data *snapd,
+                        struct walb_snapshot_record **recp);
+static int record_free(struct snapshot_data *snapd, u32 snapshot_id);
+
+/* Allocation bit operations. */
+static int is_alloc_snapshot_record(
+        int nr, const struct sector_data *sect);
+static void set_alloc_snapshot_record(int nr, struct sector_data *sect);
+static void clear_alloc_snapshot_record(int nr, struct sector_data *sect);
+
+/* Issue IO */
+static int snapshot_sector_read(struct snapshot_data *snapd,
+                                u64 offset,
+                                struct sector_data *sect);
+static int snapshot_sector_write(struct snapshot_data *snapd,
+                                 u64 offset,
+                                 const struct sector_data *sect);
+
+/* Get control using index. */
+static struct snapshot_sector_control* get_sector_control_with_offset(
+        const struct snapshot_data *snapd, u64 off);
+static struct snapshot_sector_control* get_sector_control_with_snapshot_id(
+        const struct snapshot_data *snapd, u32 snapshot_id);
+
+/* Get snapshot_id using index. */
+static u32 get_snapshot_id_with_name(
+        const struct snapshot_data *snapd, const char *name);
+static struct tree_cell_head* get_snapshot_id_with_lsid(
+        const struct snapshot_data *snapd, u64 lsid);
+
+/* Manipulation with index. */
+static int insert_snapshot_record_to_index(
+        struct snapshot_data *snapd,
+        const struct walb_snapshot_record *rec);
+/**/static int delete_snapshot_record_from_index(
+        struct snapshot_data *snapd,
+        const struct walb_snapshot_record *rec);
 
 /*******************************************************************************
  * Static functions.
@@ -76,6 +128,504 @@ static int get_n_free_records_in_snapshot_sector(struct sector_data *sect)
                 get_snapshot_sector(sect), max_n);
 }
 
+/**
+ * Load sector from storage into memory.
+ *
+ * This function actually issues read IO only if need.
+ *
+ * @snapd snapshot data.
+ * @off sector offset to load.
+ *
+ * @return 0 in success, or -1.
+ */
+static int sector_load(struct snapshot_data *snapd, u64 off)
+{
+        struct snapshot_sector_control *ctl;
+        struct sector_data *sect = NULL;
+
+        ASSERT(snapd != NULL);
+        ASSERT(snapd->start_offset <= off && off < snapd->end_offset);
+        
+        ctl = get_sector_control_with_offset(snapd, off);
+
+        /* Allocate if need. */
+        if (ctl->state == SNAPSHOT_SECTOR_CONTROL_FREE) {
+                ASSERT_SNAPSHOT_SECTOR(ctl->sector);
+                sect = sector_alloc(snapd->sector_size, GFP_KERNEL);
+                if (sect == NULL) { goto error0; }
+                ctl->state = SNAPSHOT_SECTOR_CONTROL_ALLOC;
+                ctl->sector = sect;
+        }
+        ASSERT(ctl->sector != NULL);
+
+        /* Read sector if need. */
+        if (ctl->state == SNAPSHOT_SECTOR_CONTROL_ALLOC) {
+                if (sector_io(READ, snapd->bdev, off, ctl->sector) != 0) {
+                        printk_e("Read snapshot sector %"PRIu64" failed.\n", off);
+                        goto error0;
+                }
+                ctl->state = SNAPSHOT_SECTOR_CONTROL_CLEAN;
+        }
+        return 0;
+        
+error0:
+        return -1;
+}
+
+/**
+ * Check whether snapshot sector is valid.
+ *
+ * @sect sector data which must be snapshot sector.
+ *
+ * @return non-zero if valid, or 0.
+ */
+static int is_valid_snapshot_sector(const struct sector_data *sect)
+{
+        int count = 0;
+        int i;
+        const struct walb_snapshot_record *rec;
+
+        ASSERT_SNAPSHOT_SECTOR(sect);
+        
+        for_each_snapshot_record_const(i, rec, sect) {
+
+                if (is_alloc_snapshot_record(i, sect)) {
+                        if (! is_valid_snapshot_record(rec)) {
+                                count ++;
+                        }
+                } else {
+                        if (rec->snapshot_id != INVALID_SNAPSHOT_ID) {
+                                count ++;
+                        }
+                }
+        }
+        printk_d("snapshot sector invalid record: %d\n", count);
+        return (count == 0);
+}
+
+/**
+ * Sync down sector from memory to storage.
+ *
+ * This function actually issues write IO only if need.
+ *
+ * @snapd snapshot data.
+ * @off sector offset to sync.
+ *
+ * @reutrn 0 in success, or -1.
+ */
+static int sector_sync(struct snapshot_data *snapd, u64 off)
+{
+        struct snapshot_sector_control *ctl;
+        
+        ASSERT(snapd != NULL);
+        ASSERT(snapd->start_offset <= off && off < snapd->end_offset);
+        
+        ctl = get_sector_control_with_offset(snapd, off);
+        ASSERT(ctl != NULL);
+
+        if (ctl->state == SNAPSHOT_SECTOR_CONTROL_DIRTY) {
+
+                ASSERT_SNAPSHOT_SECTOR(ctl->sector);
+                if (snapshot_sector_write(snapd, off, ctl->sector) != 0) {
+                        goto error;
+                }
+                ctl->state = SNAPSHOT_SECTOR_CONTROL_CLEAN;
+        }
+
+        return 0;
+error:
+        return -1;
+}
+
+/**
+ * Sync down all sectors
+ *
+ * After call this, there is no dirty sectors.
+ *
+ * @snapd snapshot data.
+ *
+ * @return 0 in success, or -1.
+ */
+static int sector_all_sync(struct snapshot_data *snapd)
+{
+        int ret = 0;
+        u64 off;
+        struct snapshot_sector_control *ctl;
+
+        ASSERT(snapd != NULL);
+
+        for_each_snapshot_sector(off, ctl, snapd) {
+                
+                if (sector_sync(snapd, off) != 0) {
+                        ret --;
+                }
+        }
+        return ret;
+}
+
+/**
+ * Get snapshot record with a snapshot_id.
+ *
+ * @sect snapshot sector.
+ * @snapshot_id snapshot id to find.
+ *   DO NOT specify INVALID_SNAPSHOT_ID.
+ *
+ * @return record index in the snapshot sector if found, or -1.
+ */
+static int get_idx_in_snapshot_sector(
+        const struct sector_data *sect, u32 snapshot_id)
+{
+        int max_n, i;
+        const struct walb_snapshot_sector *snap_sect;
+        const struct walb_snapshot_record *rec;
+        
+        ASSERT_SNAPSHOT_SECTOR(sect);
+        ASSERT(snapshot_id != INVALID_SNAPSHOT_ID);
+
+        snap_sect = get_snapshot_sector_const(sect);
+        max_n = max_n_snapshots_in_sector(sect->size);
+        ASSERT(0 < max_n);
+        
+        for (i = 0; i < max_n; i ++) {
+                rec = &snap_sect->record[i];
+                if (rec->snapshot_id == snapshot_id) { break; }
+        }
+
+        return (i < max_n ? i : -1);
+}
+
+/**
+ * Allocate snapshot record.
+ *
+ * 1. Search free record.
+ * 2. Initialize the record and set allocation bit.
+ * 3. Insert to id_idx.
+ *
+ * @snapd snapshot data.
+ * @recp pointer to allocated record pointer.
+ *
+ * @return snapshot_id in success, or INVALID_SNAPSHOT_ID.
+ */
+static u32 record_alloc(struct snapshot_data *snapd,
+                        struct walb_snapshot_record **recp)
+{
+        u64 off;
+        struct snapshot_sector_control *ctl = NULL;
+        struct walb_snapshot_record *rec;
+        int i, max_n;
+        
+        ASSERT(snapd != NULL);
+
+        for (off = snapd->start_offset; off < snapd->end_offset; off ++) {
+                ctl = get_sector_control_with_offset(snapd, off);
+                if (ctl->n_free_records > 0) { break; }
+        }
+        if (off == snapd->end_offset) { goto error; } /* not found */
+        ASSERT(ctl->offset == off);
+        
+        if (sector_load(snapd, off) != 0) { goto error; }
+        ASSERT(ctl->state == SNAPSHOT_SECTOR_CONTROL_CLEAN ||
+               ctl->state == SNAPSHOT_SECTOR_CONTROL_DIRTY);
+        ASSERT_SNAPSHOT_SECTOR(ctl->sector);
+
+        max_n = max_n_snapshots_in_sector(snapd->sector_size);
+        for (i = 0; i < max_n; i ++) {
+                if (! is_alloc_snapshot_record(i, ctl->sector)) {
+                        break;
+                }
+        }
+        ASSERT(i < max_n); /* n_free_records > 0 so we can found free record. */
+
+        set_alloc_snapshot_record(i, ctl->sector);
+        rec = &get_snapshot_sector(ctl->sector)->record[i];
+
+        snapshot_record_init(rec);
+        rec->snapshot_id = snapd->next_snapshot_id ++;
+        
+        *recp = rec;
+        ctl->state = SNAPSHOT_SECTOR_CONTROL_DIRTY;
+        ctl->n_free_records --;
+
+        if (map_add(snapd->id_idx, rec->snapshot_id,
+                    (unsigned long)ctl, GFP_KERNEL) != 0) {
+
+                BUG();
+        }
+        return rec->snapshot_id;
+        
+error:
+        return INVALID_SNAPSHOT_ID;
+}
+
+/**
+ * Free allocated record.
+ *
+ * 1. Search control and index inside the sector.
+ * 2. Delete from id_idx.
+ * 3. Initialize the record and clear allocation bit.
+ *
+ * @return 0 in success, or -1.
+ */
+static int record_free(struct snapshot_data *snapd, u32 snapshot_id)
+{
+        struct snapshot_sector_control *ctl;
+        struct walb_snapshot_record *rec;
+        int idx;
+        
+        ctl = get_sector_control_with_snapshot_id(snapd, snapshot_id);
+        if (ctl == NULL) { goto error; }
+        
+        if (sector_load(snapd, ctl->offset) != 0) { goto error; }
+        ASSERT(ctl->state == SNAPSHOT_SECTOR_CONTROL_CLEAN ||
+               ctl->state == SNAPSHOT_SECTOR_CONTROL_DIRTY);
+        ASSERT_SNAPSHOT_SECTOR(ctl->sector);
+
+        if (map_del(snapd->id_idx, snapshot_id) != (unsigned long)ctl) {
+                BUG();
+        }
+        
+        idx = get_idx_in_snapshot_sector(ctl->sector, snapshot_id);
+        ASSERT(idx >= 0);
+
+        ctl->state = SNAPSHOT_SECTOR_CONTROL_DIRTY;
+        clear_alloc_snapshot_record(idx, ctl->sector);
+        ctl->n_free_records ++;
+        
+        rec = &get_snapshot_sector(ctl->sector)->record[idx];
+        snapshot_record_init(rec);
+
+        return 0;
+error:
+        return -1;
+}
+
+/**
+ * Check whether nr'th record is allocated in a snapshot sector.
+ *
+ * @return non-zero if exist, or 0.
+ */
+static int is_alloc_snapshot_record(
+        int nr, const struct sector_data *sect)
+{
+        ASSERT_SNAPSHOT_SECTOR(sect);
+        ASSERT(0 <= nr && nr < 64);
+        
+        return test_u64bits(nr, &get_snapshot_sector_const(sect)->bitmap);
+}
+
+/**
+ * Set allocation bit of a snapshot sector.
+ */
+static void set_alloc_snapshot_record(
+        int nr, struct sector_data *sect)
+{
+        ASSERT_SNAPSHOT_SECTOR(sect);
+        ASSERT(0 <= nr && nr < 64);
+        
+        set_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
+}
+
+/**
+ * Clear exist bit of a snapshot sector.
+ */
+static void clear_alloc_snapshot_record(
+        int nr, struct sector_data *sect)
+{
+        ASSERT_SNAPSHOT_SECTOR(sect);
+        ASSERT(0 <= nr && nr < 64);
+
+        clear_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
+}
+
+/**
+ * Read snapshot sector from disk.
+ *
+ * @snapd snapshot data.
+ * @offset offset of snapshot sector.
+ * @sect sector data to be stored.
+ *
+ * @return 0 in success, or -1.
+ */
+static int snapshot_sector_read(struct snapshot_data *snapd,
+                                u64 offset,
+                                struct sector_data *sect)
+{
+        ASSERT_SECTOR_DATA(sect);
+        ASSERT(snapd->start_offset <= offset && offset < snapd->end_offset);
+        
+        /* Issue read IO. */
+        if (sector_io(READ, snapd->bdev, offset, sect) != 0) {
+                printk_e("Read snapshot sector %"PRIu64" failed.\n", offset);
+                goto error0;
+        }
+        /* Check checksum. */
+        if (checksum((u8 *)sect->data, sect->size) != 0) {
+                printk_e("Checksum is bad.\n");
+                goto error0;
+        }
+
+        /* Check validness of record array. */
+        if (! is_valid_snapshot_sector(sect)) {
+                printk_e("Snapshot is not valid.\n");
+                goto error0;
+        }
+
+        return 0;
+error0:
+        return -1;
+}
+
+/**
+ * Write snapshot sector to disk.
+ *
+ * @snapd snapshot data.
+ * @offset offset of snapshot sector.
+ * @sect sector data to write.
+ *
+ * @return 0 in success, or -1.
+ */
+static int snapshot_sector_write(
+        struct snapshot_data *snapd, u64 offset,
+        const struct sector_data *sect)
+{
+        struct sector_data *sect_tmp;
+        struct walb_snapshot_sector *snap_sect;
+
+        ASSERT_SNAPSHOT_SECTOR(sect);
+        ASSERT(snapd->start_offset <= offset && offset < snapd->end_offset);
+        
+        sect_tmp = sector_alloc(sect->size, GFP_KERNEL);
+        if (sect_tmp == NULL) { goto error0; }
+        sector_copy(sect_tmp, sect);
+
+        /* Check validness of record array. */
+        if (! is_valid_snapshot_sector(sect_tmp)) {
+                printk_e("snapshot sector is invalid.\n");
+                goto error1;
+        }
+
+        /* Calculate checksum. */
+        snap_sect = get_snapshot_sector(sect_tmp);
+        snap_sect->checksum = 0;
+        snap_sect->checksum = checksum((u8 *)snap_sect, sect_tmp->size);
+
+        /* Issue write IO. */
+        if (sector_io(WRITE, snapd->bdev, offset, sect_tmp) != 0) {
+                printk_e("Write snapshot sector %"PRIu64" failed.\n", offset);
+                goto error1;
+        }
+
+        sector_free(sect_tmp);
+        return 0;
+error1:
+        sector_free(sect_tmp);
+error0:
+        return -1;        
+}
+
+/**
+ * Get sector control with a offset.
+ *
+ * @snapd snapshot data.
+ * @off sector offset.
+ *
+ * @return snapshot sector control. Never NULL.
+ */
+static struct snapshot_sector_control* get_sector_control_with_offset(
+        const struct snapshot_data *snapd, u64 off)
+{
+        unsigned long p;
+        struct snapshot_sector_control *ctl;
+        
+        ASSERT(snapd != NULL);
+        ASSERT(snapd->start_offset <= off && off < snapd->end_offset);
+
+        p = map_lookup(snapd->sectors, off);
+        ASSERT(p != TREEMAP_INVALID_VAL);
+        ctl = (struct snapshot_sector_control *)p;
+        ASSERT(ctl != NULL);
+        ASSERT(ctl->offset == off);
+        
+        return ctl;
+}
+
+/**
+ * Get sector control with a snapshot id.
+ *
+ * @snapd snapshot data.
+ * @snapshot_id snapshot id.
+ *   DO NOT specify INVALID_SNAPSHOT_ID.
+ *
+ * @return snapshot sector control if found, or NULL.
+ */
+static struct snapshot_sector_control* get_sector_control_with_snapshot_id(
+        const struct snapshot_data *snapd, u32 snapshot_id)
+{
+        unsigned long p;
+        struct snapshot_sector_control *ctl;
+
+        ASSERT(snapd != NULL);
+        ASSERT(snapshot_id != INVALID_SNAPSHOT_ID);
+
+        p = map_lookup(snapd->id_idx, snapshot_id);
+        if (p != TREEMAP_INVALID_VAL) {
+                ctl = (struct snapshot_sector_control *)p;
+                ASSERT(ctl != NULL);
+                return ctl;
+        } else {
+                return NULL;
+        }
+}
+
+/**
+ * Search snapshot id with name.
+ *
+ * @return snapshot id if found, or INVALID_SNAPSHOT_ID.
+ */
+static u32 get_snapshot_id_with_name(
+        const struct snapshot_data *snapd, const char *name)
+{
+        int len;
+        unsigned long val;
+        
+        len = strnlen(name, SNAPSHOT_NAME_MAX_LEN);
+        
+        val = hashtbl_lookup(snapd->name_idx, name, len);
+        if (val == HASHTBL_INVALID_VAL) {
+                return INVALID_SNAPSHOT_ID;
+        } else {
+                return (u32)val;
+        }
+}
+
+/**
+ * Search snapshot id with lsid.
+ *
+ * @return tree_cell_head if found, or NULL.
+ */
+static struct tree_cell_head* get_snapshot_id_with_lsid(
+        const struct snapshot_data *snapd, u64 lsid)
+{
+        return multimap_lookup(snapd->lsid_idx, lsid);
+}
+
+/**
+ * Insert snapshot record to indices of snapshot data.
+ *
+ * Index: name_idx, lsid_idx.
+ *
+ * @return 0 in success, or -1.
+ */
+static int insert_snapshot_record_to_index(
+        struct snapshot_data *snapd,
+        const struct walb_snapshot_record *rec)
+{
+        /* now editing */
+
+        
+        return -1;
+}
+
 /*******************************************************************************
  * Create/destroy snapshots structure. 
  *******************************************************************************/
@@ -122,6 +672,7 @@ struct snapshot_data* snapshot_data_create(
                 ctl = kmalloc(sizeof(struct snapshot_sector_control), gfp_mask);
                 if (ctl == NULL) { goto nomem; }
                 ctl->offset = off;
+                ctl->state = SNAPSHOT_SECTOR_CONTROL_FREE;
                 ctl->n_free_records = -1; /* Invalid value. */
                 ctl->sector = NULL;
 
@@ -199,9 +750,11 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
 int snapshot_data_initialize(struct snapshot_data *snapd)
 {
         u64 off;
-        unsigned long p;
         struct snapshot_sector_control *ctl;
         struct sector_data *sect;
+        u32 next_snapshot_id;
+        int i;
+        struct walb_snapshot_record *rec;
         
         sect = sector_alloc(snapd->sector_size, GFP_KERNEL);
         if (sect == NULL) { goto error0; }
@@ -211,11 +764,7 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
         for (off = snapd->start_offset; off < snapd->end_offset; off ++) {
 
                 /* Get control object. */
-                p = map_lookup(snapd->sectors, off);
-                ASSERT(p != TREEMAP_INVALID_VAL);
-                ctl = (struct snapshot_sector_control *)p;
-                ASSERT(ctl != NULL);
-                ASSERT(ctl->offset == off);
+                ctl = get_sector_control_with_offset(snapd, off);
                 
                 /* Load sector. */
                 if (sector_io(READ, snapd->bdev, off, sect) != 0) {
@@ -225,13 +774,27 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
                 
                 /* Calculate n_free_records. */
                 ctl->n_free_records = get_n_free_records_in_snapshot_sector(sect);
+
+                /* For all records */
+                for_each_snapshot_record(i, rec, ctl->sector) {
+
+                        /* Free invalid record. */
+                        
+                        printk_d("%d\n", i);
+                }
                 
-                /* now editing */
+                
+                /* Insert indexes. */
+
+                /* now editing. */
                 
         }
 
+        /* Set next_snapshot_id. */
+        
+        
+        
         sector_free(sect);
-
         return 1;
 
 error1:
@@ -241,8 +804,7 @@ error0:
 }
 
 /**
- *
- *
+ * Sync all dirty cache of snapshot sectors.
  *
  * @return 1 in success, or 0.
  */
@@ -264,27 +826,65 @@ int snapshot_data_finalize(struct snapshot_data *snapd)
  * @snapd snapshot data.
  * @rec snapshot record to add.
  *
- * @return 1 in succeed, or 0.
+ * @return 0 in succeed.
+ *        -1 the name is already used.
+ *        -2 no record space.
+ *        -3 other error.
  */
 int snapshot_add_nolock(struct snapshot_data *snapd,
-                        const struct walb_snapshot_record *rec)
+                        const char *name, u64 lsid, u64 timestamp)
 {
-        /* not yet implemented. */
-          
-        return 0; /* fail */
+        struct walb_snapshot_record *dst_rec;
+        u32 snapshot_id;
+        
+        /* Check name is unique. */
+        if (get_snapshot_id_with_name(snapd, name) != INVALID_SNAPSHOT_ID) {
+                goto non_unique_name;
+        }
+
+        /* Allocate record. */
+        snapshot_id = record_alloc(snapd, &dst_rec);
+        if (snapshot_id == INVALID_SNAPSHOT_ID) { goto nomem; }
+        ASSERT(snapshot_id == dst_rec->snapshot_id);
+
+        /* Assign and check record. */
+        snapshot_record_assign(dst_rec, name, lsid, timestamp);
+        if (! is_valid_snapshot_record(dst_rec)) {
+                goto error0;
+        }
+
+        /* Insert into indexes. */
+        if (insert_snapshot_record_to_index(snapd, dst_rec) != 0) {
+                goto error0;
+        }
+
+        /* Sync all sectors. */
+
+        
+        /* now editing */
+
+        return 0;
+
+error0:
+        record_free(snapd, snapshot_id);
+        return -3;
+nomem:
+        return -2;
+non_unique_name:
+        return -1;
 }
 
 int snapshot_add(struct snapshot_data *snapd,
-                 const struct walb_snapshot_record *rec)
+                 const char *name, u64 lsid, u64 timestamp)
 {
-        int is_success;
+        int ret;
         
         ASSERT(snapd != NULL);
         
         snapshot_write_lock(snapd);
-        is_success = snapshot_add_nolock(snapd, rec);
+        ret = snapshot_add_nolock(snapd, name, lsid, timestamp);
         snapshot_write_unlock(snapd);
-        return is_success;
+        return ret;
 }
 
 /**

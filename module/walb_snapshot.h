@@ -22,12 +22,25 @@
  */
 
 /**
+ * Snapshot sector control state.
+ */
+enum {
+        SNAPSHOT_SECTOR_CONTROL_FREE = 1, /* not allocated. */
+        SNAPSHOT_SECTOR_CONTROL_ALLOC,    /* allocated but not loaded. */
+        SNAPSHOT_SECTOR_CONTROL_CLEAN,    /* loaded and clean. */
+        SNAPSHOT_SECTOR_CONTROL_DIRTY,    /* loaded and dirty. */
+};
+
+/**
  * Data structure to manage raw image of each snapshot sector.
  */
 struct snapshot_sector_control
 {
         /* Offset in the log device [sector_size]. */
         u64 offset;
+
+        /* SNAPSHOT_SECTOR_CONTROL_XXX */
+        int state;
 
         /* Sync down is required if 1, or 0.
            This is meaningful when snap_sect_p is not NULL. */
@@ -62,6 +75,9 @@ struct snapshot_data
         /* Sector size (physical block size). */
         u32 sector_size;
 
+        /* Next snapshot id for record allocation. */
+        u32 next_snapshot_id;
+        
         /* Image of sectors.
            We want to use a big array but could not
            due to PAGE_SIZE limitation.
@@ -69,14 +85,16 @@ struct snapshot_data
            Each struct snapshot_sector_control data is managed by this map. */
         map_t *sectors;
         
-        /* Index: snapshot_id -> (struct snapshot_sector_control *)
+        /* Primary Index: snapshot_id -> (struct snapshot_sector_control *)
            Value should be offset but value type is unsigned long, not u64. */
         map_t *id_idx;
         
-        /* Index: name -> snapshot_id. */
+        /* Index: name -> snapshot_id.
+           name is unique key. */
         struct hash_tbl *name_idx;
 
-        /* Index: lsid -> snapshot_id. */
+        /* Index: lsid -> snapshot_id.
+           lsid is not unique key. */
         multimap_t *lsid_idx;
 };
 
@@ -100,6 +118,49 @@ get_snapshot_sector(struct sector_data *sect)
 }
 
 /**
+ * Get snapshot sector for const pointer.
+ */
+static inline const struct walb_snapshot_sector*
+get_snapshot_sector_const(const struct sector_data *sect)
+{
+        ASSERT_SECTOR_DATA(sect);
+        return (const struct walb_snapshot_sector *)(sect->data);
+}
+
+/**
+ * Iterative over snapshot record array.
+ *
+ * @i int record index.
+ * @rec pointer to record.
+ * @sect pointer to walb_snapshot_sector
+ */
+#define for_each_snapshot_record(i, rec, sect)                          \
+        for (i = 0;                                                     \
+             ({ rec = &get_snapshot_sector(sect)->record[i]; 1; }) &&   \
+                     i < max_n_snapshots_in_sector((sect)->size);       \
+             i ++)
+
+#define for_each_snapshot_record_const(i, rec, sect)                    \
+        for (i = 0;                                                     \
+             ({ rec = &get_snapshot_sector_const(sect)->record[i]; 1; }) && \
+                     i < max_n_snapshots_in_sector((sect)->size);       \
+             i ++)
+
+/**
+ * Iterative over snapshot sectors.
+ *
+ * @off snapshot sector offset.
+ * @ctl snapshot sector control.
+ * @snapd snapshot
+ */
+#define for_each_snapshot_sector(off, ctl, snapd)                       \
+        for (off = snapd->start_offset;                                 \
+             off < snapd->end_offset &&                                 \
+                     ({ ctl = get_sector_control_with_offset(snapd, off); 1; }); \
+             off ++)
+
+
+/**
  * Prototypes.
  */
 /* Create/destroy snapshot data structure. */
@@ -114,9 +175,9 @@ int snapshot_data_finalize(struct snapshot_data *snapd);
 
 /* Snapshot operations. */
 int snapshot_add_nolock(struct snapshot_data *snapd,
-                        const struct walb_snapshot_record *rec);
+                        const char *name, u64 lsid, u64 timestamp);
 int snapshot_add(struct snapshot_data *snapd,
-                 const struct walb_snapshot_record *rec);
+                 const char *name, u64 lsid, u64 timestamp);
 
 int snapshot_del_nolock(struct snapshot_data *snapd, const char *name);
 int snapshot_del(struct snapshot_data *snapd, const char *name);

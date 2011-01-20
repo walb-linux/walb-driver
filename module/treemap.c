@@ -1111,8 +1111,9 @@ error0:
  * Lookup values with the key in the multimap.
  *
  * @return hlist of value if found, or NULL.
- *         Do not call @multimap_del() or @multimap_del_key()
- *         before scan the list.
+ *   DO NOT free returned list head and its items by yourself.
+ *   DO NOT call @multimap_del() or @multimap_del_key()
+ *   before scan the list.
  */
 struct tree_cell_head* multimap_lookup(const multimap_t *tmap, u64 key)
 {

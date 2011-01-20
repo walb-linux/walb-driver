@@ -144,7 +144,7 @@ int map_curser_test(void); /* For unit test. */
  * Prototypes for multimap operations.
  *
  * key: u64 value.
- * val: pointer to hlist_head
+ * val: pointer to tree_cell_head.
  */
 multimap_t* multimap_create(gfp_t gfp_mask);
 void multimap_destroy(multimap_t *map);

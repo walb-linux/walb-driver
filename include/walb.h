@@ -134,7 +134,7 @@ static inline void sprint_uuid(char *buf, const u8 *uuid)
  *
  * @return 1 if valid, or 0.
  */
-static inline int is_valid_snapshot_name(char *name)
+static inline int is_valid_snapshot_name(const char *name)
 {
         size_t len, i;
         char n;
