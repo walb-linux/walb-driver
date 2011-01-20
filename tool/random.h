@@ -13,11 +13,14 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "userland.h"
 
 /**
  * Read /dev/urandom to generate random value.
+ *
+ * @return random value in success, or 0.
  */
 static inline u32 read_urandom()
 {
@@ -25,14 +28,16 @@ static inline u32 read_urandom()
         fd = open("/dev/urandom", O_RDONLY);
         if (fd < 0) {
                 perror("open /dev/urandom failed\n");
-                exit(1);
+                goto error;
         }
         if (read(fd, (void *)&val, sizeof(u32)) != sizeof(u32)) {
                 printf("read /dev/urandom failed\n");
-                exit(1);
+                goto error;
         }
         close(fd);
         return val;
+error:
+        return 0;
 }
 
 /**
@@ -40,7 +45,13 @@ static inline u32 read_urandom()
  */
 static inline void init_random()
 {
-        srand(read_urandom());
+        u32 r;
+        r = read_urandom();
+        if (r == 0) {
+                srand(time(0));
+        } else {
+                srand(r);
+        }
 }
 
 
