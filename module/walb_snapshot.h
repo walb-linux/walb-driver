@@ -39,20 +39,17 @@ struct snapshot_sector_control
         /* Offset in the log device [sector_size]. */
         u64 offset;
 
+        /* Number of free records.
+           After created, must be -1.
+           After initialized, 0 or more. */
+        int n_free_records;
+        
         /* SNAPSHOT_SECTOR_CONTROL_XXX */
         int state;
 
-        /* Sync down is required if 1, or 0.
-           This is meaningful when snap_sect_p is not NULL. */
-        /* atomic_t is_dirty; */
-
-        /* Number of free records.
-           After initialized, must be -1.
-           After loaded, 0 or more. */
-        int n_free_records;
-        
         /* Raw image of snapshot sector.
-           There is no memory image if NULL. */
+           If state is SNAPSHOT_SECTOR_CONTROL_FREE,
+           this must be NULL, else this must be not NULL. */
         struct sector_data *sector;
 };
 
@@ -128,6 +125,16 @@ get_snapshot_sector_const(const struct sector_data *sect)
 }
 
 /**
+ * Get snapshot record by record index inside snapshot sector.
+ */
+static inline struct walb_snapshot_record* get_snapshot_record_by_idx(
+        const struct sector_data *sect, int idx)
+{
+        ASSERT_SECTOR_DATA(sect);
+        return &get_snapshot_sector_const(sect)->record[idx];
+}
+
+/**
  * Iterative over snapshot record array.
  *
  * @i int record index.
@@ -136,14 +143,16 @@ get_snapshot_sector_const(const struct sector_data *sect)
  */
 #define for_each_snapshot_record(i, rec, sect)                          \
         for (i = 0;                                                     \
-             ({ rec = &get_snapshot_sector(sect)->record[i]; 1; }) &&   \
-                     i < max_n_snapshots_in_sector((sect)->size);       \
+             i < max_n_snapshots_in_sector((sect)->size) &&             \
+                     ({ rec = &get_snapshot_sector                      \
+                                     (sect)->record[i]; 1; });          \
              i ++)
 
 #define for_each_snapshot_record_const(i, rec, sect)                    \
         for (i = 0;                                                     \
-             ({ rec = &get_snapshot_sector_const(sect)->record[i]; 1; }) && \
-                     i < max_n_snapshots_in_sector((sect)->size);       \
+             i < max_n_snapshots_in_sector((sect)->size) &&             \
+                     ({ rec = &get_snapshot_sector_const                \
+                                     (sect)->record[i]; 1; });          \
              i ++)
 
 /**
@@ -156,7 +165,8 @@ get_snapshot_sector_const(const struct sector_data *sect)
 #define for_each_snapshot_sector(off, ctl, snapd)                       \
         for (off = snapd->start_offset;                                 \
              off < snapd->end_offset &&                                 \
-                     ({ ctl = get_sector_control_with_offset(snapd, off); 1; }); \
+                     ({ ctl = get_sector_control_with_offset            \
+                                     (snapd, off); 1; });               \
              off ++)
 
 
