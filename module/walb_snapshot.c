@@ -96,7 +96,7 @@ static int snapshot_data_initialize_sector(struct snapshot_data *snapd,
                                            struct snapshot_sector_control *ctl,
                                            struct sector_data *sect);
 static int is_all_sectors_free(const struct snapshot_data *snapd);
-
+static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd);
 
 /*******************************************************************************
  * Static functions.
@@ -924,6 +924,39 @@ static int is_all_sectors_free(const struct snapshot_data *snapd)
                 ASSERT(ctl->sector == NULL);
         }
         return 1;
+}
+
+/**
+ * Check property that each snapshot id are stored
+ * at most once in name_idx and lsid_idx respectively.
+ *
+ * This function is used for debug and heavy.
+ *
+ * @return 1 in valid, or 0.
+ */
+static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd)
+{
+        unsigned long val;
+        u32 snapshot_id;
+        map_curser_t curt;
+
+        ASSERT(snapd != NULL);
+
+        map_curser_init(snapd->id_idx, &curt);
+        map_curser_search(&curt, 0, MAP_SEARCH_BEGIN);
+        while (map_curser_next(&curt)) {
+
+                val = map_curser_get(&curt);
+                ASSERT(val != TREEMAP_INVALID_VAL);
+                snapshot_id = (u32)val;
+
+                /* now editing */
+
+                
+        }
+        ASSERT(map_curser_is_end(&curt));
+
+        return 0;
 }
 
 /*******************************************************************************
