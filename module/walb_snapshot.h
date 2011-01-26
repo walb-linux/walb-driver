@@ -22,6 +22,17 @@
  */
 
 /**
+ * Printk macro for debug.
+ */
+#define PRINT_SNAPSHOT_RECORD(flag, rec) printk(                        \
+                flag                                                    \
+                "snapshot_record: id %u name "                          \
+                "%."SNAPSHOT_NAME_MAX_LEN_S"s "                         \
+                "lsid %"PRIu64" ts %"PRIu64"\n",                        \
+                rec->snapshot_id,                                       \
+                rec->name, rec->lsid, rec->timestamp)
+
+/**
  * Snapshot sector control state.
  */
 enum {
@@ -128,10 +139,10 @@ get_snapshot_sector_const(const struct sector_data *sect)
  * Get snapshot record by record index inside snapshot sector.
  */
 static inline struct walb_snapshot_record* get_snapshot_record_by_idx(
-        const struct sector_data *sect, int idx)
+        struct sector_data *sect, int idx)
 {
         ASSERT_SECTOR_DATA(sect);
-        return &get_snapshot_sector_const(sect)->record[idx];
+        return &get_snapshot_sector(sect)->record[idx];
 }
 
 /**

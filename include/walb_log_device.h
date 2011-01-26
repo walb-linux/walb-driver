@@ -185,7 +185,8 @@ typedef struct walb_snapshot_record {
         u64 lsid;
         u64 timestamp; /* in seconds (the same as 'time' system call output). */
         u32 snapshot_id; /* Identifier of the snapshot.
-                            INVALID_SNAPSHOT_ID means invalid. */
+                            INVALID_SNAPSHOT_ID means invalid.
+                            This is not persistent. */
 
         /* Each character must be [-_0-9a-zA-Z].
            Terminated by '\0'.

@@ -81,6 +81,7 @@
  * Max length of snapshot name.
  */
 #define SNAPSHOT_NAME_MAX_LEN 64
+#define SNAPSHOT_NAME_MAX_LEN_S "64"
 
 
 static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
@@ -155,6 +156,18 @@ static inline int is_valid_snapshot_name(const char *name)
                        ('A' <= n && n <= 'Z'))) { return 0; }
         }
         return 1;
+}
+
+/**
+ * Get length of snapshot name.
+ */
+static inline int get_snapshot_name_length(const char *name)
+{
+        if (name == NULL) {
+                return 0;
+        } else {
+                return strnlen(name, SNAPSHOT_NAME_MAX_LEN);
+        }
 }
 
 /**

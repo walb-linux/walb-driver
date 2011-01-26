@@ -2394,7 +2394,7 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
                 goto error1;
         }
         /* Initialize snapshot data by scanning snapshot sectors. */
-        if (! snapshot_data_initialize(wdev->snapd)) {
+        if (snapshot_data_initialize(wdev->snapd) != 0) {
                 printk_e("snapshot_data_initialize() failed.\n");
                 goto out_snapshot_create;
         }
