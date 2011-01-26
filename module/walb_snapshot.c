@@ -1110,7 +1110,9 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
                         goto error1;
                 }
 
-                /* Initialize sector. */
+                /* Check validness,
+                   assign next_snapshot_id,
+                   and insert into indices. */
                 if (snapshot_data_initialize_sector(
                             snapd, &next_snapshot_id, ctl, sect) != 0) {
                         goto error1;
@@ -1196,11 +1198,13 @@ int snapshot_add_nolock(struct snapshot_data *snapd,
         /* Assign and check record. */
         snapshot_record_assign(dst_rec, name, lsid, timestamp);
         if (! is_valid_snapshot_record(dst_rec)) {
+                printk_e("Invalid snapshot record.\n");
                 goto error0;
         }
 
-        /* Insert into indexes. */
+        /* Insert into indices. */
         if (insert_snapshot_record_to_index(snapd, dst_rec) != 0) {
+                printk_e("Insert into secondary indices failed.\n");
                 goto error0;
         }
 
