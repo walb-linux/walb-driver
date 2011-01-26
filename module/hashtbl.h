@@ -68,4 +68,47 @@ int hashtbl_n_items(const struct hash_tbl *htbl);
 
 int hashtbl_test(void); /* For test. */
 
+
+/**
+ * Curser state for hash table.
+ */
+enum {
+        HASHTBL_CURSER_BEGIN = 1,
+        HASHTBL_CURSER_END,
+        HASHTBL_CURSER_DATA,
+        HASHTBL_CURSER_INVALID,
+};
+
+/**
+ * Curser structure for hash table.
+ */
+typedef struct
+{
+        struct hash_tbl *htbl;
+        int state;
+
+        int bucket_idx;
+        struct hlist_head *head;
+        
+        struct hlist_node *curr;
+        struct hlist_node *next;
+
+} hashtbl_curser_t;
+
+/**
+ * Prototypes of hashtbl curser operations.
+ */
+void hashtbl_curser_init(struct hash_tbl *htbl, hashtbl_curser_t *curser);
+int hashtbl_curser_begin(hashtbl_curser_t *curser);
+int hashtbl_curser_next(hashtbl_curser_t *curser);
+unsigned long hashtbl_curser_del(hashtbl_curser_t *curser);
+int hashtbl_curser_is_begin(const hashtbl_curser_t *curser);
+int hashtbl_curser_is_end(const hashtbl_curser_t *curser);
+int hashtbl_curser_is_valid(const hashtbl_curser_t *curser);
+unsigned long hashtbl_curser_val(const hashtbl_curser_t *curser);
+int hashtbl_curser_key_size(const hashtbl_curser_t *curser);
+u8* hashtbl_curser_key(const hashtbl_curser_t *curser);
+
+int hashtbl_curser_test(void);
+
 #endif /* _HASHTBL_H */
