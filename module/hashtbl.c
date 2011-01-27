@@ -34,6 +34,10 @@ static int is_hashtbl_curser_valid(const hashtbl_curser_t *curser);
 #define ASSERT_HASHTBL_CURSER(curser) ASSERT(is_hashtbl_curser_valid(curser))
 
 
+/*******************************************************************************
+ * Static functions.
+ *******************************************************************************/
+
 /**
  * Get number of required bits to store val.
  *
@@ -208,6 +212,10 @@ static int is_hashtbl_curser_valid(const hashtbl_curser_t *curser)
                  (st == HASHTBL_CURSER_INVALID)));
 }
 
+/*******************************************************************************
+ * Functions for hash table manipulation.
+ *******************************************************************************/
+
 /**
  * Create hash table.
  */
@@ -284,7 +292,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
  *
  * @htbl hash table.
  * @key pointer to key data.
- * @key_size key size.
+ * @key_size key size > 0.
  * @val value. MUST NOT be HASHTBL_INVALID_VAL.
  * @gfp_mask GFP_*
  * 
