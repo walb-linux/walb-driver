@@ -14,15 +14,6 @@
 #include "walb_util.h" /* for debug */
 #include "hashtbl.h"
 
-#define ASSERT_HASHTBL(htbl) ASSERT((htbl) != NULL &&               \
-                                    (htbl)->bucket != NULL &&       \
-                                    (htbl)->bucket_size > 0 &&      \
-                                    (htbl)->n_bits > 0)
-
-#define ASSERT_HASHCELL(hcell) ASSERT((hcell) != NULL &&            \
-                                      (hcell)->key != NULL &&       \
-                                      (hcell)->key_size > 0 &&      \
-                                      (hcell)->val != HASHTBL_INVALID_VAL)
 
 /**
  * Prototypes of static functions.
@@ -34,6 +25,11 @@ static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
 static u32 hashtbl_get_index(const struct hash_tbl *htbl,
                              const u8* key, int key_size);
 
+static int is_hashtbl_valid(const struct hash_tbl *htbl);
+static int is_hashcell_valid(const struct hash_cell *hcell);
+
+#define ASSERT_HASHTBL(htbl) ASSERT(is_hashtbl_valid(htbl))
+#define ASSERT_HASHCELL(hcell) ASSERT(is_hashcell_valid(hcell))
 
 /**
  * Get number of required bits to store val.
@@ -145,6 +141,34 @@ static u32 get_sum(const u8* data, int size)
         
         ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
         return (ret != (u32)(-1) ? ret : 0);
+}
+
+/**
+ * Check validness of struct hash_tbl data.
+ *
+ * @return Non-zero if valud, or 0.
+ */
+__attribute__((unused))
+static int is_hashtbl_valid(const struct hash_tbl *htbl)
+{
+        return ((htbl) != NULL &&               
+                (htbl)->bucket != NULL &&       
+                (htbl)->bucket_size > 0 &&      
+                (htbl)->n_bits > 0);
+}
+
+/**
+ * Check validness of struct hash_cell data.
+ *
+ * @return Non-zero if valud, or 0.
+ */
+__attribute__((unused))
+static int is_hashcell_valid(const struct hash_cell *hcell)
+{
+        return ((hcell) != NULL &&                                  
+                (hcell)->key != NULL &&                             
+                (hcell)->key_size > 0 &&                                
+                (hcell)->val != HASHTBL_INVALID_VAL);
 }
 
 /**
