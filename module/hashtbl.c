@@ -25,13 +25,22 @@ static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
 static u32 hashtbl_get_index(const struct hash_tbl *htbl,
                              const u8* key, int key_size);
 
-static int is_hashtbl_valid(const struct hash_tbl *htbl);
-static int is_hashcell_valid(const struct hash_cell *hcell);
-static int is_hashtbl_curser_valid(const hashtbl_curser_t *curser);
+static struct hash_cell* alloc_hash_cell(int key_size, gfp_t gfp_mask);
+static void free_hash_cell(struct hash_cell *cell);
+static void set_hash_cell_key(struct hash_cell *cell, const u8 *key);
+static void set_hash_cell_val(struct hash_cell *cell, unsigned long val);
+static int get_hash_cell_key_size(const struct hash_cell *cell);
+static u8* get_hash_cell_key(const struct hash_cell *cell);
+static unsigned long get_hash_cell_val(const struct hash_cell *cell);
 
-#define ASSERT_HASHTBL(htbl) ASSERT(is_hashtbl_valid(htbl))
-#define ASSERT_HASHCELL(hcell) ASSERT(is_hashcell_valid(hcell))
-#define ASSERT_HASHTBL_CURSER(curser) ASSERT(is_hashtbl_curser_valid(curser))
+static int is_hashtbl_struct_valid(const struct hash_tbl *htbl);
+static int is_hashcell_struct_valid(const struct hash_cell *hcell);
+static int is_hashtbl_curser_struct_valid(const hashtbl_curser_t *curser);
+
+#define ASSERT_HASHTBL(htbl) ASSERT(is_hashtbl_struct_valid(htbl))
+#define ASSERT_HASHCELL(hcell) ASSERT(is_hashcell_struct_valid(hcell))
+#define ASSERT_HASHTBL_CURSER(curser)                   \
+        ASSERT(is_hashtbl_curser_struct_valid(curser))
 
 
 /*******************************************************************************
@@ -151,12 +160,118 @@ static u32 get_sum(const u8* data, int size)
 }
 
 /**
+ * Allocate hash cell.
+ */
+static struct hash_cell* alloc_hash_cell(int key_size, gfp_t gfp_mask)
+{
+        struct hash_cell *cell;
+
+        if (key_size <= 0) { goto invalid_key_size; }
+        
+        cell = kmalloc(sizeof(struct hash_cell), gfp_mask);
+        if (cell == NULL) { goto nomem0; }
+        INIT_HLIST_NODE(&cell->list);
+        cell->key_size = key_size;
+        
+        cell->key = kmalloc(key_size, gfp_mask);
+        if (cell->key == NULL) { goto nomem1; }
+
+        return cell;
+nomem1:
+        kfree(cell);
+nomem0:
+invalid_key_size:
+        return NULL;
+}
+
+/**
+ * Deallocate hash cell.
+ */
+static void free_hash_cell(struct hash_cell *cell)
+{
+        if (cell == NULL) { return; }
+        
+        if (cell->key != NULL) {
+                kfree(cell->key);
+        }
+        if (cell->list.pprev != NULL) {
+                hlist_del(&cell->list);
+        }
+        kfree(cell);
+}
+
+/**
+ * Set key of a hash cell.
+ */
+static void set_hash_cell_key(struct hash_cell *cell, const u8 *key)
+{
+        ASSERT(cell != NULL);
+        ASSERT(cell->key != NULL);
+        ASSERT(key != NULL);
+
+        memcpy(cell->key, key, cell->key_size);
+}
+
+/**
+ * Set value of a hash cell.
+ */
+static void set_hash_cell_val(struct hash_cell *cell, unsigned long val)
+{
+        ASSERT(cell != NULL);
+        cell->val = val;
+}
+
+/**
+ * Get key of a hash cell.
+ *
+ * @return key in success, or NULL.
+ */
+static u8* get_hash_cell_key(const struct hash_cell *cell)
+{
+        if (cell == NULL) {
+                return NULL;
+        } else {
+                ASSERT_HASHCELL(cell);
+                return cell->key;
+        }
+}
+
+/**
+ * Get key size of a hash cell.
+ *
+ * @return key size > 0 in success, or 0.
+ */
+static int get_hash_cell_key_size(const struct hash_cell *cell)
+{
+        if (cell == NULL) {
+                return 0;
+        } else {
+                ASSERT_HASHCELL(cell);
+                return cell->key_size;
+        }
+}
+
+/**
+ * Get value of a hash cell.
+ *
+ * @return value if cell is not NULL, or HASHTBL_INVALID_VAL.
+ */
+static unsigned long get_hash_cell_val(const struct hash_cell *cell)
+{
+        if (cell == NULL) {
+                return HASHTBL_INVALID_VAL;
+        } else {
+                return cell->val;
+        }
+}
+
+/**
  * Check validness of struct hash_tbl data.
  *
  * @return Non-zero if valud, or 0.
  */
 __attribute__((unused))
-static int is_hashtbl_valid(const struct hash_tbl *htbl)
+static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
 {
         return ((htbl) != NULL &&               
                 (htbl)->bucket != NULL &&       
@@ -170,7 +285,7 @@ static int is_hashtbl_valid(const struct hash_tbl *htbl)
  * @return Non-zero if valud, or 0.
  */
 __attribute__((unused))
-static int is_hashcell_valid(const struct hash_cell *hcell)
+static int is_hashcell_struct_valid(const struct hash_cell *hcell)
 {
         return ((hcell) != NULL &&                                  
                 (hcell)->key != NULL &&                             
@@ -184,7 +299,7 @@ static int is_hashcell_valid(const struct hash_cell *hcell)
  * @return Non-zero if valud, or 0.
  */
 __attribute__((unused))
-static int is_hashtbl_curser_valid(const hashtbl_curser_t *curser)
+static int is_hashtbl_curser_struct_valid(const hashtbl_curser_t *curser)
 {
         int st, idx, max_idx;
         struct hlist_head *chead, *nhead;
@@ -198,7 +313,7 @@ static int is_hashtbl_curser_valid(const hashtbl_curser_t *curser)
         nhead = curser->next_head;
         nnode = curser->next;
         
-        if (is_hashtbl_valid(curser->htbl)) { return 0; }
+        if (is_hashtbl_struct_valid(curser->htbl)) { return 0; }
         max_idx = curser->htbl->bucket_size;
         
         return (0 <= idx && idx < max_idx &&
@@ -209,6 +324,8 @@ static int is_hashtbl_curser_valid(const hashtbl_curser_t *curser)
                   nhead == NULL && nnode == NULL) ||
                  (st == HASHTBL_CURSER_DATA &&
                   chead != NULL && cnode != NULL) ||
+                 (st == HASHTBL_CURSER_DELETED &&
+                  chead == NULL && cnode == NULL) ||
                  (st == HASHTBL_CURSER_INVALID)));
 }
 
@@ -278,9 +395,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
                 hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
 
                         ASSERT_HASHCELL(cell);
-                        kfree(cell->key);
-                        hlist_del(&cell->list);
-                        kfree(cell);
+                        free_hash_cell(cell);
                 }
                 ASSERT(hlist_empty(&htbl->bucket[i]));
         }
@@ -320,15 +435,12 @@ int hashtbl_add(struct hash_tbl *htbl,
         }
 
         /* Allocate cell. */
-        cell = kmalloc(sizeof(struct hash_cell), gfp_mask);
-        if (cell == NULL) { goto nomem0; }
-        cell->key = kmalloc(key_size, gfp_mask);
-        if (cell->key == NULL) { goto nomem1; }
-
+        cell = alloc_hash_cell(key_size, gfp_mask);
+        if (cell == NULL) { goto nomem; }
+        
         /* Fill cell. */
-        cell->key_size = key_size;
-        memcpy(cell->key, key, key_size);
-        cell->val = val;
+        set_hash_cell_key(cell, key);
+        set_hash_cell_val(cell, val);
 
         /* Add to hashtbl. */
         idx = hashtbl_get_index(htbl, key, key_size);
@@ -337,9 +449,7 @@ int hashtbl_add(struct hash_tbl *htbl,
         /* printk_d("hashtbl_add end\n"); */
         return 0;
 
-nomem1:
-        kfree(cell);
-nomem0:
+nomem:
         return -ENOMEM;
 key_exists:
         return -EPERM;
@@ -361,8 +471,7 @@ unsigned long hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key
         struct hash_cell *cell;
         
         cell = hashtbl_lookup_cell(htbl, key, key_size);
-        /* printk_d("hashtbl_lookup end\n"); */
-        return (cell == NULL ? HASHTBL_INVALID_VAL : cell->val);
+        return get_hash_cell_val(cell);
 }
 
 /**
@@ -380,13 +489,9 @@ unsigned long hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
         unsigned long val = HASHTBL_INVALID_VAL;
         
         cell = hashtbl_lookup_cell(htbl, key, key_size);
-        if (cell != NULL) {
-                val = cell->val;
-                hlist_del(&cell->list);
-                kfree(cell->key);
-                kfree(cell);
-        }
-        /* printk_d("hashtbl_del end\n"); */
+        val = get_hash_cell_val(cell);
+        free_hash_cell(cell);
+        
         return val;
 }
 

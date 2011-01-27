@@ -75,7 +75,8 @@ int hashtbl_test(void); /* For test. */
 enum {
         HASHTBL_CURSER_BEGIN = 1,
         HASHTBL_CURSER_END,
-        HASHTBL_CURSER_DATA,
+        HASHTBL_CURSER_DATA, /* curr points an item. */
+        HASHTBL_CURSER_DELETED, /* after call hashtbl_curser_del(). */
         HASHTBL_CURSER_INVALID,
 };
 
