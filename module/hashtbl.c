@@ -27,9 +27,12 @@ static u32 hashtbl_get_index(const struct hash_tbl *htbl,
 
 static int is_hashtbl_valid(const struct hash_tbl *htbl);
 static int is_hashcell_valid(const struct hash_cell *hcell);
+static int is_hashtbl_curser_valid(const hashtbl_curser_t *curser);
 
 #define ASSERT_HASHTBL(htbl) ASSERT(is_hashtbl_valid(htbl))
 #define ASSERT_HASHCELL(hcell) ASSERT(is_hashcell_valid(hcell))
+#define ASSERT_HASHTBL_CURSER(curser) ASSERT(is_hashtbl_curser_valid(curser))
+
 
 /**
  * Get number of required bits to store val.
@@ -169,6 +172,40 @@ static int is_hashcell_valid(const struct hash_cell *hcell)
                 (hcell)->key != NULL &&                             
                 (hcell)->key_size > 0 &&                                
                 (hcell)->val != HASHTBL_INVALID_VAL);
+}
+
+/**
+ * Check validness of hashtbl_curser_t data.
+ *
+ * @return Non-zero if valud, or 0.
+ */
+__attribute__((unused))
+static int is_hashtbl_curser_valid(const hashtbl_curser_t *curser)
+{
+        int st, idx, max_idx;
+        struct hlist_head *chead, *nhead;
+        struct hlist_node *cnode, *nnode;
+
+        if (curser == NULL) { return 0; }
+        st = curser->state;
+        idx = curser->bucket_idx;
+        chead = curser->curr_head;
+        cnode = curser->curr;
+        nhead = curser->next_head;
+        nnode = curser->next;
+        
+        if (is_hashtbl_valid(curser->htbl)) { return 0; }
+        max_idx = curser->htbl->bucket_size;
+        
+        return (0 <= idx && idx < max_idx &&
+                ((st == HASHTBL_CURSER_BEGIN &&
+                  chead == NULL && cnode == NULL) ||
+                 (st == HASHTBL_CURSER_END &&
+                  chead == NULL && cnode == NULL &&
+                  nhead == NULL && nnode == NULL) ||
+                 (st == HASHTBL_CURSER_DATA &&
+                  chead != NULL && cnode != NULL) ||
+                 (st == HASHTBL_CURSER_INVALID)));
 }
 
 /**
