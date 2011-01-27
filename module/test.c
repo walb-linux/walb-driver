@@ -16,7 +16,12 @@ static int __init test_init(void)
         
         /* Hashmap test for debug. */
         if (hashtbl_test()) {
-                printk(KERN_ERR "hashmap_test() failed.\n");
+                printk(KERN_ERR "hashtbl_test() failed.\n");
+                goto error;
+        }
+
+        if (hashtbl_curser_test()) {
+                printk(KERN_ERR "hashtbl_curser_test() failed.\n");
                 goto error;
         }
 

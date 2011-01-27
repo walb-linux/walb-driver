@@ -42,6 +42,7 @@ static int is_hashtbl_curser_struct_valid(const hashtbl_curser_t *curser);
 #define ASSERT_HASHTBL_CURSER(curser)                   \
         ASSERT(is_hashtbl_curser_struct_valid(curser))
 
+static void print_hashtbl_curser(const hashtbl_curser_t *curser);
 
 /*******************************************************************************
  * Static functions.
@@ -312,21 +313,63 @@ static int is_hashtbl_curser_struct_valid(const hashtbl_curser_t *curser)
         cnode = curser->curr;
         nhead = curser->next_head;
         nnode = curser->next;
+
+#define PERR { printk_d("error\n"); return 0; }
         
-        if (is_hashtbl_struct_valid(curser->htbl)) { return 0; }
+        if (! is_hashtbl_struct_valid(curser->htbl)) { PERR; }
         max_idx = curser->htbl->bucket_size;
-        
-        return (0 <= idx && idx < max_idx &&
-                ((st == HASHTBL_CURSER_BEGIN &&
-                  chead == NULL && cnode == NULL) ||
-                 (st == HASHTBL_CURSER_END &&
-                  chead == NULL && cnode == NULL &&
-                  nhead == NULL && nnode == NULL) ||
-                 (st == HASHTBL_CURSER_DATA &&
-                  chead != NULL && cnode != NULL) ||
-                 (st == HASHTBL_CURSER_DELETED &&
-                  chead == NULL && cnode == NULL) ||
-                 (st == HASHTBL_CURSER_INVALID)));
+
+        if (! (0 <= idx)) { PERR; }
+        if (! (idx <= max_idx)) { PERR; }
+
+        switch (st) {
+        case HASHTBL_CURSER_BEGIN:
+                if (! (chead == NULL && cnode == NULL)) { PERR; }
+                break;
+        case HASHTBL_CURSER_END:
+                if (! (chead == NULL && cnode == NULL &&
+                       nhead == NULL && nnode == NULL)) { PERR; }
+                break;
+        case HASHTBL_CURSER_DATA:
+                if (! (chead != NULL && cnode != NULL)) { PERR; }
+                break;
+        case HASHTBL_CURSER_DELETED:
+                if (! (chead == NULL && cnode == NULL)) { PERR; }
+                break;
+        case HASHTBL_CURSER_INVALID:
+                break;
+        default:
+                PERR;
+        }
+#undef PERR
+                
+        return 1;
+}
+
+/**
+ * Print hashtbl curser for debug.
+ */
+__attribute__((unused))
+static void print_hashtbl_curser(const hashtbl_curser_t *curser)
+{
+        const char *state_str[6];
+        state_str[1] = "BEGIN";
+        state_str[2] = "END";
+        state_str[3] = "DATA";
+        state_str[4] = "DELETED";
+        state_str[5] = "INVALID";
+
+        if (curser == NULL) {
+                printk_d("HASHTBL_CURSER null\n");
+                return;
+        }
+        printk_d("HASHTBL_CURSER state %s bucket_idx %d\n"
+                 "curr_head %p curr %p\n"
+                 "next_head %p next %p\n",
+                 state_str[curser->state],
+                 curser->bucket_idx,
+                 curser->curr_head, curser->curr,
+                 curser->next_head, curser->next);
 }
 
 /*******************************************************************************
@@ -653,5 +696,389 @@ int hashtbl_test(void)
 error:
         return -1;
 }
+
+/*******************************************************************************
+ * Functions for hash table curser.
+ *******************************************************************************/
+
+/**
+ * Initialize hash table curser.
+ */
+void hashtbl_curser_init(struct hash_tbl *htbl, hashtbl_curser_t *curser)
+{
+        ASSERT_HASHTBL(htbl);
+        
+        curser->htbl = htbl;
+        curser->state = HASHTBL_CURSER_INVALID;
+        
+        curser->bucket_idx = 0;
+        curser->curr_head = NULL;
+        curser->curr = NULL;
+        curser->next_head = NULL;
+        curser->next = NULL;
+
+        ASSERT_HASHTBL_CURSER(curser);
+}
+
+/**
+ * Set curser begin.
+ */
+void hashtbl_curser_begin(hashtbl_curser_t *curser)
+{
+        ASSERT_HASHTBL_CURSER(curser);
+
+        curser->state = HASHTBL_CURSER_BEGIN;
+        curser->bucket_idx = 0;
+        curser->curr_head = NULL;
+        curser->curr = NULL;
+        curser->next_head = NULL;
+        curser->next = NULL;
+}
+
+/**
+ * Search bucket index where item exists,
+ * starting from a specified index.
+ *
+ * @htbl hash table.
+ * @start_idx start index to search (0 <= start_idx <= htbl->bucket_size).
+ *
+ * @return found index in success, or htbl->bucket_size.
+ */
+static int search_next_head_index(const struct hash_tbl *htbl, int start_idx)
+{
+        int i;
+        ASSERT_HASHTBL(htbl);
+        ASSERT(0 <= start_idx && start_idx <= htbl->bucket_size);
+
+        for (i = start_idx; i < htbl->bucket_size; i ++) {
+                
+                if (! hlist_empty(&htbl->bucket[i])) {
+                        break;
+                }
+        }
+
+        ASSERT(0 <= i && i <= htbl->bucket_size);
+        return i;
+}
+
+/**
+ * Make the curser goes to next.
+ *
+ * @return 1 if success, or 0 (the curser reaches END).
+ */
+int hashtbl_curser_next(hashtbl_curser_t *curser)
+{
+        int idx;
+        
+        ASSERT_HASHTBL_CURSER(curser);
+        ASSERT(curser->state != HASHTBL_CURSER_INVALID);
+
+        /* Begin to. */
+        if (curser->state == HASHTBL_CURSER_BEGIN) {
+                
+                idx = search_next_head_index(curser->htbl, 0);
+                if (idx == curser->htbl->bucket_size) { goto curser_end; }
+                curser->curr_head = &curser->htbl->bucket[idx];
+                ASSERT(curser->curr_head != NULL);
+                curser->curr = curser->curr_head->first;
+                ASSERT(curser->curr != NULL);
+                curser->bucket_idx = idx;
+                goto set_next;
+        }
+
+        if (curser->state == HASHTBL_CURSER_END) {
+                goto curser_end;
+        }
+
+        ASSERT(curser->state == HASHTBL_CURSER_DATA ||
+               curser->state == HASHTBL_CURSER_DELETED);
+
+        /* Check end. */
+        if (curser->next == NULL) { goto curser_end; }
+
+        /* Set curr. */
+        curser->curr_head = curser->next_head;
+        curser->curr = curser->next;
+        ASSERT(curser->curr_head != NULL);
+        ASSERT(curser->curr != NULL);
+
+set_next:
+        /* Get and set next. */
+        curser->next = curser->curr->next;
+        if (curser->next == NULL) {
+                goto set_next_head;
+        } else {
+                curser->next_head = curser->curr_head;
+                goto curser_data;
+        }
+        
+set_next_head:
+        /* Search next head */
+        idx = search_next_head_index(curser->htbl, ++ curser->bucket_idx);
+        curser->bucket_idx = idx;
+                
+        /* Check end of bucket array. */
+        if (idx == curser->htbl->bucket_size) {
+                curser->next_head = NULL;
+                curser->next = NULL;
+        } else {
+                curser->next_head = &curser->htbl->bucket[idx];
+                ASSERT(! hlist_empty(curser->next_head));
+                curser->next = curser->next_head->first;
+                ASSERT(curser->next != NULL);
+        }
+
+curser_data:
+        curser->state = HASHTBL_CURSER_DATA;
+        ASSERT_HASHTBL_CURSER(curser);
+        return 1;
+        
+curser_end:
+        curser->state = HASHTBL_CURSER_END;
+        curser->curr_head = NULL;
+        curser->curr = NULL;
+        curser->next_head = NULL;
+        curser->next = NULL;
+        ASSERT_HASHTBL_CURSER(curser);
+        return 0;
+}
+
+/**
+ * Delete the focused item.
+ *
+ * @return value in success, or HASHTBL_INVALID_VAL.
+ */
+unsigned long hashtbl_curser_del(hashtbl_curser_t *curser)
+{
+        struct hash_cell *cell;
+        unsigned long val;
+        
+        ASSERT_HASHTBL_CURSER(curser);
+        
+        if (curser->state != HASHTBL_CURSER_DATA) {
+                return HASHTBL_INVALID_VAL;
+        }
+
+        curser->state = HASHTBL_CURSER_DELETED;
+        ASSERT(curser->curr != NULL);
+
+        cell = hlist_entry(curser->curr, struct hash_cell, list);
+        ASSERT(cell != NULL);
+
+        val = get_hash_cell_val(cell);
+        free_hash_cell(cell);
+
+        curser->curr = NULL;
+        curser->curr_head = NULL;
+
+        ASSERT_HASHTBL_CURSER(curser);
+        
+        return val;
+}
+       
+/**
+ * Check whether the curser is BEGIN.
+ *
+ * @return Non-zero if curser is BEGIN, or 0.
+ */
+int hashtbl_curser_is_begin(const hashtbl_curser_t *curser)
+{
+        ASSERT_HASHTBL_CURSER(curser);
+
+        return (curser->state == HASHTBL_CURSER_BEGIN);
+}
+
+/**
+ * Check whether the curser is END.
+ *
+ * @return Non-zero if curser is END, or 0.
+ */
+int hashtbl_curser_is_end(const hashtbl_curser_t *curser)
+{
+        ASSERT_HASHTBL_CURSER(curser);
+
+        return (curser->state == HASHTBL_CURSER_END);
+}
+
+/**
+ * Check whether the curser is valid or not.
+ *
+ * @return Non-zero if curser is valid, or 0.
+ */
+int hashtbl_curser_is_valid(const hashtbl_curser_t *curser)
+{
+        ASSERT_HASHTBL_CURSER(curser);
+
+        return (curser != NULL &&
+                (curser->state == HASHTBL_CURSER_BEGIN ||
+                 curser->state == HASHTBL_CURSER_END ||
+                 curser->state == HASHTBL_CURSER_DATA));
+}
+
+/**
+ * Get value of the focused item.
+ *
+ * @return get value of the focused item if the state is DATA,
+ *   or HASHTBL_INVALID_VAL.
+ */
+unsigned long hashtbl_curser_val(const hashtbl_curser_t *curser)
+{
+        struct hash_cell *cell;
+        
+        if (curser == NULL) { goto error; }
+
+        ASSERT_HASHTBL_CURSER(curser);
+        if (curser->state != HASHTBL_CURSER_DATA) { goto error; }
+
+        cell = hlist_entry(curser->curr, struct hash_cell, list);
+        ASSERT(cell != NULL);
+
+        return get_hash_cell_val(cell);
+error:
+        return HASHTBL_INVALID_VAL;
+}
+
+/**
+ * Get key size of the focused item.
+ *
+ * @return key size (> 0) if the curser is valid, or 0.
+ */
+int hashtbl_curser_key_size(const hashtbl_curser_t *curser)
+{
+        struct hash_cell *cell;
+        
+        if (curser == NULL) { goto error; }
+
+        ASSERT_HASHTBL_CURSER(curser);
+        if (curser->state != HASHTBL_CURSER_DATA) { goto error; }
+
+        cell = hlist_entry(curser->curr, struct hash_cell, list);
+        ASSERT(cell != NULL);
+
+        return get_hash_cell_key_size(cell);
+error:
+        return 0;
+}
+
+/**
+ * Get pointer to the key of the focused item.
+ *
+ * Causion. If the item is deleted from the hash table,
+ * The pointer will be invalid.
+ *
+ * @return pointer to the key if the curser is valid, or NULL.
+ */
+u8* hashtbl_curser_key(const hashtbl_curser_t *curser)
+{
+        struct hash_cell *cell;
+        
+        if (curser == NULL) { goto error; }
+
+        ASSERT_HASHTBL_CURSER(curser);
+        if (curser->state != HASHTBL_CURSER_DATA) { goto error; }
+
+        cell = hlist_entry(curser->curr, struct hash_cell, list);
+        ASSERT(cell != NULL);
+
+        return get_hash_cell_key(cell);
+error:
+        return NULL;
+}
+
+/**
+ * Test method for hash table curser test.
+ *
+ * @return 0 in test pass, or -1.
+ */
+int hashtbl_curser_test(void)
+{
+        struct hash_tbl *htbl;
+        hashtbl_curser_t curt;
+        u8 buf[sizeof(int)];
+        int i, j, key;
+        unsigned long val;
+        
+        printk_d("hashtbl_curser_test begin.\n");
+
+        /* Create hash table. */
+        printk_d("Create hashtbl");
+        htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
+        ASSERT(htbl != NULL);
+
+        /* Initialize curser. */
+        printk_d("Initialize curser.\n");
+        hashtbl_curser_init(htbl, &curt);
+
+        /* Begin then end. */
+        printk_d("Begin then end.\n");
+        hashtbl_curser_begin(&curt);
+        WALB_CHECK(hashtbl_curser_is_valid(&curt));
+        WALB_CHECK(hashtbl_curser_is_begin(&curt));
+        WALB_CHECK(! hashtbl_curser_next(&curt));
+        WALB_CHECK(hashtbl_curser_is_end(&curt));
+        WALB_CHECK(hashtbl_curser_is_valid(&curt));
+
+        /* Prepare hash table data. */
+        printk_d("Prepare hash table data.\n");
+        for (i = 0; i < 10; i ++) {
+                key = i;
+                val = i;
+                memcpy(buf, &key, sizeof(int));
+                WALB_CHECK(hashtbl_add(htbl, buf, sizeof(int),
+                                       val, GFP_KERNEL) == 0);
+        }
+        WALB_CHECK(hashtbl_n_items(htbl) == 10);
+
+        /* Begin to end. */
+        printk_d("Begin to end.\n");
+        hashtbl_curser_begin(&curt);
+        i = 0;
+        while (hashtbl_curser_next(&curt)) {
+                WALB_CHECK(hashtbl_curser_is_valid(&curt));
+                print_hashtbl_curser(&curt); /* debug */
+
+                WALB_CHECK(hashtbl_curser_key_size(&curt) == sizeof(int));
+                memcpy(&key, hashtbl_curser_key(&curt), sizeof(int));
+                val = hashtbl_curser_val(&curt);
+                WALB_CHECK(val != HASHTBL_INVALID_VAL);
+                printk_d("i %d key %d val %lu\n", i, key, val);
+                i ++;
+        }
+        printk_d("i: %d\n", i);
+        WALB_CHECK(i == 10);
+        WALB_CHECK(hashtbl_curser_is_end(&curt));
+
+        /* Begin to end with delete */
+        printk_d("Begin to end with delete.\n");
+        hashtbl_curser_begin(&curt);
+        i = 0; j = 0;
+        while (hashtbl_curser_next(&curt)) {
+                WALB_CHECK(hashtbl_curser_is_valid(&curt));
+                print_hashtbl_curser(&curt); /* debug */
+                
+                val = hashtbl_curser_val(&curt);
+                WALB_CHECK(val != HASHTBL_INVALID_VAL);
+                if (val % 2 == 0) {
+                        WALB_CHECK(hashtbl_curser_del(&curt) == val);
+                        j ++;
+                        WALB_CHECK(curt.state == HASHTBL_CURSER_DELETED);
+                }
+                i ++;
+        }
+        WALB_CHECK(i == 10);
+        WALB_CHECK(j == 5);
+        WALB_CHECK(hashtbl_curser_is_end(&curt));
+        WALB_CHECK(hashtbl_n_items(htbl) == 5);
+
+        printk_d("Destroy hash table.\n");
+        hashtbl_destroy(htbl);
+
+        printk_d("hashtbl_curser_test end.\n");
+        return 0;
+        
+error:
+        return -1;
+}
+
 
 MODULE_LICENSE("Dual BSD/GPL");

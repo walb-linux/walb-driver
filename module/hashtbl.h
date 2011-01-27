@@ -103,7 +103,7 @@ typedef struct
  * Prototypes of hashtbl curser operations.
  */
 void hashtbl_curser_init(struct hash_tbl *htbl, hashtbl_curser_t *curser);
-int hashtbl_curser_begin(hashtbl_curser_t *curser);
+void hashtbl_curser_begin(hashtbl_curser_t *curser);
 int hashtbl_curser_next(hashtbl_curser_t *curser);
 unsigned long hashtbl_curser_del(hashtbl_curser_t *curser);
 int hashtbl_curser_is_begin(const hashtbl_curser_t *curser);
