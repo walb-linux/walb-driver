@@ -85,13 +85,16 @@ enum {
 typedef struct
 {
         struct hash_tbl *htbl;
-        int state;
+        int state; /* Curser state */
 
-        int bucket_idx;
-        struct hlist_head *head;
-        
-        struct hlist_node *curr;
-        struct hlist_node *next;
+        int bucket_idx; /* Head index in the bucket array. */
+        struct hlist_head *curr_head; /* Head of the list
+                                         which current item belongs to. */
+        struct hlist_node *curr; /* Current pointer. */
+
+        struct hlist_head *next_head; /* Head of the list
+                                         which next item belongs to. */
+        struct hlist_node *next; /* Next pointer */
 
 } hashtbl_curser_t;
 
