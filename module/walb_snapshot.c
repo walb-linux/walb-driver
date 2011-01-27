@@ -941,7 +941,8 @@ static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd)
         map_curser_t curt;
 
         ASSERT(snapd != NULL);
-
+        
+        /* For each snapshot_id. */
         map_curser_init(snapd->id_idx, &curt);
         map_curser_search(&curt, 0, MAP_SEARCH_BEGIN);
         while (map_curser_next(&curt)) {
@@ -950,8 +951,9 @@ static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd)
                 ASSERT(val != TREEMAP_INVALID_VAL);
                 snapshot_id = (u32)val;
 
+                /* For each name, check snapshot_id is unique. */
+                
                 /* now editing */
-
                 
         }
         ASSERT(map_curser_is_end(&curt));
