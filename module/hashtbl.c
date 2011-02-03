@@ -771,64 +771,68 @@ int hashtbl_cursor_next(hashtbl_cursor_t *cursor)
         int idx;
         
         ASSERT_HASHTBL_CURSOR(cursor);
-        ASSERT(cursor->state != HASHTBL_CURSOR_INVALID);
 
-        /* Begin to. */
-        if (cursor->state == HASHTBL_CURSOR_BEGIN) {
+        switch(cursor->state) {
+
+        case HASHTBL_CURSOR_END:
+        case HASHTBL_CURSOR_INVALID:
+                /* do nothing. */
+                return 0;
+
+        case HASHTBL_CURSOR_BEGIN:
                 
                 idx = search_next_head_index(cursor->htbl, 0);
+
+                /* Check end. */
                 if (idx == cursor->htbl->bucket_size) { goto cursor_end; }
+
+                /* Set curr. */
                 cursor->curr_head = &cursor->htbl->bucket[idx];
                 ASSERT(cursor->curr_head != NULL);
                 cursor->curr = cursor->curr_head->first;
                 ASSERT(cursor->curr != NULL);
                 cursor->bucket_idx = idx;
-                goto set_next;
+                break;
+
+        case HASHTBL_CURSOR_DATA:
+        case HASHTBL_CURSOR_DELETED:
+
+                /* Check end. */
+                if (cursor->next == NULL) { goto cursor_end; }
+
+                /* Set curr. */
+                cursor->curr_head = cursor->next_head;
+                cursor->curr = cursor->next;
+                ASSERT(cursor->curr_head != NULL);
+                ASSERT(cursor->curr != NULL);
+                break;
+
+        default:
+                BUG();
         }
 
-        if (cursor->state == HASHTBL_CURSOR_END) {
-                goto cursor_end;
-        }
-
-        ASSERT(cursor->state == HASHTBL_CURSOR_DATA ||
-               cursor->state == HASHTBL_CURSOR_DELETED);
-
-        /* Check end. */
-        if (cursor->next == NULL) { goto cursor_end; }
-
-        /* Set curr. */
-        cursor->curr_head = cursor->next_head;
-        cursor->curr = cursor->next;
-        ASSERT(cursor->curr_head != NULL);
-        ASSERT(cursor->curr != NULL);
-
-set_next:
         /* Get and set next. */
         cursor->next = cursor->curr->next;
-        if (cursor->next == NULL) {
-                goto set_next_head;
-        } else {
+        if (cursor->next != NULL) {
                 cursor->next_head = cursor->curr_head;
-                goto cursor_data;
+        } else {
+                /* Search next head */
+                idx = search_next_head_index(cursor->htbl,
+                                             ++ cursor->bucket_idx);
+                cursor->bucket_idx = idx;
+                
+                /* Check end of bucket array. */
+                if (idx == cursor->htbl->bucket_size) {
+                        cursor->next_head = NULL;
+                        cursor->next = NULL;
+                } else {
+                        cursor->next_head = &cursor->htbl->bucket[idx];
+                        ASSERT(! hlist_empty(cursor->next_head));
+                        cursor->next = cursor->next_head->first;
+                        ASSERT(cursor->next != NULL);
+                }
         }
         
-set_next_head:
-        /* Search next head */
-        idx = search_next_head_index(cursor->htbl, ++ cursor->bucket_idx);
-        cursor->bucket_idx = idx;
-                
-        /* Check end of bucket array. */
-        if (idx == cursor->htbl->bucket_size) {
-                cursor->next_head = NULL;
-                cursor->next = NULL;
-        } else {
-                cursor->next_head = &cursor->htbl->bucket[idx];
-                ASSERT(! hlist_empty(cursor->next_head));
-                cursor->next = cursor->next_head->first;
-                ASSERT(cursor->next != NULL);
-        }
-
-cursor_data:
         cursor->state = HASHTBL_CURSOR_DATA;
         ASSERT_HASHTBL_CURSOR(cursor);
         return 1;
