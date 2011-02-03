@@ -70,23 +70,23 @@ int hashtbl_test(void); /* For test. */
 
 
 /**
- * Curser state for hash table.
+ * Cursor state for hash table.
  */
 enum {
-        HASHTBL_CURSER_BEGIN = 1,
-        HASHTBL_CURSER_END,
-        HASHTBL_CURSER_DATA, /* curr points an item. */
-        HASHTBL_CURSER_DELETED, /* after call hashtbl_curser_del(). */
-        HASHTBL_CURSER_INVALID,
+        HASHTBL_CURSOR_BEGIN = 1,
+        HASHTBL_CURSOR_END,
+        HASHTBL_CURSOR_DATA, /* curr points an item. */
+        HASHTBL_CURSOR_DELETED, /* after call hashtbl_cursor_del(). */
+        HASHTBL_CURSOR_INVALID,
 };
 
 /**
- * Curser structure for hash table.
+ * Cursor structure for hash table.
  */
 typedef struct
 {
         struct hash_tbl *htbl;
-        int state; /* Curser state */
+        int state; /* Cursor state */
 
         int bucket_idx; /* Head index in the bucket array. */
         struct hlist_head *curr_head; /* Head of the list
@@ -97,22 +97,22 @@ typedef struct
                                          which next item belongs to. */
         struct hlist_node *next; /* Next pointer */
 
-} hashtbl_curser_t;
+} hashtbl_cursor_t;
 
 /**
- * Prototypes of hashtbl curser operations.
+ * Prototypes of hashtbl cursor operations.
  */
-void hashtbl_curser_init(struct hash_tbl *htbl, hashtbl_curser_t *curser);
-void hashtbl_curser_begin(hashtbl_curser_t *curser);
-int hashtbl_curser_next(hashtbl_curser_t *curser);
-unsigned long hashtbl_curser_del(hashtbl_curser_t *curser);
-int hashtbl_curser_is_begin(const hashtbl_curser_t *curser);
-int hashtbl_curser_is_end(const hashtbl_curser_t *curser);
-int hashtbl_curser_is_valid(const hashtbl_curser_t *curser);
-unsigned long hashtbl_curser_val(const hashtbl_curser_t *curser);
-int hashtbl_curser_key_size(const hashtbl_curser_t *curser);
-u8* hashtbl_curser_key(const hashtbl_curser_t *curser);
+void hashtbl_cursor_init(struct hash_tbl *htbl, hashtbl_cursor_t *cursor);
+void hashtbl_cursor_begin(hashtbl_cursor_t *cursor);
+int hashtbl_cursor_next(hashtbl_cursor_t *cursor);
+unsigned long hashtbl_cursor_del(hashtbl_cursor_t *cursor);
+int hashtbl_cursor_is_begin(const hashtbl_cursor_t *cursor);
+int hashtbl_cursor_is_end(const hashtbl_cursor_t *cursor);
+int hashtbl_cursor_is_valid(const hashtbl_cursor_t *cursor);
+unsigned long hashtbl_cursor_val(const hashtbl_cursor_t *cursor);
+int hashtbl_cursor_key_size(const hashtbl_cursor_t *cursor);
+u8* hashtbl_cursor_key(const hashtbl_cursor_t *cursor);
 
-int hashtbl_curser_test(void);
+int hashtbl_cursor_test(void);
 
 #endif /* _HASHTBL_H */

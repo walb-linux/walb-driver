@@ -21,8 +21,8 @@ static int __init test2_init(void)
                 goto error;
         }
 
-        if (map_curser_test()) {
-                printk(KERN_ERR "map_curser_test() failed.\n");
+        if (map_cursor_test()) {
+                printk(KERN_ERR "map_cursor_test() failed.\n");
                 goto error;
         }
 

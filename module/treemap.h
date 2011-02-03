@@ -63,13 +63,13 @@ struct tree_cell {
 };
 
 /**
- * Map curser state.
+ * Map cursor state.
  */
 enum {
-        MAP_CURSER_BEGIN = 1,
-        MAP_CURSER_END,
-        MAP_CURSER_DATA, /* Curser indicate a key-value pair. */
-        MAP_CURSER_INVALID,
+        MAP_CURSOR_BEGIN = 1,
+        MAP_CURSOR_END,
+        MAP_CURSOR_DATA, /* Cursor indicate a key-value pair. */
+        MAP_CURSOR_INVALID,
 };
 
 /**
@@ -86,7 +86,7 @@ enum {
 };
 
 /**
- * Map curser structure.
+ * Map cursor structure.
  */
 typedef struct
 {
@@ -96,7 +96,7 @@ typedef struct
         struct tree_node *curr;
         struct tree_node *next;
         
-} map_curser_t;
+} map_cursor_t;
 
 
 /**
@@ -120,24 +120,24 @@ int map_n_items(const map_t *map);
 int map_test(void); /* For unit test. */
 
 /**
- * Prototypes for map curser operations.
+ * Prototypes for map cursor operations.
  */
-map_curser_t* map_curser_create(map_t *map, gfp_t gfp_mask);
-void map_curser_init(map_t *map, map_curser_t *curser);
-int map_curser_search(map_curser_t *curser, u64 key, int search_flag);
-int map_curser_next(map_curser_t *curser);
-int map_curser_prev(map_curser_t *curser);
-int map_curser_begin(map_curser_t *curser);
-int map_curser_end(map_curser_t *curser);
-int map_curser_is_begin(map_curser_t *curser);
-int map_curser_is_end(map_curser_t *curser);
-int map_curser_is_valid(map_curser_t *curser);
-unsigned long map_curser_get(const map_curser_t *curser);
-/* int map_curser_update(map_curser_t *curser); */
-/* int map_curser_delete(map_curser_t *curser); */
-void map_curser_destroy(map_curser_t *curser);
+map_cursor_t* map_cursor_create(map_t *map, gfp_t gfp_mask);
+void map_cursor_init(map_t *map, map_cursor_t *cursor);
+int map_cursor_search(map_cursor_t *cursor, u64 key, int search_flag);
+int map_cursor_next(map_cursor_t *cursor);
+int map_cursor_prev(map_cursor_t *cursor);
+int map_cursor_begin(map_cursor_t *cursor);
+int map_cursor_end(map_cursor_t *cursor);
+int map_cursor_is_begin(map_cursor_t *cursor);
+int map_cursor_is_end(map_cursor_t *cursor);
+int map_cursor_is_valid(map_cursor_t *cursor);
+unsigned long map_cursor_get(const map_cursor_t *cursor);
+/* int map_cursor_update(map_cursor_t *cursor); */
+/* int map_cursor_delete(map_cursor_t *cursor); */
+void map_cursor_destroy(map_cursor_t *cursor);
 
-int map_curser_test(void); /* For unit test. */
+int map_cursor_test(void); /* For unit test. */
 
 
 /**

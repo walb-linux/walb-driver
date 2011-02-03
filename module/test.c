@@ -20,8 +20,8 @@ static int __init test_init(void)
                 goto error;
         }
 
-        if (hashtbl_curser_test()) {
-                printk(KERN_ERR "hashtbl_curser_test() failed.\n");
+        if (hashtbl_cursor_test()) {
+                printk(KERN_ERR "hashtbl_cursor_test() failed.\n");
                 goto error;
         }
 

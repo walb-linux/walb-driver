@@ -938,27 +938,40 @@ static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd)
 {
         unsigned long val;
         u32 snapshot_id;
-        map_curser_t curt;
+        map_cursor_t curt;
+        int count;
+        int ret = 1;
 
         ASSERT(snapd != NULL);
         
         /* For each snapshot_id. */
-        map_curser_init(snapd->id_idx, &curt);
-        map_curser_search(&curt, 0, MAP_SEARCH_BEGIN);
-        while (map_curser_next(&curt)) {
+        map_cursor_init(snapd->id_idx, &curt);
+        map_cursor_search(&curt, 0, MAP_SEARCH_BEGIN);
+        while (map_cursor_next(&curt)) {
 
-                val = map_curser_get(&curt);
+                val = map_cursor_get(&curt);
                 ASSERT(val != TREEMAP_INVALID_VAL);
                 snapshot_id = (u32)val;
 
-                /* For each name, check snapshot_id is unique. */
+                /* Check the snapshot_id appears only once in the name_idx; */
+                count = get_n_snapshot_in_name_idx(snapd, snapshot_id);
+                if (count != 1) {
+                        printk_e("snapshot %u appears more than once in name_idx.\n",
+                                 snapshot_id);
+                        ret = 0;
+                }
                 
-                /* now editing */
-                
+                /* Check the snapshot_id appears only once in the lsid_idx. */
+                count = get_n_snapshot_in_lsid_idx(snapd, snapshot_id);
+                if (count != 1) {
+                        printk_e("snapshot %u appears more than once in lsid_idx.\n",
+                                 snapshot_id);
+                        ret = 0;
+                }
         }
-        ASSERT(map_curser_is_end(&curt));
-
-        return 0;
+        ASSERT(map_cursor_is_end(&curt));
+        
+        return ret;
 }
 
 /*******************************************************************************
@@ -1045,7 +1058,7 @@ nomem:
 void snapshot_data_destroy(struct snapshot_data *snapd)
 {
         struct snapshot_sector_control *ctl;
-        map_curser_t curt;
+        map_cursor_t curt;
 
         if (snapd == NULL) { return; }
 
@@ -1062,16 +1075,16 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
 
         if (snapd->sectors) {
                 /* Deallocate all snapshot sector control data. */
-                map_curser_init(snapd->sectors, &curt);
-                map_curser_search(&curt, 0, MAP_SEARCH_BEGIN);
-                while (map_curser_next(&curt)) {
-                        ctl = (void *)map_curser_get(&curt);
+                map_cursor_init(snapd->sectors, &curt);
+                map_cursor_search(&curt, 0, MAP_SEARCH_BEGIN);
+                while (map_cursor_next(&curt)) {
+                        ctl = (void *)map_cursor_get(&curt);
                         ASSERT(ctl != NULL && ctl != (void *)TREEMAP_INVALID_VAL);
                         ASSERT(ctl->sector == NULL);
                         ASSERT(ctl->state == SNAPSHOT_SECTOR_CONTROL_FREE);
                         kfree(ctl);
                 }
-                ASSERT(map_curser_is_end(&curt));
+                ASSERT(map_cursor_is_end(&curt));
 
                 /* Deallocate sectors data. */
                 map_destroy(snapd->sectors);

@@ -24,18 +24,18 @@
 #define ASSERT_TREECELL(tcell) ASSERT((tcell) != NULL && \
                                       (tcell)->val != TREEMAP_INVALID_VAL)
 
-#define ASSERT_MAP_CURSER(curser)                                       \
-        ASSERT((curser) != NULL &&                                      \
-               (curser)->map != NULL &&                                 \
-               (((curser)->state == MAP_CURSER_BEGIN &&                 \
-                 (curser)->prev == NULL &&                              \
-                 (curser)->curr == NULL) ||                             \
-                ((curser)->state == MAP_CURSER_END &&                   \
-                 (curser)->curr == NULL &&                              \
-                 (curser)->next == NULL) ||                             \
-                ((curser)->state == MAP_CURSER_DATA &&                  \
-                 (curser)->curr != NULL) ||                             \
-                ((curser)->state == MAP_CURSER_INVALID)))
+#define ASSERT_MAP_CURSOR(cursor)                                       \
+        ASSERT((cursor) != NULL &&                                      \
+               (cursor)->map != NULL &&                                 \
+               (((cursor)->state == MAP_CURSOR_BEGIN &&                 \
+                 (cursor)->prev == NULL &&                              \
+                 (cursor)->curr == NULL) ||                             \
+                ((cursor)->state == MAP_CURSOR_END &&                   \
+                 (cursor)->curr == NULL &&                              \
+                 (cursor)->next == NULL) ||                             \
+                ((cursor)->state == MAP_CURSOR_DATA &&                  \
+                 (cursor)->curr != NULL) ||                             \
+                ((cursor)->state == MAP_CURSOR_INVALID)))
 
 /**
  * Prototypes of static functions.
@@ -49,7 +49,7 @@ static struct tree_node* map_last(const map_t *tmap);
 static struct tree_node* map_next(const struct tree_node *t);
 static struct tree_node* map_prev(const struct tree_node *t);
 
-static void map_curser_invalid(map_curser_t *curser);
+static void map_cursor_invalid(map_cursor_t *cursor);
 
 static int hlist_len(const struct hlist_head *head);
 
@@ -224,16 +224,16 @@ static struct tree_node* map_prev(const struct tree_node *t)
 }
 
 /**
- * Make curser invalid state.
+ * Make cursor invalid state.
  */
-static void map_curser_invalid(map_curser_t *curser)
+static void map_cursor_invalid(map_cursor_t *cursor)
 {
-        curser->state = MAP_CURSER_INVALID;
-        curser->curr = NULL;
-        curser->prev = NULL;
-        curser->next = NULL;
+        cursor->state = MAP_CURSOR_INVALID;
+        cursor->curr = NULL;
+        cursor->prev = NULL;
+        cursor->next = NULL;
 
-        ASSERT_MAP_CURSER(curser);
+        ASSERT_MAP_CURSOR(cursor);
 }
 
 /**
@@ -549,62 +549,62 @@ error:
 }
 
 /*******************************************************************************
- * Map curser functions.
+ * Map cursor functions.
  *******************************************************************************/
 
 /**
- * Allocate curser data.
+ * Allocate cursor data.
  */
-map_curser_t* map_curser_create(map_t *map, gfp_t gfp_mask)
+map_cursor_t* map_cursor_create(map_t *map, gfp_t gfp_mask)
 {
-        map_curser_t *curser;
+        map_cursor_t *cursor;
         
-        curser = kmalloc(sizeof(map_curser_t), gfp_mask);
-        if (curser == NULL) { goto error0; }
+        cursor = kmalloc(sizeof(map_cursor_t), gfp_mask);
+        if (cursor == NULL) { goto error0; }
 
-        map_curser_init(map, curser);
-        return curser;
+        map_cursor_init(map, cursor);
+        return cursor;
         
 error0:
         return NULL;
 }
 
 /**
- * Initialize curser data.
+ * Initialize cursor data.
  */
-void map_curser_init(map_t *map, map_curser_t *curser)
+void map_cursor_init(map_t *map, map_cursor_t *cursor)
 {
-        ASSERT(curser != NULL);
+        ASSERT(cursor != NULL);
 
-        curser->map = map;
+        cursor->map = map;
 
-        curser->state = MAP_CURSER_INVALID;
-        curser->curr = NULL;
-        curser->prev = NULL;
-        curser->next = NULL;
+        cursor->state = MAP_CURSOR_INVALID;
+        cursor->curr = NULL;
+        cursor->prev = NULL;
+        cursor->next = NULL;
 
-        ASSERT_MAP_CURSER(curser);
+        ASSERT_MAP_CURSOR(cursor);
 }
 
 /**
- * Search key and set curser.
+ * Search key and set cursor.
  *
  * @return 1 if found, or 0.
  */
-int map_curser_search(map_curser_t* curser, u64 key, int search_flag)
+int map_cursor_search(map_cursor_t* cursor, u64 key, int search_flag)
 {
-        if (curser == NULL) { return 0; }
+        if (cursor == NULL) { return 0; }
         
-        ASSERT_MAP_CURSER(curser);
+        ASSERT_MAP_CURSOR(cursor);
 
         switch (search_flag) {
                 
         case MAP_SEARCH_BEGIN:
-                map_curser_begin(curser);
+                map_cursor_begin(cursor);
                 break;
                 
         case MAP_SEARCH_END:
-                map_curser_end(curser);
+                map_cursor_end(cursor);
                 break;
                 
         case MAP_SEARCH_EQ:
@@ -612,13 +612,13 @@ int map_curser_search(map_curser_t* curser, u64 key, int search_flag)
         case MAP_SEARCH_LE:
         case MAP_SEARCH_GT:
         case MAP_SEARCH_GE:
-                curser->curr = map_lookup_node_detail(curser->map, key, search_flag);
-                if (curser->curr == NULL) {
-                        map_curser_invalid(curser);
+                cursor->curr = map_lookup_node_detail(cursor->map, key, search_flag);
+                if (cursor->curr == NULL) {
+                        map_cursor_invalid(cursor);
                 } else {
-                        curser->state = MAP_CURSER_DATA;
-                        curser->prev = map_prev(curser->curr);
-                        curser->next = map_next(curser->curr);
+                        cursor->state = MAP_CURSOR_DATA;
+                        cursor->prev = map_prev(cursor->curr);
+                        cursor->next = map_next(cursor->curr);
                 }
                 break;
                 
@@ -626,8 +626,8 @@ int map_curser_search(map_curser_t* curser, u64 key, int search_flag)
                 BUG();
         }
         
-        ASSERT_MAP_CURSER(curser);
-        if (curser->state != MAP_CURSER_INVALID) {
+        ASSERT_MAP_CURSOR(cursor);
+        if (cursor->state != MAP_CURSOR_INVALID) {
                 return 1;
         } else {
                 return 0;
@@ -635,125 +635,125 @@ int map_curser_search(map_curser_t* curser, u64 key, int search_flag)
 }
 
 /**
- * Go forward curser a step.
+ * Go forward cursor a step.
  *
  * @return 1 if new current is data, or 0.
  */
-int map_curser_next(map_curser_t *curser)
+int map_cursor_next(map_cursor_t *cursor)
 {
-        if (curser == NULL) { return 0; }
-        ASSERT_MAP_CURSER(curser);
+        if (cursor == NULL) { return 0; }
+        ASSERT_MAP_CURSOR(cursor);
         
-        switch (curser->state) {
+        switch (cursor->state) {
                 
-        case MAP_CURSER_BEGIN:
-        case MAP_CURSER_DATA:
-                curser->prev = curser->curr;
-                curser->curr = curser->next;
-                curser->next = map_next(curser->curr);
-                if (curser->curr != NULL) {
-                        curser->state = MAP_CURSER_DATA;
+        case MAP_CURSOR_BEGIN:
+        case MAP_CURSOR_DATA:
+                cursor->prev = cursor->curr;
+                cursor->curr = cursor->next;
+                cursor->next = map_next(cursor->curr);
+                if (cursor->curr != NULL) {
+                        cursor->state = MAP_CURSOR_DATA;
                 } else {
-                        curser->state = MAP_CURSER_END;
+                        cursor->state = MAP_CURSOR_END;
                 }
                 break;
                 
-        case MAP_CURSER_END:
-        case MAP_CURSER_INVALID:
+        case MAP_CURSOR_END:
+        case MAP_CURSOR_INVALID:
                 /* do nothing. */
                 break;
                 
         default:
                 BUG();
         }
-        ASSERT_MAP_CURSER(curser);
+        ASSERT_MAP_CURSOR(cursor);
 
-        return (curser->state == MAP_CURSER_DATA ? 1 : 0);
+        return (cursor->state == MAP_CURSOR_DATA ? 1 : 0);
 }
 
 /**
- * Go backward curser a step.
+ * Go backward cursor a step.
  *
  * @return 1 if new current is data, or 0.
  */
-int map_curser_prev(map_curser_t *curser)
+int map_cursor_prev(map_cursor_t *cursor)
 {
-        if (curser == NULL) { return 0; }
-        ASSERT_MAP_CURSER(curser);
+        if (cursor == NULL) { return 0; }
+        ASSERT_MAP_CURSOR(cursor);
         
-        switch (curser->state) {
+        switch (cursor->state) {
                 
-        case MAP_CURSER_END:
-        case MAP_CURSER_DATA:
-                curser->next = curser->curr;
-                curser->curr = curser->prev;
-                curser->prev = map_prev(curser->curr);
-                if (curser->curr != NULL) {
-                        curser->state = MAP_CURSER_DATA;
+        case MAP_CURSOR_END:
+        case MAP_CURSOR_DATA:
+                cursor->next = cursor->curr;
+                cursor->curr = cursor->prev;
+                cursor->prev = map_prev(cursor->curr);
+                if (cursor->curr != NULL) {
+                        cursor->state = MAP_CURSOR_DATA;
                 } else {
-                        curser->state = MAP_CURSER_BEGIN;
+                        cursor->state = MAP_CURSOR_BEGIN;
                 }
                 break;
                 
-        case MAP_CURSER_BEGIN:
-        case MAP_CURSER_INVALID:
+        case MAP_CURSOR_BEGIN:
+        case MAP_CURSOR_INVALID:
                 /* do nothing. */
                 break;
                 
         default:
                 BUG();
         }
-        ASSERT_MAP_CURSER(curser);
+        ASSERT_MAP_CURSOR(cursor);
 
-        return (curser->state == MAP_CURSER_DATA ? 1 : 0);
+        return (cursor->state == MAP_CURSOR_DATA ? 1 : 0);
 }
 
 /**
- * Set curser at begin.
+ * Set cursor at begin.
  *
  * @return 1 in success, or 0.
  */
-int map_curser_begin(map_curser_t *curser)
+int map_cursor_begin(map_cursor_t *cursor)
 {
-        if (curser == NULL) { return 0; }
+        if (cursor == NULL) { return 0; }
         
-        ASSERT_MAP_CURSER(curser);
+        ASSERT_MAP_CURSOR(cursor);
         
-        curser->state = MAP_CURSER_BEGIN;
-        curser->prev = NULL;
-        curser->curr = NULL;
-        curser->next = map_first(curser->map);
+        cursor->state = MAP_CURSOR_BEGIN;
+        cursor->prev = NULL;
+        cursor->curr = NULL;
+        cursor->next = map_first(cursor->map);
 
-        ASSERT_MAP_CURSER(curser);
+        ASSERT_MAP_CURSOR(cursor);
         return 1;
 }
 
 /**
- * Set curser at end.
+ * Set cursor at end.
  *
  * @return 1 in success, or 0.
  */
-int map_curser_end(map_curser_t *curser)
+int map_cursor_end(map_cursor_t *cursor)
 {
-        if (curser == NULL) { return 0; }
+        if (cursor == NULL) { return 0; }
 
-        ASSERT_MAP_CURSER(curser);
+        ASSERT_MAP_CURSOR(cursor);
         
-        curser->state = MAP_CURSER_END;
-        curser->prev = map_last(curser->map);
-        curser->curr = NULL;
-        curser->next = NULL;
+        cursor->state = MAP_CURSOR_END;
+        cursor->prev = map_last(cursor->map);
+        cursor->curr = NULL;
+        cursor->next = NULL;
 
-        ASSERT_MAP_CURSER(curser);
+        ASSERT_MAP_CURSOR(cursor);
         return 1;
 }
 
 /**
- * Check curser is at begin.
+ * Check cursor is at begin.
  */
-int map_curser_is_begin(map_curser_t *curser)
+int map_cursor_is_begin(map_cursor_t *cursor)
 {
-        if (curser != NULL && curser->state == MAP_CURSER_BEGIN) {
+        if (cursor != NULL && cursor->state == MAP_CURSOR_BEGIN) {
                 return 1;
         } else {
                 return 0;
@@ -761,11 +761,11 @@ int map_curser_is_begin(map_curser_t *curser)
 }
 
 /**
- * Check curser is at end.
+ * Check cursor is at end.
  */
-int map_curser_is_end(map_curser_t *curser)
+int map_cursor_is_end(map_cursor_t *cursor)
 {
-        if (curser != NULL && curser->state == MAP_CURSER_END) {
+        if (cursor != NULL && cursor->state == MAP_CURSOR_END) {
                 return 1;
         } else {
                 return 0;
@@ -773,81 +773,81 @@ int map_curser_is_end(map_curser_t *curser)
 }
 
 /**
- * Check curser is valid.
+ * Check cursor is valid.
  */
-int map_curser_is_valid(map_curser_t *curser)
+int map_cursor_is_valid(map_cursor_t *cursor)
 {
-        return ((curser != NULL &&
-                 (curser->state == MAP_CURSER_BEGIN ||
-                  curser->state == MAP_CURSER_END   ||
-                  curser->state == MAP_CURSER_DATA)) ? 1 : 0);
+        return ((cursor != NULL &&
+                 (cursor->state == MAP_CURSOR_BEGIN ||
+                  cursor->state == MAP_CURSOR_END   ||
+                  cursor->state == MAP_CURSOR_DATA)) ? 1 : 0);
 }
 
 /**
- * Get value of the curser.
+ * Get value of the cursor.
  *
- * @return value if curser if valid, or TREEMAP_INVALID_VAL.
+ * @return value if cursor if valid, or TREEMAP_INVALID_VAL.
  */
-unsigned long map_curser_get(const map_curser_t *curser)
+unsigned long map_cursor_get(const map_cursor_t *cursor)
 {
-        if (curser == NULL) { return TREEMAP_INVALID_VAL; }
+        if (cursor == NULL) { return TREEMAP_INVALID_VAL; }
 
-        ASSERT_MAP_CURSER(curser);
-        if (curser->state == MAP_CURSER_DATA) {
-                return curser->curr->val;
+        ASSERT_MAP_CURSOR(cursor);
+        if (cursor->state == MAP_CURSOR_DATA) {
+                return cursor->curr->val;
         } else {
                 return TREEMAP_INVALID_VAL;
         }
 }
 
 /**
- * Destroy curser.
+ * Destroy cursor.
  *
- * @curser curser created by @map_curser_create().
+ * @cursor cursor created by @map_cursor_create().
  */
-void map_curser_destroy(map_curser_t *curser)
+void map_cursor_destroy(map_cursor_t *cursor)
 {
-        kfree(curser);
+        kfree(cursor);
 }
 
 /**
- * Test map curser for debug.
+ * Test map cursor for debug.
  *
  * @return 0 in success, or -1.
  */
-int map_curser_test(void)
+int map_cursor_test(void)
 {
         map_t *map;
-        map_curser_t curt;
-        map_curser_t *cur;
+        map_cursor_t curt;
+        map_cursor_t *cur;
 
-        printk_d("map_curser_test begin.\n");
+        printk_d("map_cursor_test begin.\n");
         
         /* Create map. */
         printk_d("Create map.\n");
         map = map_create(GFP_KERNEL);
         ASSERT(map != NULL);
 
-        /* Create and init curser. */
-        printk_d("Create and init curser.\n");
-        cur = map_curser_create(map, GFP_KERNEL);
-        map_curser_init(map, &curt);
+        /* Create and init cursor. */
+        printk_d("Create and init cursor.\n");
+        cur = map_cursor_create(map, GFP_KERNEL);
+        map_cursor_init(map, &curt);
 
         /* Begin -> end. */
         printk_d("Begin -> end.\n");
-        map_curser_begin(&curt);
-        WALB_CHECK(map_curser_is_valid(&curt));
-        WALB_CHECK(! map_curser_next(&curt));
-        WALB_CHECK(map_curser_is_end(&curt));
-        WALB_CHECK(map_curser_is_valid(&curt));
+        map_cursor_begin(&curt);
+        WALB_CHECK(map_cursor_is_valid(&curt));
+        WALB_CHECK(! map_cursor_next(&curt));
+        WALB_CHECK(map_cursor_is_end(&curt));
+        WALB_CHECK(map_cursor_is_valid(&curt));
 
         /* End -> begin. */
         printk_d("End -> begin.\n");
-        map_curser_end(&curt);
-        WALB_CHECK(map_curser_is_valid(&curt));
-        WALB_CHECK(! map_curser_prev(&curt));
-        WALB_CHECK(map_curser_is_begin(&curt));
-        WALB_CHECK(map_curser_is_valid(&curt));
+        map_cursor_end(&curt);
+        WALB_CHECK(map_cursor_is_valid(&curt));
+        WALB_CHECK(! map_cursor_prev(&curt));
+        WALB_CHECK(map_cursor_is_begin(&curt));
+        WALB_CHECK(map_cursor_is_valid(&curt));
         
         /* Prepare map data. */
         printk_d("Prepare map data.\n");
@@ -858,93 +858,93 @@ int map_curser_test(void)
 
         /* Begin to end. */
         printk_d("Begin to end.\n");
-        map_curser_search(cur, 0, MAP_SEARCH_BEGIN);
-        WALB_CHECK(map_curser_is_valid(cur));
-        WALB_CHECK(map_curser_get(cur) == TREEMAP_INVALID_VAL);
-        WALB_CHECK(map_curser_next(cur));
-        WALB_CHECK(map_curser_get(cur) == 10);
-        WALB_CHECK(map_curser_next(cur));
-        WALB_CHECK(map_curser_get(cur) == 20);
-        WALB_CHECK(map_curser_next(cur));
-        WALB_CHECK(map_curser_get(cur) == 30);
-        WALB_CHECK(map_curser_next(cur));
-        WALB_CHECK(map_curser_get(cur) == 40);
-        WALB_CHECK(! map_curser_next(cur));
-        WALB_CHECK(map_curser_is_end(cur));
+        map_cursor_search(cur, 0, MAP_SEARCH_BEGIN);
+        WALB_CHECK(map_cursor_is_valid(cur));
+        WALB_CHECK(map_cursor_get(cur) == TREEMAP_INVALID_VAL);
+        WALB_CHECK(map_cursor_next(cur));
+        WALB_CHECK(map_cursor_get(cur) == 10);
+        WALB_CHECK(map_cursor_next(cur));
+        WALB_CHECK(map_cursor_get(cur) == 20);
+        WALB_CHECK(map_cursor_next(cur));
+        WALB_CHECK(map_cursor_get(cur) == 30);
+        WALB_CHECK(map_cursor_next(cur));
+        WALB_CHECK(map_cursor_get(cur) == 40);
+        WALB_CHECK(! map_cursor_next(cur));
+        WALB_CHECK(map_cursor_is_end(cur));
 
         /* End to begin. */
         printk_d("End to begin.\n");
-        map_curser_search(cur, 0, MAP_SEARCH_END);
-        WALB_CHECK(map_curser_is_valid(cur));
-        WALB_CHECK(map_curser_get(cur) == TREEMAP_INVALID_VAL);
-        WALB_CHECK(map_curser_prev(cur));
-        WALB_CHECK(map_curser_get(cur) == 40);
-        WALB_CHECK(map_curser_prev(cur));
-        WALB_CHECK(map_curser_get(cur) == 30);
-        WALB_CHECK(map_curser_prev(cur));
-        WALB_CHECK(map_curser_get(cur) == 20);
-        WALB_CHECK(map_curser_prev(cur));
-        WALB_CHECK(map_curser_get(cur) == 10);
-        WALB_CHECK(! map_curser_prev(cur));
-        WALB_CHECK(map_curser_is_begin(cur));
+        map_cursor_search(cur, 0, MAP_SEARCH_END);
+        WALB_CHECK(map_cursor_is_valid(cur));
+        WALB_CHECK(map_cursor_get(cur) == TREEMAP_INVALID_VAL);
+        WALB_CHECK(map_cursor_prev(cur));
+        WALB_CHECK(map_cursor_get(cur) == 40);
+        WALB_CHECK(map_cursor_prev(cur));
+        WALB_CHECK(map_cursor_get(cur) == 30);
+        WALB_CHECK(map_cursor_prev(cur));
+        WALB_CHECK(map_cursor_get(cur) == 20);
+        WALB_CHECK(map_cursor_prev(cur));
+        WALB_CHECK(map_cursor_get(cur) == 10);
+        WALB_CHECK(! map_cursor_prev(cur));
+        WALB_CHECK(map_cursor_is_begin(cur));
 
         /* EQ */
         printk_d("EQ test.\n");
-        map_curser_search(cur, 20, MAP_SEARCH_EQ);
-        WALB_CHECK(map_curser_get(cur) == 20);
-        map_curser_search(cur, 25, MAP_SEARCH_EQ);
-        WALB_CHECK(! map_curser_is_valid(cur));
-        WALB_CHECK(map_curser_get(cur) == TREEMAP_INVALID_VAL);
+        map_cursor_search(cur, 20, MAP_SEARCH_EQ);
+        WALB_CHECK(map_cursor_get(cur) == 20);
+        map_cursor_search(cur, 25, MAP_SEARCH_EQ);
+        WALB_CHECK(! map_cursor_is_valid(cur));
+        WALB_CHECK(map_cursor_get(cur) == TREEMAP_INVALID_VAL);
 
         /* LE */
         printk_d("LE test.\n");
-        map_curser_search(cur, 20, MAP_SEARCH_LE);
-        WALB_CHECK(map_curser_get(cur) == 20);
-        map_curser_search(cur, 25, MAP_SEARCH_LE);
-        WALB_CHECK(map_curser_get(cur) == 20);
-        map_curser_search(cur, 10, MAP_SEARCH_LE);
-        WALB_CHECK(map_curser_get(cur) == 10);
-        map_curser_search(cur, 5, MAP_SEARCH_LE);
-        WALB_CHECK(map_curser_get(cur) == TREEMAP_INVALID_VAL);
+        map_cursor_search(cur, 20, MAP_SEARCH_LE);
+        WALB_CHECK(map_cursor_get(cur) == 20);
+        map_cursor_search(cur, 25, MAP_SEARCH_LE);
+        WALB_CHECK(map_cursor_get(cur) == 20);
+        map_cursor_search(cur, 10, MAP_SEARCH_LE);
+        WALB_CHECK(map_cursor_get(cur) == 10);
+        map_cursor_search(cur, 5, MAP_SEARCH_LE);
+        WALB_CHECK(map_cursor_get(cur) == TREEMAP_INVALID_VAL);
 
         /* LT */
         printk_d("LT test.\n");
-        map_curser_search(cur, 20, MAP_SEARCH_LT);
-        WALB_CHECK(map_curser_get(cur) == 10);
-        map_curser_search(cur, 25, MAP_SEARCH_LT);
-        WALB_CHECK(map_curser_get(cur) == 20);
-        map_curser_search(cur, 10, MAP_SEARCH_LT);
-        WALB_CHECK(map_curser_get(cur) == TREEMAP_INVALID_VAL);
+        map_cursor_search(cur, 20, MAP_SEARCH_LT);
+        WALB_CHECK(map_cursor_get(cur) == 10);
+        map_cursor_search(cur, 25, MAP_SEARCH_LT);
+        WALB_CHECK(map_cursor_get(cur) == 20);
+        map_cursor_search(cur, 10, MAP_SEARCH_LT);
+        WALB_CHECK(map_cursor_get(cur) == TREEMAP_INVALID_VAL);
 
         /* GE */
         printk_d("GE test.\n");
-        map_curser_search(cur, 20, MAP_SEARCH_GE);
-        WALB_CHECK(map_curser_get(cur) == 20);
-        map_curser_search(cur, 25, MAP_SEARCH_GE);
-        WALB_CHECK(map_curser_get(cur) == 30);
-        map_curser_search(cur, 40, MAP_SEARCH_GE);
-        WALB_CHECK(map_curser_get(cur) == 40);
-        map_curser_search(cur, 45, MAP_SEARCH_GE);
-        WALB_CHECK(map_curser_get(cur) == TREEMAP_INVALID_VAL);
+        map_cursor_search(cur, 20, MAP_SEARCH_GE);
+        WALB_CHECK(map_cursor_get(cur) == 20);
+        map_cursor_search(cur, 25, MAP_SEARCH_GE);
+        WALB_CHECK(map_cursor_get(cur) == 30);
+        map_cursor_search(cur, 40, MAP_SEARCH_GE);
+        WALB_CHECK(map_cursor_get(cur) == 40);
+        map_cursor_search(cur, 45, MAP_SEARCH_GE);
+        WALB_CHECK(map_cursor_get(cur) == TREEMAP_INVALID_VAL);
 
         /* GT */
         printk_d("GT test.\n");
-        map_curser_search(cur, 20, MAP_SEARCH_GT);
-        WALB_CHECK(map_curser_get(cur) == 30);
-        map_curser_search(cur, 25, MAP_SEARCH_GT);
-        WALB_CHECK(map_curser_get(cur) == 30);
-        map_curser_search(cur, 40, MAP_SEARCH_GT);
-        WALB_CHECK(map_curser_get(cur) == TREEMAP_INVALID_VAL);
+        map_cursor_search(cur, 20, MAP_SEARCH_GT);
+        WALB_CHECK(map_cursor_get(cur) == 30);
+        map_cursor_search(cur, 25, MAP_SEARCH_GT);
+        WALB_CHECK(map_cursor_get(cur) == 30);
+        map_cursor_search(cur, 40, MAP_SEARCH_GT);
+        WALB_CHECK(map_cursor_get(cur) == TREEMAP_INVALID_VAL);
 
-        /* Destroy curser. */
-        printk_d("Destroy curser.\n");
-        map_curser_destroy(cur);
+        /* Destroy cursor. */
+        printk_d("Destroy cursor.\n");
+        map_cursor_destroy(cur);
 
         /* Destroy map. */
         printk_d("Destroy map.\n");
         map_destroy(map);
         
-        printk_d("map_curser_test end.\n");
+        printk_d("map_cursor_test end.\n");
         return 0;
 
 error:
