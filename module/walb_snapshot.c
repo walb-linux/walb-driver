@@ -927,13 +927,133 @@ static int is_all_sectors_free(const struct snapshot_data *snapd)
 }
 
 /**
+ * Get number of snapshots with the specified snapshot_id
+ * by scanning name_idx.
+ *
+ * This function is used for test.
+ * 0 or 1 is valid.
+ */
+static int get_n_snapshot_in_name_idx(
+        const struct snapshot_data *snapd, u32 snapshot_id)
+{
+        hashtbl_cursor_t curt;
+        hashtbl_cursor_t *cur = &curt;
+        int count = 0;
+        unsigned long val;
+        
+        hashtbl_cursor_init(snapd->name_idx, cur);
+        hashtbl_cursor_begin(cur);
+        while (hashtbl_cursor_next(cur)) {
+                
+                val = hashtbl_cursor_val(cur);
+                ASSERT(val != HASHTBL_INVALID_VAL);
+                if (snapshot_id == (u32)val) {
+                        count ++;
+                }
+        }
+        ASSERT(hashtbl_cursor_is_end(cur));
+        
+        return count;
+}
+
+/**
+ * Get number of snapshots with the specified snapshot_id
+ * by scanning lsid_idx.
+ *
+ * This function is used for test.
+ * 0 or 1 is valid.
+ */
+static int get_n_snapshot_in_lsid_idx(
+        const struct snapshot_data *snapd, u32 snapshot_id)
+{
+        multimap_cursor_t curt;
+        multimap_cursor_t *cur = &curt;
+        int count = 0;
+        unsigned long val;
+
+        multimap_cursor_init(snapd->lsid_idx, cur);
+        multimap_cursor_begin(cur);
+        while (multimap_cursor_next(cur)) {
+
+                val = multimap_cursor_val(cur);
+                ASSERT(val != TREEMAP_INVALID_VAL);
+                if (snapshot_id == (u32)val) {
+                        count ++;
+                }
+        }
+        ASSERT(multimap_cursor_is_end(cur));
+
+        return count;
+}
+
+/**
+ * Check snapshot_id is unique in the name index.
+ * Do not call this interrupted context.
+ *
+ * @return Non-zero if valid, or 0.
+ */
+static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
+{
+        hashtbl_cursor_t curt;
+        hashtbl_cursor_t *cur = &curt;
+        int count = 0;
+        unsigned long val;
+        map_t *smap = NULL; /* map of snapshot_id -> 0. */
+        u32 snapshot_id;
+
+        smap = map_create(GFP_KERNEL);
+        if (smap == NULL) {
+                printk_e("map_create failed.\n");
+                goto error;
+        }
+        
+        hashtbl_cursor_init(snapd->name_idx, cur);
+        hashtbl_cursor_begin(cur);
+        while (hashtbl_cursor_next(cur)) {
+                
+                val = hashtbl_cursor_val(cur);
+                ASSERT(val != HASHTBL_INVALID_VAL);
+                snapshot_id = (u32)val;
+
+                if (map_add(smap, snapshot_id, 0, GFP_KERNEL)) {
+
+                        /* now editing */
+
+                        
+                }
+                
+        }
+        ASSERT(hashtbl_cursor_is_end(cur));
+        map_destroy(smap);
+
+        return 1;
+error:
+        if (smap) { map_destroy(smap); }
+        return 0;
+}
+
+/**
+ * Check snapshot_id is unique in the lsid index.
+ *
+ * @return Non-zero if valid, or 0.
+ */
+static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
+{
+
+        /* now editing */
+
+        return 0;
+}
+
+/**
  * Check property that each snapshot id are stored
  * at most once in name_idx and lsid_idx respectively.
  *
- * This function is used for debug and heavy.
+ * This function is used for debug and heavy (O(n^2)).
  *
  * @return 1 in valid, or 0.
  */
+__attribute__((unused))
 static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd)
 {
         unsigned long val;
@@ -949,7 +1069,7 @@ static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd)
         map_cursor_search(&curt, 0, MAP_SEARCH_BEGIN);
         while (map_cursor_next(&curt)) {
 
-                val = map_cursor_get(&curt);
+                val = map_cursor_val(&curt);
                 ASSERT(val != TREEMAP_INVALID_VAL);
                 snapshot_id = (u32)val;
 
@@ -1078,7 +1198,7 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
                 map_cursor_init(snapd->sectors, &curt);
                 map_cursor_search(&curt, 0, MAP_SEARCH_BEGIN);
                 while (map_cursor_next(&curt)) {
-                        ctl = (void *)map_cursor_get(&curt);
+                        ctl = (void *)map_cursor_val(&curt);
                         ASSERT(ctl != NULL && ctl != (void *)TREEMAP_INVALID_VAL);
                         ASSERT(ctl->sector == NULL);
                         ASSERT(ctl->state == SNAPSHOT_SECTOR_CONTROL_FREE);
