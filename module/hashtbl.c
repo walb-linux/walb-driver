@@ -1004,6 +1004,11 @@ int hashtbl_cursor_test(void)
         
         printk_d("hashtbl_cursor_test begin.\n");
 
+        /*
+         * Test with small data set.
+         */
+        printk_d("***** Test with small data set *****\n");
+        
         /* Create hash table. */
         printk_d("Create hashtbl");
         htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
@@ -1077,12 +1082,77 @@ int hashtbl_cursor_test(void)
         printk_d("Destroy hash table.\n");
         hashtbl_destroy(htbl);
 
+        /*
+         * Test with large data set.
+         */
+        printk_d("***** Test with larget data set *****\n");
+
+        /* Create hash table. */
+        printk_d("Create hashtbl");
+        htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
+        ASSERT(htbl != NULL);
+
+        /* Initialize cursor. */
+        printk_d("Initialize cursor.\n");
+        hashtbl_cursor_init(htbl, &curt);
+
+        /* Prepare hash table data. */
+        printk_d("Prepare hash table data.\n");
+        for (i = 0; i < 1000; i ++) {
+                key = i;
+                val = i;
+                memcpy(buf, &key, sizeof(int));
+                WALB_CHECK(hashtbl_add(htbl, buf, sizeof(int),
+                                       val, GFP_KERNEL) == 0);
+        }
+        WALB_CHECK(hashtbl_n_items(htbl) == 1000);
+
+        /* Begin to end. */
+        printk_d("Begin to end.\n");
+        hashtbl_cursor_begin(&curt);
+        i = 0;
+        while (hashtbl_cursor_next(&curt)) {
+                WALB_CHECK(hashtbl_cursor_is_valid(&curt));
+
+                WALB_CHECK(hashtbl_cursor_key_size(&curt) == sizeof(int));
+                memcpy(&key, hashtbl_cursor_key(&curt), sizeof(int));
+                val = hashtbl_cursor_val(&curt);
+                WALB_CHECK(val != HASHTBL_INVALID_VAL);
+                i ++;
+        }
+        printk_d("i: %d\n", i);
+        WALB_CHECK(i == 1000);
+        WALB_CHECK(hashtbl_cursor_is_end(&curt));
+
+        /* Begin to end with delete */
+        printk_d("Begin to end with delete.\n");
+        hashtbl_cursor_begin(&curt);
+        i = 0; j = 0;
+        while (hashtbl_cursor_next(&curt)) {
+                WALB_CHECK(hashtbl_cursor_is_valid(&curt));
+                
+                val = hashtbl_cursor_val(&curt);
+                WALB_CHECK(val != HASHTBL_INVALID_VAL);
+                if (val % 2 == 0) {
+                        WALB_CHECK(hashtbl_cursor_del(&curt) == val);
+                        j ++;
+                        WALB_CHECK(curt.state == HASHTBL_CURSOR_DELETED);
+                }
+                i ++;
+        }
+        WALB_CHECK(i == 1000);
+        WALB_CHECK(j == 500);
+        WALB_CHECK(hashtbl_cursor_is_end(&curt));
+        WALB_CHECK(hashtbl_n_items(htbl) == 500);
+
+        printk_d("Destroy hash table.\n");
+        hashtbl_destroy(htbl);
+        
         printk_d("hashtbl_cursor_test end.\n");
         return 0;
         
 error:
         return -1;
 }
-
 
 MODULE_LICENSE("Dual BSD/GPL");
