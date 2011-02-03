@@ -39,9 +39,6 @@
 /**
  * For test.
  */
-#ifdef WALB_CHECK
-#undef WALB_CHECK
-#endif
 #define WALB_CHECK(cond) do {                                           \
                 if (! (cond)) {                                         \
                         printk_e("CHECK FAILED in %s:%d:%s.\n",         \

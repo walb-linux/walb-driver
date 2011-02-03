@@ -31,6 +31,11 @@ static int __init test2_init(void)
                 goto error;
         }
 
+        if (multimap_cursor_test()) {
+                printk(KERN_ERR "multimap_cursor_test() failed.\n");
+                goto error;
+        }
+
         printk(KERN_INFO "test2_init end\n");
 
 error:
