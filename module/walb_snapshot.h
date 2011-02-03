@@ -24,6 +24,7 @@
 /**
  * Printk macro for debug.
  */
+#if defined(WALB_DEBUG)
 #define PRINT_SNAPSHOT_RECORD(flag, rec) printk(                        \
                 flag                                                    \
                 "snapshot_record: id %u name "                          \
@@ -31,6 +32,9 @@
                 "lsid %"PRIu64" ts %"PRIu64"\n",                        \
                 rec->snapshot_id,                                       \
                 rec->name, rec->lsid, rec->timestamp)
+#else
+#define PRINT_SNAPSHOT_RECORD(flag, rec)
+#endif
 
 /**
  * Snapshot sector control state.
