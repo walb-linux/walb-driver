@@ -150,32 +150,11 @@ static inline struct walb_snapshot_record* get_snapshot_record_by_idx(
 }
 
 /**
- * Iterative over snapshot record array.
- *
- * @i int record index.
- * @rec pointer to record.
- * @sect pointer to walb_snapshot_sector
- */
-#define for_each_snapshot_record(i, rec, sect)                          \
-        for (i = 0;                                                     \
-             i < max_n_snapshots_in_sector((sect)->size) &&             \
-                     ({ rec = &get_snapshot_sector                      \
-                                     (sect)->record[i]; 1; });          \
-             i ++)
-
-#define for_each_snapshot_record_const(i, rec, sect)                    \
-        for (i = 0;                                                     \
-             i < max_n_snapshots_in_sector((sect)->size) &&             \
-                     ({ rec = &get_snapshot_sector_const                \
-                                     (sect)->record[i]; 1; });          \
-             i ++)
-
-/**
  * Iterative over snapshot sectors.
  *
  * @off snapshot sector offset.
  * @ctl snapshot sector control.
- * @snapd snapshot
+ * @snapd snapshot data.
  */
 #define for_each_snapshot_sector(off, ctl, snapd)                       \
         for (off = snapd->start_offset;                                 \

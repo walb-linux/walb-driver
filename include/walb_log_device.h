@@ -291,6 +291,27 @@ static inline int is_valid_snapshot_record(
 }
 
 /**
+ * Iterative over snapshot record array.
+ *
+ * @i int record index.
+ * @rec pointer to record.
+ * @sect pointer to walb_snapshot_sector
+ */
+#define for_each_snapshot_record(i, rec, sect)                          \
+        for (i = 0;                                                     \
+             i < max_n_snapshots_in_sector((sect)->size) &&             \
+                     ({ rec = &get_snapshot_sector                      \
+                                     (sect)->record[i]; 1; });          \
+             i ++)
+
+#define for_each_snapshot_record_const(i, rec, sect)                    \
+        for (i = 0;                                                     \
+             i < max_n_snapshots_in_sector((sect)->size) &&             \
+                     ({ rec = &get_snapshot_sector_const                \
+                                     (sect)->record[i]; 1; });          \
+             i ++)
+
+/**
  * Get metadata size
  *
  * @sector_size sector size.
