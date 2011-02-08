@@ -368,9 +368,8 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
                 goto error1;
         }
         /* print_snapshot_sector(snap_sectp, physical_bs); */
-        
 #endif
-        
+        free(snap_sectp);
         return true;
 
 error1:
