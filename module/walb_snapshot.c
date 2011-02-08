@@ -91,10 +91,10 @@ static int delete_snapshot_record_from_index(
         const struct walb_snapshot_record *rec);
 
 /* Helper functions. */
-static int snapshot_data_initialize_sector(struct snapshot_data *snapd,
-                                           u32 *next_snapshot_id_p,
-                                           struct snapshot_sector_control *ctl,
-                                           struct sector_data *sect);
+static int snapshot_data_load_sector(struct snapshot_data *snapd,
+                                     u32 *next_snapshot_id_p,
+                                     struct snapshot_sector_control *ctl,
+                                     struct sector_data *sect);
 static int is_all_sectors_free(const struct snapshot_data *snapd);
 static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd);
 
@@ -842,7 +842,8 @@ error0:
 }
 
 /**
- * Initialize a sector inside snapshot_data_initialize().
+ * Read all records in a snapshot sector and insert into snapshot data.
+ * called by snapshot_data_initialize().
  *
  * @snapd snapshot data.
  * @next_snapshot_id_p pointer to next_snapshot_id.
@@ -851,10 +852,10 @@ error0:
  *
  * @return 0 in success, or -1.
  */
-static int snapshot_data_initialize_sector(struct snapshot_data *snapd,
-                                           u32 *next_snapshot_id_p,
-                                           struct snapshot_sector_control *ctl,
-                                           struct sector_data *sect)
+static int snapshot_data_load_sector(struct snapshot_data *snapd,
+                                     u32 *next_snapshot_id_p,
+                                     struct snapshot_sector_control *ctl,
+                                     struct sector_data *sect)
 {
         int i;
         struct walb_snapshot_record *rec;
@@ -1246,8 +1247,8 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
                 /* Check validness,
                    assign next_snapshot_id,
                    and insert into indices. */
-                if (snapshot_data_initialize_sector(
-                            snapd, &next_snapshot_id, ctl, sect) != 0) {
+                if (snapshot_data_load_sector
+                    (snapd, &next_snapshot_id, ctl, sect) != 0) {
                         goto error1;
                 }
 
