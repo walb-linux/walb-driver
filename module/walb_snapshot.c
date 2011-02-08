@@ -992,6 +992,7 @@ static int get_n_snapshot_in_lsid_idx(
  *
  * @return Non-zero if valid, or 0.
  */
+__attribute__((unused))
 static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
 {
         hashtbl_cursor_t curt;
@@ -1000,6 +1001,7 @@ static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
         unsigned long val;
         map_t *smap = NULL; /* map of snapshot_id -> 0. */
         u32 snapshot_id;
+        int ret;
 
         smap = map_create(GFP_KERNEL);
         if (smap == NULL) {
@@ -1015,18 +1017,17 @@ static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
                 ASSERT(val != HASHTBL_INVALID_VAL);
                 snapshot_id = (u32)val;
 
-                if (map_add(smap, snapshot_id, 0, GFP_KERNEL)) {
-
-                        /* now editing */
-
-                        
+                ret = map_add(smap, snapshot_id, 0, GFP_KERNEL);
+                if (ret == -EEXIST) {
+                        count ++;
+                } else if (ret != 0) {
+                        printk_e("map_add failed.\n");
+                        goto error;
                 }
-                
         }
         ASSERT(hashtbl_cursor_is_end(cur));
         map_destroy(smap);
-
-        return 1;
+        return (count == 0);
 error:
         if (smap) { map_destroy(smap); }
         return 0;
@@ -1037,11 +1038,44 @@ error:
  *
  * @return Non-zero if valid, or 0.
  */
+__attribute__((unused))
 static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
 {
+        multimap_cursor_t curt;
+        multimap_cursor_t *cur = &curt;
+        int count = 0;
+        unsigned long val;
+        map_t *smap = NULL; /* map of snapshot_id -> 0. */
+        u32 snapshot_id;
+        int ret;
 
-        /* now editing */
+        smap = map_create(GFP_KERNEL);
+        if (smap == NULL) {
+                printk_e("map_create failed.\n");
+                goto error;
+        }
+        
+        multimap_cursor_init(snapd->lsid_idx, cur);
+        multimap_cursor_begin(cur);
+        while (multimap_cursor_next(cur)) {
+                
+                val = multimap_cursor_val(cur);
+                ASSERT(val != TREEMAP_INVALID_VAL);
+                snapshot_id = (u32)val;
 
+                ret = map_add(smap, snapshot_id, 0, GFP_KERNEL);
+                if (ret == -EEXIST) {
+                        count ++;
+                } else if (ret != 0) {
+                        printk_e("map_add failed.\n");
+                        goto error;
+                }
+        }
+        ASSERT(multimap_cursor_is_end(cur));
+        map_destroy(smap);
+        return (count == 0);
+error:
+        if (smap) { map_destroy(smap); }
         return 0;
 }
 
@@ -1049,49 +1083,13 @@ static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
  * Check property that each snapshot id are stored
  * at most once in name_idx and lsid_idx respectively.
  *
- * This function is used for debug and heavy (O(n^2)).
- *
- * @return 1 in valid, or 0.
+ * @return Non-zero in valid, or 0.
  */
 __attribute__((unused))
 static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd)
 {
-        unsigned long val;
-        u32 snapshot_id;
-        map_cursor_t curt;
-        int count;
-        int ret = 1;
-
-        ASSERT(snapd != NULL);
-        
-        /* For each snapshot_id. */
-        map_cursor_init(snapd->id_idx, &curt);
-        map_cursor_search(&curt, 0, MAP_SEARCH_BEGIN);
-        while (map_cursor_next(&curt)) {
-
-                val = map_cursor_val(&curt);
-                ASSERT(val != TREEMAP_INVALID_VAL);
-                snapshot_id = (u32)val;
-
-                /* Check the snapshot_id appears only once in the name_idx; */
-                count = get_n_snapshot_in_name_idx(snapd, snapshot_id);
-                if (count != 1) {
-                        printk_e("snapshot %u appears more than once in name_idx.\n",
-                                 snapshot_id);
-                        ret = 0;
-                }
-                
-                /* Check the snapshot_id appears only once in the lsid_idx. */
-                count = get_n_snapshot_in_lsid_idx(snapd, snapshot_id);
-                if (count != 1) {
-                        printk_e("snapshot %u appears more than once in lsid_idx.\n",
-                                 snapshot_id);
-                        ret = 0;
-                }
-        }
-        ASSERT(map_cursor_is_end(&curt));
-        
-        return ret;
+        return (is_valid_snapshot_name_idx(snapd) &&
+                is_valid_snapshot_lsid_idx(snapd));
 }
 
 /*******************************************************************************
@@ -1265,6 +1263,7 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
                 ASSERT(ctl->state == SNAPSHOT_SECTOR_CONTROL_FREE);
                 ASSERT(ctl->sector == NULL);
         }
+        ASSERT(is_valid_snapshot_id_appearance(snapd));
 
         /* Set next_snapshot_id. */
         snapd->next_snapshot_id = next_snapshot_id;
