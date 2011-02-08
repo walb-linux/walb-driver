@@ -139,7 +139,7 @@ typedef struct walb_super_sector {
         char name[DISK_NAME_LEN];
 
         /* sector type */
-        u16 sector_type;
+        u16 sector_type; /* must be SECTOR_TYPE_SUPER. */
         u16 reserved1;
         u16 reserved2;
         u16 reserved3;
@@ -172,7 +172,43 @@ typedef struct walb_super_sector {
         
 } __attribute__((packed)) walb_super_sector_t;
 
+/**
+ * THIS MUST BE MERGED from tool/util.c
+ *
+ * Check super sector.
+ * This does not test checksum value.
+ *
+ * @sect pointer to super sector image.
+ *
+ * @return non-zero if valid, or 0.
+ */
+static inline int NOT_TESTED_is_valid_super_sector(const struct walb_super_sector *sect)
+{
+#ifdef CHECK
+#undef CHECK
+#endif
+#define CHECK(condition) if (! (condition)) goto invalid
+        
+        CHECK(sect->logical_bs > 0);
+        CHECK(sect->physical_bs > 0);
+        CHECK(sect->physical_bs % sect->logical_bs == 0);
+        CHECK(sect->snapshot_metadata_size > 0);
+        CHECK(sect->sector_type == SECTOR_TYPE_SUPER);
+        CHECK(sect->ring_buffer_size > 0);
+        CHECK(sect->oldest_lsid != INVALID_LSID);
+        CHECK(sect->written_lsid != INVALID_LSID);
+        CHECK(sect->oldest_lsid <= sect->written_lsid);
+        CHECK(sect->device_size > 0);
 
+#undef CHECK
+        return 1;
+invalid:
+        return 0;
+}
+
+/**
+ * Invalid snapshot id.
+ */
 #define INVALID_SNAPSHOT_ID ((u32)(-1))
 
 /**
@@ -289,27 +325,6 @@ static inline int is_valid_snapshot_record(
                 rec->lsid != INVALID_LSID &&
                 is_valid_snapshot_name(rec->name));
 }
-
-/**
- * Iterative over snapshot record array.
- *
- * @i int record index.
- * @rec pointer to record.
- * @sect pointer to walb_snapshot_sector
- */
-#define for_each_snapshot_record(i, rec, sect)                          \
-        for (i = 0;                                                     \
-             i < max_n_snapshots_in_sector((sect)->size) &&             \
-                     ({ rec = &get_snapshot_sector                      \
-                                     (sect)->record[i]; 1; });          \
-             i ++)
-
-#define for_each_snapshot_record_const(i, rec, sect)                    \
-        for (i = 0;                                                     \
-             i < max_n_snapshots_in_sector((sect)->size) &&             \
-                     ({ rec = &get_snapshot_sector_const                \
-                                     (sect)->record[i]; 1; });          \
-             i ++)
 
 /**
  * Get metadata size

@@ -20,14 +20,38 @@ struct snapshot_data_u
         const walb_super_sector_t *super; /* super sector */
         int n_sectors; /* number of snapshot sectors. */
         u32 next_snapshot_id; /* next snapshot id. */
-        walb_snapshot_sector_t *sector; /* array of sector images. */
+        u8 *sector; /* array of sector images. */
 };
+
+/**
+ * Macros.
+ */
+#define get_n_sectors(snapd) ((snapd)->super->snapshot_metadata_size)
+#define get_sector_size(snapd) ((snapd)->super->physical_bs)
+
+/**
+ * Iterative over snapshot sectors.
+ *
+ * @i int sector index.
+ * @off u64 snapshot sector offset in the log device.
+ * @snapd pointer to struct snapshot_data_u.
+ */
+#define for_each_snapshot_sector_offset(i, off, snapd)                  \
+        for (i = 0;                                                     \
+             i < snapd->n_sectors &&                                    \
+                     ({ off = get_metadata_offset                       \
+                                     (snapd->super->physical_bs)        \
+                                     + (u64)i; } 1;);                   \
+             off ++)
+
 
 /*
  * Prototypes for struct snapshot_data_u.
  */
-struct snapshot_data_u* initialize_snapshot_data_u(
+struct snapshot_data_u* alloc_snapshot_data_u(
         int fd, const walb_super_sector_t* super_sectp);
+void free_snapshot_data_u(struct snapshot_data_u* snapd);
+bool initialize_snapshot_data_u(struct snapshot_data_u* snapd);
 bool finalize_snapshot_data_u(struct snapshot_data_u* snapd);
 bool is_valid_snaphsot_data_u(struct snapshot_data_u* snapd);
 
