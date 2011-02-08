@@ -329,18 +329,22 @@ static struct hlist_node* hlist_prev(const struct hlist_head *head,
  * @key key
  * @newcell prepared inserted value.
  *
- * @return 0 in success, or -1.
+ * @return 0 in success,
+ *         -ENOMEM if no memory.
+ *         -EEXIST if key already exists.
  */
 static int
-multimap_add_newkey(multimap_t *tmap, u64 key, struct tree_cell *newcell, gfp_t gfp_mask)
+multimap_add_newkey(multimap_t *tmap, u64 key,
+                    struct tree_cell *newcell, gfp_t gfp_mask)
 {
+        int ret;
         struct tree_cell_head *newhead;
 
         /* Allocate and initialize new tree cell head. */
         newhead = kmalloc(sizeof(struct tree_cell_head), gfp_mask);
         if (newhead == NULL) {
                 printk_e("memory allocation failed.\n");
-                goto error0;
+                goto nomem;
         }
         newhead->key = key;
         INIT_HLIST_HEAD(&newhead->head);
@@ -348,16 +352,15 @@ multimap_add_newkey(multimap_t *tmap, u64 key, struct tree_cell *newcell, gfp_t 
         ASSERT(! hlist_empty(&newhead->head));
                 
         /* Add to the map. */
-        if (map_add((map_t *)tmap, key, (unsigned long)newhead, gfp_mask)) {
+        ret = map_add((map_t *)tmap, key, (unsigned long)newhead, gfp_mask);
+        if (ret != 0) {
+                kfree(newhead);
                 printk_e("map_add failed.\n");
-                goto error1;
+                ASSERT(ret != -EINVAL);
         }
-        return 0;
-
-error1:
-        kfree(newhead);
-error0:
-        return -1;
+        return ret;
+nomem:
+        return -ENOMEM;
 }
 
 /**
@@ -366,7 +369,7 @@ error0:
  * @tree_cell_head tree cell head.
  * @newcell cell to be added.
  *
- * @return 0 in success, -1 when the same key-value pair already exists.
+ * @return 0 in success, -EEXIST when the same key-value pair already exists.
  */
 static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *newcell)
 {
@@ -390,7 +393,7 @@ static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *n
                 hlist_add_head(&newcell->list, hlhead);
                 return 0;
         } else {
-                return -1;
+                return -EEXIST;
         }
 }
 
@@ -502,7 +505,10 @@ void map_destroy(map_t *tmap)
 /**
  * Add key-value pair to the tree map.
  *
- * @return 0 in success, or -1.
+ * @return 0 in success,
+ *         -ENOMEM if no memory.
+ *         -EEXIST if key already exists.
+ *         -EINVAL if value is invalid.
  */
 int map_add(map_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 {
@@ -513,17 +519,8 @@ int map_add(map_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 
         if (val == TREEMAP_INVALID_VAL) {
                 printk_e("Val must not be TREEMAP_INVALID_VAL.\n");
-                goto error0;
+                goto inval;
         }
-
-        /* Generate new node. */
-        newnode = kmalloc(sizeof(struct tree_node), gfp_mask);
-        if (newnode == NULL) {
-                printk_e("kmalloc failed.\n");
-                goto error0;
-        }
-        newnode->key = key;
-        newnode->val = val;
 
         /* Figure out where to put new node. */
         childp = &(tmap->root.rb_node);
@@ -537,9 +534,18 @@ int map_add(map_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
                         childp = &(parent->rb_right);
                 } else {
                         ASSERT(key == t->key);
-                        goto error1;
+                        goto exist;
                 }
         }
+
+        /* Generate new node. */
+        newnode = kmalloc(sizeof(struct tree_node), gfp_mask);
+        if (newnode == NULL) {
+                printk_e("kmalloc failed.\n");
+                goto nomem;
+        }
+        newnode->key = key;
+        newnode->val = val;
 
         /* Add new node and rebalance tree. */
         rb_link_node(&newnode->node, parent, childp);
@@ -547,10 +553,12 @@ int map_add(map_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 
         return 0;
 
-error1:
-        kfree(newnode);
-error0:
-        return -1;
+nomem:
+        return -ENOMEM;
+exist:
+        return -EEXIST;
+inval:
+        return -EINVAL;
 }
 
 /**
@@ -687,7 +695,7 @@ int map_test(void)
         WALB_CHECK(map_lookup(tmap, 0) == TREEMAP_INVALID_VAL);
 
         /* Returns error if val is TREEMAP_INVALID_VAL. */
-        WALB_CHECK(map_add(tmap, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) != 0);
+        WALB_CHECK(map_add(tmap, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) == -EINVAL);
 
         /* Insert records. */
         for (i = 0; i < 10000; i ++) {
@@ -695,7 +703,7 @@ int map_test(void)
                 /* Succeed. */
                 WALB_CHECK(map_add(tmap, key, key + i, GFP_KERNEL) == 0);
                 /* Fail due to key exists. */
-                WALB_CHECK(map_add(tmap, key, key + i, GFP_KERNEL) != 0);
+                WALB_CHECK(map_add(tmap, key, key + i, GFP_KERNEL) == -EEXIST);
         }
         n = map_n_items(tmap);
         WALB_CHECK(n == 10000);
@@ -1180,9 +1188,10 @@ void multimap_destroy(multimap_t *tmap)
  * Different key-value pair can be added.
  * The same key-value pair can not be added.
  *
- * @return 0 in success.
- *         1 whe key-value already exists.
- *         -1 in error.
+ * @return 0 in success,
+ *         -ENOMEM if no memory.
+ *         -EEXIST if key already exists.
+ *         -EINVAL if value is invalid.
  */
 int multimap_add(multimap_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 {
@@ -1193,14 +1202,14 @@ int multimap_add(multimap_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 
         if (val == TREEMAP_INVALID_VAL) {
                 printk_e("Val must not be TREEMAP_INVALID_VAL.\n");
-                goto error0;
+                goto inval;
         }
 
         /* Prepare new cell. */
         newcell = kmalloc(sizeof(struct tree_cell), gfp_mask);
         if (newcell == NULL) {
                 printk_e("kmalloc failed.\n");
-                goto error0;
+                goto nomem;
         }
         newcell->val = val;
         ASSERT_TREECELL(newcell);
@@ -1209,10 +1218,8 @@ int multimap_add(multimap_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 
         if (t == NULL) {
                 /* There is no record with that key. */
-                if (multimap_add_newkey(tmap, key, newcell, gfp_mask) != 0) {
-                        printk_e("multimap_add_newkey() failed.\n");
-                        goto error1;
-                }
+                ret = multimap_add_newkey(tmap, key, newcell, gfp_mask);
+                if (ret) { printk_d("multimap_add_newkey() failed.\n"); }
         } else {
                 /* There is already record(s) with that key. */
                 ASSERT(t->key == key);
@@ -1220,17 +1227,17 @@ int multimap_add(multimap_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
                 chead = (struct tree_cell_head *)(t->val);
                 ASSERT(chead->key == key);
 
-                if (multimap_add_oldkey(chead, newcell) != 0) {
-                        ret = 1;
-                }
+                ret = multimap_add_oldkey(chead, newcell);
+                if (ret) { printk_d("multimap_add_oldkey() failed.\n"); }
         }
+
+        if (ret) { kfree(newcell); }
         return ret;
-        
-error1:
-        kfree(newcell);
-error0:
-        return -1;
-        
+
+inval:
+        return -EINVAL;
+nomem:
+        return -ENOMEM;
 }
 
 /**
@@ -1481,7 +1488,7 @@ int multimap_test(void)
         
         /* Returns error if val is TREEMAP_INVALID_VAL. */
         printk_d("Invalid value insert..\n");
-        WALB_CHECK(multimap_add(tm, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) != 0);
+        WALB_CHECK(multimap_add(tm, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) == -EINVAL);
 
         /* Insert records. */
         printk_d("Insert records.\n");
@@ -1490,7 +1497,7 @@ int multimap_test(void)
                 /* Succeed. */
                 WALB_CHECK(multimap_add(tm, key, key + i, GFP_KERNEL) == 0);
                 /* Fail due to key exists. */
-                WALB_CHECK(multimap_add(tm, key, key + i, GFP_KERNEL) != 0);
+                WALB_CHECK(multimap_add(tm, key, key + i, GFP_KERNEL) == -EEXIST);
                 /* Succeed due to value is different. */
                 WALB_CHECK(multimap_add(tm, key, key + i + 1, GFP_KERNEL) == 0);
         }
