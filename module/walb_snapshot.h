@@ -111,66 +111,6 @@ struct snapshot_data
 };
 
 /**
- * Assersion of (struct sector_data *).
- */
-#define ASSERT_SNAPSHOT_SECTOR(sect) ASSERT(                            \
-                (sect) != NULL &&                                       \
-                (sect)->size > 0 && (sect)->data != NULL &&             \
-                ((struct walb_snapshot_sector *)                        \
-                 (sect)->data)->sector_type == SECTOR_TYPE_SNAPSHOT)
-
-/**
- * Get snapshot sector.
- */
-static inline struct walb_snapshot_sector*
-get_snapshot_sector(struct sector_data *sect)
-{
-        ASSERT_SECTOR_DATA(sect);
-        return (struct walb_snapshot_sector *)(sect->data);
-}
-
-/**
- * Get snapshot sector for const pointer.
- */
-static inline const struct walb_snapshot_sector*
-get_snapshot_sector_const(const struct sector_data *sect)
-{
-        ASSERT_SECTOR_DATA(sect);
-        return (const struct walb_snapshot_sector *)(sect->data);
-}
-
-/**
- * Get snapshot record by record index inside snapshot sector.
- */
-static inline struct walb_snapshot_record* get_snapshot_record_by_idx(
-        struct sector_data *sect, int idx)
-{
-        ASSERT_SECTOR_DATA(sect);
-        return &get_snapshot_sector(sect)->record[idx];
-}
-
-/**
- * Iterative over snapshot record array.
- *
- * @i int record index.
- * @rec pointer to record.
- * @sect pointer to walb_snapshot_sector
- */
-#define for_each_snapshot_record(i, rec, sect)                          \
-        for (i = 0;                                                     \
-             i < max_n_snapshots_in_sector((sect)->size) &&             \
-                     ({ rec = &get_snapshot_sector                      \
-                                     (sect)->record[i]; 1; });          \
-             i ++)
-
-#define for_each_snapshot_record_const(i, rec, sect)                    \
-        for (i = 0;                                                     \
-             i < max_n_snapshots_in_sector((sect)->size) &&             \
-                     ({ rec = &get_snapshot_sector_const                \
-                                     (sect)->record[i]; 1; });          \
-             i ++)
-
-/**
  * Iterative over snapshot sectors.
  *
  * @off snapshot sector offset.
