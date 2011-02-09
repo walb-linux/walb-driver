@@ -712,7 +712,7 @@ void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_s
 
         /* Print continuous snapshot records */
         int i;
-        int max = max_n_snapshots_in_sector(sector_size);
+        int max = get_max_n_records_in_snapshot_sector(sector_size);
         for (i = 0; i < max; i ++) {
                 printf("snapshot record %d: ", i);
                 print_snapshot_record(&snap_sect->record[i]);

@@ -111,18 +111,8 @@
 #define MAX_LSID     ((u64)(-2))
 
 /**
- * Constants for snapshot_id.
+ * Calculate checksum incrementally.
  */
-#define INVALID_SNAPSHOT_ID ((u32)(-1))
-#define MAX_SNAPSHOT_ID     ((u32)(-2))
-
-/**
- * Max length of snapshot name.
- */
-#define SNAPSHOT_NAME_MAX_LEN 64
-#define SNAPSHOT_NAME_MAX_LEN_S "64"
-
-
 static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
 {
         u32 n = size / sizeof(u32);
@@ -136,6 +126,9 @@ static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
         return sum;
 }
 
+/**
+ * Finish checksum.
+ */
 static inline u32 checksum_finish(u64 sum)
 {
         u32 ret;
@@ -144,6 +137,9 @@ static inline u32 checksum_finish(u64 sum)
         return (ret == (u32)(-1) ? 0 : ret);
 }
 
+/**
+ * Calclate checksum of byte array.
+ */
 static inline u32 checksum(const u8 *data, u32 size)
 {
         return checksum_finish(checksum_partial(0, data, size));
@@ -164,48 +160,6 @@ static inline void sprint_uuid(char *buf, const u8 *uuid)
         for (i = 0; i < 16; i ++) {
                 sprintf(tmp, "%02x", uuid[i]);
                 strcat(buf, tmp);
-        }
-}
-
-/**
- * Check the name satisfy snapshot name spec.
- *
- * @name name of snapshot.
- *
- * @return 1 if valid, or 0.
- */
-static inline int is_valid_snapshot_name(const char *name)
-{
-        size_t len, i;
-        char n;
-
-        /* Length check. */
-        len = strnlen(name, SNAPSHOT_NAME_MAX_LEN);
-        if (len == SNAPSHOT_NAME_MAX_LEN) {
-                return 0;
-        }
-
-        /* Character code check. */
-        for (i = 0; i < len; i ++) {
-                n = name[i];
-                if (! (n == '_' ||
-                       n == '-' ||
-                       ('0' <= n && n <= '9') ||
-                       ('a' <= n && n <= 'z') ||
-                       ('A' <= n && n <= 'Z'))) { return 0; }
-        }
-        return 1;
-}
-
-/**
- * Get length of snapshot name.
- */
-static inline int get_snapshot_name_length(const char *name)
-{
-        if (name == NULL) {
-                return 0;
-        } else {
-                return strnlen(name, SNAPSHOT_NAME_MAX_LEN);
         }
 }
 

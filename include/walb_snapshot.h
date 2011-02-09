@@ -9,10 +9,26 @@
 #include "walb.h"
 #include "walb_sector.h"
 
+/*******************************************************************************
+ * Macro definition.
+ *******************************************************************************/
+
 /**
- * Invalid snapshot id.
+ * Constants for snapshot_id.
  */
 #define INVALID_SNAPSHOT_ID ((u32)(-1))
+#define MAX_SNAPSHOT_ID     ((u32)(-2))
+
+/**
+ * Max length of snapshot name.
+ */
+#define SNAPSHOT_NAME_MAX_LEN 64
+#define SNAPSHOT_NAME_MAX_LEN_S "64"
+
+
+/*******************************************************************************
+ * Utility macros.
+ *******************************************************************************/
 
 /**
  * Print macro for snapshot record.
@@ -33,9 +49,14 @@
 #define PRINT_D_SNAPSHOT_RECORD(rec)
 #endif
 
-/*******************************************************************************
- * Utility macros.
- *******************************************************************************/
+/**
+ * Assersion of (struct sector_data *).
+ */
+#define ASSERT_SNAPSHOT_SECTOR(sect) ASSERT(                            \
+                (sect) != NULL &&                                       \
+                (sect)->size > 0 && (sect)->data != NULL &&             \
+                ((struct walb_snapshot_sector *)                        \
+                 (sect)->data)->sector_type == SECTOR_TYPE_SNAPSHOT)
 
 /**
  * Iterative over snapshot record array.
@@ -46,14 +67,14 @@
  */
 #define for_each_snapshot_record(i, rec, sect)                          \
         for (i = 0;                                                     \
-             i < max_n_snapshots_in_sector((sect)->size) &&             \
+             i < get_max_n_records_in_snapshot_sector((sect)->size) &&             \
                      ({ rec = &get_snapshot_sector                      \
                                      (sect)->record[i]; 1; });          \
              i ++)
 
 #define for_each_snapshot_record_const(i, rec, sect)                    \
         for (i = 0;                                                     \
-             i < max_n_snapshots_in_sector((sect)->size) &&             \
+             i < get_max_n_records_in_snapshot_sector((sect)->size) &&             \
                      ({ rec = &get_snapshot_sector_const                \
                                      (sect)->record[i]; 1; });          \
              i ++)
@@ -108,32 +129,67 @@ typedef struct walb_snapshot_sector {
         
 } __attribute__((packed)) walb_snapshot_sector_t;
 
+/*******************************************************************************
+ * Prototypes.
+ *******************************************************************************/
 
-
-
-/**
- * Number of snapshots in a sector.
+/*
+ * For walb_snapshot_record.
  */
-static inline int max_n_snapshots_in_sector(int sector_size)
-{
-        int size;
+static inline void snapshot_record_init(
+        struct walb_snapshot_record *rec);
+static inline void snapshot_record_assign(
+        struct walb_snapshot_record *rec,
+        const char *name, u64 lsid, u64 timestamp);
+static inline int is_valid_snapshot_record(
+        const struct walb_snapshot_record *rec);
 
-#if 0 && !defined(__KERNEL__) && defined(WALB_DEBUG)
-        printf("walb_snapshot_sector_t size: %zu\n",
-               sizeof(walb_snapshot_sector_t));
-        printf("walb_snapshot_record_t size: %zu\n",
-               sizeof(walb_snapshot_record_t));
-#endif
+static inline int is_valid_snapshot_name(const char *name);
+static inline int get_snapshot_name_length(const char *name);
+static inline int compare_snapshot_name(
+        const char *name0, const char *name1);
+
+/*
+ * For sector_data.
+ */
+static inline int get_max_n_records_in_snapshot_sector(int sector_size);
+
+static inline struct walb_snapshot_sector* get_snapshot_sector(
+        struct sector_data *sect);
+static inline const struct walb_snapshot_sector* get_snapshot_sector_const(
+        const struct sector_data *sect);
+
+static inline int is_alloc_snapshot_record(
+        int nr, const struct sector_data *sect);
+static inline void set_alloc_snapshot_record(
+        int nr, struct sector_data *sect);
+static inline void clear_alloc_snapshot_record(
+        int nr, struct sector_data *sect);
+
+static inline struct walb_snapshot_record* get_snapshot_record_by_idx(
+        struct sector_data *sect, int idx);
+static inline int get_idx_of_snapshot_record_by_name_in_sector(
+        struct sector_data *sect, const char *name);
+static inline struct walb_snapshot_record* get_snapshot_record_by_name(
+        struct sector_data *sect, const char *name);
+static inline int get_idx_of_snapshot_record(
+        const struct sector_data *sect, u32 snapshot_id);
+static inline struct walb_snapshot_record* get_snapshot_record_in_sector(
+        struct sector_data *sect, u32 snapshot_id);
+
+static inline int get_n_records_in_snapshot_sector_detail(
+        struct sector_data *sect, int max_n);
+static inline int get_n_records_in_snapshot_sector(
+        struct sector_data *sect);
+static inline int get_n_free_records_in_snapshot_sector(
+        struct sector_data *sect);
+
+static inline int is_valid_snapshot_sector(const struct sector_data *sect);
+
         
-        size = (sector_size - sizeof(walb_snapshot_sector_t))
-                / sizeof(walb_snapshot_record_t);
-#if 0 && defined(__KERNEL__) && defined(WALB_DEBUG)
-        printk(KERN_DEBUG "walb: sector size %d max num of records %d\n",
-               sector_size, size);
-#endif
-        /* It depends on bitmap length. */
-        return (size < 64 ? size : 64);
-}
+/*******************************************************************************
+ * Functions for snapshot record.
+ *******************************************************************************/
 
 /**
  * Initialize snapshot record.
@@ -181,18 +237,86 @@ static inline int is_valid_snapshot_record(
 }
 
 /**
- * Assersion of (struct sector_data *).
+ * Check the name satisfy snapshot name spec.
+ *
+ * @name name of snapshot.
+ *
+ * @return 1 if valid, or 0.
  */
-#define ASSERT_SNAPSHOT_SECTOR(sect) ASSERT(                            \
-                (sect) != NULL &&                                       \
-                (sect)->size > 0 && (sect)->data != NULL &&             \
-                ((struct walb_snapshot_sector *)                        \
-                 (sect)->data)->sector_type == SECTOR_TYPE_SNAPSHOT)
+static inline int is_valid_snapshot_name(const char *name)
+{
+        size_t len, i;
+        char n;
 
+        /* Length check. */
+        len = strnlen(name, SNAPSHOT_NAME_MAX_LEN);
+        if (len == SNAPSHOT_NAME_MAX_LEN) {
+                return 0;
+        }
+
+        /* Character code check. */
+        for (i = 0; i < len; i ++) {
+                n = name[i];
+                if (! (n == '_' ||
+                       n == '-' ||
+                       ('0' <= n && n <= '9') ||
+                       ('a' <= n && n <= 'z') ||
+                       ('A' <= n && n <= 'Z'))) { return 0; }
+        }
+        return 1;
+}
+
+/**
+ * Get length of snapshot name.
+ */
+static inline int get_snapshot_name_length(const char *name)
+{
+        if (name == NULL) {
+                return 0;
+        } else {
+                return strnlen(name, SNAPSHOT_NAME_MAX_LEN);
+        }
+}
+
+/**
+ * Compare two strings as snapshot name.
+ *
+ * @return 0 if the same, false.
+ */
+static inline int compare_snapshot_name(const char *name0, const char *name1)
+{
+        if (name0 == NULL || name1 == NULL) { return 0; }
+        
+        return strncmp(name0, name1, SNAPSHOT_NAME_MAX_LEN);
+}
 
 /*******************************************************************************
  * Functions for snapshot sector.
  *******************************************************************************/
+
+/**
+ * Number of snapshots in a sector.
+ */
+static inline int get_max_n_records_in_snapshot_sector(int sector_size)
+{
+        int size;
+
+#if 0 && !defined(__KERNEL__) && defined(WALB_DEBUG)
+        printf("walb_snapshot_sector_t size: %zu\n",
+               sizeof(walb_snapshot_sector_t));
+        printf("walb_snapshot_record_t size: %zu\n",
+               sizeof(walb_snapshot_record_t));
+#endif
+        
+        size = (sector_size - sizeof(walb_snapshot_sector_t))
+                / sizeof(walb_snapshot_record_t);
+#if 0 && defined(__KERNEL__) && defined(WALB_DEBUG)
+        printk(KERN_DEBUG "walb: sector size %d max num of records %d\n",
+               sector_size, size);
+#endif
+        /* It depends on bitmap length. */
+        return (size < 64 ? size : 64);
+}
 
 /**
  * Get snapshot sector
@@ -212,16 +336,6 @@ get_snapshot_sector_const(const struct sector_data *sect)
 {
         ASSERT_SECTOR_DATA(sect);
         return (const struct walb_snapshot_sector *)(sect->data);
-}
-
-/**
- * Get snapshot record by record index inside snapshot sector.
- */
-static inline struct walb_snapshot_record* get_snapshot_record_by_idx(
-        struct sector_data *sect, int idx)
-{
-        ASSERT_SECTOR_DATA(sect);
-        return &get_snapshot_sector(sect)->record[idx];
 }
 
 /**
@@ -263,6 +377,58 @@ static inline void clear_alloc_snapshot_record(
 }
 
 /**
+ * Get snapshot record by record index inside snapshot sector.
+ */
+static inline struct walb_snapshot_record* get_snapshot_record_by_idx(
+        struct sector_data *sect, int idx)
+{
+        ASSERT_SECTOR_DATA(sect);
+        return &get_snapshot_sector(sect)->record[idx];
+}
+
+/**
+ * Get snapshot record by name inside snapshot sector.
+ *
+ * @return non-negative value in success, or -1.
+ */
+static inline int get_idx_of_snapshot_record_by_name_in_sector(
+        struct sector_data *sect, const char *name)
+{
+        int i;
+        struct walb_snapshot_record *rec;
+
+        ASSERT_SECTOR_DATA(sect);
+        
+        for_each_snapshot_record(i, rec, sect) {
+
+                if (compare_snapshot_name(rec->name, name) == 0 &&
+                    is_valid_snapshot_record(rec)) {
+                        return i;
+                }
+        }
+        return -1;
+}
+
+/**
+ * Get snapshot record by name inside snapshot sector.
+ *
+ * @return record poniter in success, or NULL.
+ */
+static inline struct walb_snapshot_record*
+get_snapshot_record_by_name_in_sector(
+        struct sector_data *sect, const char *name)
+{
+        int idx;
+        
+        idx = get_idx_of_snapshot_record_by_name_in_sector(sect, name);
+        if (idx >= 0) {
+                return get_snapshot_record_by_idx(sect, idx);
+        } else {
+                return NULL;
+        }
+}
+
+/**
  * Get index of snapshot record by a snapshot_id.
  *
  * @sect snapshot sector.
@@ -271,7 +437,7 @@ static inline void clear_alloc_snapshot_record(
  *
  * @return record index in the snapshot sector if found, or -1.
  */
-static inline int get_idx_in_snapshot_sector(
+static inline int get_idx_of_snapshot_record(
         const struct sector_data *sect, u32 snapshot_id)
 {
         int i;
@@ -282,7 +448,8 @@ static inline int get_idx_in_snapshot_sector(
 
         for_each_snapshot_record_const(i, rec, sect) {
 
-                if (rec->snapshot_id == snapshot_id) {
+                if (rec->snapshot_id == snapshot_id &&
+                    is_valid_snapshot_record(rec)) {
                         return i;
                 }
         }
@@ -292,12 +459,12 @@ static inline int get_idx_in_snapshot_sector(
 /**
  * Get snapshot record with a snapshot_id.
  */
-static inline struct walb_snapshot_record*
-get_record_in_snapshot_sector(struct sector_data *sect, u32 snapshot_id)
+static inline struct walb_snapshot_record* get_snapshot_record_in_sector(
+        struct sector_data *sect, u32 snapshot_id)
 {
         int idx;
 
-        idx = get_idx_in_snapshot_sector(sect, snapshot_id);
+        idx = get_idx_of_snapshot_record(sect, snapshot_id);
         if (idx >= 0) {
                 return get_snapshot_record_by_idx(sect, idx);
         } else {
@@ -309,12 +476,13 @@ get_record_in_snapshot_sector(struct sector_data *sect, u32 snapshot_id)
  * Get number of snapshots in the sector.
  */
 static inline int get_n_records_in_snapshot_sector_detail(
-        struct walb_snapshot_sector *snap_sect, int max_n)
+        struct sector_data *sect, int max_n)
 {
         int i, n;
+        struct walb_snapshot_sector *snap_sect;
 
-        ASSERT(snap_sect != NULL);
-        ASSERT(snap_sect->sector_type == SECTOR_TYPE_SNAPSHOT);
+        ASSERT_SNAPSHOT_SECTOR(sect);
+        snap_sect = get_snapshot_sector(sect);
         
         n = 0;
         for (i = 0; i < max_n; i ++) {
@@ -332,11 +500,10 @@ static inline int get_n_records_in_snapshot_sector_detail(
  */
 static inline int get_n_records_in_snapshot_sector(struct sector_data *sect)
 {
-        int max_n = max_n_snapshots_in_sector(sect->size);
+        int max_n = get_max_n_records_in_snapshot_sector(sect->size);
         ASSERT_SNAPSHOT_SECTOR(sect);
         
-        return get_n_records_in_snapshot_sector_detail(
-                get_snapshot_sector(sect), max_n);
+        return get_n_records_in_snapshot_sector_detail(sect, max_n);
 }
 
 /**
@@ -344,11 +511,10 @@ static inline int get_n_records_in_snapshot_sector(struct sector_data *sect)
  */
 static inline int get_n_free_records_in_snapshot_sector(struct sector_data *sect)
 {
-        int max_n = max_n_snapshots_in_sector(sect->size);
+        int max_n = get_max_n_records_in_snapshot_sector(sect->size);
         ASSERT_SNAPSHOT_SECTOR(sect);
 
-        return max_n - get_n_records_in_snapshot_sector_detail(
-                get_snapshot_sector(sect), max_n);
+        return max_n - get_n_records_in_snapshot_sector_detail(sect, max_n);
 }
 
 /**
@@ -381,6 +547,5 @@ static inline int is_valid_snapshot_sector(const struct sector_data *sect)
         PRINT_D("snapshot sector invalid record: %d\n", count);
         return (count == 0);
 }
-
 
 #endif /* _WALB_SNAPSHOT_H */

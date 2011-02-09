@@ -76,6 +76,9 @@ static int snapshot_data_load_sector(struct snapshot_data *snapd,
                                      struct snapshot_sector_control *ctl,
                                      struct sector_data *sect);
 static int is_all_sectors_free(const struct snapshot_data *snapd);
+
+static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd);
+static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd);
 static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd);
 
 /*******************************************************************************
@@ -280,7 +283,7 @@ static u32 record_alloc(struct snapshot_data *snapd,
                 if (! is_alloc_snapshot_record(i, ctl->sector)) { break; }
         }
         /* n_free_records > 0 so we can found free record. */
-        ASSERT(i < max_n_snapshots_in_sector(ctl->sector->size));
+        ASSERT(i < get_max_n_records_in_snapshot_sector(ctl->sector->size));
 
         /* Set allocation bit. */
         set_alloc_snapshot_record(i, ctl->sector);
@@ -341,7 +344,7 @@ static int record_free(struct snapshot_data *snapd, u32 snapshot_id)
         }
 
         /* Get record index inside snapshot sector. */
-        idx = get_idx_in_snapshot_sector(ctl->sector, snapshot_id);
+        idx = get_idx_of_snapshot_record(ctl->sector, snapshot_id);
         
         /* Clear allocation bit. */
         ASSERT(idx >= 0);

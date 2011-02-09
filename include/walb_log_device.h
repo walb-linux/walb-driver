@@ -222,7 +222,7 @@ static inline int get_metadata_size(int sector_size, int n_snapshots)
         ASSERT(PAGE_SIZE % sector_size == 0 &&
                PAGE_SIZE >= sector_size);
         
-        t = max_n_snapshots_in_sector(sector_size);
+        t = get_max_n_records_in_snapshot_sector(sector_size);
         n_sectors = (n_snapshots + t - 1) / t;
         return n_sectors;
 }

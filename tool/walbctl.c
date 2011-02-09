@@ -308,7 +308,7 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
 
         /* Calculate number of snapshot sectors. */
         int n_sectors;
-        int t = max_n_snapshots_in_sector(physical_bs);
+        int t = get_max_n_records_in_snapshot_sector(physical_bs);
         n_sectors = (n_snapshots + t - 1) / t;
 
         LOGd("metadata_size: %d\n", n_sectors);
