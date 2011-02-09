@@ -10,9 +10,9 @@
 #include <linux/rwsem.h>
 
 #include "../include/walb_log_device.h"
+#include "../include/walb_sector.h"
 #include "treemap.h"
 #include "hashtbl.h"
-#include "walb_sector.h"
 #include "walb_util.h"
 
 /**

@@ -11,7 +11,7 @@
 #include <linux/blkdev.h>
 
 #include "walb_util.h"
-#include "walb_sector.h"
+#include "../include/walb_sector.h"
 #include "../include/bitmap.h"
 
 #include "walb_io.h"

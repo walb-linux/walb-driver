@@ -12,9 +12,9 @@
 #include <linux/kernel.h>
 
 #include "../include/walb_log_device.h"
+#include "../include/walb_sector.h"
 #include "walb_util.h"
 #include "walb_io.h"
-#include "walb_sector.h"
 
 /**
  * Walb device major.

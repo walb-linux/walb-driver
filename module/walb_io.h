@@ -7,8 +7,8 @@
 #define _WALB_IO_H
 
 #include "../include/bitmap.h"
+#include "../include/walb_sector.h"
 #include "walb_util.h"
-#include "walb_sector.h"
 
 /**
  * BIO wrapper flag.
