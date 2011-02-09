@@ -71,43 +71,38 @@ struct walb_ctl {
  */
 static inline void print_walb_ctl(const struct walb_ctl *ctl)
 {
-#ifdef __KERNEL__
-#define PRINT_WALB_CTL printk_d
-#else
-#define PRINT_WALB_CTL printf
-#endif
-        PRINT_WALB_CTL("***** walb_ctl *****\n"
-                       "command: %d\n"
-                       "val_int: %d\n"
-                       "val_u32: %u\n"
-                       "val_u64: %"PRIu64"\n"
-                       "error: %d\n"
+        PRINT(KERN_DEBUG,
+              "***** walb_ctl *****\n"
+              "command: %d\n"
+              "val_int: %d\n"
+              "val_u32: %u\n"
+              "val_u64: %"PRIu64"\n"
+              "error: %d\n"
                  
-                       "u2k.wdevt: (%u:%u)\n"
-                       "u2k.ldevt: (%u:%u)\n"
-                       "u2k.ddevt: (%u:%u)\n"
-                       "u2k.buf_size: %zu\n"
+              "u2k.wdevt: (%u:%u)\n"
+              "u2k.ldevt: (%u:%u)\n"
+              "u2k.ddevt: (%u:%u)\n"
+              "u2k.buf_size: %zu\n"
                  
-                       "k2u.wdevt: (%u:%u)\n"
-                       "k2u.ldevt: (%u:%u)\n"
-                       "k2u.ddevt: (%u:%u)\n"
-                       "k2u.buf_size: %zu\n",
-                       ctl->command,
-                       ctl->val_int,
-                       ctl->val_u32,
-                       ctl->val_u64,
-                       ctl->error,
+              "k2u.wdevt: (%u:%u)\n"
+              "k2u.ldevt: (%u:%u)\n"
+              "k2u.ddevt: (%u:%u)\n"
+              "k2u.buf_size: %zu\n",
+              ctl->command,
+              ctl->val_int,
+              ctl->val_u32,
+              ctl->val_u64,
+              ctl->error,
                  
-                       ctl->u2k.wmajor, ctl->u2k.wminor,
-                       ctl->u2k.lmajor, ctl->u2k.lminor,
-                       ctl->u2k.dmajor, ctl->u2k.dminor,
-                       ctl->u2k.buf_size,
+              ctl->u2k.wmajor, ctl->u2k.wminor,
+              ctl->u2k.lmajor, ctl->u2k.lminor,
+              ctl->u2k.dmajor, ctl->u2k.dminor,
+              ctl->u2k.buf_size,
                  
-                       ctl->k2u.wmajor, ctl->k2u.wminor,
-                       ctl->k2u.lmajor, ctl->k2u.lminor,
-                       ctl->k2u.dmajor, ctl->k2u.dminor,
-                       ctl->k2u.buf_size);
-#undef PRINT_WALB_CTL
+              ctl->k2u.wmajor, ctl->k2u.wminor,
+              ctl->k2u.lmajor, ctl->k2u.lminor,
+              ctl->k2u.dmajor, ctl->k2u.dminor,
+              ctl->k2u.buf_size);
 }
 
 /**

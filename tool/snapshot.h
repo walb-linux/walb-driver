@@ -3,12 +3,13 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SNAPSHOT_H
-#define _WALB_SNAPSHOT_H
+#ifndef _WALB_SNAPSHOT_USER_H
+#define _WALB_SNAPSHOT_USER_H
 
 #include "walb.h"
 #include "walb_log_record.h"
 #include "walb_log_device.h"
+#include "walb_snapshot.h"
 
 /**
  * Snapshot data structure in the userland.
@@ -77,4 +78,4 @@ int snapshot_list(const struct snapshot_data_u *snapd,
                   struct walb_snapshot_record **rec_ary_p, size_t ary_size);
 
 
-#endif /* _WALB_SNAPSHOT_H */
+#endif /* _WALB_SNAPSHOT_USER_H */

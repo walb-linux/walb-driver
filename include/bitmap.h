@@ -9,15 +9,8 @@
 
 #include "walb.h"
 
-#ifdef __KERNEL__
-#define FREE(p) kfree(p)
-#define PRINT(fmt, args...) printk(KERN_INFO fmt, ##args)
-#else
-#include <stdio.h>
-#include <stdlib.h>
-#define FREE(p) free(p)
+#ifndef __KERNEL__
 #define spin_lock_init(lock)
-#define PRINT(fmt, args...) printf(fmt, ##args)
 #endif
 
 /**
@@ -49,19 +42,11 @@ static inline walb_bitmap_t* walb_bitmap_create(size_t size)
 {
         walb_bitmap_t *bmp;
 
-#ifdef __KERNEL__
-        bmp = kmalloc(sizeof(walb_bitmap_t), flags);
-#else
-        bmp = malloc(sizeof(walb_bitmap_t));
-#endif
+        bmp = MALLOC(sizeof(walb_bitmap_t), flags);
         if (bmp != NULL) {
                 spin_lock_init(&bmp->lock);
                 bmp->size = size;
-#ifdef __KERNEL__
-                bmp->ary = kzalloc((size + 7) / 8, flags);
-#else
-                bmp->ary = malloc((size + 7) / 8);
-#endif
+                bmp->ary = ZALLOC((size + 7) / 8, flags);
                 if (bmp->ary == NULL) {
                         FREE(bmp);
                         bmp = NULL;
@@ -166,10 +151,10 @@ static inline void walb_bitmap_print(walb_bitmap_t *bmp)
 {
         size_t i;
         for (i = 0; i < bmp->size; i ++) {
-                PRINT("%d", walb_bitmap_get(bmp, i));
-                if (i % 64 == 63) PRINT("\n");
+                PRINT(KERN_INFO, "%d", walb_bitmap_get(bmp, i));
+                if (i % 64 == 63) PRINT(KERN_INFO, "\n");
         }
-        PRINT("\n");
+        PRINT(KERN_INFO, "\n");
 }
 
 #endif /* _WALB_BITMAP_H */

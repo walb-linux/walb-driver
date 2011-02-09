@@ -25,6 +25,45 @@
 #endif /* __KERNEL__ */
 
 /**
+ * Print macro for debug.
+ */
+#ifdef __KERNEL__
+#include <linux/kernel.h>
+#define PRINT(flag, fmt, args...) printk(flag fmt, ##args)
+#define PRINT_E(fmt, args...) PRINT(KERN_ERR, fmt, ##args)
+#ifdef WALB_DEBUG
+#define PRINT_D(fmt, args...) PRINT(KERN_DEBUG, fmt, ##args)
+#else
+#define PRINT_D(fmt, args...)
+#endif
+#else
+#include <stdio.h>
+#ifdef WALB_DEBUG
+#define PRINT_D(fmt, args...) printf(fmt, ##args)
+#else
+#define PRINT_D(fmt, args...)
+#endif
+#define PRINT_E(fmt, args...) fprintf(stderr, fmt, ##args)
+#define PRINT(flag, fmt, args...) PRINT_D(fmt, ##args)
+#endif
+
+/**
+ * Memory allocator/deallocator.
+ */
+#ifdef __KERNEL__
+#include <linux/kernel.h>
+#include <linux/slab.h>
+#define MALLOC(size, mask) kmalloc(size, mask)
+#define ZALLOC(size, mask) kzalloc(size, mask)
+#define FREE(p) kfree(p)
+#else
+#include <stdlib.h>
+#define MALLOC(size, mask) malloc(size)
+#define ZALLOC(size, mask) calloc(1, size)
+#define FREE(p) free(p)
+#endif
+
+/**
  * Disk name length.
  */
 #define DISK_NAME_LEN_USER 32

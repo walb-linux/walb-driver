@@ -36,6 +36,7 @@
 #include "../include/walb_ioctl.h"
 #include "../include/walb_log_device.h"
 #include "../include/walb_sector.h"
+#include "../include/walb_snapshot.h"
 #include "../include/bitmap.h"
 
 /**

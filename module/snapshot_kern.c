@@ -881,19 +881,19 @@ static int snapshot_data_load_sector(struct snapshot_data *snapd,
                         clear_alloc_snapshot_record(i, sect);
                         continue;
                 }
-                PRINT_SNAPSHOT_RECORD(KERN_DEBUG, rec);
-
+                PRINT_D_SNAPSHOT_RECORD(rec);
+                
                 /* Insert to id_idx. */
                 if (insert_snapshot_id(snapd, rec->snapshot_id, ctl) != 0) {
                         printk_e("insert to primary index failed.\n");
-                        PRINT_SNAPSHOT_RECORD(KERN_ERR, rec);
+                        PRINT_E_SNAPSHOT_RECORD(rec);
                         goto error1;
                 }
                         
                 /* Insert to name_idx and lsid_idx. */
                 if (insert_snapshot_record_to_index(snapd, rec) != 0) {
                         printk_e("insert to secondary index failed.\n");
-                        PRINT_SNAPSHOT_RECORD(KERN_ERR, rec);
+                        PRINT_E_SNAPSHOT_RECORD(rec);
                         goto error1;
                 }
         }

@@ -8,13 +8,6 @@
 
 #include "walb.h"
 
-#ifdef __KERNEL__
-#include <linux/kernel.h>
-#include <linux/slab.h>
-#else
-#include <stdlib.h>
-#endif
-
 /**
  * Sector data in the memory.
  */
@@ -30,17 +23,6 @@ struct sector_data
 #define ASSERT_SECTOR_DATA(sect) ASSERT((sect) != NULL &&       \
                                         (sect)->size > 0 &&     \
                                         (sect)->data != NULL)
-
-/**
- * Memory allocator/deallocator.
- */
-#ifdef __KERNEL__
-#define MALLOC(size, mask) kmalloc(size, mask)
-#define FREE(p) kfree(p)
-#else
-#define MALLOC(size, mask) malloc(size)
-#define FREE(p) free(p)
-#endif
 
 /**
  * Allocate sector.
