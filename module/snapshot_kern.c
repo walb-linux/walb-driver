@@ -1,5 +1,5 @@
 /**
- * walb_snapshot.c - Walb snapshot operations.
+ * snapshot_kern.c - Walb snapshot operations.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -15,8 +15,7 @@
 #include "walb_io.h"
 #include "hashtbl.h"
 #include "treemap.h"
-
-#include "walb_snapshot.h"
+#include "snapshot_kern.h"
 
 /*******************************************************************************
  * Prototypes of static functions.
