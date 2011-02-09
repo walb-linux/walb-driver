@@ -25,17 +25,6 @@
 #define printk_i(fmt, args...)                                  \
         printk(KERN_INFO "walb(%s): " fmt, __func__, ##args)
 
-
-#ifdef ASSERT
-#undef ASSERT
-#endif
-
-#ifdef WALB_DEBUG
-#define ASSERT(cond) BUG_ON(!(cond))
-#else
-#define ASSERT(cond)
-#endif
-
 /**
  * For test.
  */

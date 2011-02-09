@@ -11,6 +11,7 @@
 #include <linux/list.h>
 #include <linux/hash.h>
 
+#include "../include/walb.h"
 #include "walb_util.h" /* for debug */
 #include "hashtbl.h"
 

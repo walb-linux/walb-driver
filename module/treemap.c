@@ -11,7 +11,7 @@
 #include <linux/random.h> /* This is for treemap_test(). */
 
 #include "walb_util.h" /* for debug */
-#include "../include/inttypes_kern.h"
+#include "../include/walb.h"
 #include "treemap.h"
 
 /**
