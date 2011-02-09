@@ -21,36 +21,17 @@
  * Prototypes of static functions.
  *******************************************************************************/
 
-/* Search free records. */
-static int get_n_records_in_snapshot_sector_detail(
-        struct walb_snapshot_sector *snap_sect, int max_n);
-static int get_n_records_in_snapshot_sector(struct sector_data *sect);
-static int get_n_free_records_in_snapshot_sector(struct sector_data *sect);
-
 /* Sector operations */
-static int is_valid_snapshot_sector(const struct sector_data *sect);
 static int sector_load(struct snapshot_data *snapd, u64 off);
 static int sector_sync(struct snapshot_data *snapd, u64 off);
 static int sector_sync_all(struct snapshot_data *snapd);
 static void sector_evict(struct snapshot_data *snapd, u64 off);
 static void sector_evict_all(struct snapshot_data *snapd);
 
-/* Functions for internal snapshot sector. */
-static int get_idx_in_snapshot_sector(
-        const struct sector_data *sect, u32 snapshot_id);
-static struct walb_snapshot_record* get_record_in_snapshot_sector(
-        struct sector_data *sect, u32 snapshot_id);
-
 /* Record allocation. */
 static u32 record_alloc(struct snapshot_data *snapd,
                         struct walb_snapshot_record **recp);
 static int record_free(struct snapshot_data *snapd, u32 snapshot_id);
-
-/* Allocation bit operations. */
-static int is_alloc_snapshot_record(
-        int nr, const struct sector_data *sect);
-static void set_alloc_snapshot_record(int nr, struct sector_data *sect);
-static void clear_alloc_snapshot_record(int nr, struct sector_data *sect);
 
 /* Issue IO */
 static int snapshot_sector_read(struct snapshot_data *snapd,
@@ -100,83 +81,6 @@ static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd);
 /*******************************************************************************
  * Static functions.
  *******************************************************************************/
-
-/**
- * Get number of snapshots in the sector.
- */
-static int get_n_records_in_snapshot_sector_detail(
-        struct walb_snapshot_sector *snap_sect, int max_n)
-{
-        int i, n;
-
-        ASSERT(snap_sect != NULL);
-        ASSERT(snap_sect->sector_type == SECTOR_TYPE_SNAPSHOT);
-        
-        n = 0;
-        for (i = 0; i < max_n; i ++) {
-                if (test_u64bits(i, &snap_sect->bitmap)) {
-                        n ++;
-                }
-        }
-        ASSERT(0 <= n && n <= 64);
-        
-        return n;
-}
-
-/**
- * Get number of active records in a snapshot sector.
- */
-static int get_n_records_in_snapshot_sector(struct sector_data *sect)
-{
-        int max_n = max_n_snapshots_in_sector(sect->size);
-        ASSERT_SNAPSHOT_SECTOR(sect);
-        
-        return get_n_records_in_snapshot_sector_detail(
-                get_snapshot_sector(sect), max_n);
-}
-
-/**
- * Get number of free records in a snapshot sector.
- */
-static int get_n_free_records_in_snapshot_sector(struct sector_data *sect)
-{
-        int max_n = max_n_snapshots_in_sector(sect->size);
-        ASSERT_SNAPSHOT_SECTOR(sect);
-
-        return max_n - get_n_records_in_snapshot_sector_detail(
-                get_snapshot_sector(sect), max_n);
-}
-
-/**
- * Check whether snapshot sector is valid.
- *
- * @sect sector data which must be snapshot sector.
- *
- * @return non-zero if valid, or 0.
- */
-static int is_valid_snapshot_sector(const struct sector_data *sect)
-{
-        int count = 0;
-        int i;
-        const struct walb_snapshot_record *rec;
-
-        ASSERT_SNAPSHOT_SECTOR(sect);
-        
-        for_each_snapshot_record_const(i, rec, sect) {
-
-                if (is_alloc_snapshot_record(i, sect)) {
-                        if (! is_valid_snapshot_record(rec)) {
-                                count ++;
-                        }
-                } else {
-                        if (rec->snapshot_id != INVALID_SNAPSHOT_ID) {
-                                count ++;
-                        }
-                }
-        }
-        printk_d("snapshot sector invalid record: %d\n", count);
-        return (count == 0);
-}
 
 /**
  * Load sector from storage into memory.
@@ -337,49 +241,6 @@ static void sector_evict_all(struct snapshot_data *snapd)
 }
 
 /**
- * Get index of snapshot record by a snapshot_id.
- *
- * @sect snapshot sector.
- * @snapshot_id snapshot id to find.
- *   DO NOT specify INVALID_SNAPSHOT_ID.
- *
- * @return record index in the snapshot sector if found, or -1.
- */
-static int get_idx_in_snapshot_sector(
-        const struct sector_data *sect, u32 snapshot_id)
-{
-        int i;
-        const struct walb_snapshot_record *rec;
-        
-        ASSERT_SNAPSHOT_SECTOR(sect);
-        ASSERT(snapshot_id != INVALID_SNAPSHOT_ID);
-
-        for_each_snapshot_record_const(i, rec, sect) {
-
-                if (rec->snapshot_id == snapshot_id) {
-                        return i;
-                }
-        }
-        return -1;
-}
-
-/**
- * Get snapshot record with a snapshot_id.
- */
-static struct walb_snapshot_record* get_record_in_snapshot_sector(
-        struct sector_data *sect, u32 snapshot_id)
-{
-        int idx;
-
-        idx = get_idx_in_snapshot_sector(sect, snapshot_id);
-        if (idx >= 0) {
-                return get_snapshot_record_by_idx(sect, idx);
-        } else {
-                return NULL;
-        }
-}
-
-/**
  * Allocate snapshot record.
  *
  * 1. Search free record.
@@ -497,44 +358,6 @@ static int record_free(struct snapshot_data *snapd, u32 snapshot_id)
         return 0;
 error:
         return -1;
-}
-
-/**
- * Check whether nr'th record is allocated in a snapshot sector.
- *
- * @return non-zero if exist, or 0.
- */
-static int is_alloc_snapshot_record(
-        int nr, const struct sector_data *sect)
-{
-        ASSERT_SNAPSHOT_SECTOR(sect);
-        ASSERT(0 <= nr && nr < 64);
-        
-        return test_u64bits(nr, &get_snapshot_sector_const(sect)->bitmap);
-}
-
-/**
- * Set allocation bit of a snapshot sector.
- */
-static void set_alloc_snapshot_record(
-        int nr, struct sector_data *sect)
-{
-        ASSERT_SNAPSHOT_SECTOR(sect);
-        ASSERT(0 <= nr && nr < 64);
-        
-        set_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
-}
-
-/**
- * Clear exist bit of a snapshot sector.
- */
-static void clear_alloc_snapshot_record(
-        int nr, struct sector_data *sect)
-{
-        ASSERT_SNAPSHOT_SECTOR(sect);
-        ASSERT(0 <= nr && nr < 64);
-
-        clear_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
 }
 
 /**

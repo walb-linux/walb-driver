@@ -69,7 +69,8 @@ struct walb_ctl {
 /**
  * Print walb_ctl data for debug.
  */
-static inline void print_walb_ctl(const struct walb_ctl *ctl)
+static inline void print_walb_ctl(
+        __attribute__((unused)) const struct walb_ctl *ctl)
 {
         PRINT(KERN_DEBUG,
               "***** walb_ctl *****\n"
