@@ -11,11 +11,26 @@
 #include "util.h"
 #include "snapshot.h"
 
+
+/*******************************************************************************
+ * Utility macros.
+ *******************************************************************************/
+
+#define get_n_sectors(snapd) ((int)(snapd)->super->snapshot_metadata_size)
+#define get_sector_size(snapd) ((snapd)->super->physical_bs)
+#define get_sector(snapd, i) (get_sector_data_in_array((snapd)->sect_ary, i))
+
 /*******************************************************************************
  * Prototype of static functions.
  *******************************************************************************/
 
-walb_snapshot_sector_t* snapshot_data_u_get_sector(struct snapshot_data_u *snapd, int idx);
+static walb_snapshot_sector_t* snapshot_data_u_get_sector(
+        struct snapshot_data_u *snapd, int idx);
+
+static bool snapshot_data_u_read_sector(
+        struct snapshot_data_u *snapd, int idx);
+static bool snapshot_data_u_write_sector(
+        struct snapshot_data_u *snapd, int idx);
 
 /*******************************************************************************
  * Static functions.
@@ -29,13 +44,12 @@ walb_snapshot_sector_t* snapshot_data_u_get_sector(struct snapshot_data_u *snapd
  *
  * @return pointer to snapshot sector image.
  */
-walb_snapshot_sector_t* snapshot_data_u_get_sector(struct snapshot_data_u *snapd, int idx)
+static walb_snapshot_sector_t* snapshot_data_u_get_sector(struct snapshot_data_u *snapd, int idx)
 {
         ASSERT(snapd != NULL);
         ASSERT(0 <= idx && 0 < get_n_sectors(snapd));
 
-        return (walb_snapshot_sector_t *)
-                (snapd->sector + (get_sector_size(snapd) * get_n_sectors(snapd)));
+        return get_snapshot_sector(get_sector(snapd,idx));
 }
 
 /**
@@ -46,10 +60,10 @@ walb_snapshot_sector_t* snapshot_data_u_get_sector(struct snapshot_data_u *snapd
  *
  * @return true in success, or false.
  */
-bool snapshot_data_u_read_sector(struct snapshot_data_u *snapd, int idx)
+static bool snapshot_data_u_read_sector(struct snapshot_data_u *snapd, int idx)
 {
         ASSERT(snapd != NULL);
-        ASSERT(0 <= idx && idx < get_n_sectors(snapd));
+        ASSERT(0 <= idx && idx < (int)get_n_sectors(snapd));
         
         return read_snapshot_sector(snapd->fd, snapd->super,
                                     snapshot_data_u_get_sector(snapd, idx), idx);
@@ -63,10 +77,10 @@ bool snapshot_data_u_read_sector(struct snapshot_data_u *snapd, int idx)
  *
  * @return true in success, or false.
  */
-bool snapshot_data_u_write_sector(struct snapshot_data_u *snapd, int idx)
+static bool snapshot_data_u_write_sector(struct snapshot_data_u *snapd, int idx)
 {
         ASSERT(snapd != NULL);
-        ASSERT(0 <= idx && idx < get_n_sectors(snapd));
+        ASSERT(0 <= idx && idx < (int)get_n_sectors(snapd));
         
         return write_snapshot_sector(snapd->fd, snapd->super,
                                      snapshot_data_u_get_sector(snapd, idx), idx);
@@ -92,7 +106,7 @@ struct snapshot_data_u* alloc_snapshot_data_u(
         ASSERT(fd > 0);
         ASSERT(super_sectp != NULL);
         
-        /* Allocate memory */
+        /* For itself. */
         struct snapshot_data_u *snapd;
         snapd = (struct snapshot_data_u *)
                 malloc(sizeof(struct snapshot_data_u));
@@ -101,10 +115,11 @@ struct snapshot_data_u* alloc_snapshot_data_u(
         snapd->fd = fd;
         snapd->super = super_sectp;
         snapd->next_snapshot_id = 0;
-        snapd->n_sectors = (int)super_sectp->snapshot_metadata_size;
-        snapd->sector = (u8 *)malloc(get_sector_size(snapd) * get_n_sectors(snapd));
-        if (snapd->sector == NULL) { goto nomem1; }
 
+        snapd->sect_ary = sector_data_array_alloc
+                (get_n_sectors(snapd), get_sector_size(snapd));
+        if (! snapd->sect_ary) { goto nomem1; }
+        
         return snapd;
 nomem1:
         free_snapshot_data_u(snapd);
@@ -118,7 +133,7 @@ nomem0:
 void free_snapshot_data_u(struct snapshot_data_u* snapd)
 {
         if (snapd) {
-                free(snapd->sector);
+                sector_data_array_free(snapd->sect_ary);
         }
         free(snapd);
 }
@@ -130,20 +145,22 @@ void free_snapshot_data_u(struct snapshot_data_u* snapd)
  */
 bool initialize_snapshot_data_u(struct snapshot_data_u *snapd)
 {
-        int n_sectors = (int)get_n_sectors(snapd);
+        int i;
+        struct sector_data *sect;
 
         /*
          * 1. Load image of each snapshot sector.
          * 2. Renumbering of snapshot_id of each snapshot record.
          * 3. Set next_snapshot_id.
          */
-        int i;
-        for (i = 0; i < n_sectors; i ++) {
-
+        for_each_snapshot_sector(i, sect, snapd) {
+                
                 if (! snapshot_data_u_read_sector(snapd, i)) {
                         LOGe("read %d'th snapshot sector failed.\n", i);
                         goto error;
                 }
+
+                ASSERT_SNAPSHOT_SECTOR(sect);
                 
                 walb_snapshot_sector_t *snap_sect =
                         snapshot_data_u_get_sector(snapd, i);
@@ -194,18 +211,28 @@ error:
         return false;
 }
 
+
 /**
- *
+ * Check validness of snapshot_data_u.
  */
 bool is_valid_snaphsot_data_u(struct snapshot_data_u* snapd)
 {
-        /* return (snapd != NULL && */
-        /*         snapd->fd > 0); */
+        int i;
+        struct sector_data *sect;
 
-        /* now editing */
+        if (! (snapd != NULL &&
+               snapd->fd > 0 &&
+               is_valid_super_sector(snapd->super, get_sector_size(snapd)))) {
 
-/* not yet implemented. */
-        return false;
+                return false;
+        }
+
+        for_each_snapshot_sector(i, sect, snapd) {
+
+                if (! is_valid_snapshot_sector(sect)) { return false; }
+        }
+        
+        return true;
 }
 
 /*******************************************************************************

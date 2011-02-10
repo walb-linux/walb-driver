@@ -52,11 +52,7 @@
 /**
  * Assersion of (struct sector_data *).
  */
-#define ASSERT_SNAPSHOT_SECTOR(sect) ASSERT(                            \
-                (sect) != NULL &&                                       \
-                (sect)->size > 0 && (sect)->data != NULL &&             \
-                ((struct walb_snapshot_sector *)                        \
-                 (sect)->data)->sector_type == SECTOR_TYPE_SNAPSHOT)
+#define ASSERT_SNAPSHOT_SECTOR(sect) ASSERT(is_valid_snapshot_sector(sect))
 
 /**
  * Iterative over snapshot record array.
@@ -170,7 +166,8 @@ static inline struct walb_snapshot_record* get_snapshot_record_by_idx(
         struct sector_data *sect, int idx);
 static inline int get_idx_of_snapshot_record_by_name_in_sector(
         struct sector_data *sect, const char *name);
-static inline struct walb_snapshot_record* get_snapshot_record_by_name(
+static inline struct walb_snapshot_record*
+get_snapshot_record_by_name_in_sector(
         struct sector_data *sect, const char *name);
 static inline int get_idx_of_snapshot_record(
         const struct sector_data *sect, u32 snapshot_id);
@@ -529,9 +526,17 @@ static inline int is_valid_snapshot_sector(const struct sector_data *sect)
         int count = 0;
         int i;
         const struct walb_snapshot_record *rec;
+        struct walb_snapshot_sector *snap_sect =
+                (struct walb_snapshot_sector *)sect->data;
 
-        ASSERT_SNAPSHOT_SECTOR(sect);
-        
+        if (! (sect &&
+               sect->size > 0 &&
+               sect->data &&
+               snap_sect->sector_type == SECTOR_TYPE_SNAPSHOT)) {
+
+                return 0;
+        }
+               
         for_each_snapshot_record_const(i, rec, sect) {
 
                 if (is_alloc_snapshot_record(i, sect)) {

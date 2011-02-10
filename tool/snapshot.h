@@ -19,32 +19,30 @@ struct snapshot_data_u
 {
         int fd; /* file descriptor of the log device. */
         const walb_super_sector_t *super; /* super sector */
-        int n_sectors; /* number of snapshot sectors. */
         u32 next_snapshot_id; /* next snapshot id. */
-        u8 *sector; /* array of sector images. */
+        
+        struct sector_data_array *sect_ary;
 };
 
 /**
  * Macros.
  */
-#define get_n_sectors(snapd) ((snapd)->super->snapshot_metadata_size)
-#define get_sector_size(snapd) ((snapd)->super->physical_bs)
+
+#define ASSERT_SNAPSHOT_SECTOR_DATA_U(snapd) ASSERT(    \
+                is_valid_snaphsot_data_u(snapd))
 
 /**
  * Iterative over snapshot sectors.
  *
  * @i int sector index.
- * @off u64 snapshot sector offset in the log device.
+ * @sect pointer to sector_data.
  * @snapd pointer to struct snapshot_data_u.
  */
-#define for_each_snapshot_sector_offset(i, off, snapd)                  \
+#define for_each_snapshot_sector(i, sect, snapd)                        \
         for (i = 0;                                                     \
-             i < snapd->n_sectors &&                                    \
-                     ({ off = get_metadata_offset                       \
-                                     (snapd->super->physical_bs)        \
-                                     + (u64)i; } 1;);                   \
-             off ++)
-
+             i < get_n_sectors(snapd) && (                              \
+                     { sect = get_sector(snapd, i); 1; });             \
+             i ++)
 
 /*
  * Prototypes for struct snapshot_data_u.

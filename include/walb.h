@@ -55,11 +55,19 @@
 #include <linux/slab.h>
 #define MALLOC(size, mask) kmalloc(size, mask)
 #define ZALLOC(size, mask) kzalloc(size, mask)
+#define REALLOC(p, size, mask) krealloc(p, size, mask)
 #define FREE(p) kfree(p)
+#define AMALLOC(size, align, mask) kmalloc(size, mask)
 #else
 #include <stdlib.h>
 #define MALLOC(size, mask) malloc(size)
 #define ZALLOC(size, mask) calloc(1, size)
+#define REALLOC(p, size, mask) realloc(p, size)
+static inline void* amalloc(size_t size, size_t align)
+{
+        void *p; return (posix_memalign(&p, align, size) == 0 ? p : NULL);
+}
+#define AMALLOC(size, align, mask) amalloc(size, align)
 #define FREE(p) free(p)
 #endif
 

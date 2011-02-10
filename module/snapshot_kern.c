@@ -1049,7 +1049,7 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
         u64 off;
         struct snapshot_sector_control *ctl;
         struct sector_data *sect;
-        u32 next_snapshot_id = 1;
+        u32 next_snapshot_id = 0;
 
         /* Allocate sector. */
         sect = sector_alloc(snapd->sector_size, GFP_KERNEL);
