@@ -24,12 +24,7 @@
  * Prototype of static functions.
  *******************************************************************************/
 
-static walb_snapshot_sector_t* snapshot_data_u_get_sector(
-        struct snapshot_data_u *snapd, int idx);
-
-static bool snapshot_data_u_read_sector(
-        struct snapshot_data_u *snapd, int idx);
-static bool snapshot_data_u_write_sector(
+static struct sector_data* get_sector_snapshot_data_u(
         struct snapshot_data_u *snapd, int idx);
 
 /*******************************************************************************
@@ -42,52 +37,19 @@ static bool snapshot_data_u_write_sector(
  * @snapd snapshot data.
  * @idx sector index (0 <= idx < get_n_sectors(snapd)).
  *
- * @return pointer to snapshot sector image.
+ * @return pointer to sector_data.
  */
-static walb_snapshot_sector_t* snapshot_data_u_get_sector(struct snapshot_data_u *snapd, int idx)
+static struct sector_data* get_sector_snapshot_data_u(
+        struct snapshot_data_u *snapd, int idx)
 {
         ASSERT(snapd != NULL);
         ASSERT(0 <= idx && 0 < get_n_sectors(snapd));
 
-        return get_snapshot_sector(get_sector(snapd,idx));
-}
-
-/**
- * Read snapshot sector of the specified index from the log device.
- *
- * @snapd snapshot data.
- * @idx sector index (0 <= idx < get_n_sectors(snapd)).
- *
- * @return true in success, or false.
- */
-static bool snapshot_data_u_read_sector(struct snapshot_data_u *snapd, int idx)
-{
-        ASSERT(snapd != NULL);
-        ASSERT(0 <= idx && idx < (int)get_n_sectors(snapd));
-        
-        return read_snapshot_sector(snapd->fd, snapd->super,
-                                    snapshot_data_u_get_sector(snapd, idx), idx);
-}
-
-/**
- * Write snapshot sector of the specified index to the log device.
- *
- * @snapd snapshot data.
- * @idx sector index (0 <= idx < get_n_sectors(snapd)).
- *
- * @return true in success, or false.
- */
-static bool snapshot_data_u_write_sector(struct snapshot_data_u *snapd, int idx)
-{
-        ASSERT(snapd != NULL);
-        ASSERT(0 <= idx && idx < (int)get_n_sectors(snapd));
-        
-        return write_snapshot_sector(snapd->fd, snapd->super,
-                                     snapshot_data_u_get_sector(snapd, idx), idx);
+        return get_sector(snapd,idx);
 }
 
 /*******************************************************************************
- * Prototypes for struct snapshot_data_u.
+ * Functions for struct snapshot_data_u.
  *******************************************************************************/
 
 /**
@@ -155,32 +117,29 @@ bool initialize_snapshot_data_u(struct snapshot_data_u *snapd)
          */
         for_each_snapshot_sector(i, sect, snapd) {
                 
-                if (! snapshot_data_u_read_sector(snapd, i)) {
+                if (! read_sector_snapshot_data_u(snapd, i)) {
                         LOGe("read %d'th snapshot sector failed.\n", i);
                         goto error;
                 }
 
                 ASSERT_SNAPSHOT_SECTOR(sect);
                 
-                walb_snapshot_sector_t *snap_sect =
-                        snapshot_data_u_get_sector(snapd, i);
                 walb_snapshot_record_t *rec;
-                int rec_idx;
+                int rec_i;
 
-                /* now editing */
-                /* for_each_snapshot_record(rec_idx, rec, snap_sect) { */
-                        
-                /*         if (! is_alloc_snapshot_record(rec_idx, snap_sect)) { */
-                /*                 continue; */
-                /*         } */
+                /* Check and initialize each record. */
+                for_each_snapshot_record(rec_i, rec, sect) {
 
-                /*         if (! is_valid_snapshot_record(rec)) { */
-                /*                 memset(rec, 0, sizeof(struct walb_snapshot_record)); */
-                /*                 clear_alloc_snapshot_record(rec_idx, snap_sect); */
-                /*                 continue; */
-                /*         } */
-                /*         rec->snapshot_id = snapd->next_snapshot_id ++; */
-                /* } */
+                        if (! is_alloc_snapshot_record(rec_i, sect)) {
+                                continue;
+                        }
+                        if (! is_valid_snapshot_record(rec)) {
+                                snapshot_record_init(rec);
+                                clear_alloc_snapshot_record(rec_i, sect);
+                                continue;
+                        }
+                        rec->snapshot_id = snapd->next_snapshot_id ++;
+                }
         }
         return true;
 error:
@@ -195,13 +154,13 @@ error:
  */
 bool finalize_snapshot_data_u(struct snapshot_data_u* snapd)
 {
-        if (snapd == NULL) { return false; }
+        if (! snapd) { return false; }
         
         int i;
         int n_sectors = get_n_sectors(snapd);
         for (i = 0; i < n_sectors; i ++) {
 
-                if (! snapshot_data_u_write_sector(snapd, i)) {
+                if (! write_sector_snapshot_data_u(snapd, i)) {
                         LOGe("write %d'th snapshot sector failed.\n", i);
                         goto error;
                 }
@@ -211,6 +170,28 @@ error:
         return false;
 }
 
+/**
+ * Initialize struct snapshot_data_u data.
+ *
+ * @return true in success, or false.
+ */
+bool clear_snapshot_data_u(struct snapshot_data_u *snapd)
+{
+        if (! snapd) { return false; }
+
+        int rec_i, sect_i;
+        walb_snapshot_record_t *rec;
+        struct sector_data *sect;
+
+        for_each_snapshot_record_in_snapd(rec_i, rec, sect_i, sect, snapd) {
+                
+                snapshot_record_init(rec);
+                clear_alloc_snapshot_record(rec_i, sect);
+        }
+        snapd->next_snapshot_id = 0;
+        
+        return true;
+}
 
 /**
  * Check validness of snapshot_data_u.
@@ -220,7 +201,7 @@ bool is_valid_snaphsot_data_u(struct snapshot_data_u* snapd)
         int i;
         struct sector_data *sect;
 
-        if (! (snapd != NULL &&
+        if (! (snapd &&
                snapd->fd > 0 &&
                is_valid_super_sector(snapd->super, get_sector_size(snapd)))) {
 
@@ -236,7 +217,90 @@ bool is_valid_snaphsot_data_u(struct snapshot_data_u* snapd)
 }
 
 /*******************************************************************************
- * Functions snapshot manipulation.
+ * Functions for snapshot sector manipulation.
+ *******************************************************************************/
+
+/**
+ * Read snapshot sector of the specified index from the log device.
+ *
+ * @snapd snapshot data.
+ * @idx sector index (0 <= idx < get_n_sectors(snapd)).
+ *
+ * @return true in success, or false.
+ */
+bool read_sector_snapshot_data_u(struct snapshot_data_u *snapd, int idx)
+{
+        ASSERT(snapd != NULL);
+        ASSERT(0 <= idx && idx < (int)get_n_sectors(snapd));
+        
+        return read_snapshot_sector
+                (snapd->fd, snapd->super,
+                 get_snapshot_sector(get_sector_snapshot_data_u(snapd, idx)),
+                 idx);
+}
+
+/**
+ * Read all snapshot sectors from the log device.
+ *
+ * @snapd pointer to snapshot_data_u.
+ *        You must call alloc_snapshot_data_u() before.
+ *
+ * @return true in success, or false.
+ */
+bool read_all_sectors_snapshot_data_u(struct snapshot_data_u *snapd)
+{
+        if (! snapd) { return false; }
+        
+        int i;
+        struct sector_data *sect;
+
+        for_each_snapshot_sector(i, sect, snapd) {
+                read_sector_snapshot_data_u(snapd, i);
+        }
+        return true;
+}
+
+/**
+ * Write snapshot sector of the specified index to the log device.
+ *
+ * @snapd snapshot data.
+ * @idx sector index (0 <= idx < get_n_sectors(snapd)).
+ *
+ * @return true in success, or false.
+ */
+bool write_sector_snapshot_data_u(struct snapshot_data_u *snapd, int idx)
+{
+        ASSERT(snapd != NULL);
+        ASSERT(0 <= idx && idx < (int)get_n_sectors(snapd));
+        
+        return write_snapshot_sector
+                (snapd->fd, snapd->super,
+                 get_snapshot_sector(get_sector_snapshot_data_u(snapd, idx)),
+                 idx);
+}
+
+/**
+ * Write all snapshot sectors to the log device.
+ *
+ * @snapd pointer to snapshot_data_u.
+ *
+ * @return true in success, or false.
+ */
+bool write_all_sectors_snapshot_data_u(struct snapshot_data_u *snapd)
+{
+        if (! snapd) { return false; }
+        
+        int i;
+        struct sector_data *sect;
+
+        for_each_snapshot_sector(i, sect, snapd) {
+                write_sector_snapshot_data_u(snapd, i);
+        }
+        return true;
+}
+
+/*******************************************************************************
+ * Functions for snapshot manipulation.
  *******************************************************************************/
 
 /**

@@ -27,9 +27,8 @@ struct snapshot_data_u
 /**
  * Macros.
  */
-
-#define ASSERT_SNAPSHOT_SECTOR_DATA_U(snapd) ASSERT(    \
-                is_valid_snaphsot_data_u(snapd))
+#define ASSERT_SNAPSHOT_SECTOR_DATA_U(snapd)    \
+        ASSERT(is_valid_snaphsot_data_u(snapd))
 
 /**
  * Iterative over snapshot sectors.
@@ -41,8 +40,21 @@ struct snapshot_data_u
 #define for_each_snapshot_sector(i, sect, snapd)                        \
         for (i = 0;                                                     \
              i < get_n_sectors(snapd) && (                              \
-                     { sect = get_sector(snapd, i); 1; });             \
+                     { sect = get_sector(snapd, i); 1; });              \
              i ++)
+
+/**
+ * Iterative over snapshot records in the whole snapshot_data_u.
+ *
+ * @rec_i record index inside sector.
+ * @rec pointer to snapshot_record_t.
+ * @sect_i sector index.
+ * @sect pointer to sector_data.
+ * @snapd pointer to snapshot_data_u.
+ */
+#define for_each_snapshot_record_in_snapd(rec_i, rec, sect_i, sect, snapd) \
+        for_each_snapshot_sector(sect_i, sect, snapd)                   \
+        for_each_snapshot_record(rec_i, rec, sect)
 
 /*
  * Prototypes for struct snapshot_data_u.
@@ -53,6 +65,17 @@ void free_snapshot_data_u(struct snapshot_data_u* snapd);
 bool initialize_snapshot_data_u(struct snapshot_data_u* snapd);
 bool finalize_snapshot_data_u(struct snapshot_data_u* snapd);
 bool is_valid_snaphsot_data_u(struct snapshot_data_u* snapd);
+
+/*
+ * Prototypes for snapshot sector IO.
+ */
+bool read_sector_snapshot_data_u(
+        struct snapshot_data_u *snapd, int idx);
+
+bool read_all_sectors_snapshot_data_u(struct snapshot_data_u *snapd);
+bool write_sector_snapshot_data_u(
+        struct snapshot_data_u *snapd, int idx);
+bool write_all_sectors_snapshot_data_u(struct snapshot_data_u *snapd);
 
 /*
  * Prototypes for snapshot manipulation.

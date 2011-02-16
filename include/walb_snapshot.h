@@ -59,7 +59,7 @@
  *
  * @i int record index.
  * @rec pointer to record.
- * @sect pointer to walb_snapshot_sector
+ * @sect pointer to sect_data.
  */
 #define for_each_snapshot_record(i, rec, sect)                          \
         for (i = 0;                                                     \
