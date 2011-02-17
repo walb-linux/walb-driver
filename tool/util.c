@@ -631,38 +631,6 @@ void print_u32bitmap(const u32 bitmap)
 }
 
 /**
- * Print snapshot record for debug.
- */
-void print_snapshot_record(const walb_snapshot_record_t* snap_rec)
-{
-        ASSERT(snap_rec != NULL);
-        printf("lsid: %lu, "
-               "timestamp: %lu, "
-               "name: %s\n",
-               snap_rec->lsid, snap_rec->timestamp, snap_rec->name);
-}
-
-/**
- * print snapshot sector for debug.
- */
-void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_size)
-{
-        printf("checksum: %u\n", snap_sect->checksum);
-
-        printf("bitmap: ");
-        print_u32bitmap(snap_sect->bitmap);
-        printf("\n");
-
-        /* Print continuous snapshot records */
-        int i;
-        int max = get_max_n_records_in_snapshot_sector(sector_size);
-        for (i = 0; i < max; i ++) {
-                printf("snapshot record %d: ", i);
-                print_snapshot_record(&snap_sect->record[i]);
-        }
-}
-
-/**
  * Allocate sector and set all zero.
  */
 u8* alloc_sector_zero(int sector_size)
@@ -680,85 +648,6 @@ u8* alloc_sectors_zero(int sector_size, int n)
         memset(sectors, 0, sector_size * n);
         return sectors;
 }
-
-
-/**
- * Write snapshot sector.
- *
- * @fd File descriptor of log device.
- * @super_sect super sector data to refer its members.
- * @snap_sect snapshot sector data to be written.
- *            It's allocated size must be really sector size.
- *            Only checksum area will be overwritten.
- * @idx idx'th sector is written. (0 <= idx < snapshot_metadata_size)
- *
- * @return true in success, or false.
- */
-bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
-                           walb_snapshot_sector_t* snap_sect, u32 idx)
-{
-        ASSERT(fd >= 0);
-        ASSERT(super_sect != NULL);
-        ASSERT(snap_sect != NULL);
-        
-        u32 sect_sz = super_sect->physical_bs;
-        u32 meta_sz = super_sect->snapshot_metadata_size;
-        if (idx >= meta_sz) {
-                LOGe("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
-                return false;
-        }
-
-        /* checksum */
-        u8 *sector_buf = (u8*)snap_sect;
-        snap_sect->checksum = 0;
-        u32 csum = checksum(sector_buf, sect_sz);
-        snap_sect->checksum = csum;
-        ASSERT(checksum(sector_buf, sect_sz) == 0);
-
-        /* really write sector data. */
-        u64 off = get_metadata_offset_2(super_sect) + idx;
-        if (! write_sector(fd, sector_buf, sect_sz, off)) {
-                return false;
-        }
-        return true;
-}
-
-/**
- * Read snapshot sector.
- *
- * @fd File descriptor of log device.
- * @super_sect super sector data to refer its members.
- * @snap_sect snapshot sector buffer to be read.
- *            It's allocated size must be really sector size.
- * @idx idx'th sector is read. (0 <= idx < snapshot_metadata_size)
- *
- * @return true in success, or false.
- */
-bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
-                          walb_snapshot_sector_t* snap_sect, u32 idx)
-{
-        ASSERT(fd >= 0);
-        ASSERT(super_sect != NULL);
-        ASSERT(snap_sect != NULL);
-        
-        u32 sect_sz = super_sect->physical_bs;
-        u32 meta_sz = super_sect->snapshot_metadata_size;
-        if (idx >= meta_sz) {
-                LOGe("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
-                return false;
-        }
-        
-        /* Read sector data.
-           Confirm checksum. */
-        u8 *sector_buf = (u8 *)snap_sect;
-        u64 off = get_metadata_offset_2(super_sect) + idx;
-        if (! read_sector(fd, sector_buf, sect_sz, off) ||
-            checksum(sector_buf, sect_sz) != 0) {
-                return false;
-        }
-        return true;
-}
-
 
 /**
  * Read data.

@@ -24,6 +24,7 @@
 
 #include "util.h"
 #include "logpack.h"
+#include "snapshot.h"
 #include "walblog_format.h"
 
 
