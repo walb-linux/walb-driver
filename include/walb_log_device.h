@@ -7,6 +7,7 @@
 #define _WALB_LOG_DEVICE_H
 
 #include "walb_log_record.h"
+#include "walb_super.h"
 #include "walb_snapshot.h"
 
 /*
@@ -91,120 +92,6 @@
  * PROPERTY3: Offset of log_pack of a given lsid and lsid_local.
  *            offset_log_pack = walb_lsid_to_offset(lsid) - lsid_local.
  */
-
-/**
- * Super block data of the log device.
- *
- * sizeof(walb_super_sector_t) must be <= physical block size.
- */
-typedef struct walb_super_sector {
-
-        /* (4 * 4) + (2 * 4) + 16 + 64 + (8 * 5) = 144 bytes */
-
-        /*
-         * Constant value inside the kernel.
-         * Lock is not required to read these variables.
-         *
-         * Constant value inside kernel.
-         *   logical_bs, physical_bs
-         *   snapshot_metadata_size
-         *   uuid
-         *   ring_buffer_size
-         *   sector_type
-         *
-         * Variable inside kernel (set only in sync down)
-         *   checksum
-         *   oldest_lsid
-         *   written_lsid
-         */
-        
-        /* Check sum of the super block */
-        u32 checksum;
-
-        /* Both log and data device have
-           the same logical block size and physical block size.
-           Each IO (offset and size) is aligned by logical block size.
-           Each log (offset and size) on log device is aligned. */
-        u32 logical_bs;
-        u32 physical_bs;
-        
-        /* Number of physical blocks for snapshot metadata. */
-        u32 snapshot_metadata_size;
-
-        /* UUID of the wal device. */
-        u8 uuid[16];
-
-        /* Name of the walb device.
-         * terminated by '\0'. */
-        char name[DISK_NAME_LEN];
-
-        /* sector type */
-        u16 sector_type; /* must be SECTOR_TYPE_SUPER. */
-        u16 reserved1;
-        u16 reserved2;
-        u16 reserved3;
-
-        /* Offset of the oldest log record inside ring buffer.
-           [physical block] */
-        /* u64 start_offset; */
-
-        /* Ring buffer size [physical block] */
-        u64 ring_buffer_size;
-        
-        /* Log sequence id of the oldest log record in the ring buffer.
-           [physical block] */
-        u64 oldest_lsid;
-        
-        /* Log sequence id of next of latest log record written
-         * to the data device also.
-         * 
-         * This is used for checkpointing.
-         * When walb device is assembled redo must be
-         * from written_lsid to the latest lsid stored in the log device.
-         *
-         * The logpack of written_lsid may not be written.
-         * Just previous log is guaranteed written to data device.
-         */
-        u64 written_lsid;
-
-        /* Size of wrapper block device [logical block] */
-        u64 device_size;
-        
-} __attribute__((packed)) walb_super_sector_t;
-
-/**
- * THIS MUST BE MERGED from tool/util.c
- *
- * Check super sector.
- * This does not test checksum value.
- *
- * @sect pointer to super sector image.
- *
- * @return non-zero if valid, or 0.
- */
-static inline int NOT_TESTED_is_valid_super_sector(const struct walb_super_sector *sect)
-{
-#ifdef CHECK
-#undef CHECK
-#endif
-#define CHECK(condition) if (! (condition)) goto invalid
-        
-        CHECK(sect->logical_bs > 0);
-        CHECK(sect->physical_bs > 0);
-        CHECK(sect->physical_bs % sect->logical_bs == 0);
-        CHECK(sect->snapshot_metadata_size > 0);
-        CHECK(sect->sector_type == SECTOR_TYPE_SUPER);
-        CHECK(sect->ring_buffer_size > 0);
-        CHECK(sect->oldest_lsid != INVALID_LSID);
-        CHECK(sect->written_lsid != INVALID_LSID);
-        CHECK(sect->oldest_lsid <= sect->written_lsid);
-        CHECK(sect->device_size > 0);
-
-#undef CHECK
-        return 1;
-invalid:
-        return 0;
-}
 
 /**
  * Get metadata size

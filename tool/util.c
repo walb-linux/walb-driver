@@ -599,63 +599,6 @@ error0:
 }
 
 /**
- * Set super sector name.
- *
- * @super_sect super sector.
- * @name name or NULL.
- *
- * @return pointer to result name.
- */
-char* set_super_sector_name(walb_super_sector_t* super_sect, const char *name)
-{
-        if (name == NULL) {
-                super_sect->name[0] = '\0';
-        } else {
-                strncpy(super_sect->name, name, DISK_NAME_LEN);
-        }
-        return super_sect->name;
-}
-
-/**
- * Check super sector.
- */
-bool is_valid_super_sector(const walb_super_sector_t* super, int physical_bs)
-{
-        /* checksum */
-        if (checksum((const u8 *)super, physical_bs) != 0) {
-                LOGe("checksum is not valid.\n");
-                goto error0;
-        }
-        /* sector type */
-        if (super->sector_type != SECTOR_TYPE_SUPER) {
-                LOGe("sector type is not valid %d.\n", super->sector_type);
-                goto error0;
-        }
-        /* physical block size */
-        if (super->physical_bs != (u32)physical_bs) {
-                LOGe("physical block size is not same %d %d.\n",
-                     (int)super->physical_bs, physical_bs);
-                goto error0;
-        }
-        /* physical/logical block size */
-        if (! (super->physical_bs >= super->logical_bs &&
-               super->physical_bs % super->logical_bs == 0)) {
-                LOGe("physical/logical block size is not valid. (physical %u, logical %u)\n",
-                     super->physical_bs, super->logical_bs);
-                goto error0;
-        }
-        /* lsid consistency. */
-        if (! (super->oldest_lsid <= super->written_lsid &&
-               super->written_lsid - super->oldest_lsid <= super->ring_buffer_size)) {
-                LOGe("oldest_lsid, written_lsid, ring_buffer_size is not consistent.\n");
-                goto error0;
-        }
-        return true;
-error0:
-        return false;
-}
-
-/**
  * Print bitmap data.
  */
 void print_bitmap(const u8* bitmap, size_t size)
