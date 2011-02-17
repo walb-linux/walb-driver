@@ -62,8 +62,8 @@ struct snapshot_data_u
 struct snapshot_data_u* alloc_snapshot_data_u(
         int fd, const walb_super_sector_t* super_sectp);
 void free_snapshot_data_u(struct snapshot_data_u* snapd);
-bool initialize_snapshot_data_u(struct snapshot_data_u* snapd);
-bool finalize_snapshot_data_u(struct snapshot_data_u* snapd);
+void initialize_snapshot_data_u(struct snapshot_data_u* snapd);
+void clear_snapshot_data_u(struct snapshot_data_u *snapd);
 bool is_valid_snaphsot_data_u(struct snapshot_data_u* snapd);
 
 /*
@@ -71,7 +71,6 @@ bool is_valid_snaphsot_data_u(struct snapshot_data_u* snapd);
  */
 bool read_sector_snapshot_data_u(
         struct snapshot_data_u *snapd, int idx);
-
 bool read_all_sectors_snapshot_data_u(struct snapshot_data_u *snapd);
 bool write_sector_snapshot_data_u(
         struct snapshot_data_u *snapd, int idx);
