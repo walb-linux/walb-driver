@@ -73,7 +73,7 @@
 #define ZALLOC(size, mask) kzalloc(size, mask)
 #define REALLOC(p, size, mask) krealloc(p, size, mask)
 #define FREE(p) kfree(p)
-#define AMALLOC(size, align, mask) kmalloc(size, mask)
+#define AMALLOC(size, align, mask) kmalloc((align > size ? align : size), mask)
 #else
 #include <stdlib.h>
 #define MALLOC(size, mask) malloc(size)
