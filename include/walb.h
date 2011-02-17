@@ -55,7 +55,7 @@
 #define PRINT_W PRINT_E
 #define PRINT_N PRINT_E
 #define PRINT_I PRINT_E
-#define PRINT(flag, fmt, args...) PRINT_D(fmt, ##args)
+#define PRINT(flag, fmt, args...) printf(fmt, ##args)
 #define PRINTV_E(fmt, args...) PRINT_E("ERROR(%s) " fmt, __func__, ##args)
 #define PRINTV_W(fmt, args...) PRINT_W("WARNING(%s) " fmt, __func__, ##args)
 #define PRINTV_N(fmt, args...) PRINT_N("NOTICE(%s) " fmt, __func__, ##args)
