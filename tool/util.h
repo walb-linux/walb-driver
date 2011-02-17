@@ -27,20 +27,6 @@
 #define LOGw(fmt, ...) LOG1("WARNING", fmt, ##__VA_ARGS__)
 #define LOGe(fmt, ...) LOG1("ERROR",   fmt, ##__VA_ARGS__)
 
-/* #ifdef DEBUG */
-/* #define LOGd(fmt, ...)                                          \ */
-/*         fprintf(stderr, "%s(%s:%d:%s) " fmt, "DEBUG",           \ */
-/*                 __FILE__, __LINE__, __func__, ##__VA_ARGS__) */
-/* #else */
-/* #define LOGd(fmt, ...) */
-/* #endif */
-/* #define LOGn(fmt, ...)                                          \ */
-/*         fprintf(stderr, "%s " fmt, "NOTICE", ##__VA_ARGS__) */
-/* #define LOGw(fmt, ...)                                          \ */
-/*         fprintf(stderr, "%s " fmt, "WARNING", ##__VA_ARGS__) */
-/* #define LOGe(fmt, ...)                                          \ */
-/*         fprintf(stderr, "%s " fmt, "ERROR", ##__VA_ARGS__) */
-                
 
 /* utility */
 void print_binary_hex(const u8* data, size_t size);
