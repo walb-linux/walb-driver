@@ -33,7 +33,7 @@ void print_u64bits(u64 *bits)
 }
 
 
-bool check(int *bit_ary, u64 *bits)
+bool is_the_same(int *bit_ary, u64 *bits)
 {
         int i;
         for (i = 0; i < 64; i ++) {
@@ -44,7 +44,6 @@ bool check(int *bit_ary, u64 *bits)
                 }
         }
         return true;
-
 
 error0:
         printf("error\n");
@@ -72,8 +71,7 @@ int main()
                         clear_u64bits(i, &bits);
                 }
         }
-        /* Check */
-        if (! check(bit_ary, &bits)) { exit(1); }
+        ASSERT(is_the_same(bit_ary, &bits));
         
         /* Randomly set and check. */
         for (i = 0; i < 100000; i ++) {
@@ -88,7 +86,7 @@ int main()
                         clear_u64bits(j, &bits);
                 }
                 
-                if (! check(bit_ary, &bits)) { exit(1); }
+                ASSERT(is_the_same(bit_ary, &bits));
         }        
 
         return 0;
