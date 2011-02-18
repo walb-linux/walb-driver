@@ -16,12 +16,18 @@ clean:
 	rm -f $(BINARIES) $(TEST_BINARIES) *.o
 	rm -rf tmp
 
-HEADER_FILES = ../include/walb.h \
-	../include/walb_log_record.h \
+HEADER_FILES = \
+	../include/bitmap.h \
+	../include/inttypes_kern.h \
+	../include/userland.h \
+	../include/walb.h \
+	../include/walb_ioctl.h \
 	../include/walb_log_device.h \
-	../include/walb_super.h \
+	../include/walb_log_file.h \
+	../include/walb_log_record.h \
+	../include/walb_sector.h \
 	../include/walb_snapshot.h \
-	../include/userland.h
+	../include/walb_super.h
 
 walbctl: walbctl.o util.o logpack.o snapshot.o
 	$(CC) -o $@ $(CFLAGS) walbctl.o util.o logpack.o snapshot.o
