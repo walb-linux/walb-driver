@@ -44,13 +44,16 @@ void generate_uuid(u8* uuid);
 void print_uuid(const u8* uuid);
 void copy_uuid(u8* dst, const u8* src);
 
-/* sector functions */
+/* sector functions
+   These will be deprecated.
+   Use sector_alloc() instead. */
 u8* alloc_sectors(int sector_size, int n);
 u8* alloc_sectors_zero(int sector_size, int n);
 bool realloc_sectors(u8** ptr, int sector_size, int n);
 u8* alloc_sector(int sector_size);
 u8* alloc_sector_zero(int sector_size);
 
+/* Sector functions. */
 bool read_sectors(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n);
 bool read_sector(int fd, u8* sector_buf, u32 sector_size, u64 offset);
 bool write_sectors(int fd, const u8* sectors_buf, u32 sector_size, u64 offset, int n);

@@ -25,11 +25,13 @@ void test(int sector_size, int n_snapshots)
         /* Prepare psuedo super sector. */
         
         /* now editing */
+        walb_super_sector_t *super_sect;
+        
         
         
         /* Prepare snapshot data for userland. */
         struct snapshot_data_u *snapd;
-        snapd = alloc_snapshot_data_u(fd, super_sectp);
+        snapd = alloc_snapshot_data_u(fd, super_sect);
         clear_snapshot_data_u(fd, snapd);
         initialize_snapshot_data_u(fd, snapd);
 
@@ -43,11 +45,9 @@ void test(int sector_size, int n_snapshots)
         
         /* delete snapshot record */
 
+        /* write all snapshot sectors. */
 
         
-        
-       
-        write_
         
         free_snapshot_data_u(snapd);
         close(fd);

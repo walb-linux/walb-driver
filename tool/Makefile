@@ -45,15 +45,18 @@ test_rw: test_rw.o util.o
 	$(CC) -o $@ $(CFLAGS) test_rw.o util.o
 
 test_snapshot: test_snapshot.o util.o snapshot.o
-	$(CC) -o $@ $(CFLAGS) test_snapshot_o util.o snapshot.o
+	$(CC) -o $@ $(CFLAGS) test_snapshot.o util.o snapshot.o
 
+test_sector: test_sector.o util.o
+	$(CC) -o $@ $(CFLAGS) test_sector.o util.o
 
 test_bitmap.o: test_bitmap.c ../include/bitmap.h
+test_sector.o: test_sector.c ../include/walb_sector.h
 test_snapshot.o: test_snapshot.c
 util.o: util.c util.h $(HEADER_FILES)
 logpack.o: logpack.c logpack.h util.h $(HEADER_FILES)
-test_rw.o: test_rw.c util.h random.h
-walbctl.o: walbctl.c walblog_format.h
+test_rw.o: test_rw.c util.h random.h $(HEADER_FILES)
+walbctl.o: walbctl.c walblog_format.h $(HEADER_FILES)
 snapshot.o: snapshot.c snapshot.h util.h $(HEADER_FILES)
 
 .c.o:
