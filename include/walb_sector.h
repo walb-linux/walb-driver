@@ -46,23 +46,33 @@ static inline int is_valid_sector_data(const struct sector_data *sect);
 static inline struct sector_data* sector_alloc(int sector_size, gfp_t gfp_mask);
 #else
 static inline struct sector_data* sector_alloc(int sector_size);
+static inline struct sector_data* sector_alloc_zero(int sector_size);
 #endif
 static inline void sector_free(struct sector_data *sect);
-static inline void sector_copy(struct sector_data *dst, const struct sector_data *src);
+static inline void sector_zeroclear(struct sector_data *sect);
+static inline void sector_copy(
+        struct sector_data *dst, const struct sector_data *src);
 static inline int is_same_size_sector(const struct sector_data *sect0,
                                       const struct sector_data *sect1);
 static inline int sector_compare(const struct sector_data *sect0,
                                  const struct sector_data *sect1);
 
-static inline int __is_valid_sector_data_array_detail(struct sector_data **ary, int size);
-static inline int is_valid_sector_data_array(const struct sector_data_array *sect_ary);
+static inline int __is_valid_sector_data_array_detail(
+        struct sector_data ** const ary, int size);
+static inline int is_valid_sector_data_array(
+        const struct sector_data_array *sect_ary);
 #ifdef __KERNEL__
 static inline struct sector_data_array* sector_data_array_alloc(
         int n_sectors, int sector_size, gfp_t mask);
+static inline int sector_data_array_realloc(
+        struct sector_data_array *sect_ary, int n_sectors, gfp_t mask);
 #else
 static inline struct sector_data_array* sector_data_array_alloc(
         int n_sectors, int sector_size);
+static inline int sector_data_array_realloc(
+        struct sector_data_array *sect_ary, int n_sectors);
 #endif
+
 static inline void sector_data_array_free(struct sector_data_array *sect_ary);
 static inline struct sector_data* get_sector_data_in_array(
         struct sector_data_array *sect_ary, int idx);
@@ -82,7 +92,7 @@ static inline int is_valid_sector_data(const struct sector_data *sect)
 }
 
 /**
- * Allocate sector.
+ * Allocate a sector.
  *
  * @sector_size sector size.
  * @flag GFP flag. This is for kernel code only.
@@ -123,6 +133,19 @@ error0:
 }
 
 /**
+ * Allocate a sector with zero-filled.
+ */
+#ifndef __KERNEL__
+static inline struct sector_data* sector_alloc_zero(int sector_size)
+{
+        struct sector_data *sect;
+        sect = sector_alloc(sector_size);
+        if (sect) { sector_zeroclear(sect); }
+        return sect;
+}
+#endif
+
+/**
  * Deallocate sector.
  *
  * This must be used for memory allocated with @sector_alloc().
@@ -133,6 +156,15 @@ static inline void sector_free(struct sector_data *sect)
                 FREE(sect->data);
         }
         FREE(sect);
+}
+
+/**
+ * Zero-clear sector data.
+ */
+static inline void sector_zeroclear(struct sector_data *sect)
+{
+        ASSERT_SECTOR_DATA(sect);
+        memset(sect->data, 0, sect->size);
 }
 
 /**
@@ -195,7 +227,8 @@ static inline int sector_compare(const struct sector_data *sect0,
  *
  * @return Non-zero if all sectors are valid, or 0.
  */
-static inline int __is_valid_sector_data_array_detail(struct sector_data **ary, int size)
+static inline int __is_valid_sector_data_array_detail(
+        struct sector_data ** const ary, int size)
 {
         int i;
 
@@ -269,6 +302,75 @@ nomem1:
         sector_data_array_free(sect_ary);
 nomem0:
         return NULL;
+}
+
+/**
+ * Resize the number of sectors.
+ *
+ * @sect_ary sector data array.
+ * @n_sectors new number of sectors. Must be n_sectors > 0.
+ * @mask allocation mask (kernel code only).
+ *
+ * @return Non-zero in success, or 0.
+ */
+#ifdef __KERNEL__
+static inline int sector_data_array_realloc(
+        struct sector_data_array *sect_ary, int n_sectors, gfp_t mask)
+#else
+static inline int sector_data_array_realloc(
+        struct sector_data_array *sect_ary, int n_sectors)
+#endif
+{
+        int i;
+        int sect_size;
+        struct sector_data **new_ary;
+        
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+        ASSERT(n_sectors > 0);
+
+        if (sect_ary->size > n_sectors) {
+                /* Shrink */
+                for (i = 0; n_sectors + i < sect_ary->size; i ++) {
+                        ASSERT(sect_ary->array[i]);
+                        sector_free(sect_ary->array[i]);
+                        sect_ary->array[i] = NULL;
+                }
+                sect_ary->size = n_sectors;
+                
+        } else if (sect_ary->size < n_sectors) {
+                /* Grow */
+                new_ary = REALLOC(sect_ary->array,
+                                  sizeof(struct sector_data *) * n_sectors, mask);
+                if (! new_ary) { goto error0; }
+                sect_ary->array = new_ary;
+                ASSERT(sect_ary->array[0]);
+                sect_size = sect_ary->array[0]->size;
+                for (i = 0; sect_ary->size + i < n_sectors; i ++) {
+#ifdef __KERNEL__
+                        sect_ary->array[i] = sector_alloc(sect_size, mask);
+#else
+                        sect_ary->array[i] = sector_alloc(sect_size);
+#endif
+                        if (! sect_ary->array[i]) { goto error1; }
+                }
+                sect_ary->size = n_sectors;
+                
+        } else {
+                /* Unchanged */
+                ASSERT(sect_ary->size == n_sectors);
+        }
+
+        return 1;
+error1:
+        /* Grow failed. */
+        ASSERT(sect_ary->size < n_sectors); 
+        for (i = 0; sect_ary->size + i < n_sectors; i ++) {
+                sector_free(sect_ary->array[i]);
+                sect_ary->array[i] = NULL;
+        }
+        /* Real size of sect_ary->array is not changed... */
+error0:
+        return 0;
 }
 
 /**
