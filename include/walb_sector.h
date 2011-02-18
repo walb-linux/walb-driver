@@ -34,8 +34,10 @@ struct sector_data_array
  * Assertions.
  *******************************************************************************/
 
-#define ASSERT_SECTOR_DATA(sect) ASSERT(is_valid_sector_data(sect))
-#define ASSERT_SECTOR_DATA_ARRAY(sect_ary) is_valid_sector_data_array(sect_ary)
+#define ASSERT_SECTOR_DATA(sect)                \
+        ASSERT(is_valid_sector_data(sect))
+#define ASSERT_SECTOR_DATA_ARRAY(sect_ary)              \
+        ASSERT(is_valid_sector_data_array(sect_ary))
 
 /*******************************************************************************
  * Prototypes.
