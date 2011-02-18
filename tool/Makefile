@@ -7,12 +7,14 @@ else
 	CFLAGS+=-DNDEBUG -O2
 endif
 
-BINARIES = walbctl test_checksum test_bitmap test_u64bits test_rw
+BINARIES = walbctl test_rw
+TEST_BINARIES = test_checksum test_bitmap test_u64bits
 
-binaries: $(BINARIES)
+binaries: $(BINARIES) $(TEST_BINARIES)
 
 clean:
-	rm -f $(BINARIES) *.o
+	rm -f $(BINARIES) $(TEST_BINARIES) *.o
+	rm -rf tmp
 
 HEADER_FILES = ../include/walb.h \
 	../include/walb_log_record.h \
@@ -48,6 +50,10 @@ test_rw.o: test_rw.c util.h random.h
 walbctl.o: walbctl.c walblog_format.h
 snapshot.o: snapshot.c snapshot.h util.h $(HEADER_FILES)
 
-
 .c.o:
 	$(CC) -c $< -o $@ $(CFLAGS)
+
+
+# Test
+test: $(TEST_BINARIES)
+	./run_unit_test.sh $(TEST_BINARIES)
