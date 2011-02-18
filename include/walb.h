@@ -136,6 +136,12 @@ static inline void* amalloc(size_t size, size_t align)
 
 /**
  * Calculate checksum incrementally.
+ *
+ * @sum previous checksum. specify 0 for first call.
+ * @data pointer to u8 array to calculate
+ * @size data size in bytes. This must be dividable by sizeof(u32).
+ *
+ * @return current checksum.
  */
 static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
 {
@@ -152,6 +158,12 @@ static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
 
 /**
  * Finish checksum.
+ *
+ * You must call this at the end of checksum calculation.
+ *
+ * @sum previous checksum.
+ *
+ * @return checksum of whole data.
  */
 static inline u32 checksum_finish(u64 sum)
 {
@@ -163,6 +175,11 @@ static inline u32 checksum_finish(u64 sum)
 
 /**
  * Calclate checksum of byte array.
+ *
+ * @data pointer to u8 array to calculate
+ * @size data size in bytes. This must be dividable by sizeof(u32).
+ *
+ * @return checksum of the data.
  */
 static inline u32 checksum(const u8 *data, u32 size)
 {
