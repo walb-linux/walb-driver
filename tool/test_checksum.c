@@ -49,9 +49,8 @@ static int comp(const void *p1, const void *p2)
         return 1;
 }
 
-
-static void make_sorted_random_array(size_t *ary, size_t size, size_t max_value,
-                                     size_t align_size)
+static void make_sorted_random_array_index(
+        size_t *ary, size_t size, size_t max_value, size_t align_size)
 {
         size_t i, j;
         for (i = 0; i < size; i ++) {
@@ -75,22 +74,29 @@ static void make_sorted_random_array(size_t *ary, size_t size, size_t max_value,
         }
         ary[0] = 0;
         ary[size - 1] = max_value;
+
+        for (i = 0; i < size; i ++) {
+                printf("idx: %zu\n", ary[i]);
+        }
 }
 
 
 int main()
 {
         size_t i;
-        u8 *buf, *buf2;
-        size_t size = 64 * 1024 * 1024;
-        u32 csum1, csum2;
+        u8 *buf;
+        size_t size = 1024 * 1024;
+        u64 csum2tmp, csum3tmp;
+        u32 csum1, csum2, csum3;
         size_t mid[16];
         struct timeval tv;
-        double t1, t2, t3;
+        double t1, t2, t3, t4;
 
         init_random();
-        make_sorted_random_array(mid, 16, size, sizeof(u32));
-
+        
+        printf("making sorted_random_array_index...\n");
+        make_sorted_random_array_index(mid, 16, size, sizeof(u32));
+        
         printf("making random array...\n");
         buf = alloc_buf(size);
         memset_random(buf, size);
@@ -100,27 +106,41 @@ int main()
         csum1 = checksum(buf, size);
         gettimeofday(&tv, 0); t2 = time_double(&tv);
 
-        csum2 = 0;
+        csum2tmp = 0;
         for (i = 0; i < 16 - 1; i ++) {
-                csum2 += checksum(buf + mid[i], mid[i + 1] - mid[i]);
+                size_t tmp_size = mid[i + 1] - mid[i];
+                printf("idx: %zu size: %zu\n", mid[i], tmp_size);
+                csum2tmp = checksum_partial(csum2tmp, buf + mid[i], tmp_size);
         }
+        csum2 = checksum_finish(csum2tmp);
         gettimeofday(&tv, 0); t3 = time_double(&tv);
+
+        csum3tmp = 0;
+        csum3tmp = checksum_partial(csum3tmp, buf, size);
+        csum3 = checksum_finish(csum3tmp);
+        gettimeofday(&tv, 0); t4 = time_double(&tv);
         
         printf("%u (%f sec)\n"
+               "%u (%f sec)\n"
                "%u (%f sec)\n",
                csum1, t2 - t1,
-               csum2, t3 - t2);
+               csum2, t3 - t2,
+               csum3, t4 - t3);
 
+        ASSERT(csum1 == csum2);
+        ASSERT(csum1 == csum3);
+
+#if 0
         printf("copying...\n");
-        buf2 = alloc_buf(size);
+        u8 *buf2 = alloc_buf(size);
         gettimeofday(&tv, 0); t1 = time_double(&tv);
         memcpy(buf2, buf, size);
         gettimeofday(&tv, 0); t2 = time_double(&tv);
         printf("copy %zu bytes takes %f sec\n",
                size, t2 - t1);
-
+        free_buf(buf2);
+#endif
         
         free_buf(buf);
-        free_buf(buf2);
         return 0;
 }
