@@ -9,10 +9,6 @@
 
 #include "walb.h"
 
-#ifndef __KERNEL__
-#define spin_lock_init(lock)
-#endif
-
 /**
  * Bitmap structure for walb.
  */
@@ -27,7 +23,7 @@ typedef struct walb_bitmap
 
 
 /**
- * Create bitmap with size.
+ * Create a bitmap with the specified size.
  *
  * @size Number of bits to store.
  * @flags GFP_* flags. (if defined(__KERNEL__) only)
@@ -44,7 +40,9 @@ static inline walb_bitmap_t* walb_bitmap_create(size_t size)
 
         bmp = MALLOC(sizeof(walb_bitmap_t), flags);
         if (bmp != NULL) {
+#ifdef __KERNEL__
                 spin_lock_init(&bmp->lock);
+#endif
                 bmp->size = size;
                 bmp->ary = ZALLOC((size + 7) / 8, flags);
                 if (bmp->ary == NULL) {
@@ -55,12 +53,18 @@ static inline walb_bitmap_t* walb_bitmap_create(size_t size)
         return bmp;
 }
 
+/**
+ * Free bitmap data.
+ */
 static inline void walb_bitmap_free(walb_bitmap_t *bmp)
 {
         FREE(bmp->ary);
         FREE(bmp);
 }
 
+/**
+ * Clear all bits.
+ */
 static inline void walb_bitmap_clear(walb_bitmap_t *bmp)
 {
         size_t i;
@@ -71,6 +75,9 @@ static inline void walb_bitmap_clear(walb_bitmap_t *bmp)
         }
 }
 
+/**
+ * Make a bit on.
+ */
 static inline void walb_bitmap_on(walb_bitmap_t *bmp, size_t idx)
 {
         size_t ary_idx = idx / 8;
@@ -79,6 +86,9 @@ static inline void walb_bitmap_on(walb_bitmap_t *bmp, size_t idx)
         bmp->ary[ary_idx] |= (u8)1 << off;
 }
 
+/**
+ * Make a bit off.
+ */
 static inline void walb_bitmap_off(walb_bitmap_t *bmp, size_t idx)
 {
         size_t ary_idx = idx / 8;
@@ -87,14 +97,26 @@ static inline void walb_bitmap_off(walb_bitmap_t *bmp, size_t idx)
         bmp->ary[ary_idx] &= ~((u8)1 << off);
 }
 
+/**
+ * Test bit.
+ *
+ * @return Non-zero: on,
+ *         0:        off.
+ */
 static inline int walb_bitmap_get(walb_bitmap_t *bmp, size_t idx)
 {
         size_t ary_idx = idx / 8;
         size_t off = idx % 8;
 
-        return (bmp->ary[ary_idx] & ((u8)1 << off)) ? 1 : 0;
+        return (bmp->ary[ary_idx] & ((u8)1 << off));
 }                
 
+/**
+ * Test all bits are on.
+ *
+ * @return Non-zero: all bits are on,
+ *         0: otherwise.
+ */
 static inline int walb_bitmap_is_all_on(walb_bitmap_t *bmp)
 {
         size_t ary_size = (bmp->size + 7) / 8;
@@ -116,6 +138,12 @@ static inline int walb_bitmap_is_all_on(walb_bitmap_t *bmp)
         return 1;
 }
 
+/**
+ * Test all bits are off.
+ *
+ * @return Non-zero: all bits are off,
+ *         0: otherwise.
+ */
 static inline int walb_bitmap_is_all_off(walb_bitmap_t *bmp)
 {
         size_t ary_size = (bmp->size + 7) / 8;
@@ -137,21 +165,37 @@ static inline int walb_bitmap_is_all_off(walb_bitmap_t *bmp)
         return 1;
 }
 
+/**
+ * Test any bits are on.
+ *
+ * @return Non-zero: some bits are on,
+ *         0:        all bits are off.
+ */
 static inline int walb_bitmap_is_any_on(walb_bitmap_t *bmp)
 {
         return (! walb_bitmap_is_all_off(bmp));
 }
 
+/**
+ * Test any bits are off.
+ *
+ * @return Non-zero: some bits are off,
+ *         0:        all bits are on.
+ */
 static inline int walb_bitmap_is_any_off(walb_bitmap_t *bmp)
 {
         return (! walb_bitmap_is_all_on(bmp));
 }
 
+/**
+ * Print bitmap for test or debug.
+ */
 static inline void walb_bitmap_print(walb_bitmap_t *bmp)
 {
         size_t i;
         for (i = 0; i < bmp->size; i ++) {
-                PRINT(KERN_INFO, "%d", walb_bitmap_get(bmp, i));
+                int bit = (walb_bitmap_get(bmp, i) == 0 ? 0 : 1);
+                PRINT(KERN_INFO, "%d", bit);
                 if (i % 64 == 63) PRINT(KERN_INFO, "\n");
         }
         PRINT(KERN_INFO, "\n");
