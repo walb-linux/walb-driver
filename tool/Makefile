@@ -2,7 +2,8 @@ CC=gcc
 CFLAGS=-fPIC -Wall -Wextra -I../include \
        -D_FILE_OFFSET_BITS=64 -D_XOPEN_SOURCE=500 -D_GNU_SOURCE
 ifeq ($(DEBUG),1)
-	CFLAGS+=-DWALB_DEBUG -DDEBUG -g
+	CFLAGS+=-DWALB_DEBUG -DDEBUG -g --coverage
+	LDFLAGS+=-lgcov
 else
 	CFLAGS+=-DNDEBUG -O2
 endif
@@ -16,7 +17,8 @@ binaries: $(BINARIES) $(TEST_BINARIES)
 
 clean:
 	rm -f $(BINARIES) $(TEST_BINARIES) *.o
-	rm -rf tmp
+	rm -f *.gcov *.gcda *.gcno # coverage files.
+	rm -rf tmp # test files.
 
 HEADER_FILES = \
 	../include/bitmap.h \

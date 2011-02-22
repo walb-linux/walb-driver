@@ -1,3 +1,6 @@
+*.gcov
+*.gcda
+*.gcno
 test_bitmap
 test_checksum
 test_u64bits
