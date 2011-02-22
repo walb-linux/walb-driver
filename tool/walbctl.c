@@ -311,7 +311,7 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
                             name);
         
         /* Write super sector */
-        if (! write_super_sector(fd, &super_sect)) {
+        if (! __write_super_sector(fd, &super_sect)) {
                 LOGe("write super sector failed.\n");
                 goto error0;
         }
@@ -338,7 +338,7 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
 #if 1        
         /* Read super sector and print for debug. */
         memset(&super_sect, 0, sizeof(super_sect));
-        if (! read_super_sector(fd, &super_sect, physical_bs, n_snapshots)) {
+        if (! __read_super_sector(fd, &super_sect, physical_bs, n_snapshots)) {
                 goto error1;
         }
         /* print_super_sector(&super_sect); */
@@ -841,7 +841,7 @@ bool do_cat_wldev(const config_t *cfg)
                 LOGe("read super sector0 failed.\n");
                 goto error1;
         }
-        if (! is_valid_super_sector(super_sectp, physical_bs)) {
+        if (! __is_valid_super_sector(super_sectp, physical_bs)) {
                 LOGe("read super sector is not valid.\n");
                 goto error1;
         }
@@ -1139,7 +1139,7 @@ bool do_redo(const config_t *cfg)
                 LOGe("Read super sector failed.\n");
                 goto error3;
         }
-        if (! is_valid_super_sector(super, pbs)) {
+        if (! __is_valid_super_sector(super, pbs)) {
                 LOGe("super sector is not valid.\n");
                 goto error3;
         }
@@ -1188,7 +1188,7 @@ bool do_redo(const config_t *cfg)
         /* Set new written_lsid and sync down. */
         u64 end_lsid = lsid;
         super->written_lsid = end_lsid;
-        if (! write_super_sector(lfd, super)) {
+        if (! __write_super_sector(lfd, super)) {
                 LOGe("write super sector failed.\n");
                 goto error5;
         }
@@ -1341,7 +1341,7 @@ bool do_show_wldev(const config_t *cfg)
                 (walb_logpack_header_t *)alloc_sector(physical_bs);
         if (logpack == NULL) { LOGe(NOMEM_STR); goto error2; }
 
-        print_super_sector(super_sectp);
+        __print_super_sector(super_sectp);
         u64 oldest_lsid = super_sectp->oldest_lsid;
         LOGd("oldest_lsid: %"PRIu64"\n", oldest_lsid);
 

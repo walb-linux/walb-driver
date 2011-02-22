@@ -274,7 +274,7 @@ bool is_valid_snaphsot_data_u(struct snapshot_data_u* snapd)
 
         if (! (snapd &&
                snapd->fd > 0 &&
-               is_valid_super_sector(snapd->super, get_sector_size(snapd)))) {
+               __is_valid_super_sector(snapd->super, get_sector_size(snapd)))) {
                 return false;
         }
 

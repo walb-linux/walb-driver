@@ -543,6 +543,9 @@ void __init_super_sector(walb_super_sector_t* super_sect,
 
         ASSERT(sizeof(walb_super_sector_t) <= (size_t)physical_bs);
 
+        /* Set sector type. */
+        super_sect->sector_type = SECTOR_TYPE_SUPER;
+        
         /* Calculate number of snapshot sectors. */
         int n_sectors;
         int t = get_max_n_records_in_snapshot_sector(physical_bs);
@@ -570,12 +573,31 @@ void __init_super_sector(walb_super_sector_t* super_sect,
         if (name != NULL && strlen(name) != strlen(rname)) {
                 printf("name %s is pruned to %s.\n", name, rname);
         }
+
+        ASSERT(__is_valid_super_sector(super_sect, physical_bs));
+}
+
+/**
+ * Initialize super sector image.
+ */
+void init_super_sector(struct sector_data *sect,
+                         int logical_bs, int physical_bs,
+                         u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+                         const char *name)
+{
+
+        ASSERT_SECTOR_DATA(sect);
+        ASSERT(physical_bs == sect->size);
+        
+        __init_super_sector(sect->data, logical_bs, physical_bs,
+                            ddev_lb, ldev_lb, n_snapshots, name);
 }
 
 /**
  * Print super sector for debug.
+ * This will be obsolute. Use print_super_sector() instead.
  */
-void print_super_sector(const walb_super_sector_t* super_sect)
+void __print_super_sector(const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
         printf("checksum: %08x\n"
@@ -600,6 +622,14 @@ void print_super_sector(const walb_super_sector_t* super_sect)
                super_sect->device_size);
 }
 
+/**
+ * Print super sector.
+ */
+void print_super_sector(const struct sector_data *sect)
+{
+        ASSERT_SUPER_SECTOR(sect);
+        __print_super_sector((const walb_super_sector_t *)sect->data);
+}
 
 /**
  * Write super sector to the log device.
@@ -609,7 +639,7 @@ void print_super_sector(const walb_super_sector_t* super_sect)
  *
  * @return true in success, or false.
  */
-bool write_super_sector(int fd, const walb_super_sector_t* super_sect)
+bool __write_super_sector(int fd, const walb_super_sector_t* super_sect)
 {
         ASSERT(super_sect != NULL);
         u32 sect_sz = super_sect->physical_bs;
@@ -648,6 +678,18 @@ error1:
         free(sector_buf);
 error0:
         return false;
+}
+
+/**
+ * Write super sector to the log device.
+ */
+bool write_super_sector(int fd, const struct sector_data *sect)
+{
+        if (is_valid_super_sector(sect)) {
+                return __write_super_sector(fd, sect->data);
+        } else {
+                return false;
+        }
 }
 
 /**
@@ -696,6 +738,8 @@ bool read_sectors(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n)
 /**
  * Read super sector from the log device.
  *
+ * This is obsolute. Use read_super_sector() instead.
+ *
  * @fd file descripter of log device.
  * @super_sect super sector to be filled.
  * @sector_size sector size in bytes.
@@ -703,7 +747,8 @@ bool read_sectors(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n)
  *
  * @return true in success, or false.
  */
-bool read_super_sector(int fd, walb_super_sector_t* super_sect, u32 sector_size, u32 n_snapshots)
+bool __read_super_sector(int fd, walb_super_sector_t* super_sect,
+                         u32 sector_size, u32 n_snapshots)
 {
         /* 1. Read two sectors
            2. Compare them and choose one having larger written_lsid. */
@@ -762,6 +807,33 @@ error1:
         free(buf);
 error0:
         return false;
+}
+
+/**
+ * Read super sector.
+ *
+ * Currently 2nd super sector is not read.
+ */
+bool read_super_sector(int fd, struct sector_data *sect)
+{
+        if (! is_valid_sector_data(sect)) { return false; }
+
+        ASSERT(sect->size <= PAGE_SIZE);
+        
+        u64 off0 = get_super_sector0_offset(sect->size);
+        if (! sector_read(fd, off0, sect)) {
+                LOGe("Read sector failed.\n");
+                return false;
+        }
+        if (checksum(sect->data, sect->size) != 0) {
+                LOGe("Checksum invalid.\n");
+                return false;
+        }
+        if (! is_valid_super_sector(sect)) {
+                LOGe("Super sector invalid.\n");
+                return false;
+        }
+        return true;
 }
 
 /**

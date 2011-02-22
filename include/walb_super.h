@@ -10,6 +10,11 @@
 #include "walb_sector.h"
 
 /**
+ * Assert macro.
+ */
+#define ASSERT_SUPER_SECTOR(sect) ASSERT(is_valid_super_sector(sect))
+
+/**
  * Super block data of the log device.
  *
  * sizeof(walb_super_sector_t) must be <= physical block size.
@@ -91,23 +96,23 @@ typedef struct walb_super_sector {
 
 /**
  * Check super sector.
+ * Do not use this directly. Use is_valid_super_sector() instead.
+ * This function does not evaluate checksum.
  *
  * @sect pointer to super sector image.
  *
  * @return non-zero if valid, or 0.
  */
-static inline bool is_valid_super_sector(const walb_super_sector_t* sect, int physical_bs)
+static inline int __is_valid_super_sector(const walb_super_sector_t* sect, int physical_bs)
 {
 #define CHECK(condition) if (! (condition)) {                   \
-                PRINTV_E("super sector is not valid.\n");       \
+                PRINTV_D("super sector is not valid.\n");       \
                 goto invalid;                                   \
         }
 
         /* physical_bs */
         CHECK(physical_bs > 0);
         
-        /* checksum */
-        CHECK(checksum((const u8 *)sect, physical_bs) == 0);
         /* sector type */
         CHECK(sect->sector_type == SECTOR_TYPE_SUPER);
         /* block size */
@@ -126,6 +131,17 @@ invalid:
         return 0;
 }
         
+/**
+ * Check super sector.
+ *
+ * @return Non-zero if valid, or 0.
+ */
+static inline int is_valid_super_sector(const struct sector_data* sect)
+{
+        if (! is_valid_sector_data(sect)) { return 0; }
+        return __is_valid_super_sector(sect->data, sect->size);
+}
+
 /**
  * Set super sector name.
  *

@@ -8,7 +8,7 @@ else
 endif
 
 BINARIES = walbctl test_rw
-TEST_BINARIES = test_checksum test_bitmap test_u64bits test_sector
+TEST_BINARIES = test_checksum test_bitmap test_u64bits test_sector test_super
 
 binaries: $(BINARIES) $(TEST_BINARIES)
 
@@ -50,8 +50,12 @@ test_snapshot: test_snapshot.o util.o snapshot.o
 test_sector: test_sector.o util.o
 	$(CC) -o $@ $(CFLAGS) test_sector.o util.o
 
+test_super: test_super.o util.o
+	$(CC) -o $@ $(CFLAGS) test_super.o util.o
+
 test_bitmap.o: test_bitmap.c ../include/bitmap.h
 test_sector.o: test_sector.c ../include/walb_sector.h util.h
+test_super.o: test_super.c ../include/walb_super.h util.h
 test_snapshot.o: test_snapshot.c
 util.o: util.c util.h $(HEADER_FILES)
 logpack.o: logpack.c logpack.h util.h $(HEADER_FILES)
