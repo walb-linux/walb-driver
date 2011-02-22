@@ -233,11 +233,15 @@ static inline int __is_valid_sector_data_array_detail(
         struct sector_data ** const ary, int size)
 {
         int i;
+        int sector_size;
 
         if (ary == NULL) { return 0; }
-        
+        if (size <= 0) { return 0; }
+
+        sector_size = ary[0]->size;
         for (i = 0; i < size; i ++) {
                 if (! is_valid_sector_data(ary[i])) { return 0; }
+                if (ary[i]->size != sector_size) { return 0; }
         }
         return 1;
 }
@@ -250,7 +254,6 @@ static inline int __is_valid_sector_data_array_detail(
 static inline int is_valid_sector_data_array(const struct sector_data_array *sect_ary)
 {
         return (sect_ary != NULL &&
-                sect_ary->size > 0 &&
                 __is_valid_sector_data_array_detail(sect_ary->array, sect_ary->size));
 }
 
@@ -332,7 +335,7 @@ static inline int sector_data_array_realloc(
 
         if (sect_ary->size > n_sectors) {
                 /* Shrink */
-                for (i = 0; n_sectors + i < sect_ary->size; i ++) {
+                for (i = n_sectors; i < sect_ary->size; i ++) {
                         ASSERT(sect_ary->array[i]);
                         sector_free(sect_ary->array[i]);
                         sect_ary->array[i] = NULL;
@@ -347,7 +350,7 @@ static inline int sector_data_array_realloc(
                 sect_ary->array = new_ary;
                 ASSERT(sect_ary->array[0]);
                 sect_size = sect_ary->array[0]->size;
-                for (i = 0; sect_ary->size + i < n_sectors; i ++) {
+                for (i = sect_ary->size; i < n_sectors; i ++) {
 #ifdef __KERNEL__
                         sect_ary->array[i] = sector_alloc(sect_size, mask);
 #else
@@ -366,7 +369,7 @@ static inline int sector_data_array_realloc(
 error1:
         /* Grow failed. */
         ASSERT(sect_ary->size < n_sectors); 
-        for (i = 0; sect_ary->size + i < n_sectors; i ++) {
+        for (i = sect_ary->size; i < n_sectors; i ++) {
                 sector_free(sect_ary->array[i]);
                 sect_ary->array[i] = NULL;
         }

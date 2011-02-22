@@ -8,7 +8,7 @@ else
 endif
 
 BINARIES = walbctl test_rw
-TEST_BINARIES = test_checksum test_bitmap test_u64bits
+TEST_BINARIES = test_checksum test_bitmap test_u64bits test_sector
 
 binaries: $(BINARIES) $(TEST_BINARIES)
 
