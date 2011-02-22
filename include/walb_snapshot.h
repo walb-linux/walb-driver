@@ -149,6 +149,7 @@ static inline int compare_snapshot_name(
  * For sector_data.
  */
 static inline int get_max_n_records_in_snapshot_sector(int sector_size);
+static inline void init_snapshot_sector(struct sector_data *sect);
 
 static inline struct walb_snapshot_sector* get_snapshot_sector(
         struct sector_data *sect);
@@ -326,6 +327,33 @@ get_snapshot_sector(struct sector_data *sect)
 }
 
 /**
+ * Initialize snapshot sector data.
+ */
+static inline void init_snapshot_sector(struct sector_data *sect)
+{
+        struct walb_snapshot_sector *snap_sect;
+        int i, n_records;
+
+        ASSERT_SECTOR_DATA(sect);
+        sector_zeroclear(sect);
+        n_records = get_max_n_records_in_snapshot_sector(sect->size);
+        ASSERT(n_records > 0);
+        
+        snap_sect = get_snapshot_sector(sect);
+        snap_sect->sector_type = SECTOR_TYPE_SNAPSHOT;
+        
+        for (i = 0; i < n_records; i ++) {
+                snapshot_record_init(&snap_sect->record[i]);
+        }
+
+/* #ifdef WALB_DEBUG */
+/*         for (i = 0; i < n_records; i ++) { */
+/*                 ASSERT(! is_alloc_snapshot_record(i, sect)); */
+/*         } */
+/* #endif */
+}
+
+/**
  * Get snapshot sector for const pointer.
  */
 static inline const struct walb_snapshot_sector*
@@ -343,7 +371,7 @@ get_snapshot_sector_const(const struct sector_data *sect)
 static inline int is_alloc_snapshot_record(
         int nr, const struct sector_data *sect)
 {
-        ASSERT_SNAPSHOT_SECTOR(sect);
+        ASSERT(sect);
         ASSERT(0 <= nr && nr < 64);
         
         return test_u64bits(nr, &get_snapshot_sector_const(sect)->bitmap);
@@ -355,7 +383,7 @@ static inline int is_alloc_snapshot_record(
 static inline void set_alloc_snapshot_record(
         int nr, struct sector_data *sect)
 {
-        ASSERT_SNAPSHOT_SECTOR(sect);
+        ASSERT(sect);
         ASSERT(0 <= nr && nr < 64);
         
         set_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
@@ -367,7 +395,7 @@ static inline void set_alloc_snapshot_record(
 static inline void clear_alloc_snapshot_record(
         int nr, struct sector_data *sect)
 {
-        ASSERT_SNAPSHOT_SECTOR(sect);
+        ASSERT(sect);
         ASSERT(0 <= nr && nr < 64);
 
         clear_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
@@ -549,7 +577,11 @@ static inline int is_valid_snapshot_sector(const struct sector_data *sect)
                         }
                 }
         }
-        PRINT_D("snapshot sector invalid record: %d\n", count);
+#ifdef WALB_DEBUG
+        if (count > 0) {
+                PRINT_D("snapshot sector invalid record: %d\n", count);
+        }
+#endif
         return (count == 0);
 }
 

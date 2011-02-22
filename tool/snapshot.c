@@ -191,7 +191,8 @@ struct snapshot_data_u* alloc_snapshot_data_u(
         snapd->sect_ary = sector_data_array_alloc
                 (get_sector_size(snapd), get_n_sectors(snapd));
         if (! snapd->sect_ary) { goto nomem1; }
-        
+
+        clear_snapshot_data_u(snapd);
         return snapd;
 nomem1:
         free_snapshot_data_u(snapd);
@@ -256,12 +257,12 @@ void clear_snapshot_data_u(struct snapshot_data_u *snapd)
         walb_snapshot_record_t *rec;
         struct sector_data *sect;
 
-        for_each_snapshot_record_in_snapd(rec_i, rec, sect_i, sect, snapd) {
-                
-                snapshot_record_init(rec);
-                clear_alloc_snapshot_record(rec_i, sect);
+        for_each_snapshot_sector(sect_i, sect, snapd) {
+                init_snapshot_sector(sect);
+                ASSERT_SNAPSHOT_SECTOR(sect);
         }
         snapd->next_snapshot_id = 0;
+        ASSERT_SNAPSHOT_SECTOR_DATA_U(snapd);
 }
 
 /**

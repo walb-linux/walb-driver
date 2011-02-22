@@ -8,6 +8,9 @@
 
 #include <stdio.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "walb.h"
 #include "walb_log_device.h"

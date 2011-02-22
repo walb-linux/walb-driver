@@ -6,9 +6,6 @@
  * @license 3-clause BSD, GPL version 2 or later.
  */
 #include <stdio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 
 #include "util.h"
 #include "walb_super.h"
