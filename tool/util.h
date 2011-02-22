@@ -65,12 +65,15 @@ bool sector_write(int fd, u64 offset, const struct sector_data *sect);
 bool sector_array_read(int fd, u64 offset,
                        struct sector_data_array *sect_ary,
                        int start_idx, int n_sectors);
-
 bool sector_array_write(int fd, u64 offset,
                         const struct sector_data_array *sect_ary,
                         int start_idx, int n_sectors);
 
 /* Super sector operations. */
+void __init_super_sector(walb_super_sector_t* super_sect,
+                         int physical_bs, int logical_bs,
+                         u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+                         const char *name);
 void print_super_sector(const walb_super_sector_t* super_sect);
 bool write_super_sector(int fd, const walb_super_sector_t* super_sect);
 bool read_super_sector(int fd, walb_super_sector_t* super_sect,

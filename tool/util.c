@@ -520,6 +520,59 @@ bool sector_array_write(int fd, u64 offset,
 }
 
 /**
+ * Initialize super sector.
+ *
+ * @super_sect super sector image to initialize.
+ * @logical_bs logical block size.
+ * @physical_bs physical block size.
+ * @ddev_lb device size [logical block].
+ * @ldev_lb log device size [logical block]
+ * @n_snapshots number of snapshots to keep.
+ * @name name of the walb device, or NULL.
+ */
+void __init_super_sector(walb_super_sector_t* super_sect,
+                         int logical_bs, int physical_bs,
+                         u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+                         const char *name)
+{
+        ASSERT(super_sect);
+        ASSERT(logical_bs > 0);
+        ASSERT(physical_bs > 0);
+        ASSERT(ddev_lb < (u64)(-1));
+        ASSERT(ldev_lb < (u64)(-1));
+
+        ASSERT(sizeof(walb_super_sector_t) <= (size_t)physical_bs);
+
+        /* Calculate number of snapshot sectors. */
+        int n_sectors;
+        int t = get_max_n_records_in_snapshot_sector(physical_bs);
+        n_sectors = (n_snapshots + t - 1) / t;
+
+        LOGd("metadata_size: %d\n", n_sectors);
+
+        /* Prepare super sector */
+        memset(super_sect, 0, sizeof(super_sect));
+
+        /* Fill parameters. */
+        super_sect->logical_bs = logical_bs;
+        super_sect->physical_bs = physical_bs;
+        super_sect->snapshot_metadata_size = n_sectors;
+        generate_uuid(super_sect->uuid);
+        
+        super_sect->ring_buffer_size =
+                ldev_lb / (physical_bs / logical_bs)
+                - get_ring_buffer_offset(physical_bs, n_snapshots);
+
+        super_sect->oldest_lsid = 0;
+        super_sect->written_lsid = 0;
+        super_sect->device_size = ddev_lb;
+        char *rname = set_super_sector_name(super_sect, name);
+        if (name != NULL && strlen(name) != strlen(rname)) {
+                printf("name %s is pruned to %s.\n", name, rname);
+        }
+}
+
+/**
  * Print super sector for debug.
  */
 void print_super_sector(const walb_super_sector_t* super_sect)

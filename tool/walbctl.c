@@ -300,39 +300,15 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
         ASSERT(physical_bs > 0);
         ASSERT(ddev_lb < (u64)(-1));
         ASSERT(ldev_lb < (u64)(-1));
+        /* name can be null. */
 
         walb_super_sector_t super_sect;
-        walb_snapshot_sector_t *snap_sectp;
 
-        ASSERT(sizeof(super_sect) <= (size_t)physical_bs);
-        ASSERT(sizeof(*snap_sectp) <= (size_t)physical_bs);
-
-        /* Calculate number of snapshot sectors. */
-        int n_sectors;
-        int t = get_max_n_records_in_snapshot_sector(physical_bs);
-        n_sectors = (n_snapshots + t - 1) / t;
-
-        LOGd("metadata_size: %d\n", n_sectors);
-
-        /* Prepare super sector */
-        memset(&super_sect, 0, sizeof(super_sect));
-
-        super_sect.logical_bs = logical_bs;
-        super_sect.physical_bs = physical_bs;
-        super_sect.snapshot_metadata_size = n_sectors;
-        generate_uuid(super_sect.uuid);
-        
-        super_sect.ring_buffer_size =
-                ldev_lb / (physical_bs / logical_bs)
-                - get_ring_buffer_offset(physical_bs, n_snapshots);
-
-        super_sect.oldest_lsid = 0;
-        super_sect.written_lsid = 0;
-        super_sect.device_size = ddev_lb;
-        char *rname = set_super_sector_name(&super_sect, name);
-        if (name != NULL && strlen(name) != strlen(rname)) {
-                printf("name %s is pruned to %s.\n", name, rname);
-        }
+        /* Initialize super sector. */
+        __init_super_sector(&super_sect,
+                            logical_bs, physical_bs,
+                            ddev_lb, ldev_lb, n_snapshots,
+                            name);
         
         /* Write super sector */
         if (! write_super_sector(fd, &super_sect)) {
@@ -340,15 +316,19 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
                 goto error0;
         }
 
-        /* Prepare super sectors
+        /* Prepare snapshot sectors
            Bitmap data will be all 0. */
+        walb_snapshot_sector_t *snap_sectp;
+        ASSERT(sizeof(*snap_sectp) <= (size_t)physical_bs);
+
         snap_sectp = (walb_snapshot_sector_t *)alloc_sector_zero(physical_bs);
         if (snap_sectp == NULL) {
                 goto error0;
         }
         
-        /* Write metadata sectors */
+        /* Write snapshot sectors */
         int i = 0;
+        int n_sectors = (int)super_sect.snapshot_metadata_size;
         for (i = 0; i < n_sectors; i ++) {
                 if (! write_snapshot_sector(fd, &super_sect, snap_sectp, i)) {
                         goto error1;
