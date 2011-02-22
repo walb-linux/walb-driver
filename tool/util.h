@@ -53,12 +53,24 @@ bool realloc_sectors(u8** ptr, int sector_size, int n);
 u8* alloc_sector(int sector_size);
 u8* alloc_sector_zero(int sector_size);
 
-/* Sector functions. */
+/* Sector functions (will be obsolute). */
 bool read_sectors(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n);
 bool read_sector(int fd, u8* sector_buf, u32 sector_size, u64 offset);
 bool write_sectors(int fd, const u8* sectors_buf, u32 sector_size, u64 offset, int n);
 bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset);
 
+/* Sector functions. */
+bool sector_read(int fd, u64 offset, struct sector_data *sect);
+bool sector_write(int fd, u64 offset, const struct sector_data *sect);
+bool sector_array_read(int fd, u64 offset,
+                       struct sector_data_array *sect_ary,
+                       int start_idx, int n_sectors);
+
+bool sector_array_write(int fd, u64 offset,
+                        const struct sector_data_array *sect_ary,
+                        int start_idx, int n_sectors);
+
+/* Super sector operations. */
 void print_super_sector(const walb_super_sector_t* super_sect);
 bool write_super_sector(int fd, const walb_super_sector_t* super_sect);
 bool read_super_sector(int fd, walb_super_sector_t* super_sect,

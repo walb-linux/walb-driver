@@ -9,7 +9,10 @@
 #include <unistd.h>
 
 #include "random.h"
+#include "util.h"
 #include "walb_sector.h"
+
+#define TEST_FILE "tmp/test_sector_data"
 
 /*******************************************************************************
  * Static functions.
@@ -70,8 +73,8 @@ void test_sector_array(int sect_size, int n_sectors)
         raw = (u8 *)malloc(raw_size);
         ASSERT(raw);
         
-        sect_ary0 = sector_data_array_alloc(n_sectors, sect_size);
-        sect_ary1 = sector_data_array_alloc(n_sectors + 3, sect_size);
+        sect_ary0 = sector_data_array_alloc(sect_size, n_sectors);
+        sect_ary1 = sector_data_array_alloc(sect_size, n_sectors + 3);
         ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
         ASSERT_SECTOR_DATA_ARRAY(sect_ary1);
         ASSERT(sect_ary0->size == n_sectors);
@@ -126,6 +129,54 @@ void test_sector_array(int sect_size, int n_sectors)
         free(raw);
 }
 
+void test_sector_io(int sect_size, int n_sectors)
+{
+        struct sector_data_array *sect_ary0, *sect_ary1;
+        struct sector_data *sect0, *sect1;
+        bool ret;
+
+        /* prepare */
+        sect_ary0 = sector_data_array_alloc(sect_size, n_sectors);
+        sect_ary1 = sector_data_array_alloc(sect_size, n_sectors);
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary1);
+        ASSERT(sect_ary0->size == n_sectors);
+        ASSERT(sect_ary1->size == n_sectors);
+
+        /* Fill random data. */
+        int i;
+        for (i = 0; i < n_sectors; i ++) {
+                sect0 = get_sector_data_in_array(sect_ary0, i);
+                memset_sector_random(sect0);
+        }
+        
+        /* write */
+        int fd = open(TEST_FILE, O_RDWR | O_TRUNC |O_CREAT, 00775);
+        ASSERT(fd > 0);
+
+        ret = sector_array_write(fd, 0, sect_ary0, 0, n_sectors);
+        ASSERT(ret);
+        
+        /* read */
+        ret = sector_array_read(fd, 0, sect_ary1, 0, n_sectors);
+        ASSERT(ret);
+        
+        close(fd);
+        
+        /* check */
+        for (i = 0; i < n_sectors; i ++) {
+                sect0 = get_sector_data_in_array(sect_ary0, i);
+                sect1 = get_sector_data_in_array(sect_ary1, i);
+                
+                ASSERT(sector_compare(sect0, sect1) == 0);
+        }
+
+        /* free */
+        sector_data_array_free(sect_ary0);
+        sector_data_array_free(sect_ary1);
+}
+
+
 int main()
 {
         init_random();
@@ -135,6 +186,9 @@ int main()
 
         test_sector_array(512, 10);
         test_sector_array(4096, 10);
+
+        test_sector_io(512, 10);
+        test_sector_io(4096, 10);
         
         return 0;
 }

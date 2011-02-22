@@ -405,6 +405,119 @@ bool write_sectors(int fd, const u8* sectors_buf, u32 sector_size, u64 offset, i
         return true;
 }
 
+/**
+ * Read sector data from the offset.
+ *
+ * @fd file descriptor to read.
+ * @offset offset in sectors.
+ * @sect sectors data to be filled.
+ *
+ * @return true in success, or false.
+ */
+bool sector_read(int fd, u64 offset, struct sector_data *sect)
+{
+        ASSERT(fd > 0);
+        ASSERT_SECTOR_DATA(sect);
+        int sect_size = sect->size;
+        
+        ssize_t r = 0;
+        while (r < sect_size) {
+                ssize_t s = pread(fd, sect->data + r,
+                                  sect_size - r,
+                                  offset * sect_size + r);
+                if (s > 0) {
+                        r += s;
+                } else {
+                        perror("read sector error.");
+                        return false;
+                }
+        }
+        ASSERT(r == sect_size);
+        return true;
+}
+
+/**
+ * Write sector data to the offset.
+ *
+ * @fd file descriptor to write.
+ * @offset offset in sectors.
+ * @sect sectors data to be written.
+ *
+ * @return true in success, or false.
+ */
+bool sector_write(int fd, u64 offset, const struct sector_data *sect)
+{
+        ASSERT(fd > 0);
+        ASSERT_SECTOR_DATA(sect);
+        int sect_size = sect->size;
+        
+        ssize_t w = 0;
+        while (w < sect_size) {
+                ssize_t s = pwrite(fd, sect->data + w,
+                                   sect_size - w,
+                                   offset * sect_size + w);
+                if (s > 0) {
+                        w += s;
+                } else {
+                        perror("write sector error.");
+                        return false;
+                }
+
+        }
+        ASSERT(w == sect_size);
+        return true;
+}
+
+/**
+ * Read multiple sectors data from the offset.
+ */
+bool sector_array_read(int fd, u64 offset,
+                       struct sector_data_array *sect_ary,
+                       int start_idx, int n_sectors)
+{
+        ASSERT(fd > 0);
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+        ASSERT(start_idx >= 0);
+        ASSERT(start_idx + n_sectors <= sect_ary->size);
+
+        int i, idx;
+        u64 off;
+        bool ret;
+        for (i = 0; i < n_sectors; i ++) {
+                idx = start_idx + i;
+                off = offset + i;
+                ret = sector_read(fd, off,
+                                  get_sector_data_in_array(sect_ary, idx));
+                if (! ret) { LOGe("read failed.\n"); return false; }
+        }
+        return true;
+}
+
+/**
+ * Read multiple sectors data to the offset.
+ */
+bool sector_array_write(int fd, u64 offset,
+                        const struct sector_data_array *sect_ary,
+                        int start_idx, int n_sectors)
+{
+        ASSERT(fd > 0);
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+        ASSERT(start_idx >= 0);
+        ASSERT(start_idx + n_sectors <= sect_ary->size);
+
+        int i, idx;
+        u64 off;
+        bool ret;
+        for (i = 0; i < n_sectors; i ++) {
+                idx = start_idx + i;
+                off = offset + i;
+                ret = sector_write(
+                        fd, off,
+                        get_sector_data_in_array_const(sect_ary, idx));
+                if (! ret) { LOGe("write failed.\n"); return false; }
+        }
+        return true;
+}
 
 /**
  * Print super sector for debug.

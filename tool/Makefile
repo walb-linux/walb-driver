@@ -51,7 +51,7 @@ test_sector: test_sector.o util.o
 	$(CC) -o $@ $(CFLAGS) test_sector.o util.o
 
 test_bitmap.o: test_bitmap.c ../include/bitmap.h
-test_sector.o: test_sector.c ../include/walb_sector.h
+test_sector.o: test_sector.c ../include/walb_sector.h util.h
 test_snapshot.o: test_snapshot.c
 util.o: util.c util.h $(HEADER_FILES)
 logpack.o: logpack.c logpack.h util.h $(HEADER_FILES)

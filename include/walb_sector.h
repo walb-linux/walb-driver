@@ -65,12 +65,12 @@ static inline int is_valid_sector_data_array(
         const struct sector_data_array *sect_ary);
 #ifdef __KERNEL__
 static inline struct sector_data_array* sector_data_array_alloc(
-        int n_sectors, int sector_size, gfp_t mask);
+        int sector_size, int n_sectors, gfp_t mask);
 static inline int sector_data_array_realloc(
         struct sector_data_array *sect_ary, int n_sectors, gfp_t mask);
 #else
 static inline struct sector_data_array* sector_data_array_alloc(
-        int n_sectors, int sector_size);
+        int sector_size, int n_sectors);
 static inline int sector_data_array_realloc(
         struct sector_data_array *sect_ary, int n_sectors);
 #endif
@@ -78,6 +78,8 @@ static inline int sector_data_array_realloc(
 static inline void sector_data_array_free(struct sector_data_array *sect_ary);
 static inline struct sector_data* get_sector_data_in_array(
         struct sector_data_array *sect_ary, int idx);
+static inline const struct sector_data* get_sector_data_in_array_const(
+        const struct sector_data_array *sect_ary, int idx);
 
 /*******************************************************************************
  * Functions for sector data.
@@ -237,7 +239,8 @@ static inline int __is_valid_sector_data_array_detail(
 
         if (ary == NULL) { return 0; }
         if (size <= 0) { return 0; }
-
+        
+        if (! ary[0]) { return 0; } /* null check. */
         sector_size = ary[0]->size;
         for (i = 0; i < size; i ++) {
                 if (! is_valid_sector_data(ary[i])) { return 0; }
@@ -268,10 +271,10 @@ static inline int is_valid_sector_data_array(const struct sector_data_array *sec
  */
 #ifdef __KERNEL__
 static inline struct sector_data_array* sector_data_array_alloc(
-        int n_sectors, int sector_size, gfp_t mask)
+        int sector_size, int n_sectors, gfp_t mask)
 #else
 static inline struct sector_data_array* sector_data_array_alloc(
-        int n_sectors, int sector_size)
+        int sector_size, int n_sectors)
 #endif
 {
         int i;
@@ -409,6 +412,14 @@ static inline void sector_data_array_free(struct sector_data_array *sect_ary)
  */
 static inline struct sector_data* get_sector_data_in_array(
         struct sector_data_array *sect_ary, int idx)
+{
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+        ASSERT(0 <= idx && idx < sect_ary->size);
+        return sect_ary->array[idx];
+}
+
+static inline const struct sector_data* get_sector_data_in_array_const(
+        const struct sector_data_array *sect_ary, int idx)
 {
         ASSERT_SECTOR_DATA_ARRAY(sect_ary);
         ASSERT(0 <= idx && idx < sect_ary->size);

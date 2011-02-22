@@ -189,7 +189,7 @@ struct snapshot_data_u* alloc_snapshot_data_u(
         snapd->next_snapshot_id = 0;
 
         snapd->sect_ary = sector_data_array_alloc
-                (get_n_sectors(snapd), get_sector_size(snapd));
+                (get_sector_size(snapd), get_n_sectors(snapd));
         if (! snapd->sect_ary) { goto nomem1; }
         
         return snapd;
