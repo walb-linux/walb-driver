@@ -7,6 +7,7 @@ test_u64bits
 test_snapshot
 test_sector
 test_super
+test_logpack
 test_rw
 walbctl
 tmp

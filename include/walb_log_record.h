@@ -75,6 +75,20 @@ static inline int max_n_log_record_in_sector(int sector_size)
 }
 
 /**
+ * NOT TESTED YET.
+ *
+ * for each macro for records in a logpack.
+ *
+ * int i;
+ * walb_log_record_t *lrec;
+ * walb_logpack_header_t *lhead;
+ */
+#define for_each_logpack_record(i, lrec, lhead)  \
+    for (i = 0; i < lhead->n_records && {lrec = &lhead->record[i]; 1;}; i ++)
+
+
+
+/**
  * IO data inside kernel memory.
  */
 /* typedef struct walb_io_data { */
