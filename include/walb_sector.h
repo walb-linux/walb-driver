@@ -81,6 +81,9 @@ static inline struct sector_data* get_sector_data_in_array(
 static inline const struct sector_data* get_sector_data_in_array_const(
         const struct sector_data_array *sect_ary, int idx);
 
+static inline void sector_data_array_copy(int offset, void *data, int size);
+
+
 /*******************************************************************************
  * Functions for sector data.
  *******************************************************************************/
@@ -424,6 +427,43 @@ static inline const struct sector_data* get_sector_data_in_array_const(
         ASSERT_SECTOR_DATA_ARRAY(sect_ary);
         ASSERT(0 <= idx && idx < sect_ary->size);
         return sect_ary->array[idx];
+}
+
+/**
+ * Copy data from a buffer.
+ *
+ * @sect_ary sector array.
+ * @offset offset in bytes inside sector array.
+ * @data source data.
+ * @size copy size in bytes.
+ */
+static inline void sector_data_array_copy_from(
+    struct sector_data_array *sect_ary, int offset, void *data, int size)
+{
+    ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+    
+    int sect_size = sect_ary->array[0]->size;
+    int sect_idx = offset / sect_size;
+    int sect_off = offset % sect_size;
+    
+    
+    
+}
+
+/**
+ * Copy data to a buffer.
+ *
+ * @sect_ary sector array.
+ * @offset offset in bytes inside sector array.
+ * @data destination data.
+ * @size copy size in bytes.
+ */
+static inline void sector_data_array_copy_to(
+    const struct sector_data_array *sect_ary, int offset, void *data, int size)
+{
+    ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+
+
 }
 
 #endif /* _WALB_SECTOR_H */

@@ -419,29 +419,139 @@ void free_logpack(logpack_t* logpack)
 }
 
 /**
- * Get pointer to logpack header image.
+ * Realloc logpack.
  */
-walb_logpack_header_t* logpack_get_header(logpack_t* logpack)
+bool realloc_logpack(logpack_t* logpack, int n_sectors)
 {
-    ASSERT(logpack != NULL);
-    ASSERT(logpack->head_sect != NULL);
-    ASSERT(logpack->head_sect->data != NULL);
+    ASSERT(n_sectors > 0);
+    ASSERT_LOGPACK(logpack, false);
 
-    return (walb_logpack_header_t *)logpack->head_sect->data;
+    int ret = sector_data_array_realloc(logpack->data_sects, n_sectors);
+    return (ret ? true : false);
 }
 
 /**
+ * Check logpack is allocated or not.
+ *
+ * @logpack logpack to be checked.
+ * @is_checksum check checksum or not.
+ *
+ * @return true if valid, or false.
+ */
+bool is_valid_logpack(logpack_t* logpack, bool is_checksum)
+{
+#define CHECK(cond) if (! (cond)) { goto error; }
+    
+    CHECK(logpack != NULL);
+    CHECK(logpack->head_sect != NULL);
+    CHECK(logpack->data_sects != NULL);
+    CHECK(logpack->logical_bs > 0);
+    CHECK(logpack->physical_bs >= logpack->logical_bs);
+    CHECK(logpack->physical_bs % logpack->logical_bs == 0);
+    CHECK(logpack->physical_bs == logpack->head_sect->size);
+    CHECK(is_valid_sector_data(logpack->head_sect));
+    CHECK(is_valid_sector_data_array(logpack->data_sects));
+
+    if (is_checksum) {
+        /* now editing */
+    }
+#undef CHECK
+
+    return true;
+    
+error:
+    return false;
+}
+
+/**
+ * NOT TESTED YET.
+ *
  * Add IO request to a logpack.
  * Data will be copied.
  *
  * @logpack logpack to be modified.
+ * @offset IO offset in logical blocks.
  * @data written data by IO.
  * @size IO size in bytes.
+ *       This must be a multiple of logical block size.
+ * @is_padding True if this is padding data.
+ *
+ * @return True in success, or false.
  */
-bool logpack_add_io_request(logpack_t* logpack, const u8* data, int size)
+bool logpack_add_io_request(logpack_t* logpack,
+                            u64 offset, const u8* data, int size,
+                            bool is_padding)
 {
-    /* now editing */
+    /* Check parameters. */
+    
+    ASSERT_LOGPACK(logpack, false);
+    if (is_padding) { ASSERT(data); }
+    ASSERT(size % logpack->logical_bs == 0);
+    ASSERT(offset <= MAX_LSID);
 
+    /* Short name. */
+    u32 lbs = logpack->logical_bs;
+    u32 pbs = logpack->physical_bs;
+
+    /* Initialize log record. */
+    walb_logpack_header_t* lhead = logpack_get_header(logpack);
+    u16 rec_id = lhead->n_records;
+    walb_log_record_t *rec = &lhead->record[rec_id];
+    rec->checksum = 0;
+    rec->lsid = 0;
+    rec->is_padding = 0;
+    rec->is_exist = 0;
+    rec->offset = offset;
+    rec->lsid_local = 0;
+    
+    /* Calc data size in logical blocks. */
+    rec->io_size = size / lbs;
+    int pb = lb_to_pb(lbs, pbs, rec->io_size);
+    
+    /* Calc data offset in the logpack in physical bs. */
+    if (rec_id == 0) {
+        rec->lsid_local = 1;
+    } else {
+        walb_log_record_t *rec_prev = &lhead->[rec_id - 1];
+        rec->lsid_local =
+            rec_prev->lsid_local + (u16)lb_to_pb(lbs, pbs, rec_prev->io_size);
+    }
+
+    /* Padding */
+    if (is_padding) { rec->is_padding = 1; }
+
+    /* Realloc sector data array if needed. */
+    int current_size = 0;
+    int i;
+    walb_log_record_t *lrec;
+    for_each_logpack_record(i, lrec, lhead) {
+        current_size += lb_to_pb(lbs, pbs, lrec->io_size);
+    }
+    if (current_size + pb > logpack->data_sects->size) {
+
+        if (! realloc_logpack(logpack, current_size + pb)) {
+            goto error;
+        }
+    }
+    
+    /* Copy data to suitable offset in sector data array. */
+    
+
+    
+    /* now editing */
+    
+    
+    
+    /* Modify metadata in logpack header. */
+
+    /* Finalize logpack header. */
+    rec->is_exist = 1;
+    lhead->n_records ++;
+    if (is_padding) { lhead->n_padding ++; }
+
+    return true;
+    
+error:
     return false;
 }
 
@@ -454,5 +564,7 @@ walb_logpack_header_t* create_random_logpack(int logical_bs, int physical_bs, co
 
     return NULL;
 }
+
+
 
 /* end of file */
