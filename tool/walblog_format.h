@@ -42,12 +42,13 @@ typedef struct walblog_header
  */
 inline void print_wlog_header(walblog_header_t* wh)
 {
-        char uuidstr[16 * 2 + 1];
+        const int str_size = 16 * 3 + 1;
+        char uuidstr[str_size];
         
         ASSERT(wh->header_size == WALBLOG_HEADER_SIZE);
         ASSERT(wh->sector_type == SECTOR_TYPE_WALBLOG_HEADER);
 
-        sprint_uuid(uuidstr, wh->uuid);
+        sprint_uuid(uuidstr, str_size, wh->uuid);
         
         printf("*****walblog header*****\n"
                "checksum: %08x\n"

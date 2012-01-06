@@ -1917,8 +1917,9 @@ static struct block_device_operations walblog_ops = {
 static void walb_print_super_sector(struct walb_super_sector *lsuper0)
 {
 #ifdef WALB_DEBUG
-        char uuidstr[16 * 2 + 1];
-        sprint_uuid(uuidstr, lsuper0->uuid);
+        const int str_size = 16 * 3 + 1;
+        char uuidstr[str_size];
+        sprint_uuid(uuidstr, str_size, lsuper0->uuid);
         
         printk_d("-----super block------\n"
                  "checksum %08x\n"

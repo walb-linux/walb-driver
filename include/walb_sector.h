@@ -9,6 +9,12 @@
 #include "walb.h"
 
 /*******************************************************************************
+ * Usage.
+ *
+ * 
+ *******************************************************************************/
+
+/*******************************************************************************
  * Data definitions.
  *******************************************************************************/
 
@@ -22,11 +28,11 @@ struct sector_data
 };
 
 /**
- * Sector data ary in the memory.
+ * Sector data array in the memory.
  */
 struct sector_data_array
 {
-        int size;
+        int size; /* array size (number of sectors). */
         struct sector_data **array;
 };
 
@@ -59,30 +65,39 @@ static inline int is_same_size_sector(const struct sector_data *sect0,
 static inline int sector_compare(const struct sector_data *sect0,
                                  const struct sector_data *sect1);
 
-static inline int __is_valid_sector_data_array_detail(
+static inline int __is_valid_sector_array_detail(
         struct sector_data ** const ary, int size);
 static inline int is_valid_sector_data_array(
         const struct sector_data_array *sect_ary);
 #ifdef __KERNEL__
-static inline struct sector_data_array* sector_data_array_alloc(
+static inline struct sector_data_array* sector_array_alloc(
         int sector_size, int n_sectors, gfp_t mask);
-static inline int sector_data_array_realloc(
+static inline int sector_array_realloc(
         struct sector_data_array *sect_ary, int n_sectors, gfp_t mask);
 #else
-static inline struct sector_data_array* sector_data_array_alloc(
+static inline struct sector_data_array* sector_array_alloc(
         int sector_size, int n_sectors);
-static inline int sector_data_array_realloc(
+static inline int sector_array_realloc(
         struct sector_data_array *sect_ary, int n_sectors);
 #endif
 
-static inline void sector_data_array_free(struct sector_data_array *sect_ary);
+static inline void sector_array_free(struct sector_data_array *sect_ary);
 static inline struct sector_data* get_sector_data_in_array(
         struct sector_data_array *sect_ary, int idx);
 static inline const struct sector_data* get_sector_data_in_array_const(
         const struct sector_data_array *sect_ary, int idx);
 
-static inline void sector_data_array_copy(int offset, void *data, int size);
+static inline void __sector_array_copy(
+        struct sector_data_array *sect_ary, int offset, void *data, int size, int is_from);
+static inline void sector_array_copy_from(
+        struct sector_data_array *sect_ary, int offset, const void *data, int size);
+static inline void sector_array_copy_to(
+        const struct sector_data_array *sect_ary, int offset, void *data, int size);
 
+static inline int sector_array_compare(const struct sector_data_array *sect_ary0,
+                                       const struct sector_data_array *sect_ary1);
+static inline int sector_array_sprint(
+        char *str, int str_size, const struct sector_data_array *sect_ary);
 
 /*******************************************************************************
  * Functions for sector data.
@@ -109,7 +124,7 @@ static inline int is_valid_sector_data(const struct sector_data *sect)
 #ifdef __KERNEL__
 static inline struct sector_data* sector_alloc(int sector_size, gfp_t gfp_mask)
 #else
-static inline struct sector_data* sector_alloc(int sector_size)
+        static inline struct sector_data* sector_alloc(int sector_size)
 #endif
 {
         struct sector_data *sect;
@@ -234,7 +249,7 @@ static inline int sector_compare(const struct sector_data *sect0,
  *
  * @return Non-zero if all sectors are valid, or 0.
  */
-static inline int __is_valid_sector_data_array_detail(
+static inline int __is_valid_sector_array_detail(
         struct sector_data ** const ary, int size)
 {
         int i;
@@ -260,7 +275,7 @@ static inline int __is_valid_sector_data_array_detail(
 static inline int is_valid_sector_data_array(const struct sector_data_array *sect_ary)
 {
         return (sect_ary != NULL &&
-                __is_valid_sector_data_array_detail(sect_ary->array, sect_ary->size));
+                __is_valid_sector_array_detail(sect_ary->array, sect_ary->size));
 }
 
 /**
@@ -273,11 +288,11 @@ static inline int is_valid_sector_data_array(const struct sector_data_array *sec
  * @return pointer to allocated sector data array in success, or NULL.
  */
 #ifdef __KERNEL__
-static inline struct sector_data_array* sector_data_array_alloc(
+static inline struct sector_data_array* sector_array_alloc(
         int sector_size, int n_sectors, gfp_t mask)
 #else
-static inline struct sector_data_array* sector_data_array_alloc(
-        int sector_size, int n_sectors)
+        static inline struct sector_data_array* sector_array_alloc(
+                int sector_size, int n_sectors)
 #endif
 {
         int i;
@@ -310,7 +325,7 @@ static inline struct sector_data_array* sector_data_array_alloc(
         
         return sect_ary;
 nomem1:
-        sector_data_array_free(sect_ary);
+        sector_array_free(sect_ary);
 nomem0:
         return NULL;
 }
@@ -325,11 +340,11 @@ nomem0:
  * @return Non-zero in success, or 0.
  */
 #ifdef __KERNEL__
-static inline int sector_data_array_realloc(
+static inline int sector_array_realloc(
         struct sector_data_array *sect_ary, int n_sectors, gfp_t mask)
 #else
-static inline int sector_data_array_realloc(
-        struct sector_data_array *sect_ary, int n_sectors)
+        static inline int sector_array_realloc(
+                struct sector_data_array *sect_ary, int n_sectors)
 #endif
 {
         int i;
@@ -389,7 +404,7 @@ error0:
  *
  * @sect_ary sector data array to deallocate.
  */
-static inline void sector_data_array_free(struct sector_data_array *sect_ary)
+static inline void sector_array_free(struct sector_data_array *sect_ary)
 {
         int i;
 
@@ -430,40 +445,153 @@ static inline const struct sector_data* get_sector_data_in_array_const(
 }
 
 /**
- * Copy data from a buffer.
+ * Copy from/to sector_data_array to/from a memory area.
+ *
+ * @is_from Non-zero for sector_data_array <- memory.
+ *          0 for sector_data_array -> memory.
+ */
+static inline void __sector_array_copy(
+        struct sector_data_array *sect_ary, int offset, void *data, int size, int is_from)
+{
+        int sect_size, sect_idx, sect_off;
+        int copied_size, remaining_size;
+
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+        ASSERT(offset >= 0);
+        ASSERT(data != NULL);
+        ASSERT(size >= 0);
+
+        sect_size = sect_ary->array[0]->size;
+        ASSERT(offset < sect_ary->size * sect_size);
+        
+        /* Copy a fraction of the start sector.*/
+        sect_idx = offset / sect_size;
+        sect_off = offset % sect_size;
+        if (sect_size - sect_off < size) {
+                copied_size = sect_size - sect_off;
+                remaining_size = size - copied_size;
+        } else {
+                copied_size = size;
+                remaining_size = 0;
+        }
+        if (copied_size > 0) {
+                if (is_from) {
+                        memcpy(sect_ary->array[sect_idx]->data + sect_off, data, copied_size);
+                } else {
+                        memcpy(data, sect_ary->array[sect_idx]->data + sect_off, copied_size);
+                }
+        }
+        sect_idx ++;
+
+        /* Copy sectors. */
+        while (remaining_size >= sect_size) {
+
+                if (is_from) {
+                        memcpy(sect_ary->array[sect_idx]->data, data + copied_size, sect_size);
+                } else {
+                        memcpy(data + copied_size, sect_ary->array[sect_idx]->data, sect_size);
+                }
+                copied_size += sect_size;
+                remaining_size -= sect_size;
+                sect_idx ++;
+                ASSERT(copied_size + remaining_size == size);
+        }
+        ASSERT(remaining_size < sect_size);
+
+        /* Copy a fraction of the last sector. */
+        if (remaining_size > 0) {
+                if (is_from) {
+                        memcpy(sect_ary->array[sect_idx]->data, data + copied_size, remaining_size);
+                } else {
+                        memcpy(data + copied_size, sect_ary->array[sect_idx]->data, remaining_size);
+                }
+        }
+}
+
+/**
+ * NOT_TESTED_YET
+ * Copy sector_data_array from a buffer. 
  *
  * @sect_ary sector array.
  * @offset offset in bytes inside sector array.
  * @data source data.
  * @size copy size in bytes.
  */
-static inline void sector_data_array_copy_from(
-    struct sector_data_array *sect_ary, int offset, void *data, int size)
+static inline void sector_array_copy_from(
+        struct sector_data_array *sect_ary, int offset, const void *data, int size)
 {
-    ASSERT_SECTOR_DATA_ARRAY(sect_ary);
-    
-    int sect_size = sect_ary->array[0]->size;
-    int sect_idx = offset / sect_size;
-    int sect_off = offset % sect_size;
-    
-    
-    
+        __sector_array_copy(sect_ary, offset, (void *)data, size, 1);
 }
 
 /**
- * Copy data to a buffer.
+ * NOT_TESTED_YET
+ * Copy sector_data_array to a buffer.
  *
  * @sect_ary sector array.
  * @offset offset in bytes inside sector array.
  * @data destination data.
  * @size copy size in bytes.
  */
-static inline void sector_data_array_copy_to(
-    const struct sector_data_array *sect_ary, int offset, void *data, int size)
+static inline void sector_array_copy_to(
+        const struct sector_data_array *sect_ary, int offset, void *data, int size)
 {
-    ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+        __sector_array_copy((struct sector_data_array *)sect_ary, offset, data, size, 0);
+}
 
+/**
+ * NOT_TESTED_YET
+ * Compare two sector_data_array objects.
+ *
+ * @return 0 when their size and their contents are completely the same.
+ */
+static inline int sector_array_compare(const struct sector_data_array *sect_ary0,
+                                       const struct sector_data_array *sect_ary1)
+{
+        int i, sect_size, cmp;
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary1);
 
+        sect_size = sect_ary0->array[0]->size;
+        
+        if (sect_ary0->size != sect_ary1->size) {
+                return sect_ary0->size - sect_ary1->size;
+        }
+
+        for (i = 0; i < sect_ary0->size; i ++) {
+                cmp = memcmp(sect_ary0->array[i]->data, sect_ary1->array[i]->data, sect_size);
+                if (cmp) { return cmp; }
+        }
+        return 0; /* the same. */
+}
+
+/**
+ * For debug.
+ *
+ * @return Non-zero if str_size is enough, or 0.
+ */
+static inline int sector_array_sprint(char *str, int str_size, const struct sector_data_array *sect_ary)
+{
+        int i, j;
+        char tmp[4];
+        int sect_size;
+
+        ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+        ASSERT(str);
+        ASSERT(str_size > 0);
+
+        sect_size = sect_ary->array[0]->size;
+
+        str[0] = '\0';
+        for (i = 0; i < sect_ary->size; i ++) {
+                for (j = 0; j < sect_size; j ++) {
+                        if ((i * sect_size + j + 1) * 3 + 1 > str_size) {
+                                return 0;
+                        }
+                        sprintf(tmp, "%02X ", ((u8 *)sect_ary->array[i]->data)[j]);
+                        strcat(str, tmp);
+                }
+        }
+        return 1;
 }
 
 #endif /* _WALB_SECTOR_H */

@@ -134,7 +134,7 @@ static inline int lb_in_pb(int logical_bs, int physical_bs)
  */
 static inline int lb_to_pb(int logical_bs, int physical_bs, int n_lb)
 {
-    ASSERT_LBS_PBS(logical_bs, physial_bs);
+    ASSERT_LBS_PBS(logical_bs, physical_bs);
     ASSERT(n_lb >= 0);
 
     int lp = lb_in_pb(logical_bs, physical_bs);
@@ -153,7 +153,7 @@ static inline int lb_to_pb(int logical_bs, int physical_bs, int n_lb)
  */
 static inline int pb_to_lb(int logical_bs, int physical_bs, int n_pb)
 {
-    ASSERT_LBS_PBS(logical_bs, physial_bs);
+    ASSERT_LBS_PBS(logical_bs, physical_bs);
     ASSERT(n_pb >= 0);
 
     return (n_pb * lb_in_pb(logical_bs, physical_bs));

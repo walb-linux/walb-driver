@@ -240,7 +240,8 @@ int alldevs_add(struct walb_dev* wdev)
 {
         size_t len;
         int ret;
-        char buf[16 * 2 + 1];
+        const int buf_size = 16 * 3 + 1;
+        char buf[buf_size];
         unsigned int minor;
 
         CHECK_RUNNING();
@@ -273,7 +274,7 @@ int alldevs_add(struct walb_dev* wdev)
                           (unsigned long)wdev, GFP_KERNEL);
         if (ret != 0) {
                 if (ret == -EPERM) {
-                        sprint_uuid(buf, get_super_sector(wdev->lsuper0)->uuid);
+                        sprint_uuid(buf, buf_size, get_super_sector(wdev->lsuper0)->uuid);
                         printk_e("alldevs_add: uuid %s is already registered.\n",
                                  buf);
                 }

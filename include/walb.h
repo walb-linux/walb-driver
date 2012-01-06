@@ -187,21 +187,44 @@ static inline u32 checksum(const u8 *data, u32 size)
 }
 
 /**
+ * Sprint byte array.
+ * 
+ * @data pointer of the data to print.
+ * @size size in bytes.
+ * @buf buffer to store result.
+ * @buf_size buffer size. size * 3 + 1 is required at least.
+ * @return Non-zero if buf_size is enough, or 0.
+ */
+static inline int sprint_hex(char *str, int str_size, const void* data, int size)
+{
+        int i;
+        char tmp[4];
+
+        ASSERT(data);
+        ASSERT(size >= 0);        
+        ASSERT(str);
+        ASSERT(str_size > 0);
+        ASSERT(str_size >= size * 3 + 1);
+
+        str[0] = '\0';
+        for (i = 0; i < size; i ++ ) {
+                if (str_size < (i + 1) * 3 + 1) { return 0; }
+                sprintf(tmp, "%02X ", ((u8 *)data)[i]);
+                strcat(str, tmp);
+        }
+        return 1;
+}
+
+/**
  * Sprint uuid.
  *
- * @buf buffer to store result. Its size must be 16 * 2 + 1.
+ * @str string buffer to store result.
+ * @str_size Its size must be 16 * 3 + 1.
  * @uuid uuid ary. Its size must be 16.
  */
-static inline void sprint_uuid(char *buf, const u8 *uuid)
+static inline void sprint_uuid(char *str, int str_size, const u8 *uuid)
 {
-        char tmp[3];
-        int i;
-
-        buf[0] = '\0';
-        for (i = 0; i < 16; i ++) {
-                sprintf(tmp, "%02x", uuid[i]);
-                strcat(buf, tmp);
-        }
+        sprint_hex(str, str_size, uuid, 16);
 }
 
 /**
