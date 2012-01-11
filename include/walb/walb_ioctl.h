@@ -6,7 +6,7 @@
 #ifndef _WALB_IOCTL_H
 #define _WALB_IOCTL_H
 
-#include "walb.h"
+#include "./walb.h"
 
 #ifdef __KERNEL__
 #include <linux/kernel.h>

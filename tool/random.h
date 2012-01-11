@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_RANDOM_H
-#define _WALB_RANDOM_H
+#ifndef _WALB_RANDOM_USER_H
+#define _WALB_RANDOM_USER_H
 
 #include <stdio.h>
 #include <string.h>
@@ -15,7 +15,7 @@
 #include <unistd.h>
 #include <time.h>
 
-#include "userland.h"
+#include "walb/userland.h"
 
 /**
  * Read /dev/urandom to generate random value.
@@ -88,4 +88,4 @@ static inline void test_random()
         }
 }
 
-#endif /* _WALB_RANDOM_H */
+#endif /* _WALB_RANDOM_USER_H */

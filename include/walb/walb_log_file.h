@@ -6,7 +6,7 @@
 #ifndef _WALB_LOG_FILE_H
 #define _WALB_LOG_FILE_H
 
-#include "walb_log_record.h"
+#include "./walb_log_record.h"
 
 /**
  * sizeof(walb_file_header_t) must be <= walb_super_sector.sector_size.

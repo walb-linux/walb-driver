@@ -16,12 +16,12 @@
 #include <fcntl.h>
 #include <time.h>
 
-#include "walb.h"
-#include "walb_log_device.h"
-#include "walb_log_record.h"
-#include "random.h"
-#include "walb_ioctl.h"
+#include "walb/walb.h"
+#include "walb/walb_log_device.h"
+#include "walb/walb_log_record.h"
+#include "walb/walb_ioctl.h"
 
+#include "random.h"
 #include "util.h"
 #include "logpack.h"
 #include "snapshot.h"

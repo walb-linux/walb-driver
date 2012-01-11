@@ -6,7 +6,9 @@
 #ifndef _WALB_LOG_RECORD_H
 #define _WALB_LOG_RECORD_H
 
-#include "walb.h"
+#include "./walb.h"
+#include "./util.h"
+#include "./checksum.h"
 
 /*******************************************************************************
  * Definition of structures.
@@ -21,7 +23,7 @@ typedef struct walb_log_record {
 
         /* Just sum of the array assuming data contents
            as an array of u32 integer.
-           If is_paddingi non-zero, checksum is not calcurated. */
+           If is_padding non-zero, checksum is not calcurated. */
         u32 checksum;
         u32 reserved1;
         
@@ -43,6 +45,27 @@ typedef struct walb_log_record {
          */
         
 } __attribute__((packed)) walb_log_record_t;
+
+/**
+ * This is for validation of log record.
+ * 
+ * @return Non-zero if valid, or 0.
+ */
+static inline int is_valid_log_record(walb_log_record_t* rec)
+{
+        CHECK(rec);
+        CHECK(rec->is_exist);
+        
+        CHECK(rec->io_size > 0);
+        CHECK(rec->lsid_local > 0);
+        CHECK(rec->lsid <= MAX_LSID);
+        
+        return 1; /* valid */
+error:
+        return 0; /* invalid */
+}
+
+#define ASSERT_LOG_RECORD(rec) ASSERT(is_valid_log_record(rec))
 
 /**
  * Logpack header data inside sector.
@@ -68,6 +91,29 @@ typedef struct walb_logpack_header {
         
 } __attribute__((packed)) walb_logpack_header_t;
 
+
+/**
+ * Check validness of a logpack header.
+ *
+ * @logpack logpack to be checked.
+ *
+ * @return Non-zero in success, or 0.
+ */
+static inline int is_valid_logpack_header(const walb_logpack_header_t* lhead) {
+
+        CHECK(lhead);
+        CHECK(lhead->n_records > 0);
+        CHECK(lhead->total_io_size > 0);
+        CHECK(lhead->sector_type == SECTOR_TYPE_LOGPACK);
+        return 1;
+error:
+        LOGe("log pack header is invalid "
+             "(n_records: %u total_io_size %u sector_type %u).\n",
+             lhead->n_records, lhead->total_io_size,
+             lhead->sector_type);
+        return 0;
+}
+
 /*******************************************************************************
  * Macros.
  *******************************************************************************/
@@ -89,8 +135,8 @@ typedef struct walb_logpack_header {
  * walb_log_record_t *lrec;
  * walb_logpack_header_t *lhead;
  */
-#define for_each_logpack_record(i, lrec, lhead)  \
-    for (i = 0; i < lhead->n_records && {lrec = &lhead->record[i]; 1;}; i ++)
+#define for_each_logpack_record(i, lrec, lhead)                         \
+        for (i = 0; i < lhead->n_records && ({lrec = &lhead->record[i]; 1;}); i ++)
 
 /*******************************************************************************
  * Prototype of static inline functions. 
@@ -128,7 +174,7 @@ static inline int lb_in_pb(int logical_bs, int physical_bs)
  *
  * @logical_bs logical block size in bytes.
  * @physical_bs physical block size in bytes.
- * @n_lb number of losical blocks.
+ * @n_lb number of logical blocks.
  *
  * @return number of physical blocks.
  */
@@ -157,6 +203,24 @@ static inline int pb_to_lb(int logical_bs, int physical_bs, int n_pb)
     ASSERT(n_pb >= 0);
 
     return (n_pb * lb_in_pb(logical_bs, physical_bs));
+}
+
+/**
+ * Initialize a log record.
+ */
+static inline void log_record_init(walb_log_record_t* rec)
+{
+        ASSERT(rec);
+        
+        rec->checksum = 0;
+        rec->lsid = 0;
+        
+        rec->lsid_local = 0;
+        rec->is_padding = 0;
+        rec->io_size = 0;
+        rec->is_exist = 0;
+        
+        rec->offset = 0;
 }
 
 #endif /* _WALB_LOG_RECORD_H */

@@ -11,7 +11,6 @@
 #include "util.h"
 #include "snapshot.h"
 
-
 /*******************************************************************************
  * Utility macros.
  *******************************************************************************/
@@ -188,7 +187,7 @@ struct snapshot_data_u* alloc_snapshot_data_u(
         snapd->super = super_sectp;
         snapd->next_snapshot_id = 0;
 
-        snapd->sect_ary = sector_data_array_alloc
+        snapd->sect_ary = sector_array_alloc
                 (get_sector_size(snapd), get_n_sectors(snapd));
         if (! snapd->sect_ary) { goto nomem1; }
 
@@ -206,7 +205,7 @@ nomem0:
 void free_snapshot_data_u(struct snapshot_data_u* snapd)
 {
         if (snapd) {
-                sector_data_array_free(snapd->sect_ary);
+                sector_array_free(snapd->sect_ary);
         }
         free(snapd);
 }

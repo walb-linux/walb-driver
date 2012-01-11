@@ -7,7 +7,7 @@
 #ifndef _WALB_BITMAP_H
 #define _WALB_BITMAP_H
 
-#include "walb.h"
+#include "./common.h"
 
 /**
  * Bitmap structure for walb.

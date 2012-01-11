@@ -3,33 +3,16 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_UTIL_H
-#define _WALB_UTIL_H
+#ifndef _WALB_UTIL_USER_H
+#define _WALB_UTIL_USER_H
 
-#include <stdio.h>
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "walb.h"
-#include "walb_log_device.h"
-
-#define LOG0(level, fmt, ...)                                   \
-        fprintf(stderr, "%s(%s:%d:%s) " fmt, level,             \
-                __FILE__, __LINE__, __func__, ##__VA_ARGS__)
-#define LOG1(level, fmt, ...)                                   \
-        fprintf(stderr, "%s " fmt, level, ##__VA_ARGS__)
-
-#ifdef DEBUG
-#define LOGd(fmt, ...) LOG0("DEBUG",   fmt, ##__VA_ARGS__)
-#else
-#define LOGd(fmt, ...)
-#endif
-#define LOGn(fmt, ...) LOG1("NOTICE",  fmt, ##__VA_ARGS__)
-#define LOGw(fmt, ...) LOG1("WARNING", fmt, ##__VA_ARGS__)
-#define LOGe(fmt, ...) LOG1("ERROR",   fmt, ##__VA_ARGS__)
-
+#include "walb/walb.h"
+#include "walb/walb_log_device.h"
 
 /* utility */
 void print_binary_hex(const u8* data, size_t size);
@@ -46,6 +29,10 @@ dev_t get_bdev_devt(const char *devpath);
 void generate_uuid(u8* uuid);
 void print_uuid(const u8* uuid);
 void copy_uuid(u8* dst, const u8* src);
+
+/* Bitmap functions for debug. */
+void print_bitmap(const u8* bitmap, size_t size);
+void print_u32bitmap(const u32 bitmap);
 
 /* sector functions
    These will be deprecated.
@@ -100,4 +87,4 @@ bool write_data(int fd, const u8* data, size_t size);
 bool is_same_block_size(const char* devpath1, const char* devpath2);
 
 
-#endif /* _WALB_UTIL_H */
+#endif /* _WALB_UTIL_USER_H */

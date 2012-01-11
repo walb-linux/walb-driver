@@ -3,12 +3,12 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_LOGPACK_H
-#define _WALB_LOGPACK_H
+#ifndef _WALB_LOGPACK_USER_H
+#define _WALB_LOGPACK_USER_H
 
-#include "walb.h"
-#include "walb_log_record.h"
-#include "walb_log_device.h"
+#include "walb/walb.h"
+#include "walb/walb_log_record.h"
+#include "walb/walb_log_device.h"
 
 
 bool read_logpack_header_from_wldev(int fd,
@@ -21,8 +21,8 @@ bool read_logpack_data_from_wldev(int fd,
                                   u8* buf, size_t bufsize);
 
 void print_logpack_header(const walb_logpack_header_t* lhead);
-bool check_logpack_header(const walb_logpack_header_t* lhead, int physical_bs);
-
+bool is_valid_logpack_header_with_checksum(
+        const walb_logpack_header_t* lhead, int physical_bs);
 
 bool read_logpack_header(int fd, int physical_bs,
                          walb_logpack_header_t* lhead);
@@ -43,7 +43,7 @@ bool redo_logpack(int fd,
  * New logpack interface.
  *******************************************************************************/
 
-#include "walb_sector.h"
+#include "walb/walb_sector.h"
 
 /**
  * Logpack
@@ -76,9 +76,9 @@ static inline u64 logpack_get_lsid(logpack_t* logpack);
  * Not yet implemented.
  */
 walb_logpack_header_t* create_random_logpack(int logical_bs, int physical_bs, const u8* buf);
-bool logpack_add_io_request(logpack_t* logpack, const u8* data, int size);
-
-
+bool logpack_add_io_request(logpack_t* logpack,
+                            u64 offset, const u8* data, int size,
+                            bool is_padding);
 
 
 /**
@@ -102,6 +102,4 @@ static inline u64 logpack_get_lsid(logpack_t* logpack)
     return logpack_get_header(logpack)->logpack_lsid;
 }
 
-
-
-#endif /* _WALB_LOGPACK_H */
+#endif /* _WALB_LOGPACK_USER_H */

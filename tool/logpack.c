@@ -10,40 +10,34 @@
 #include "util.h"
 #include "logpack.h"
 
+/*******************************************************************************
+ * Private functions.
+ *******************************************************************************/
+
+/*******************************************************************************
+ * Public functions.
+ *******************************************************************************/
+
 /**
- * Check logpack header.
+ * Check validness of a logpack header.
  *
  * @logpack logpack to be checked.
- * @physical_bs physical block size (logpack size).
+ * @physical_bs physical block size.
+ *              (This is logpack header size.)
  *
- * @return true in success, or false.
+ * @return Non-zero in success, or 0.
  */
-bool check_logpack_header(const walb_logpack_header_t* lhead,
-                          int physical_bs)
+bool is_valid_logpack_header_with_checksum(
+        const walb_logpack_header_t* lhead, int physical_bs)
 {
-        /* check others */
-        if (lhead->n_records == 0 ||
-            lhead->total_io_size == 0 ||
-            lhead->sector_type != SECTOR_TYPE_LOGPACK) {
-                LOGe("log pack header is invalid "
-                     "(n_records: %u total_io_size %u sector_type %u).\n",
-                     lhead->n_records, lhead->total_io_size,
-                     lhead->sector_type);
-                goto error0;
-        }
-        
-        /* confirm checksum */
-        if (checksum((const u8 *)lhead, physical_bs) != 0) {
-                LOGe("logpack header checksum is invalid (lsid %"PRIu64").\n",
-                     lhead->logpack_lsid);
-                goto error0;
-        }
-
+        CHECK(is_valid_logpack_header(lhead));
+        CHECK(checksum((const u8 *)lhead, physical_bs) == 0);
         return true;
-error0:
+error:
+        LOGe("logpack header checksum is invalid (lsid %"PRIu64").\n",
+             lhead->logpack_lsid);
         return false;
 }       
-
 
 /**
  * Read logpack header sector from log device.
@@ -79,7 +73,7 @@ bool read_logpack_header_from_wldev(int fd,
                 goto error0;
         }
 
-        if (! check_logpack_header(lhead, super_sectp->physical_bs)) {
+        if (! is_valid_logpack_header_with_checksum(lhead, super_sectp->physical_bs)) {
                 LOGe("check logpack header failed.\n");
                 goto error0;
         }
@@ -246,7 +240,7 @@ bool read_logpack_header(int fd,
         }
 
         /* Check */
-        if (! check_logpack_header(lhead, physical_bs)) {
+        if (! is_valid_logpack_header_with_checksum(lhead, physical_bs)) {
                 return false;
         }
 
@@ -367,43 +361,43 @@ error0:
  */
 logpack_t* alloc_logpack(int logical_bs, int physical_bs, int n_sectors)
 {
-    ASSERT(logical_bs > 0);
-    ASSERT(physical_bs >= logical_bs);
-    ASSERT(physical_bs % logical_bs == 0);
-    ASSERT(n_sectors > 0);
+        ASSERT(logical_bs > 0);
+        ASSERT(physical_bs >= logical_bs);
+        ASSERT(physical_bs % logical_bs == 0);
+        ASSERT(n_sectors > 0);
 
-    /* Allocate for itself. */
-    logpack_t* logpack = (logpack_t *)malloc(sizeof(logpack_t));
-    if (! logpack) { goto error; }
-    logpack->logical_bs = logical_bs;
-    logpack->physical_bs = physical_bs;
+        /* Allocate for itself. */
+        logpack_t* logpack = (logpack_t *)malloc(sizeof(logpack_t));
+        if (! logpack) { goto error; }
+        logpack->logical_bs = logical_bs;
+        logpack->physical_bs = physical_bs;
 
-    /* Header sector. */
-    logpack->head_sect = sector_alloc_zero(physical_bs);
-    if (! logpack->head_sect) { goto error; }
+        /* Header sector. */
+        logpack->head_sect = sector_alloc_zero(physical_bs);
+        if (! logpack->head_sect) { goto error; }
 
-    /* Data sectors. */
-    logpack->data_sects = sector_data_array_alloc(physical_bs, n_sectors);
-    if (! logpack->data_sects) { goto error; }
+        /* Data sectors. */
+        logpack->data_sects = sector_array_alloc(physical_bs, n_sectors);
+        if (! logpack->data_sects) { goto error; }
 
-    walb_logpack_header_t *lhead = logpack_get_header(logpack);
-    ASSERT(lhead);
-    lhead->checksum = 0;
-    lhead->sector_type = SECTOR_TYPE_LOGPACK;
-    lhead->total_io_size = 0;
-    lhead->logpack_lsid = INVALID_LSID;
-    lhead->n_records = 0;
-    lhead->n_padding = 0;
-    int i;
-    int n_max = max_n_log_record_in_sector(physical_bs);
-    for (i = 0; i < n_max; i ++) {
-	lhead->record[i].is_exist = 0;
-    }
-    return logpack;
+        walb_logpack_header_t *lhead = logpack_get_header(logpack);
+        ASSERT(lhead);
+        lhead->checksum = 0;
+        lhead->sector_type = SECTOR_TYPE_LOGPACK;
+        lhead->total_io_size = 0;
+        lhead->logpack_lsid = INVALID_LSID;
+        lhead->n_records = 0;
+        lhead->n_padding = 0;
+        int i;
+        int n_max = max_n_log_record_in_sector(physical_bs);
+        for (i = 0; i < n_max; i ++) {
+                lhead->record[i].is_exist = 0;
+        }
+        return logpack;
 
 error:
-    free_logpack(logpack);
-    return NULL;
+        free_logpack(logpack);
+        return NULL;
 }
 
 /**
@@ -411,11 +405,11 @@ error:
  */
 void free_logpack(logpack_t* logpack)
 {
-    if (logpack) {
-	sector_data_array_free(logpack->data_sects);
-	sector_free(logpack->head_sect);
-	free(logpack);
-    }
+        if (logpack) {
+                sector_array_free(logpack->data_sects);
+                sector_free(logpack->head_sect);
+                free(logpack);
+        }
 }
 
 /**
@@ -423,11 +417,11 @@ void free_logpack(logpack_t* logpack)
  */
 bool realloc_logpack(logpack_t* logpack, int n_sectors)
 {
-    ASSERT(n_sectors > 0);
-    ASSERT_LOGPACK(logpack, false);
+        ASSERT(n_sectors > 0);
+        ASSERT_LOGPACK(logpack, false);
 
-    int ret = sector_data_array_realloc(logpack->data_sects, n_sectors);
-    return (ret ? true : false);
+        int ret = sector_array_realloc(logpack->data_sects, n_sectors);
+        return (ret ? true : false);
 }
 
 /**
@@ -440,41 +434,41 @@ bool realloc_logpack(logpack_t* logpack, int n_sectors)
  */
 bool is_valid_logpack(logpack_t* logpack, bool is_checksum)
 {
-#define CHECK(cond) if (! (cond)) { goto error; }
-    
-    CHECK(logpack != NULL);
-    CHECK(logpack->head_sect != NULL);
-    CHECK(logpack->data_sects != NULL);
-    CHECK(logpack->logical_bs > 0);
-    CHECK(logpack->physical_bs >= logpack->logical_bs);
-    CHECK(logpack->physical_bs % logpack->logical_bs == 0);
-    CHECK(logpack->physical_bs == logpack->head_sect->size);
-    CHECK(is_valid_sector_data(logpack->head_sect));
-    CHECK(is_valid_sector_data_array(logpack->data_sects));
+        CHECK(logpack != NULL);
+        CHECK(logpack->head_sect != NULL);
+        CHECK(logpack->data_sects != NULL);
+        CHECK(logpack->logical_bs > 0);
+        CHECK(logpack->physical_bs >= logpack->logical_bs);
+        CHECK(logpack->physical_bs % logpack->logical_bs == 0);
+        CHECK(logpack->physical_bs == logpack->head_sect->size);
+        CHECK(is_valid_sector_data(logpack->head_sect));
+        CHECK(is_valid_sector_data_array(logpack->data_sects));
 
-    if (is_checksum) {
-        /* now editing */
-    }
-#undef CHECK
-
-    return true;
-    
+        if (is_checksum) {
+                CHECK(is_valid_logpack_header_with_checksum(
+                              logpack->head_sect->data,
+                              logpack->head_sect->size));
+        } else {
+                CHECK(is_valid_logpack_header(logpack->head_sect->data));
+        }
+        return true;
 error:
-    return false;
+        return false;
 }
 
 /**
  * NOT TESTED YET.
  *
- * Add IO request to a logpack.
- * Data will be copied.
+ * Add an IO request to a logpack.
+ * IO data will be copied.
  *
  * @logpack logpack to be modified.
- * @offset IO offset in logical blocks.
- * @data written data by IO.
+ * @offset Offset of a write IO in logical blocks.
+ * @data written data by the write IO.
  * @size IO size in bytes.
  *       This must be a multiple of logical block size.
  * @is_padding True if this is padding data.
+ *       offset, data, and size is not used.
  *
  * @return True in success, or false.
  */
@@ -482,77 +476,74 @@ bool logpack_add_io_request(logpack_t* logpack,
                             u64 offset, const u8* data, int size,
                             bool is_padding)
 {
-    /* Check parameters. */
+        /* Check parameters. */
     
-    ASSERT_LOGPACK(logpack, false);
-    if (is_padding) { ASSERT(data); }
-    ASSERT(size % logpack->logical_bs == 0);
-    ASSERT(offset <= MAX_LSID);
+        ASSERT_LOGPACK(logpack, false);
+        if (is_padding) { ASSERT(data); }
+        ASSERT(size % logpack->logical_bs == 0);
+        ASSERT(offset <= MAX_LSID);
 
-    /* Short name. */
-    u32 lbs = logpack->logical_bs;
-    u32 pbs = logpack->physical_bs;
+        /* Short name. */
+        u32 lbs = logpack->logical_bs;
+        u32 pbs = logpack->physical_bs;
 
-    /* Initialize log record. */
-    walb_logpack_header_t* lhead = logpack_get_header(logpack);
-    u16 rec_id = lhead->n_records;
-    walb_log_record_t *rec = &lhead->record[rec_id];
-    rec->checksum = 0;
-    rec->lsid = 0;
-    rec->is_padding = 0;
-    rec->is_exist = 0;
-    rec->offset = offset;
-    rec->lsid_local = 0;
+        /* Initialize log record. */
+        walb_logpack_header_t* lhead = logpack_get_header(logpack);
+        u16 rec_id = lhead->n_records;
+        walb_log_record_t *rec = &lhead->record[rec_id];
+        log_record_init(rec);
+
+        /* Set IO offset. */
+        rec->offset = offset;
     
-    /* Calc data size in logical blocks. */
-    rec->io_size = size / lbs;
-    int pb = lb_to_pb(lbs, pbs, rec->io_size);
+        /* Calc data size in logical blocks. */
+        rec->io_size = size / lbs;
+        int n_pb = lb_to_pb(lbs, pbs, rec->io_size);
     
-    /* Calc data offset in the logpack in physical bs. */
-    if (rec_id == 0) {
-        rec->lsid_local = 1;
-    } else {
-        walb_log_record_t *rec_prev = &lhead->[rec_id - 1];
-        rec->lsid_local =
-            rec_prev->lsid_local + (u16)lb_to_pb(lbs, pbs, rec_prev->io_size);
-    }
-
-    /* Padding */
-    if (is_padding) { rec->is_padding = 1; }
-
-    /* Realloc sector data array if needed. */
-    int current_size = 0;
-    int i;
-    walb_log_record_t *lrec;
-    for_each_logpack_record(i, lrec, lhead) {
-        current_size += lb_to_pb(lbs, pbs, lrec->io_size);
-    }
-    if (current_size + pb > logpack->data_sects->size) {
-
-        if (! realloc_logpack(logpack, current_size + pb)) {
-            goto error;
+        /* Calc data offset in the logpack in physical bs. */
+        if (rec_id == 0) {
+                rec->lsid_local = 1;
+        } else {
+                walb_log_record_t *rec_prev = &lhead->record[rec_id - 1];
+                rec->lsid_local = rec_prev->lsid_local +
+                        (u16)lb_to_pb(lbs, pbs, rec_prev->io_size);
         }
-    }
-    
-    /* Copy data to suitable offset in sector data array. */
-    
 
-    
-    /* now editing */
-    
-    
-    
-    /* Modify metadata in logpack header. */
+        /* Padding */
+        if (is_padding) { rec->is_padding = 1; }
 
-    /* Finalize logpack header. */
-    rec->is_exist = 1;
-    lhead->n_records ++;
-    if (is_padding) { lhead->n_padding ++; }
+        /* Realloc sector data array if needed. */
+        int current_size = 0;
+        int i;
+        walb_log_record_t *lrec;
+        for_each_logpack_record(i, lrec, lhead) {
+                current_size += lb_to_pb(lbs, pbs, lrec->io_size);
+        }
+        if (current_size + n_pb > logpack->data_sects->size) {
+                if (! realloc_logpack(logpack, current_size + n_pb)) {
+                        goto error;
+                }
+        }
+    
+        /* Copy data to suitable offset in sector data array. */
+        
 
-    return true;
+        
+    
+    
+        /* now editing */
+    
+        /* Modify metadata in logpack header. */
+
+        /* Finalize logpack header. */
+        rec->is_exist = 1;
+        lhead->n_records ++;
+        if (is_padding) { lhead->n_padding ++; }
+
+        return true;
     
 error:
-    return false;
+        return false;
 }
 
 /**
@@ -560,9 +551,9 @@ error:
  */
 walb_logpack_header_t* create_random_logpack(int logical_bs, int physical_bs, const u8* buf)
 {
-    /* now editing */
+        /* now editing */
 
-    return NULL;
+        return NULL;
 }
 
 

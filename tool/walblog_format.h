@@ -3,10 +3,10 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALBLOG_FORMAT_H
-#define _WALBLOG_FORMAT_H
+#ifndef _WALBLOG_FORMAT_USER_H
+#define _WALBLOG_FORMAT_USER_H
 
-#include "walb.h"
+#include "walb/walb.h"
 
 /* Header size of walblog file. */
 #define WALBLOG_HEADER_SIZE 4096
@@ -97,4 +97,4 @@ error0:
         return false;
 }
 
-#endif /* _WALBLOG_FORMAT_H */
+#endif /* _WALBLOG_FORMAT_USER_H */

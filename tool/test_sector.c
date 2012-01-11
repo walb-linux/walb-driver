@@ -8,9 +8,9 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "walb/walb_sector.h"
 #include "random.h"
 #include "util.h"
-#include "walb_sector.h"
 
 #define TEST_FILE "tmp/test_sector_data"
 

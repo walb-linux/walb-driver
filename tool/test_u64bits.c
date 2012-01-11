@@ -4,7 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
-#include "walb.h"
+
+#include "walb/u64bits.h"
 #include "random.h"
 
 

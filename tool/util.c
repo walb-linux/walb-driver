@@ -15,7 +15,7 @@
 #include <linux/fs.h>
 #include <time.h>
 
-#include "walb.h"
+#include "walb/walb.h"
 #include "random.h"
 #include "util.h"
 
@@ -81,7 +81,9 @@ int check_bdev(const char* path)
 {
         struct stat sb;
         dev_t devt;
-        size_t sector_size, dev_size, size;
+        size_t sector_size;
+        size_t __attribute__((unused)) dev_size;
+        size_t __attribute__((unused)) size;
         
         if (path == NULL) {
                 LOGe("path is null.\n");

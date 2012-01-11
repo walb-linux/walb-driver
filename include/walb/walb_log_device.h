@@ -6,9 +6,9 @@
 #ifndef _WALB_LOG_DEVICE_H
 #define _WALB_LOG_DEVICE_H
 
-#include "walb_log_record.h"
-#include "walb_super.h"
-#include "walb_snapshot.h"
+#include "./walb_log_record.h"
+#include "./walb_super.h"
+#include "./walb_snapshot.h"
 
 /*
  * FORMAT: Log pack.

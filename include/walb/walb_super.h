@@ -6,8 +6,8 @@
 #ifndef _WALB_SUPER_H
 #define _WALB_SUPER_H
 
-#include "walb.h"
-#include "walb_sector.h"
+#include "./walb.h"
+#include "./walb_sector.h"
 
 /**
  * Assert macro.
@@ -105,11 +105,6 @@ typedef struct walb_super_sector {
  */
 static inline int __is_valid_super_sector(const walb_super_sector_t* sect, int physical_bs)
 {
-#define CHECK(condition) if (! (condition)) {                   \
-                PRINTV_D("super sector is not valid.\n");       \
-                goto invalid;                                   \
-        }
-
         /* physical_bs */
         CHECK(physical_bs > 0);
         
@@ -125,9 +120,9 @@ static inline int __is_valid_super_sector(const walb_super_sector_t* sect, int p
         CHECK(sect->oldest_lsid <= sect->written_lsid);
         CHECK(sect->written_lsid - sect->oldest_lsid <= sect->ring_buffer_size);
         
-#undef CHECK
         return 1;
-invalid:
+error:
+        LOGd("super sector is not valid.\n");
         return 0;
 }
         

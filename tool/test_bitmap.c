@@ -7,7 +7,7 @@
  */
 #include <stdio.h>
 
-#include "bitmap.h"
+#include "walb/bitmap.h"
 
 void test(int size)
 {

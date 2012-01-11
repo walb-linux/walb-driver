@@ -6,10 +6,10 @@
 #ifndef _WALB_SNAPSHOT_USER_H
 #define _WALB_SNAPSHOT_USER_H
 
-#include "walb.h"
-#include "walb_log_record.h"
-#include "walb_log_device.h"
-#include "walb_snapshot.h"
+#include "walb/walb.h"
+#include "walb/walb_log_record.h"
+#include "walb/walb_log_device.h"
+#include "walb/walb_snapshot.h"
 
 /**
  * Snapshot data structure in the userland.

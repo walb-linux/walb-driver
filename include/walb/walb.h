@@ -1,0 +1,60 @@
+/**
+ * General definitions for Walb.
+ *
+ * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
+ */
+#ifndef _WALB_H
+#define _WALB_H
+
+#include "./common.h"
+
+#define WALB_VERSION 1
+
+/**
+ * Disk name length.
+ */
+#define DISK_NAME_LEN_USER 32
+#ifdef __KERNEL__
+#include <linux/genhd.h>
+#else
+#define DISK_NAME_LEN DISK_NAME_LEN_USER
+#endif
+#define ASSERT_DISK_NAME_LEN() ASSERT(DISK_NAME_LEN == DISK_NAME_LEN_USER)
+
+/**
+ * Device name prefix/suffix.
+ *
+ * walb control: /dev/walb/control
+ * walb device: /dev/walb/NAME
+ * walblog device: /dev/walb/NAME_log
+ */
+#define WALB_NAME "walb"
+#define WALB_DIR_NAME "walb"
+#define WALB_CONTROL_NAME "control"
+#define WALBLOG_NAME_SUFFIX "_log"
+#define WALB_CONTROL_PATH "/dev/" WALB_DIR_NAME "/" WALB_CONTROL_NAME
+
+/**
+ * Maximum length of the device name.
+ * This must include WALB_DIR_NAME, "/" and '\0' terminator.
+ *
+ * walb device file:    ("%s/%s",  WALB_DIR_NAME, name)
+ * walblog device file: ("%s/L%s", WALB_DIR_NAME, name)
+ */
+#define WALB_DEV_NAME_MAX_LEN (DISK_NAME_LEN - sizeof(WALB_DIR_NAME) - 3)
+
+/**
+ * Identification to confirm sector type (u16).
+ */
+#define SECTOR_TYPE_SUPER           0x0001
+#define SECTOR_TYPE_SNAPSHOT        0x0002
+#define SECTOR_TYPE_LOGPACK         0x0003
+#define SECTOR_TYPE_WALBLOG_HEADER  0x0004
+
+/**
+ * Constants for lsid.
+ */
+#define INVALID_LSID ((u64)(-1))
+#define MAX_LSID     ((u64)(-2))
+
+#endif /* _WALB_H */
