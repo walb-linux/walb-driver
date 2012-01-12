@@ -1,11 +1,12 @@
 /**
- * hashtbl.h - Hash table header.
+ * hashtbl.h - Hash table operations.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #ifndef _HASHTBL_H
 #define _HASHTBL_H
 
+#include "check_kernel.h"
 #include <linux/list.h>
 
 /**

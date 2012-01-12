@@ -1,5 +1,5 @@
 /**
- * This is common header for both kernel and userland code.
+ * common.h - This is common header for both kernel and userland code.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
@@ -12,14 +12,14 @@
 #ifdef __KERNEL__
 #include <linux/types.h>
 #include <linux/kdev_t.h>
-#include "./inttypes_kern.h"
+#include "inttypes_kernel.h"
 #ifdef WALB_DEBUG
 #define ASSERT(cond) BUG_ON(!(cond))
 #else /* WALB_DEBUG */
 #define ASSERT(cond)
 #endif /* WALB_DEBUG */
 #else /* __KERNEL__ */
-#include "./userland.h"
+#include "userland.h"
 #include <assert.h>
 #include <string.h>
 #define ASSERT(cond) assert(cond)

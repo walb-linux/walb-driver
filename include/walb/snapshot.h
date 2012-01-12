@@ -6,9 +6,9 @@
 #ifndef _WALB_SNAPSHOT_H
 #define _WALB_SNAPSHOT_H
 
-#include "./walb.h"
-#include "./walb_sector.h"
-#include "./u64bits.h"
+#include "walb.h"
+#include "sector.h"
+#include "u64bits.h"
 
 /*******************************************************************************
  * Macro definition.

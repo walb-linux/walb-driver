@@ -6,7 +6,7 @@
 #ifndef _WALB_UTIL_H
 #define _WALB_UTIL_H
 
-#include "./common.h"
+#include "common.h"
 
 /**
  * Check macro for is_valid_* functions.

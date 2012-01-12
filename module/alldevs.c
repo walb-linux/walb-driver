@@ -1,5 +1,5 @@
 /**
- * walb_alldevs.c - for all devices management.
+ * alldevs.c - for multiple devices management.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -8,7 +8,7 @@
 #include <linux/rwsem.h>
 
 #include "hashtbl.h"
-#include "walb_alldevs.h"
+#include "alldevs.h"
 
 /**
  * Lock to access all functions declared in this header.

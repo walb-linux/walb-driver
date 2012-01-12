@@ -1,10 +1,12 @@
 /**
- * Utility macros and functions for walb.
+ * util.h - Utility macros and functions.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_UTIL_H
-#define _WALB_UTIL_H
+#ifndef _WALB_UTIL_H_KERNEL
+#define _WALB_UTIL_H_KERNEL
+
+#include "check_kernel.h"
 
 /**
  * For debug
@@ -37,4 +39,4 @@
         } while(0)
 
 
-#endif /* _WALB_UTIL_H */
+#endif /* _WALB_UTIL_H_KERNEL */

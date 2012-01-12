@@ -6,13 +6,15 @@
 #ifndef _WALB_UTIL_USER_H
 #define _WALB_UTIL_USER_H
 
+#include "check_userland.h"
+
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
 #include "walb/walb.h"
-#include "walb/walb_log_device.h"
+#include "walb/log_device.h"
 
 /* utility */
 void print_binary_hex(const u8* data, size_t size);

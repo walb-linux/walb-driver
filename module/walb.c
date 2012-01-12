@@ -1,5 +1,5 @@
 /**
- * walb.c - Block-level WAL
+ * walb.c - Block-level WAL module.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -26,18 +26,19 @@
 #include <linux/rwsem.h>
 #include <asm/atomic.h>
 
-#include "walb_kern.h"
+#include "kern.h"
 #include "hashtbl.h"
-#include "walb_control.h"
-#include "walb_alldevs.h"
-#include "snapshot_kern.h"
-#include "walb_io.h"
+#include "snapshot.h"
+#include "control.h"
+#include "alldevs.h"
+#include "io.h"
+#include "util.h"
 
-#include "../include/walb_ioctl.h"
-#include "../include/walb_log_device.h"
-#include "../include/walb_sector.h"
-#include "../include/walb_snapshot.h"
-#include "../include/bitmap.h"
+#include "walb/ioctl.h"
+#include "walb/log_device.h"
+#include "walb/sector.h"
+#include "walb/snapshot.h"
+#include "walb/bitmap.h"
 
 /**
  * Device major of walb.
@@ -232,19 +233,13 @@ static int walb_lock_bdev(struct block_device **bdevp, dev_t dev)
         struct block_device *bdev;
         char b[BDEVNAME_SIZE];
 
-        bdev = open_by_devnum(dev, FMODE_READ|FMODE_WRITE);
+        /* Currently the holder is the pointer to walb_lock_bdev(). */
+        bdev = blkdev_get_by_dev(dev, FMODE_READ|FMODE_WRITE|FMODE_EXCL, walb_lock_bdev);
         if (IS_ERR(bdev)) { err = PTR_ERR(bdev); goto open_err; }
-
-        err = bd_claim(bdev, walb_lock_bdev);
-        if (err) { goto claim_err; }
         
         *bdevp = bdev;
         return err;
 
-claim_err:
-        printk_e("bd_claim error %s.\n", __bdevname(dev, b));
-        blkdev_put(bdev, FMODE_READ|FMODE_WRITE);
-        return err;
 open_err:
         printk_e("open error %s.\n", __bdevname(dev, b));
         return err;
@@ -256,8 +251,7 @@ open_err:
  */
 static void walb_unlock_bdev(struct block_device *bdev)
 {
-        bd_release(bdev);
-        blkdev_put(bdev, FMODE_READ|FMODE_WRITE);
+        blkdev_put(bdev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 }
 
 /**

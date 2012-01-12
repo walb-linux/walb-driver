@@ -1,20 +1,22 @@
 /**
- * Walb all device management header.
+ * alldevs.h - Multiple devices management.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_ALLDEVS_H
-#define _WALB_ALLDEVS_H
+#ifndef _WALB_ALLDEVS_H_KERNEL
+#define _WALB_ALLDEVS_H_KERNEL
+
+#include "check_kernel.h"
 
 #include <linux/rwsem.h>
 
-#include "walb_kern.h"
+#include "kern.h"
 
 /**
  * Prototypes.
  *
  * Before call the following functions,
- * you must lock all_wdevs_lock_.
+ * you must lock all_wdevs_lock_ semaphore.
  */
 
 /* Init/Exit */
@@ -42,4 +44,4 @@ void alldevs_read_unlock(void);
 void alldevs_write_lock(void);
 void alldevs_write_unlock(void);
 
-#endif /* _WALB_ALLDEVS_H */
+#endif /* _WALB_ALLDEVS_H_KERNEL */

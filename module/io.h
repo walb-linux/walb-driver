@@ -1,14 +1,16 @@
 /**
- * walb_io.h - IO operations.
+ * io.h - IO operations.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_IO_H
-#define _WALB_IO_H
+#ifndef _WALB_IO_H_KERNEL
+#define _WALB_IO_H_KERNEL
 
-#include "../include/bitmap.h"
-#include "../include/walb_sector.h"
-#include "walb_util.h"
+#include "check_kernel.h"
+
+#include "walb/bitmap.h"
+#include "walb/sector.h"
+#include "util.h"
 
 /**
  * BIO wrapper flag.
@@ -142,4 +144,4 @@ void walb_full_request(struct request_queue *q);
 int walb_make_request(struct request_queue *q, struct bio *bio);
 #endif
 
-#endif /* _WALB_IO_H */
+#endif /* _WALB_IO_H_KERNEL */

@@ -1,12 +1,12 @@
 /**
- * ioctl header for Walb.
+ * ioctl.h - data structure definictions for walb ioctl interface.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #ifndef _WALB_IOCTL_H
 #define _WALB_IOCTL_H
 
-#include "./walb.h"
+#include "walb.h"
 
 #ifdef __KERNEL__
 #include <linux/kernel.h>
@@ -164,6 +164,8 @@ enum {
 
         WALB_IOCTL_WRITTEN_LSID_GET,
         WALB_IOCTL_LOG_CAPACITY_GET,
+
+        /* NIY means [N]ot [I]mplemented [Y]et. */
 };
 
 

@@ -22,16 +22,15 @@ clean:
 
 HEADER_FILES = \
 	../include/walb/bitmap.h \
-	../include/walb/inttypes_kern.h \
+	../include/walb/inttypes_kernel.h \
 	../include/walb/userland.h \
 	../include/walb/walb.h \
-	../include/walb/walb_ioctl.h \
-	../include/walb/walb_log_device.h \
-	../include/walb/walb_log_file.h \
-	../include/walb/walb_log_record.h \
-	../include/walb/walb_sector.h \
-	../include/walb/walb_snapshot.h \
-	../include/walb/walb_super.h
+	../include/walb/ioctl.h \
+	../include/walb/log_device.h \
+	../include/walb/log_record.h \
+	../include/walb/sector.h \
+	../include/walb/snapshot.h \
+	../include/walb/super.h
 
 walbctl: walbctl.o util.o logpack.o snapshot.o
 	$(CC) -o $@ $(CFLAGS) walbctl.o util.o logpack.o snapshot.o
@@ -61,8 +60,8 @@ test_logpack: test_logpack.o logpack.o util.o
 	$(CC) -o $@ $(CFLAGS) test_logpack.o logpack.o util.o
 
 test_bitmap.o: test_bitmap.c ../include/walb/bitmap.h
-test_sector.o: test_sector.c ../include/walb/walb_sector.h util.h
-test_super.o: test_super.c ../include/walb/walb_super.h util.h
+test_sector.o: test_sector.c ../include/walb/sector.h util.h
+test_super.o: test_super.c ../include/walb/super.h util.h
 test_snapshot.o: test_snapshot.c
 test_logpack.o: test_logpack.c
 util.o: util.c util.h $(HEADER_FILES)

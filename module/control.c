@@ -1,5 +1,5 @@
 /**
- * walb_control.c - control interface for walb.
+ * control.c - control interface for walb.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -11,12 +11,12 @@
 #include <linux/rwsem.h>
 #include <linux/uaccess.h>
 
-#include "walb_kern.h"
+#include "kern.h"
 #include "hashtbl.h"
-#include "walb_control.h"
-#include "walb_alldevs.h"
+#include "control.h"
+#include "alldevs.h"
 
-#include "../include/walb_ioctl.h"
+#include "walb/ioctl.h"
 
 /**
  * Allocate memory and call @copy_from_user().

@@ -1,10 +1,12 @@
 /**
- * treemap.h - Tree map header.
+ * treemap.h - Tree map operations.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _TREEMAP_H
-#define _TREEMAP_H
+#ifndef _TREEMAP_H_KERNEL
+#define _TREEMAP_H_KERNEL
+
+#include "check_kernel.h"
 
 #include <linux/rbtree.h>
 #include <linux/list.h>
@@ -194,4 +196,4 @@ u64 multimap_cursor_key(const multimap_cursor_t *cursor);
 int multimap_cursor_test(void); /* For unit test. */
 
 
-#endif /* _TREEMAP_H */
+#endif /* _TREEMAP_H_KERNEL */

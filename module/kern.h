@@ -1,20 +1,22 @@
 /**
- * General definitions for Walb for kernel code.
+ * kern.h - Common definitions for Walb kernel code.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_KERN_H
-#define _WALB_KERN_H
+#ifndef _WALB_KERN_H_KERNEL
+#define _WALB_KERN_H_KERNEL
+
+#include "check_kernel.h"
 
 #include <linux/workqueue.h>
 #include <linux/bio.h>
 #include <linux/spinlock.h>
 #include <linux/kernel.h>
 
-#include "../include/walb_log_device.h"
-#include "../include/walb_sector.h"
-#include "walb_util.h"
-#include "walb_io.h"
+#include "walb/log_device.h"
+#include "walb/sector.h"
+#include "util.h"
+#include "io.h"
 
 /**
  * Walb device major.
@@ -346,4 +348,4 @@ void register_wdev(struct walb_dev *wdev);
 void unregister_wdev(struct walb_dev *wdev);
 
 
-#endif /* _WALB_KERN_H */
+#endif /* _WALB_KERN_H_KERNEL */

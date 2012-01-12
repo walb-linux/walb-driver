@@ -1,10 +1,10 @@
 /**
- * Int types for kernel code.
+ * inttypes_kernel.h - Int types for kernel code.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_INT_TYPES_KERN_H
-#define _WALB_INT_TYPES_KERN_H
+#ifndef _WALB_INT_TYPES_KERNEL_H
+#define _WALB_INT_TYPES_KERNEL_H
 
 #ifdef CONFIG_64BIT
 #define __PRI64_PREFIX "ll"
@@ -22,4 +22,4 @@
 #define PRIu32 "u"
 #define PRIu64 __PRI64_PREFIX "u"
 
-#endif /* _WALB_INT_TYPES_KERN_H */
+#endif /* _WALB_INT_TYPES_KERNEL_H */

@@ -9,13 +9,13 @@
 #include <linux/rwsem.h>
 #include <linux/list.h>
 
-#include "../include/walb_log_device.h"
-#include "../include/walb_sector.h"
-#include "walb_util.h"
-#include "walb_io.h"
+#include "walb/log_device.h"
+#include "walb/sector.h"
+#include "util.h"
+#include "io.h"
 #include "hashtbl.h"
 #include "treemap.h"
-#include "snapshot_kern.h"
+#include "snapshot.h"
 
 /*******************************************************************************
  * Prototypes of static functions.

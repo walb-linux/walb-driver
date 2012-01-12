@@ -6,7 +6,7 @@
 #ifndef _WALB_SECTOR_H
 #define _WALB_SECTOR_H
 
-#include "./walb.h"
+#include "walb.h"
 
 /*******************************************************************************
  * Usage.

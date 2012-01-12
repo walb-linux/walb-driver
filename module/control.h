@@ -1,12 +1,14 @@
 /**
- * Header of control functions of walb.
+ * control.h - Header of walb control functions.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_CONTROL_H
-#define _WALB_CONTROL_H
+#ifndef _WALB_CONTROL_H_KERNEL
+#define _WALB_CONTROL_H_KERNEL
 
-#include "../include/walb_ioctl.h"
+#include "check_kernel.h"
+
+#include "walb/ioctl.h"
 
 void* walb_alloc_and_copy_from_user(
         void __user *userbuf,
@@ -22,4 +24,4 @@ int walb_put_ctl(void __user *userctl, struct walb_ctl *ctl);
 int walb_control_init(void);
 void walb_control_exit(void);
 
-#endif /* _WALB_CONTROL_H */
+#endif /* _WALB_CONTROL_H_KERNEL */

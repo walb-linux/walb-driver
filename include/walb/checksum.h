@@ -1,12 +1,12 @@
 /**
- * Checksum functions for WalB.
+ * checksum.h - Checksum functions for WalB.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #ifndef _WALB_CHECKSUM_H
 #define _WALB_CHECKSUM_H
 
-#include "./common.h"
+#include "common.h"
 
 /**
  * Calculate checksum incrementally.

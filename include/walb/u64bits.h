@@ -6,7 +6,7 @@
 #ifndef _WALB_U64BITS_H
 #define _WALB_U64BITS_H
 
-#include "./common.h"
+#include "common.h"
 
 /**
  * Determine whether a bit is set.

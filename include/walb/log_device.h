@@ -1,14 +1,14 @@
 /**
- * Definitions for Walb log device.
+ * log_device.h - Definitions for Walb log device.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #ifndef _WALB_LOG_DEVICE_H
 #define _WALB_LOG_DEVICE_H
 
-#include "./walb_log_record.h"
-#include "./walb_super.h"
-#include "./walb_snapshot.h"
+#include "log_record.h"
+#include "super.h"
+#include "snapshot.h"
 
 /*
  * FORMAT: Log pack.

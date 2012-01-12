@@ -6,7 +6,7 @@
 #ifndef _WALB_H
 #define _WALB_H
 
-#include "./common.h"
+#include "common.h"
 
 #define WALB_VERSION 1
 

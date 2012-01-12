@@ -1,13 +1,12 @@
 /**
- * Bitmap functions.
- * This support both kernel code and userland code.
- *
+ * bitmap.h - Bitmap functions.
+ * 
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #ifndef _WALB_BITMAP_H
 #define _WALB_BITMAP_H
 
-#include "./common.h"
+#include "common.h"
 
 /**
  * Bitmap structure for walb.

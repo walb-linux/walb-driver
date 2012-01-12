@@ -6,9 +6,9 @@
 #ifndef _WALB_LOG_RECORD_H
 #define _WALB_LOG_RECORD_H
 
-#include "./walb.h"
-#include "./util.h"
-#include "./checksum.h"
+#include "walb.h"
+#include "util.h"
+#include "checksum.h"
 
 /*******************************************************************************
  * Definition of structures.
@@ -122,9 +122,9 @@ error:
  * Assertion of logical/physical block size.
  */
 #define ASSERT_LBS_PBS(logical_bs, physical_bs) ASSERT( \
-        logical_bs > 0 &&                               \
-        physical_bs >= logical_bs &&                    \
-        physical_bs % logical_bs == 0)
+                logical_bs > 0 &&                       \
+                physical_bs >= logical_bs &&            \
+                physical_bs % logical_bs == 0)
 
 /**
  * NOT TESTED YET.
@@ -163,10 +163,11 @@ static inline int max_n_log_record_in_sector(int sector_size)
  */
 static inline int lb_in_pb(int logical_bs, int physical_bs)
 {
-    ASSERT_LBS_PBS(logical_bs, physical_bs);
-    int ret = physical_bs / logical_bs;
-    ASSERT(ret > 0);
-    return ret;
+        int ret;
+        ASSERT_LBS_PBS(logical_bs, physical_bs);
+        ret = physical_bs / logical_bs;
+        ASSERT(ret > 0);
+        return ret;
 }
 
 /**
@@ -180,12 +181,11 @@ static inline int lb_in_pb(int logical_bs, int physical_bs)
  */
 static inline int lb_to_pb(int logical_bs, int physical_bs, int n_lb)
 {
-    ASSERT_LBS_PBS(logical_bs, physical_bs);
-    ASSERT(n_lb >= 0);
-
-    int lp = lb_in_pb(logical_bs, physical_bs);
-    
-    return ((n_lb + lp - 1) / lp);
+        int lp;
+        ASSERT_LBS_PBS(logical_bs, physical_bs);
+        ASSERT(n_lb >= 0);
+        lp = lb_in_pb(logical_bs, physical_bs);
+        return ((n_lb + lp - 1) / lp);
 }
 
 /**
@@ -199,10 +199,10 @@ static inline int lb_to_pb(int logical_bs, int physical_bs, int n_lb)
  */
 static inline int pb_to_lb(int logical_bs, int physical_bs, int n_pb)
 {
-    ASSERT_LBS_PBS(logical_bs, physical_bs);
-    ASSERT(n_pb >= 0);
+        ASSERT_LBS_PBS(logical_bs, physical_bs);
+        ASSERT(n_pb >= 0);
 
-    return (n_pb * lb_in_pb(logical_bs, physical_bs));
+        return (n_pb * lb_in_pb(logical_bs, physical_bs));
 }
 
 /**

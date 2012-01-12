@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include "walb/walb_sector.h"
+#include "walb/sector.h"
 #include "random.h"
 #include "util.h"
 

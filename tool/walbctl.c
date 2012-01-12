@@ -17,9 +17,9 @@
 #include <time.h>
 
 #include "walb/walb.h"
-#include "walb/walb_log_device.h"
-#include "walb/walb_log_record.h"
-#include "walb/walb_ioctl.h"
+#include "walb/log_device.h"
+#include "walb/log_record.h"
+#include "walb/ioctl.h"
 
 #include "random.h"
 #include "util.h"

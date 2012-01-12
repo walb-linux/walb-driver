@@ -6,6 +6,8 @@
 #ifndef _WALB_RANDOM_USER_H
 #define _WALB_RANDOM_USER_H
 
+#include "check_userland.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

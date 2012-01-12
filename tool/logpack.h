@@ -6,9 +6,11 @@
 #ifndef _WALB_LOGPACK_USER_H
 #define _WALB_LOGPACK_USER_H
 
+#include "check_userland.h"
+
 #include "walb/walb.h"
-#include "walb/walb_log_record.h"
-#include "walb/walb_log_device.h"
+#include "walb/log_record.h"
+#include "walb/log_device.h"
 
 
 bool read_logpack_header_from_wldev(int fd,
@@ -43,7 +45,7 @@ bool redo_logpack(int fd,
  * New logpack interface.
  *******************************************************************************/
 
-#include "walb/walb_sector.h"
+#include "walb/sector.h"
 
 /**
  * Logpack

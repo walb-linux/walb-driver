@@ -1,19 +1,21 @@
 /**
- * snapshot_kern.h - Snapshot management of walb.
+ * snapshot.h - Snapshot management.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SNAPSHOT_KERN_H
-#define _WALB_SNAPSHOT_KERN_H
+#ifndef _WALB_SNAPSHOT_H_KERNEL
+#define _WALB_SNAPSHOT_H_KERNEL
+
+#include "check_kernel.h"
 
 #include <linux/blkdev.h>
 #include <linux/rwsem.h>
 
-#include "../include/walb_log_device.h"
-#include "../include/walb_sector.h"
+#include "walb/log_device.h"
+#include "walb/sector.h"
 #include "treemap.h"
 #include "hashtbl.h"
-#include "walb_util.h"
+#include "util.h"
 
 /**
  * DOC: Snapshot operations.
@@ -160,4 +162,4 @@ void snapshot_read_unlock(struct snapshot_data *snapd);
 void snapshot_write_lock(struct snapshot_data *snapd);
 void snapshot_write_unlock(struct snapshot_data *snapd);
 
-#endif /* _WALB_SNAPSHOT_KERN_H */
+#endif /* _WALB_SNAPSHOT_H_KERNEL */

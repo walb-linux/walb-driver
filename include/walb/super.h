@@ -6,8 +6,8 @@
 #ifndef _WALB_SUPER_H
 #define _WALB_SUPER_H
 
-#include "./walb.h"
-#include "./walb_sector.h"
+#include "walb.h"
+#include "sector.h"
 
 /**
  * Assert macro.

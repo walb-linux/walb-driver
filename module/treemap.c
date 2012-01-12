@@ -10,9 +10,9 @@
 #include <linux/list.h>
 #include <linux/random.h> /* This is for treemap_test(). */
 
-#include "walb_util.h" /* for debug */
-#include "../include/walb.h"
+#include "walb/walb.h"
 #include "treemap.h"
+#include "util.h" /* for debug */
 
 /**
  * Assertions.

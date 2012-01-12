@@ -1,5 +1,5 @@
 /**
- * walb_io.c - Walb IO operations.
+ * io.c - Walb IO operations.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -10,11 +10,11 @@
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 
-#include "walb_util.h"
-#include "../include/walb_sector.h"
-#include "../include/bitmap.h"
+#include "util.h"
+#include "walb/sector.h"
+#include "walb/bitmap.h"
 
-#include "walb_io.h"
+#include "io.h"
 
 /**
  * Workqueue defined in walb.c.
