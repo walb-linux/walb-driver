@@ -41,7 +41,8 @@ enum {
 /**
  * Workqueue name.
  */
-#define WALB_WORKQUEUE_NAME "walb_wq"
+#define WALB_WORKQUEUE_SINGLE_NAME "walb_wqs"
+#define WALB_WORKQUEUE_MULTI_NAME "walb_wqm"
 
 /*
  * Default checkpoint interval [ms]

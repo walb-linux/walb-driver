@@ -76,10 +76,10 @@ module_param(request_mode, int, 0);
 static struct walb_dev *Devices = NULL;
 
 /**
- * Workqueue for read/write.
+ * Workqueues.
  */
-struct workqueue_struct *wq_ = NULL;
-
+struct workqueue_struct *wqs_ = NULL; /* single-thread */
+struct workqueue_struct *wqm_ = NULL; /* multi-thread */
 
 /*******************************************************************************
  * Prototypes of local functions.
@@ -377,7 +377,7 @@ static int walb_make_and_write_logpack(struct walb_dev *wdev,
         wk->n_req = n_req;
         wk->wdev = wdev;
         INIT_WORK(&wk->work, walb_make_logpack_and_submit_task);
-        queue_work(wq_, &wk->work);
+        queue_work(wqs_, &wk->work);
         
         return 0;
 
@@ -1570,7 +1570,7 @@ static void do_checkpointing(struct work_struct *work)
         if (wdev->checkpoint_state == CP_RUNNING) {
                 /* Register delayed work for next time */
                 INIT_DELAYED_WORK(&wdev->checkpoint_work, do_checkpointing);
-                ret = queue_delayed_work(wq_, &wdev->checkpoint_work, next_delay);
+                ret = queue_delayed_work(wqs_, &wdev->checkpoint_work, next_delay);
                 ASSERT(ret);
                 wdev->checkpoint_state = CP_WAITING;
         } else {
@@ -1611,7 +1611,7 @@ static void start_checkpointing(struct walb_dev *wdev)
         ASSERT(delay > 0);
         INIT_DELAYED_WORK(&wdev->checkpoint_work, do_checkpointing);
 
-        queue_delayed_work(wq_, &wdev->checkpoint_work, delay);
+        queue_delayed_work(wqs_, &wdev->checkpoint_work, delay);
         wdev->checkpoint_state = CP_WAITING;
         printk_d("state change to CP_WAITING\n");
         up_write(&wdev->checkpoint_lock);
@@ -1732,10 +1732,15 @@ static int __init walb_init(void)
         /*
          * Workqueue.
          */
-        wq_ = create_singlethread_workqueue(WALB_WORKQUEUE_NAME);
-        if (wq_ == NULL) {
-                printk_e("create workqueue failed.\n");
+        wqs_ = create_singlethread_workqueue(WALB_WORKQUEUE_SINGLE_NAME);
+        if (wqs_ == NULL) {
+                printk_e("create single-thread workqueue failed.\n");
                 goto out_unregister;
+        }
+        wqm_ = create_workqueue(WALB_WORKQUEUE_MULTI_NAME);
+        if (wqm_ == NULL) {
+                printk_e("create multi-thread workqueue failed.\n");
+                goto out_workqueue_single;
         }
         
         /*
@@ -1743,7 +1748,7 @@ static int __init walb_init(void)
          */
         if (alldevs_init() != 0) {
                 printk_e("alldevs_init failed.\n");
-                goto out_workqueue;
+                goto out_workqueue_multi;
         }
         
         /*
@@ -1771,8 +1776,10 @@ out_control_exit:
 #endif
 out_alldevs_exit:
         alldevs_exit();
-out_workqueue:
-        if (wq_) { destroy_workqueue(wq_); }
+out_workqueue_multi:
+        if (wqm_) { destroy_workqueue(wqm_); }
+out_workqueue_single:
+        if (wqs_) { destroy_workqueue(wqs_); }
 out_unregister:
 	unregister_blkdev(walb_major, WALB_NAME);
 	return -ENOMEM;
@@ -1799,8 +1806,10 @@ static void walb_exit(void)
         }
         alldevs_write_unlock();
 
-        flush_workqueue(wq_); /* can omit this? */
-        destroy_workqueue(wq_);
+        flush_workqueue(wqm_); /* can omit this? */
+        destroy_workqueue(wqm_);
+        flush_workqueue(wqs_); /* can omit this? */
+        destroy_workqueue(wqs_);
         
 	unregister_blkdev(walb_major, WALB_NAME);
 
