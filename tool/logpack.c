@@ -351,6 +351,37 @@ error0:
 }
 
 /**
+ * Write invalid logpack header.
+ * This just fill zero.
+ *
+ * @fd file descriptor of data device (opened).
+ * @physical_bs physical block size.
+ * @lsid lsid for logpack header.
+ *
+ * @return true in success, or false.
+ */
+bool write_invalid_logpack_header(int fd, const walb_super_sector_t* super_sectp, int physical_bs, u64 lsid)
+{
+        u64 off = get_offset_of_lsid_2(super_sectp, lsid);
+
+        u8* sect = alloc_sector_zero(physical_bs);
+        if (!sect) {
+                LOGe("Allocate sector failed.\n");
+                goto error0;
+        }
+        if (!write_sector(fd, sect, physical_bs, off)) {
+                LOGe("Write sector %"PRIu64" for lsid %"PRIu64" failed.\n", off, lsid);
+                goto error1;
+        }
+        free(sect);
+        return true;
+error1:
+        free(sect);
+error0:
+        return false;
+}
+
+/**
  * Alloate empty logpack data.
  *
  * @logical_bs logical block size.

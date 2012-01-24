@@ -335,6 +335,11 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
                 }
         }
 
+        /* Write invalid logpack not to run redo. */
+        if (! write_invalid_logpack_header(fd, &super_sect, physical_bs, 0)) {
+                goto error1;
+        }
+
 #if 1        
         /* Read super sector and print for debug. */
         memset(&super_sect, 0, sizeof(super_sect));

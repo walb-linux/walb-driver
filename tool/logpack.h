@@ -40,6 +40,9 @@ bool redo_logpack(int fd,
                   const walb_logpack_header_t* lhead,
                   const u8* buf);
 
+bool write_invalid_logpack_header(int fd,
+                                  const walb_super_sector_t* super_sectp,
+                                  int physical_bs, u64 lsid);
 
 /*******************************************************************************
  * New logpack interface.
