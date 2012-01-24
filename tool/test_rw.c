@@ -13,13 +13,14 @@
 #define BLOCK_SIZE 4096
 #define DEV_SIZE (1024 * 1024 * 1024 / BLOCK_SIZE) /* num of blocks */
 
-
 int main(int argc, char* argv[])
 {
         if (argc != 3) {
                 printf("usage: test_rw [walb device] [num of blocks]\n");
                 exit(1);
         }
+        const char *walb_dev = argv[1];
+        const char *nblocks_str = argv[2];
 
         init_random();
         u8 *block0;
@@ -29,23 +30,25 @@ int main(int argc, char* argv[])
             posix_memalign((void **)&block1, BLOCK_SIZE, BLOCK_SIZE) != 0) {
 
                 printf("malloc error\n");
+                exit(1);
         }
 
-        int fd = open(argv[1], O_RDWR | O_DIRECT);
+        int fd = open(walb_dev, O_RDWR | O_DIRECT);
         if (fd < 0) {
                 printf("open error\n");
                 exit(1);
         }
 
-        int num = atoi(argv[2]);
+        int num = atoi(nblocks_str);
         int i;
         for (i = 0; i < num; i ++) {
                 memset_random(block0, BLOCK_SIZE);
 
                 write_sector(fd, block0, BLOCK_SIZE, i);
                 read_sector(fd, block1, BLOCK_SIZE, i);
-                
-                printf("%d %d\n", i, memcmp(block0, block1, BLOCK_SIZE));
+
+                int c = memcmp(block0, block1, BLOCK_SIZE);
+                printf("%d %s\n", i, (c == 0 ? "OK" : "NG"));
         }
 
         close(fd);

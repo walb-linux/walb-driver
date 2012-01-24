@@ -51,7 +51,12 @@ static void print_hashtbl_cursor(const hashtbl_cursor_t *cursor);
 
 /**
  * Get number of required bits to store val.
+ * @val: Value to check.
  *
+ * RETURNS:
+ * Number of required bits.
+ * 
+ * EXAMPLES:
  * 00100000B needs 6 bits.
  * 00011111B needs 5 bits.
  */

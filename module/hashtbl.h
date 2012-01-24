@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _HASHTBL_H
-#define _HASHTBL_H
+#ifndef _HASHTBL_H_KERNEL
+#define _HASHTBL_H_KERNEL
 
 #include "check_kernel.h"
 #include <linux/list.h>
@@ -116,4 +116,4 @@ u8* hashtbl_cursor_key(const hashtbl_cursor_t *cursor);
 
 int hashtbl_cursor_test(void);
 
-#endif /* _HASHTBL_H */
+#endif /* _HASHTBL_H_KERNEL */

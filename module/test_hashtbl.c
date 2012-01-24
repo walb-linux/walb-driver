@@ -1,5 +1,5 @@
 /**
- * test.c - Test module.
+ * test_hashtbl.c - Test module.
  *
  * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -10,9 +10,9 @@
 
 #include "hashtbl.h"
 
-static int __init test_init(void)
+static int __init test_hashtbl_init(void)
 {
-        printk(KERN_INFO "test_init begin\n");
+        printk(KERN_INFO "test_hashtbl_init begin\n");
         
         /* Hashmap test for debug. */
         if (hashtbl_test()) {
@@ -25,19 +25,19 @@ static int __init test_init(void)
                 goto error;
         }
 
-        printk(KERN_INFO "test_init end\n");
+        printk(KERN_INFO "test_hashtbl_init end\n");
         
 error:
         return -1;
 }
 
-static void test_exit(void)
+static void test_hashtbl_exit(void)
 {
 }
 
 
-module_init(test_init);
-module_exit(test_exit);
+module_init(test_hashtbl_init);
+module_exit(test_hashtbl_exit);
 MODULE_LICENSE("Dual BSD/GPL");
-MODULE_DESCRIPTION("Test module");
-MODULE_ALIAS("test");
+MODULE_DESCRIPTION("Test hashtbl module");
+MODULE_ALIAS("test_hashtbl");

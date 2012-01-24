@@ -14,12 +14,11 @@ EXTRA_CFLAGS += -I$(obj)/../include
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 
-walb-mod-objs  := walb.o control.o alldevs.o snapshot.o \
-	io.o hashtbl.o treemap.o
-test-mod-objs  := test.o hashtbl.o
-test2-mod-objs := test2.o treemap.o
+walb-mod-objs := walb.o control.o alldevs.o snapshot.o io.o hashtbl.o treemap.o
+test-hashtbl-mod-objs := test_hashtbl.o hashtbl.o
+test-treemap-mod-objs := test_treemap.o treemap.o
 
-obj-m := walb-mod.o test-mod.o test2-mod.o
+obj-m := walb-mod.o test-hashtbl-mod.o test-treemap-mod.o
 
 else
 
@@ -30,7 +29,6 @@ default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
 endif
-
 
 clean:
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions
