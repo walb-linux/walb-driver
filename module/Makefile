@@ -17,8 +17,9 @@ ifneq ($(KERNELRELEASE),)
 walb-mod-objs := walb.o control.o alldevs.o snapshot.o io.o hashtbl.o treemap.o
 test-hashtbl-mod-objs := test_hashtbl.o hashtbl.o
 test-treemap-mod-objs := test_treemap.o treemap.o
+wrapblk-mod-objs := wrapblk.o
 
-obj-m := walb-mod.o test-hashtbl-mod.o test-treemap-mod.o
+obj-m := walb-mod.o test-hashtbl-mod.o test-treemap-mod.o wrapblk-mod.o
 
 else
 
