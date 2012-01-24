@@ -19,6 +19,9 @@
 #define WALB_BIO_END     1
 #define WALB_BIO_ERROR   2
 
+/**
+ *
+ */
 struct walb_ddev_bio {
 
         struct request *req; /* wrapper-level request */
@@ -32,7 +35,6 @@ struct walb_ddev_bio {
         int status;
         
         struct bio *bio; /* bio for underlying device */
-
 };
 
 /**
