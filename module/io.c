@@ -20,6 +20,7 @@
  * Workqueues defined in walb.c.
  */
 extern struct workqueue_struct *wqs_;
+extern struct workqueue_struct *wqm_;
 
 /*******************************************************************************
  * Global functions.
@@ -200,7 +201,7 @@ void walb_make_ddev_request(struct block_device *bdev, struct request *req)
         ASSERT(! list_empty(&wk->list));
 
         INIT_WORK(&wk->work, walb_submit_bio_task);
-        queue_work(wqs_, &wk->work);
+        queue_work(wqm_, &wk->work);
         
         printk_d("make_ddev_request() end\n");
         return;
@@ -362,7 +363,7 @@ void walb_forward_request_to_ddev(struct block_device *bdev,
         }
 
         INIT_WORK(&wk->work, walb_bios_work_task);
-        queue_work(wqs_, &wk->work);
+        queue_work(wqm_, &wk->work);
 }
 
 /**
@@ -561,7 +562,7 @@ void walb_forward_request_to_ddev2(struct block_device *bdev, struct request *re
                 __blk_end_request_all(req, -EIO);
         } else {
                 INIT_WORK(&wk->work, walb_bioclist_work_task);
-                queue_work(wqs_, &wk->work);
+                queue_work(wqm_, &wk->work);
         }
 }
 
