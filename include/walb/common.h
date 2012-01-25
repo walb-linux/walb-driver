@@ -99,4 +99,9 @@ static inline void* amalloc(size_t size, size_t align)
 #define FREE(p) free(p)
 #endif
 
+/**
+ * Method call with short names.
+ */
+#define MCALL(object, method, args...) (object)->method(object, ##args)
+
 #endif /* _WALB_COMMON_H */
