@@ -1,5 +1,5 @@
 /**
- * General definitions for Walb.
+ * walb.h - General definitions for Walb.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
@@ -7,19 +7,9 @@
 #define _WALB_H
 
 #include "common.h"
+#include "disk_name.h"
 
 #define WALB_VERSION 1
-
-/**
- * Disk name length.
- */
-#define DISK_NAME_LEN_USER 32
-#ifdef __KERNEL__
-#include <linux/genhd.h>
-#else
-#define DISK_NAME_LEN DISK_NAME_LEN_USER
-#endif
-#define ASSERT_DISK_NAME_LEN() ASSERT(DISK_NAME_LEN == DISK_NAME_LEN_USER)
 
 /**
  * Device name prefix/suffix.
