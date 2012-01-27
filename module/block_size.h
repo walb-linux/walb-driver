@@ -6,6 +6,7 @@
 #ifndef _WALB_BLOCK_SIZE_H
 #define _WALB_BLOCK_SIZE_H
 
+#include "check_kernel.h"
 #include "walb/common.h"
 
 /**
@@ -26,7 +27,7 @@ struct block_size_op
 struct block_size_op* alloc_block_size_op(gfp_t gfp_mask);
 void free_block_size_op(struct block_size_op *op);
 
-int init_block_size_op(struct block_size_op *op, u32 logical_bs, u32 physical_bs);
+void init_block_size_op(struct block_size_op *op, u32 logical_bs, u32 physical_bs);
 
 struct block_size_op* create_block_size_op(u32 logical_bs, u32 physical_bs, gfp_t gfp_mask);
 #define destroy_block_size_op(op) free_block_size_op(op)

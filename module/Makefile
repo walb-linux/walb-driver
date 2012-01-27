@@ -18,8 +18,9 @@ walb-mod-objs := walb.o control.o alldevs.o snapshot.o io.o hashtbl.o treemap.o 
 test-hashtbl-mod-objs := test_hashtbl.o hashtbl.o
 test-treemap-mod-objs := test_treemap.o treemap.o
 wrapblk-mod-objs := wrapblk.o
+memblk-mod-objs := memblk.o treemap.o block_size.o memblk_io_none.o
 
-obj-m := walb-mod.o test-hashtbl-mod.o test-treemap-mod.o wrapblk-mod.o
+obj-m := walb-mod.o test-hashtbl-mod.o test-treemap-mod.o wrapblk-mod.o memblk-mod.o
 
 else
 

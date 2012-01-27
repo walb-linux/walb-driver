@@ -10,9 +10,24 @@ fi
 
 SCRIPT_DIR=$(cd $(dirname $0);pwd)
 
-scp -p ${SCRIPT_DIR}/module/walb-mod.ko         ${TARGET_HOST}:${TARGET_DIR};
-scp -p ${SCRIPT_DIR}/module/insmod.sh           ${TARGET_HOST}:${TARGET_DIR};
-scp -p ${SCRIPT_DIR}/module/test-hashtbl-mod.ko ${TARGET_HOST}:${TARGET_DIR};
-scp -p ${SCRIPT_DIR}/module/test-treemap-mod.ko ${TARGET_HOST}:${TARGET_DIR};
-scp -p ${SCRIPT_DIR}/tool/walbctl               ${TARGET_HOST}:${TARGET_DIR};
-scp -p ${SCRIPT_DIR}/tool/test_rw               ${TARGET_HOST}:${TARGET_DIR};
+list_in_module="\
+walb-mod.ko \
+insmod.sh \
+test-hashtbl-mod.ko \
+test-treemap-mod.ko \
+memblk-mod.ko \
+"
+list_in_tool="\
+walbctl \
+test_rw \
+"
+
+for f in $list_in_module; do
+  scp -p ${SCRIPT_DIR}/module/${f} ${TARGET_HOST}:${TARGET_DIR} &
+done
+
+for f in $list_in_tool; do
+  scp -p ${SCRIPT_DIR}/tool/${f} ${TARGET_HOST}:${TARGET_DIR} &
+done
+
+wait
