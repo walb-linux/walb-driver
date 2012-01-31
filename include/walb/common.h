@@ -44,7 +44,7 @@
 #define PRINTV_W(fmt, args...) PRINT_W("walb(%s) " fmt, __func__, ##args)
 #define PRINTV_N(fmt, args...) PRINT_N("walb(%s) " fmt, __func__, ##args)
 #define PRINTV_I(fmt, args...) PRINT_I("walb(%s) " fmt, __func__, ##args)
-#define PRINTV_D(fmt, args...) PRINT_D("walb(%s:%d) " fmt,              \
+#define PRINTV_D(fmt, args...) PRINT_D("walb(%s:%d:%s) " fmt,           \
                                        __FILE__, __LINE__, __func__, ##args)
 #else /* __KERNEL__ */
 #include <stdio.h>
