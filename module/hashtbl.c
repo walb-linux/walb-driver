@@ -106,7 +106,7 @@ static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
                         return cell;
                 }                
         }
-        /* printk_d("hashtbl_lookup_cell end\n"); */
+        /* LOGd("hashtbl_lookup_cell end\n"); */
         return ret;
 }
 
@@ -129,7 +129,7 @@ static u32 hashtbl_get_index(const struct hash_tbl *htbl, const u8* key, int key
         idx = hash_32(sum, htbl->n_bits);
         ASSERT(idx < htbl->bucket_size);
         
-        /* printk_d("sum %08x idx %u\n", sum, idx); */
+        /* LOGd("sum %08x idx %u\n", sum, idx); */
         return idx;
 }
 
@@ -320,7 +320,7 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
         nhead = cursor->next_head;
         nnode = cursor->next;
 
-#define PERR { printk_d("error\n"); return 0; }
+#define PERR { LOGd("error\n"); return 0; }
         
         if (! is_hashtbl_struct_valid(cursor->htbl)) { PERR; }
         max_idx = cursor->htbl->bucket_size;
@@ -366,16 +366,16 @@ static void print_hashtbl_cursor(const hashtbl_cursor_t *cursor)
         state_str[5] = "INVALID";
 
         if (cursor == NULL) {
-                printk_d("HASHTBL_CURSOR null\n");
+                LOGd("HASHTBL_CURSOR null\n");
                 return;
         }
-        printk_d("HASHTBL_CURSOR state %s bucket_idx %d\n"
-                 "curr_head %p curr %p\n"
-                 "next_head %p next %p\n",
-                 state_str[cursor->state],
-                 cursor->bucket_idx,
-                 cursor->curr_head, cursor->curr,
-                 cursor->next_head, cursor->next);
+        LOGd("HASHTBL_CURSOR state %s bucket_idx %d\n"
+             "curr_head %p curr %p\n"
+             "next_head %p next %p\n",
+             state_str[cursor->state],
+             cursor->bucket_idx,
+             cursor->curr_head, cursor->curr,
+             cursor->next_head, cursor->next);
 }
 
 /*******************************************************************************
@@ -390,7 +390,7 @@ struct hash_tbl* hashtbl_create(int bucket_size, gfp_t gfp_mask)
         int i;
         struct hash_tbl *htbl;
 
-        printk_d("hashtbl_create begin\n");
+        LOGd("hashtbl_create begin\n");
         ASSERT(bucket_size > 0);
         
         htbl = kzalloc(sizeof(struct hash_tbl), gfp_mask);
@@ -406,7 +406,7 @@ struct hash_tbl* hashtbl_create(int bucket_size, gfp_t gfp_mask)
         }
 
         ASSERT_HASHTBL(htbl);
-        printk_d("hashtbl_create end\n");
+        LOGd("hashtbl_create end\n");
         return htbl;
         
 error1:
@@ -420,11 +420,11 @@ error0:
  */
 void hashtbl_destroy(struct hash_tbl *htbl)
 {
-        printk_d("hashtbl_destroy begin\n");
+        LOGd("hashtbl_destroy begin\n");
         hashtbl_empty(htbl);
         kfree(htbl->bucket);
         kfree(htbl);
-        printk_d("hashtbl_destroy end\n");
+        LOGd("hashtbl_destroy end\n");
 }
 
 /**
@@ -436,7 +436,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
         struct hlist_node *node, *next;
         struct hash_cell *cell;
 
-        printk_d("hashtbl_empty begin\n");
+        LOGd("hashtbl_empty begin\n");
         ASSERT_HASHTBL(htbl);
         
         for (i = 0; i < htbl->bucket_size; i ++) {
@@ -448,7 +448,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
                 }
                 ASSERT(hlist_empty(&htbl->bucket[i]));
         }
-        printk_d("hashtbl_empty end\n");
+        LOGd("hashtbl_empty end\n");
 }
 
 /**
@@ -495,7 +495,7 @@ int hashtbl_add(struct hash_tbl *htbl,
         idx = hashtbl_get_index(htbl, key, key_size);
         hlist_add_head(&cell->list, &htbl->bucket[idx]);
         
-        /* printk_d("hashtbl_add end\n"); */
+        /* LOGd("hashtbl_add end\n"); */
         return 0;
 
 nomem:
@@ -598,8 +598,8 @@ int hashtbl_n_items(const struct hash_tbl *htbl)
                 if (n_max < n_local) { n_max = n_local; }
         }
 
-        printk_d("n_min %d n_max %d n_avg %d, n_total %d\n",
-                 n_min, n_max, n / htbl->bucket_size, n);
+        LOGd("n_min %d n_max %d n_avg %d, n_total %d\n",
+             n_min, n_max, n / htbl->bucket_size, n);
         return n;
 }
 
@@ -615,18 +615,18 @@ int hashtbl_test(void)
         char buf[10];
         unsigned long val;
 
-        printk_d("hashtbl_test begin\n");
+        LOGd("hashtbl_test begin\n");
 
-        printk_d("list_head: %zu\n"
-                 "hlist_head: %zu\n"
-                 "hash_tbl: %zu\n"
-                 "hash_cell: %zu\n"
-                 "max bucket_size: %ld\n",
-                 sizeof(struct list_head),
-                 sizeof(struct hlist_head),
-                 sizeof(struct hash_tbl),
-                 sizeof(struct hash_cell),
-                 HASHTBL_MAX_BUCKET_SIZE);
+        LOGd("list_head: %zu\n"
+             "hlist_head: %zu\n"
+             "hash_tbl: %zu\n"
+             "hash_cell: %zu\n"
+             "max bucket_size: %ld\n",
+             sizeof(struct list_head),
+             sizeof(struct hlist_head),
+             sizeof(struct hash_tbl),
+             sizeof(struct hash_cell),
+             HASHTBL_MAX_BUCKET_SIZE);
 
         /* Create. */
         htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
@@ -696,7 +696,7 @@ int hashtbl_test(void)
         /* Empty and destroy. */
         hashtbl_destroy(htbl);
         
-        printk_d("hashtbl_test end\n");
+        LOGd("hashtbl_test end\n");
         return 0;
 
 error:
@@ -1008,24 +1008,24 @@ int hashtbl_cursor_test(void)
         int i, j, key;
         unsigned long val;
         
-        printk_d("hashtbl_cursor_test begin.\n");
+        LOGd("hashtbl_cursor_test begin.\n");
 
         /*
          * Test with small data set.
          */
-        printk_d("***** Test with small data set *****\n");
+        LOGd("***** Test with small data set *****\n");
         
         /* Create hash table. */
-        printk_d("Create hashtbl");
+        LOGd("Create hashtbl");
         htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
         ASSERT(htbl != NULL);
 
         /* Initialize cursor. */
-        printk_d("Initialize cursor.\n");
+        LOGd("Initialize cursor.\n");
         hashtbl_cursor_init(htbl, &curt);
 
         /* Begin then end. */
-        printk_d("Begin then end.\n");
+        LOGd("Begin then end.\n");
         hashtbl_cursor_begin(&curt);
         WALB_CHECK(hashtbl_cursor_is_valid(&curt));
         WALB_CHECK(hashtbl_cursor_is_begin(&curt));
@@ -1034,7 +1034,7 @@ int hashtbl_cursor_test(void)
         WALB_CHECK(hashtbl_cursor_is_valid(&curt));
 
         /* Prepare hash table data. */
-        printk_d("Prepare hash table data.\n");
+        LOGd("Prepare hash table data.\n");
         for (i = 0; i < 10; i ++) {
                 key = i;
                 val = i;
@@ -1045,7 +1045,7 @@ int hashtbl_cursor_test(void)
         WALB_CHECK(hashtbl_n_items(htbl) == 10);
 
         /* Begin to end. */
-        printk_d("Begin to end.\n");
+        LOGd("Begin to end.\n");
         hashtbl_cursor_begin(&curt);
         i = 0;
         while (hashtbl_cursor_next(&curt)) {
@@ -1056,15 +1056,15 @@ int hashtbl_cursor_test(void)
                 memcpy(&key, hashtbl_cursor_key(&curt), sizeof(int));
                 val = hashtbl_cursor_val(&curt);
                 WALB_CHECK(val != HASHTBL_INVALID_VAL);
-                printk_d("i %d key %d val %lu\n", i, key, val);
+                LOGd("i %d key %d val %lu\n", i, key, val);
                 i ++;
         }
-        printk_d("i: %d\n", i);
+        LOGd("i: %d\n", i);
         WALB_CHECK(i == 10);
         WALB_CHECK(hashtbl_cursor_is_end(&curt));
 
         /* Begin to end with delete */
-        printk_d("Begin to end with delete.\n");
+        LOGd("Begin to end with delete.\n");
         hashtbl_cursor_begin(&curt);
         i = 0; j = 0;
         while (hashtbl_cursor_next(&curt)) {
@@ -1085,25 +1085,25 @@ int hashtbl_cursor_test(void)
         WALB_CHECK(hashtbl_cursor_is_end(&curt));
         WALB_CHECK(hashtbl_n_items(htbl) == 5);
 
-        printk_d("Destroy hash table.\n");
+        LOGd("Destroy hash table.\n");
         hashtbl_destroy(htbl);
 
         /*
          * Test with large data set.
          */
-        printk_d("***** Test with larget data set *****\n");
+        LOGd("***** Test with larget data set *****\n");
 
         /* Create hash table. */
-        printk_d("Create hashtbl");
+        LOGd("Create hashtbl");
         htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
         ASSERT(htbl != NULL);
 
         /* Initialize cursor. */
-        printk_d("Initialize cursor.\n");
+        LOGd("Initialize cursor.\n");
         hashtbl_cursor_init(htbl, &curt);
 
         /* Prepare hash table data. */
-        printk_d("Prepare hash table data.\n");
+        LOGd("Prepare hash table data.\n");
         for (i = 0; i < 1000; i ++) {
                 key = i;
                 val = i;
@@ -1114,7 +1114,7 @@ int hashtbl_cursor_test(void)
         WALB_CHECK(hashtbl_n_items(htbl) == 1000);
 
         /* Begin to end. */
-        printk_d("Begin to end.\n");
+        LOGd("Begin to end.\n");
         hashtbl_cursor_begin(&curt);
         i = 0;
         while (hashtbl_cursor_next(&curt)) {
@@ -1126,12 +1126,12 @@ int hashtbl_cursor_test(void)
                 WALB_CHECK(val != HASHTBL_INVALID_VAL);
                 i ++;
         }
-        printk_d("i: %d\n", i);
+        LOGd("i: %d\n", i);
         WALB_CHECK(i == 1000);
         WALB_CHECK(hashtbl_cursor_is_end(&curt));
 
         /* Begin to end with delete */
-        printk_d("Begin to end with delete.\n");
+        LOGd("Begin to end with delete.\n");
         hashtbl_cursor_begin(&curt);
         i = 0; j = 0;
         while (hashtbl_cursor_next(&curt)) {
@@ -1151,10 +1151,10 @@ int hashtbl_cursor_test(void)
         WALB_CHECK(hashtbl_cursor_is_end(&curt));
         WALB_CHECK(hashtbl_n_items(htbl) == 500);
 
-        printk_d("Destroy hash table.\n");
+        LOGd("Destroy hash table.\n");
         hashtbl_destroy(htbl);
         
-        printk_d("hashtbl_cursor_test end.\n");
+        LOGd("hashtbl_cursor_test end.\n");
         return 0;
         
 error:

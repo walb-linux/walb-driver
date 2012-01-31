@@ -66,7 +66,7 @@ int sector_io(int rw, struct block_device *bdev,
         struct walb_bio_with_completion *bioc;
         u8 *buf;
 
-        printk_d("walb_sector_io begin\n");
+        LOGd("walb_sector_io begin\n");
 
         ASSERT(rw == READ || rw == WRITE);
         ASSERT_SECTOR_DATA(sect);
@@ -77,7 +77,7 @@ int sector_io(int rw, struct block_device *bdev,
         pbs = bdev_physical_block_size(bdev);
         
         if (sect->size != pbs) {
-                printk_e("Sector size is invalid %d %d.\n", sect->size, pbs);
+                LOGe("Sector size is invalid %d %d.\n", sect->size, pbs);
                 goto error0;
         }
 
@@ -91,13 +91,13 @@ int sector_io(int rw, struct block_device *bdev,
         /* Alloc bio */
         bio = bio_alloc(GFP_NOIO, 1);
         if (bio == NULL) {
-                printk_e("bio_alloc failed.\n");
+                LOGe("bio_alloc failed.\n");
                 goto error1;
         }
         ASSERT(virt_addr_valid(buf));
         page = virt_to_page(buf);
 
-        printk_d("sector %lu "
+        LOGd("sector %lu "
                  "page %p buf %p sectorsize %d offset %lu rw %d\n",
                  (unsigned long)(off * (pbs / lbs)),
                  virt_to_page(buf), buf,
@@ -115,7 +115,7 @@ int sector_io(int rw, struct block_device *bdev,
 
         /* Check result. */
         if (bioc->status != WALB_BIO_END) {
-                printk_e("sector io failed.\n");
+                LOGe("sector io failed.\n");
                 goto error2;
         }
 
@@ -123,7 +123,7 @@ int sector_io(int rw, struct block_device *bdev,
         bio_put(bio);
         kfree(bioc);
 
-        printk_d("walb_sector_io end\n");
+        LOGd("walb_sector_io end\n");
         return 0;
 
 error2:
@@ -146,7 +146,7 @@ void walb_end_io_with_completion(struct bio *bio, int error)
 
         ASSERT(bioc->status == WALB_BIO_INIT);
         if (error || ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
-                printk_e("walb_end_io_with_completion: error %d bi_flags %lu\n",
+                LOGe("walb_end_io_with_completion: error %d bi_flags %lu\n",
                          error, bio->bi_flags);
                 bioc->status = WALB_BIO_ERROR;
         } else {
@@ -171,7 +171,7 @@ void walb_make_ddev_request(struct block_device *bdev, struct request *req)
         int bio_nr = 0;
         struct walb_submit_bio_work *wk;
 
-        printk_d("make_ddev_request() called\n");
+        LOGd("make_ddev_request() called\n");
 
         wk = kmalloc(sizeof(struct walb_submit_bio_work), GFP_ATOMIC);
         if (! wk) { goto error0; }
@@ -194,16 +194,16 @@ void walb_make_ddev_request(struct block_device *bdev, struct request *req)
                 
                 list_add_tail(&dbio->list, &wk->list);
                 bio_nr ++;
-                printk_d("dbio->status: %d\n", dbio->status);
+                LOGd("dbio->status: %d\n", dbio->status);
         }
 
-        printk_d("bio_nr: %d\n", bio_nr);
+        LOGd("bio_nr: %d\n", bio_nr);
         ASSERT(! list_empty(&wk->list));
 
         INIT_WORK(&wk->work, walb_submit_bio_task);
         queue_work(wqm_, &wk->work);
         
-        printk_d("make_ddev_request() end\n");
+        LOGd("make_ddev_request() end\n");
         return;
 
 error1:
@@ -213,7 +213,7 @@ error1:
         }
         kfree(wk);
 error0:
-        printk_e("make_ddev_request failed\n");
+        LOGe("make_ddev_request failed\n");
         __blk_end_request_all(req, -EIO);
 }
 
@@ -225,22 +225,22 @@ void walb_submit_bio_task(struct work_struct *work)
         struct walb_submit_bio_work *wk;
         struct walb_ddev_bio *dbio, *next;
 
-        printk_d("submit_bio_task begin\n");
+        LOGd("submit_bio_task begin\n");
         
         wk = container_of(work, struct walb_submit_bio_work, work);
         
         if (list_empty(&wk->list)) {
-                printk_w("list is empty\n");
+                LOGw("list is empty\n");
         }
         
         list_for_each_entry_safe(dbio, next, &wk->list, list) {
 
-                printk_d("submit_bio_task %ld %d\n",
+                LOGd("submit_bio_task %ld %d\n",
                        (long)dbio->bio->bi_sector, dbio->bio->bi_size);
                 submit_bio(dbio->bio->bi_rw, dbio->bio);
         }
 
-        printk_d("submit_bio_task end\n");
+        LOGd("submit_bio_task end\n");
 }
 
 /**
@@ -258,8 +258,8 @@ void walb_ddev_end_io(struct bio *bio, int error)
         int is_last = 1;
         int is_err = 0;
         
-        printk_d("ddev_end_io() called\n");
-        printk_d("bio %ld %d\n",
+        LOGd("ddev_end_io() called\n");
+        LOGd("bio %ld %d\n",
                (long)bio->bi_sector, bio->bi_size);
         
         BUG_ON(! dbio);
@@ -267,7 +267,7 @@ void walb_ddev_end_io(struct bio *bio, int error)
         BUG_ON(! head);
         
         if (error || ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
-                printk_e("IO failed error=%d, uptodate=%d\n",
+                LOGe("IO failed error=%d, uptodate=%d\n",
                        error, test_bit(BIO_UPTODATE, &bio->bi_flags));
                 
                 dbio->status = WALB_BIO_ERROR;
@@ -283,7 +283,7 @@ void walb_ddev_end_io(struct bio *bio, int error)
         spin_lock_irqsave(&wk->lock, irq_flags);
         list_for_each_entry_safe(tmp, next, head, list) {
 
-                /* printk_d("status: %d\n", tmp->status); */
+                /* LOGd("status: %d\n", tmp->status); */
                 switch (tmp->status) {
                 case WALB_BIO_END:
                         /* do nothing */
@@ -307,10 +307,10 @@ void walb_ddev_end_io(struct bio *bio, int error)
         /* Finalize the request of wrapper device. */
         if (is_last) {
                 if (is_err) {
-                        printk_d("walb blk_end_request_all() -EIO\n");
+                        LOGd("walb blk_end_request_all() -EIO\n");
                         blk_end_request_all(req, -EIO);
                 } else {
-                        printk_d("walb blk_end_request_all() 0\n");
+                        LOGd("walb blk_end_request_all() 0\n");
                         blk_end_request_all(req, 0);
                 }
 
@@ -323,7 +323,7 @@ void walb_ddev_end_io(struct bio *bio, int error)
                 }
                 /* confirm the list is empty */
                 if (! list_empty(&wk->list)) {
-                        printk_e("wk->list must be empty.\n");
+                        LOGe("wk->list must be empty.\n");
                         BUG();
                 }
                 spin_unlock_irqrestore(&wk->lock, irq_flags);
@@ -331,7 +331,7 @@ void walb_ddev_end_io(struct bio *bio, int error)
                 kfree(wk);
         }
 
-        printk_d("ddev_end_io() end\n");
+        LOGd("ddev_end_io() end\n");
 }
 
 /**
@@ -613,7 +613,7 @@ void walb_bioclist_work_task(struct work_struct *work)
 
                 wait_for_completion(&bioc->wait);
                 if (bioc->status != WALB_BIO_END) {
-                        printk_e("walb_bioclist_work_task: read error.\n");
+                        LOGe("walb_bioclist_work_task: read error.\n");
                         is_fail ++;
                 }
                 bio_put(bioc->bio);
@@ -676,7 +676,7 @@ void walb_transfer(struct walb_dev *dev, unsigned long sector,
 	unsigned long offset = sector * dev->logical_bs;
 
 	if ((offset + nbytes) > dev->size) {
-		printk_n("Beyond-end write (%ld %ld)\n", offset, nbytes);
+		LOGn("Beyond-end write (%ld %ld)\n", offset, nbytes);
 		return;
 	}
 	if (write)
@@ -761,7 +761,7 @@ void walb_full_request(struct request_queue *q)
 	while ((req = blk_peek_request(q)) != NULL) {
                 blk_start_request(req);
 		if (req->cmd_type != REQ_TYPE_FS) {
-			printk_n("Skip non-fs request\n");
+			LOGn("Skip non-fs request\n");
 			__blk_end_request_all(req, -EIO);
 			continue;
 		}

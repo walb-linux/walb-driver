@@ -79,9 +79,9 @@ int walb_logpack_header_fill(struct walb_logpack_header *lhead,
         int n_padding;
         u64 cur_lsid;
        
-        printk_d("walb_logpack_header_fill begin\n");
+        LOGd("walb_logpack_header_fill begin\n");
 
-        printk_d("logpack_lsid %llu n_req %d n_lb_in_pb %d\n",
+        LOGd("logpack_lsid %llu n_req %d n_lb_in_pb %d\n",
                  logpack_lsid, n_req, n_lb_in_pb);
 
         total_lb = 0;
@@ -89,7 +89,7 @@ int walb_logpack_header_fill(struct walb_logpack_header *lhead,
         i = 0;
         while (i < n_req + n_padding) {
 
-                printk_d("walb_logpack_header_fill: i %d n_req %d n_padding %d\n",
+                LOGd("walb_logpack_header_fill: i %d n_req %d n_padding %d\n",
                          i, n_req, n_padding); /* debug */
                 
                 req = reqp_ary[i - n_padding];
@@ -109,7 +109,7 @@ int walb_logpack_header_fill(struct walb_logpack_header *lhead,
                 req_padding_pb = req_padding_lb / n_lb_in_pb;
 
                 if ((u64)req_padding_pb > ring_buffer_size) {
-                        printk_e("IO request size (%llu) > ring buffer size (%llu).\n",
+                        LOGe("IO request size (%llu) > ring buffer size (%llu).\n",
                                  (u64)req_padding_pb, ring_buffer_size);
                         return -1;
                 }
@@ -127,7 +127,7 @@ int walb_logpack_header_fill(struct walb_logpack_header *lhead,
                         lhead->record[i].io_size = req_padding_lb;
                         n_padding ++;
 
-                        printk_d("padding req_padding_lb: %d %u\n",
+                        LOGd("padding req_padding_lb: %d %u\n",
                                  req_padding_lb, lhead->record[i].io_size); /* debug */
                 } else {
                         lhead->record[i].is_padding = 0;
@@ -145,14 +145,14 @@ int walb_logpack_header_fill(struct walb_logpack_header *lhead,
         lhead->n_padding = n_padding;
         lhead->n_records = n_req + n_padding;
         ASSERT(total_lb % n_lb_in_pb == 0);
-        printk_d("total_lb: %d\n", total_lb); /* debug */
+        LOGd("total_lb: %d\n", total_lb); /* debug */
         lhead->total_io_size = total_lb / n_lb_in_pb;
         lhead->logpack_lsid = logpack_lsid;
         lhead->sector_type = SECTOR_TYPE_LOGPACK;
         
         logpack_size = lhead->total_io_size + 1;
 
-        printk_d("walb_logpack_header_fill end\n");
+        LOGd("walb_logpack_header_fill end\n");
         return logpack_size;
 }
 
@@ -175,7 +175,7 @@ walb_create_logpack_request_entry(
         int i;
         /* int n_bio; */
         
-        printk_d("walb_create_logpack_request_entry begin\n");
+        LOGd("walb_create_logpack_request_entry begin\n");
 
         ASSERT(idx < logpack->n_records);
         ASSERT(logpack->record[idx].is_padding == 0);
@@ -216,7 +216,7 @@ walb_create_logpack_request_entry(
 
         INIT_LIST_HEAD(&entry->bioc_list);
         
-        printk_d("walb_create_logpack_request_entry end\n");
+        LOGd("walb_create_logpack_request_entry end\n");
         return entry;
         
 /* error3: */
@@ -270,7 +270,7 @@ struct walb_logpack_entry* walb_create_logpack_entry(
         int i, n_padding;
 
 
-        printk_d("walb_create_logpack_entry begin\n");
+        LOGd("walb_create_logpack_entry begin\n");
         
         /*
          * Allocate and initialize logpack entry.
@@ -299,7 +299,7 @@ struct walb_logpack_entry* walb_create_logpack_entry(
         }
         ASSERT(n_padding <= 1);
 
-        printk_d("walb_create_logpack_entry end\n");
+        LOGd("walb_create_logpack_entry end\n");
         return entry;
 
 error1:
@@ -356,14 +356,14 @@ walb_submit_logpack_bio_to_ldev(
         /* struct walb_logpack_request_entry *req_entry1, *req_entry2; */
         /* struct walb_logpack_entry *logpack_entry2; */
 
-        printk_d("walb_submit_logpack_bio_to_ldev begin\n");
+        LOGd("walb_submit_logpack_bio_to_ldev begin\n");
         
         req = req_entry->req_orig;
         wdev = req_entry->logpack_entry->wdev;
 
         bioc = kmalloc(sizeof(*bioc), GFP_NOIO);
         if (bioc == NULL) {
-                printk_e("kmalloc failed\n");
+                LOGe("kmalloc failed\n");
                 goto error0;
         }
         init_completion(&bioc->wait);
@@ -371,7 +371,7 @@ walb_submit_logpack_bio_to_ldev(
         
         cbio = bio_clone(bio, GFP_NOIO);
         if (cbio == NULL) {
-                printk_e("bio_clone() failed\n");
+                LOGe("bio_clone() failed\n");
                 goto error1;
         }
         cbio->bi_bdev = wdev->ldev;
@@ -390,13 +390,13 @@ walb_submit_logpack_bio_to_ldev(
         cbio->bi_sector = off_lb + bio_offset;
         bioc->bio = cbio;
 
-        printk_d("submit logpack data bio: off %llu size %u\n",
+        LOGd("submit logpack data bio: off %llu size %u\n",
                  (u64)cbio->bi_sector, bio_cur_bytes(cbio));
         
         ASSERT(cbio->bi_rw & WRITE);
         submit_bio(cbio->bi_rw, cbio);
 
-        printk_d("walb_submit_logpack_bio_to_ldev end\n");
+        LOGd("walb_submit_logpack_bio_to_ldev end\n");
         return bioc;
 
 error1:
@@ -425,7 +425,7 @@ int walb_submit_logpack_request_to_ldev(
         struct walb_bio_with_completion *bioc;
         u64 ldev_off_pb;
 
-        printk_d("walb_submit_logpack_request_to_ldev begin\n");
+        LOGd("walb_submit_logpack_request_to_ldev begin\n");
         
         ASSERT(req_entry != NULL);
         req = req_entry->req_orig;
@@ -442,14 +442,14 @@ int walb_submit_logpack_request_to_ldev(
                 if (bioc) {
                         list_add_tail(&bioc->list, &req_entry->bioc_list);
                 } else {
-                        printk_e("walb_submit_logpack_bio_to_ldev() failed\n");
+                        LOGe("walb_submit_logpack_bio_to_ldev() failed\n");
                         goto error0;
                 }
                 ASSERT(bio->bi_size % lbs == 0);
                 off_lb += bio->bi_size / lbs;
         }
 
-        printk_d("walb_submit_logpack_request_to_ldev end\n");
+        LOGd("walb_submit_logpack_request_to_ldev end\n");
         return 0;
 error0:
         return -1;
@@ -475,7 +475,7 @@ int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
         struct walb_bio_with_completion *bioc, *tmp_bioc;
         struct walb_dev *wdev;
 
-        printk_d("walb_submit_logpack_to_ldev begin\n");
+        LOGd("walb_submit_logpack_to_ldev begin\n");
         
         ASSERT(logpack_entry != NULL);
 
@@ -517,7 +517,7 @@ int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
         bio_add_page(bio, page, pbs, offset_in_page(logpack_entry->logpack));
         bioc->bio = bio;
 
-        printk_d("submit logpack header bio: off %llu size %u\n",
+        LOGd("submit logpack header bio: off %llu size %u\n",
                  (u64)bio->bi_sector, bio_cur_bytes(bio));
         submit_bio(WRITE, bio);
 
@@ -528,7 +528,7 @@ int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
                                  &logpack_entry->req_list, list) {
 
                 if (walb_submit_logpack_request_to_ldev(req_entry) != 0) {
-                        printk_e("walb_submit_logpack_request_to_ldev() failed\n");
+                        LOGe("walb_submit_logpack_request_to_ldev() failed\n");
                         is_fail = 1;
                 }
                 i ++;
@@ -566,7 +566,7 @@ int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
                 goto error0;
         }
         
-        printk_d("walb_submit_logpack_to_ldev end\n");
+        LOGd("walb_submit_logpack_to_ldev end\n");
         return 0;
 
 
@@ -595,7 +595,7 @@ int walb_logpack_write(struct walb_dev *wdev,
 {
         struct walb_logpack_entry *logpack_entry;
 
-        printk_d("walb_logpack_write begin\n");
+        LOGd("walb_logpack_write begin\n");
         
         /* Create logpack entry for IO to log device. */
         logpack_entry = walb_create_logpack_entry(wdev, logpack, reqp_ary);
@@ -608,7 +608,7 @@ int walb_logpack_write(struct walb_dev *wdev,
         }
 
         walb_destroy_logpack_entry(logpack_entry);
-        printk_d("walb_logpack_write end\n");
+        LOGd("walb_logpack_write end\n");
         return 0;
 
 error1:

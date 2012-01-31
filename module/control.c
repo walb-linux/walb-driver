@@ -34,12 +34,12 @@ void* walb_alloc_and_copy_from_user(
 
         buf = kmalloc(buf_size, gfp_mask);
         if (buf == NULL) {
-                printk_e("memory allocation for walb_ctl.u2k.buf failed.\n");
+                LOGe("memory allocation for walb_ctl.u2k.buf failed.\n");
                 goto error0;
         }
 
         if (copy_from_user(buf, userbuf, buf_size)) {
-                printk_e("copy_from_user failed\n");
+                LOGe("copy_from_user failed\n");
                 goto error1;
         }
         return buf;
@@ -90,13 +90,13 @@ struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
         /* Allocate walb_ctl memory. */
         ctl = kzalloc(sizeof(struct walb_ctl), gfp_mask);
         if (ctl == NULL) {
-                printk_e("memory allocation for walb_ctl failed.\n");
+                LOGe("memory allocation for walb_ctl failed.\n");
                 goto error0;
         }
 
         /* Copy ctl. */
         if (copy_from_user(ctl, userctl, sizeof(struct walb_ctl))) {
-                printk_e("copy_from_user failed.\n");
+                LOGe("copy_from_user failed.\n");
                 goto error1;
         }
 
@@ -157,7 +157,7 @@ int walb_put_ctl(void __user *userctl, struct walb_ctl *ctl)
 
         /* Copy ctl. */
         if (copy_to_user(userctl, ctl, sizeof(struct walb_ctl))) {
-                printk_e("copy_to_user failed.\n");
+                LOGe("copy_to_user failed.\n");
                 goto error0;
         }
         
@@ -205,12 +205,12 @@ static int ioctl_dev_start(struct walb_ctl *ctl)
         
         ldevt = MKDEV(ctl->u2k.lmajor, ctl->u2k.lminor);
         ddevt = MKDEV(ctl->u2k.dmajor, ctl->u2k.dminor);
-        printk_d("ioctl_dev_start: (ldevt %u:%u) (ddevt %u:%u)\n",
+        LOGd("ioctl_dev_start: (ldevt %u:%u) (ddevt %u:%u)\n",
                  MAJOR(ldevt), MINOR(ldevt),
                  MAJOR(ddevt), MINOR(ddevt));
         if (ctl->u2k.buf_size > 0) {
                 name = (char *)ctl->u2k.__buf;
-                printk_d("name len: %zu\n", strnlen(name, DISK_NAME_LEN));
+                LOGd("name len: %zu\n", strnlen(name, DISK_NAME_LEN));
         } else {
                 name = NULL;
         }
@@ -223,7 +223,7 @@ static int ioctl_dev_start(struct walb_ctl *ctl)
                 wminor = ctl->u2k.wminor;
                 if (wminor % 2 != 0) { wminor --; }
         }
-        printk_d("ioctl_dev_start: wminor: %u\n", wminor);
+        LOGd("ioctl_dev_start: wminor: %u\n", wminor);
         
         wdev = prepare_wdev(wminor, ldevt, ddevt, name);
         if (wdev == NULL) {
@@ -286,7 +286,7 @@ static int ioctl_dev_stop(struct walb_ctl *ctl)
         wmajor = ctl->u2k.wmajor;
         wminor = ctl->u2k.wminor;
         if (wmajor != walb_major) {
-                printk_e("Device major id is invalid.\n");
+                LOGe("Device major id is invalid.\n");
                 goto error0;
         }
         wdevt = MKDEV(wmajor, wminor);
@@ -296,7 +296,7 @@ static int ioctl_dev_stop(struct walb_ctl *ctl)
         alldevs_read_unlock();
 
         if (wdev == NULL) {
-                printk_e("Walb dev with minor %u not found.\n",
+                LOGe("Walb dev with minor %u not found.\n",
                          wminor);
                 ctl->error = -1;
                 goto error0;
@@ -343,7 +343,7 @@ static int dispatch_ioctl(struct walb_ctl *ctl)
                 ret = ioctl_dev_stop(ctl);
                 break;
         default:
-                printk_e("dispatch_ioctl: command %d is not supported.\n",
+                LOGe("dispatch_ioctl: command %d is not supported.\n",
                          ctl->command);
                 ret = -ENOTTY;
         }
@@ -366,7 +366,7 @@ static int ctl_ioctl(uint command, struct walb_ctl __user *user)
         struct walb_ctl *ctl;
 
         if (command != WALB_IOCTL_CONTROL) {
-                printk_e("ioctl cmd must be %08lx but %08x\n",
+                LOGe("ioctl cmd must be %08lx but %08x\n",
                          WALB_IOCTL_CONTROL, command);
                 return -ENOTTY;
         }
@@ -377,7 +377,7 @@ static int ctl_ioctl(uint command, struct walb_ctl __user *user)
         ret = dispatch_ioctl(ctl);
         
         if (walb_put_ctl(user, ctl) != 0) {
-                printk_e("walb_put_ctl failed.\n");
+                LOGe("walb_put_ctl failed.\n");
                 goto error0;
         }
         return ret;
@@ -435,7 +435,7 @@ int __init walb_control_init(void)
         ret = misc_register(&walb_misc_);
         if (ret < 0) { goto error0; }
 
-        printk_i("walb control device minor %u\n", walb_misc_.minor);
+        LOGi("walb control device minor %u\n", walb_misc_.minor);
         return 0;
 
 error0:

@@ -251,7 +251,7 @@ int alldevs_add(struct walb_dev* wdev)
                           (unsigned long)wdev, GFP_KERNEL);
         if (ret != 0) {
                 if (ret == -EPERM) {
-                        printk_e("alldevs_add: minor %u is already registered.\n",
+                        LOGe("alldevs_add: minor %u is already registered.\n",
                                  MINOR(wdev->devt));
                 }
                 goto error0;
@@ -263,7 +263,7 @@ int alldevs_add(struct walb_dev* wdev)
                           (unsigned long)wdev, GFP_KERNEL);
         if (ret != 0) {
                 if (ret == -EPERM) {
-                        printk_e("alldevs_add: name %s is already registered.\n",
+                        LOGe("alldevs_add: name %s is already registered.\n",
                                  get_super_sector(wdev->lsuper0)->name);
                 }
                 goto error1;
@@ -275,7 +275,7 @@ int alldevs_add(struct walb_dev* wdev)
         if (ret != 0) {
                 if (ret == -EPERM) {
                         sprint_uuid(buf, buf_size, get_super_sector(wdev->lsuper0)->uuid);
-                        printk_e("alldevs_add: uuid %s is already registered.\n",
+                        LOGe("alldevs_add: uuid %s is already registered.\n",
                                  buf);
                 }
                 goto error2;

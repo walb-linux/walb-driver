@@ -118,7 +118,7 @@ static int sector_load(struct snapshot_data *snapd, u64 off)
         /* Read sector if need. */
         if (ctl->state == SNAPSHOT_SECTOR_CONTROL_ALLOC) {
                 if (sector_io(READ, snapd->bdev, off, ctl->sector) != 0) {
-                        printk_e("Read snapshot sector %"PRIu64" failed.\n", off);
+                        LOGe("Read snapshot sector %"PRIu64" failed.\n", off);
                         goto error0;
                 }
                 ctl->state = SNAPSHOT_SECTOR_CONTROL_CLEAN;
@@ -381,18 +381,18 @@ static int snapshot_sector_read(struct snapshot_data *snapd,
         
         /* Issue read IO. */
         if (sector_io(READ, snapd->bdev, offset, sect) != 0) {
-                printk_e("Read snapshot sector %"PRIu64" failed.\n", offset);
+                LOGe("Read snapshot sector %"PRIu64" failed.\n", offset);
                 goto error0;
         }
         /* Check checksum. */
         if (checksum((u8 *)sect->data, sect->size) != 0) {
-                printk_e("Checksum is bad.\n");
+                LOGe("Checksum is bad.\n");
                 goto error0;
         }
 
         /* Check validness of record array. */
         if (! is_valid_snapshot_sector(sect)) {
-                printk_e("Snapshot is not valid.\n");
+                LOGe("Snapshot is not valid.\n");
                 goto error0;
         }
 
@@ -426,7 +426,7 @@ static int snapshot_sector_write(
 
         /* Check validness of record array. */
         if (! is_valid_snapshot_sector(sect_tmp)) {
-                printk_e("snapshot sector is invalid.\n");
+                LOGe("snapshot sector is invalid.\n");
                 goto error1;
         }
 
@@ -437,7 +437,7 @@ static int snapshot_sector_write(
 
         /* Issue write IO. */
         if (sector_io(WRITE, snapd->bdev, offset, sect_tmp) != 0) {
-                printk_e("Write snapshot sector %"PRIu64" failed.\n", offset);
+                LOGe("Write snapshot sector %"PRIu64" failed.\n", offset);
                 goto error1;
         }
 
@@ -596,7 +596,7 @@ static int insert_snapshot_record_to_index(
 
         /* Check record validness. */
         if (! is_valid_snapshot_record(rec)) {
-                printk_e("snapshot record is not valid.\n");
+                LOGe("snapshot record is not valid.\n");
                 goto error0;
         }
 
@@ -607,7 +607,7 @@ static int insert_snapshot_record_to_index(
         if (hashtbl_add(snapd->name_idx,
                         rec->name, get_snapshot_name_length(rec->name),
                         (unsigned long)rec->snapshot_id, GFP_KERNEL) != 0) {
-                printk_e("insert to name_idx failed.\n");
+                LOGe("insert to name_idx failed.\n");
                 goto error0;
         }
 
@@ -615,7 +615,7 @@ static int insert_snapshot_record_to_index(
         if (multimap_add(snapd->lsid_idx,
                          rec->lsid, (unsigned long)rec->snapshot_id,
                          GFP_KERNEL) != 0) {
-                printk_e("insert to lsid_idx failed.\n");
+                LOGe("insert to lsid_idx failed.\n");
                 goto error0;
         }
         
@@ -643,21 +643,21 @@ static int delete_snapshot_record_from_index(
 
         /* Check record validness. */
         if (! is_valid_snapshot_record(rec)) {
-                printk_e("snapshot record is not valid.\n");
+                LOGe("snapshot record is not valid.\n");
                 goto error0;
         }
 
         if (hashtbl_del(snapd->name_idx,
                         rec->name, get_snapshot_name_length(rec->name))
             != (unsigned long)rec->snapshot_id) {
-                printk_e("delete from name_idx failed.\n");
+                LOGe("delete from name_idx failed.\n");
                 goto error0;
         }
 
         if (multimap_del(snapd->lsid_idx,
                          rec->lsid, (unsigned long)rec->snapshot_id)
             != (unsigned long)rec->snapshot_id) {
-                printk_e("delete from lsid_Idx failed.\n");
+                LOGe("delete from lsid_Idx failed.\n");
                 goto error0;
         }
         
@@ -702,7 +702,7 @@ static int snapshot_data_load_sector(struct snapshot_data *snapd,
                         
                 /* Free invalid record. */
                 if (! is_valid_snapshot_record(rec)) {
-                        printk_w("Invalid snapshot record found. Free it.\n");
+                        LOGw("Invalid snapshot record found. Free it.\n");
                         memset(rec, 0, sizeof(struct walb_snapshot_record));
                         clear_alloc_snapshot_record(i, sect);
                         continue;
@@ -711,14 +711,14 @@ static int snapshot_data_load_sector(struct snapshot_data *snapd,
                 
                 /* Insert to id_idx. */
                 if (insert_snapshot_id(snapd, rec->snapshot_id, ctl) != 0) {
-                        printk_e("insert to primary index failed.\n");
+                        LOGe("insert to primary index failed.\n");
                         PRINT_E_SNAPSHOT_RECORD(rec);
                         goto error1;
                 }
                         
                 /* Insert to name_idx and lsid_idx. */
                 if (insert_snapshot_record_to_index(snapd, rec) != 0) {
-                        printk_e("insert to secondary index failed.\n");
+                        LOGe("insert to secondary index failed.\n");
                         PRINT_E_SNAPSHOT_RECORD(rec);
                         goto error1;
                 }
@@ -831,7 +831,7 @@ static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
 
         smap = map_create(GFP_KERNEL);
         if (smap == NULL) {
-                printk_e("map_create failed.\n");
+                LOGe("map_create failed.\n");
                 goto error;
         }
         
@@ -847,7 +847,7 @@ static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
                 if (ret == -EEXIST) {
                         count ++;
                 } else if (ret != 0) {
-                        printk_e("map_add failed.\n");
+                        LOGe("map_add failed.\n");
                         goto error;
                 }
         }
@@ -877,7 +877,7 @@ static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
 
         smap = map_create(GFP_KERNEL);
         if (smap == NULL) {
-                printk_e("map_create failed.\n");
+                LOGe("map_create failed.\n");
                 goto error;
         }
         
@@ -893,7 +893,7 @@ static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
                 if (ret == -EEXIST) {
                         count ++;
                 } else if (ret != 0) {
-                        printk_e("map_add failed.\n");
+                        LOGe("map_add failed.\n");
                         goto error;
                 }
         }
@@ -1065,7 +1065,7 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
                 
                 /* Load sector. */
                 if (sector_io(READ, snapd->bdev, off, sect) != 0) {
-                        printk_e("Read snapshot sector %"PRIu64" failed.\n", off);
+                        LOGe("Read snapshot sector %"PRIu64" failed.\n", off);
                         goto error1;
                 }
 
@@ -1082,7 +1082,7 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
                 
                 /* Save sector */
                 if (sector_io(WRITE, snapd->bdev, off, sect) != 0) {
-                        printk_e("Write snapshot sector %"PRIu64" failed.\n", off);
+                        LOGe("Write snapshot sector %"PRIu64" failed.\n", off);
                         goto error1;
                 }
 
@@ -1113,7 +1113,7 @@ error0:
 int snapshot_data_finalize(struct snapshot_data *snapd)
 {
         if (sector_sync_all(snapd) != 0) {
-                printk_e("sector_sync_all() failed.\n");
+                LOGe("sector_sync_all() failed.\n");
                 goto error;
         }
         sector_evict_all(snapd);
@@ -1158,13 +1158,13 @@ int snapshot_add_nolock(struct snapshot_data *snapd,
         /* Assign and check record. */
         snapshot_record_assign(dst_rec, name, lsid, timestamp);
         if (! is_valid_snapshot_record(dst_rec)) {
-                printk_e("Invalid snapshot record.\n");
+                LOGe("Invalid snapshot record.\n");
                 goto error0;
         }
 
         /* Insert into indices. */
         if (insert_snapshot_record_to_index(snapd, dst_rec) != 0) {
-                printk_e("Insert into secondary indices failed.\n");
+                LOGe("Insert into secondary indices failed.\n");
                 goto error0;
         }
 

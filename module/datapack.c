@@ -27,7 +27,7 @@ walb_create_datapack_request_entry(
         struct walb_logpack_header *logpack = datapack_entry->logpack;
         int i, n_padding;
         
-        printk_d("walb_create_datapack_request_entry begin\n");
+        LOGd("walb_create_datapack_request_entry begin\n");
 
         ASSERT(idx < logpack->n_records);
         ASSERT(logpack->record[idx].is_padding == 0);
@@ -51,7 +51,7 @@ walb_create_datapack_request_entry(
 
         INIT_LIST_HEAD(&entry->bioc_list);
 
-        printk_d("walb_create_datapack_request_entry end\n");
+        LOGd("walb_create_datapack_request_entry end\n");
         return entry;
         
 error0:
@@ -91,7 +91,7 @@ struct walb_datapack_entry* walb_create_datapack_entry(
         struct walb_datapack_request_entry *req_entry, *tmp_req_entry;
         int i, n_padding;
 
-        printk_d("walb_create_datapack_entry begin\n");
+        LOGd("walb_create_datapack_entry begin\n");
 
         entry = kmalloc(sizeof(struct walb_datapack_entry), GFP_NOIO);
         if (entry == NULL) { goto error0; }
@@ -112,7 +112,7 @@ struct walb_datapack_entry* walb_create_datapack_entry(
                 }                
         }
         ASSERT(n_padding <= 1);
-        printk_d("walb_create_datapack_entry end\n");
+        LOGd("walb_create_datapack_entry end\n");
         return entry;
 
 error1:
@@ -161,7 +161,7 @@ struct walb_bio_with_completion* walb_submit_datapack_bio_to_ddev(
         struct walb_bio_with_completion *bioc;
         struct bio *cbio;
         
-        printk_d("walb_submit_datapack_bio_to_ddev begin\n");
+        LOGd("walb_submit_datapack_bio_to_ddev begin\n");
 
         req = req_entry->req_orig;
         wdev = req_entry->datapack_entry->wdev;
@@ -180,12 +180,12 @@ struct walb_bio_with_completion* walb_submit_datapack_bio_to_ddev(
 
         /* Block address is the same as original bio. */
 
-        printk_d("submit datapack bio: off %llu size %u\n",
+        LOGd("submit datapack bio: off %llu size %u\n",
                  (u64)cbio->bi_sector, bio_cur_bytes(cbio));
         ASSERT(cbio->bi_rw & WRITE);
         submit_bio(cbio->bi_rw, cbio);
         
-        printk_d("walb_submit_datapack_bio_to_ddev end\n");
+        LOGd("walb_submit_datapack_bio_to_ddev end\n");
         return bioc;
 
 error1:        
@@ -209,7 +209,7 @@ int walb_submit_datapack_request_to_ddev(
         struct bio *bio;
         struct walb_bio_with_completion *bioc;
 
-        printk_d("walb_submit_datapack_request_to_ddev begin\n");
+        LOGd("walb_submit_datapack_request_to_ddev begin\n");
 
         ASSERT(req_entry != NULL);
         req = req_entry->req_orig;
@@ -221,12 +221,12 @@ int walb_submit_datapack_request_to_ddev(
                 if (bioc) {
                         list_add_tail(&bioc->list, &req_entry->bioc_list);
                 } else {
-                        printk_e("walb_submit_datapack_bio_to_ddev() failed\n");
+                        LOGe("walb_submit_datapack_bio_to_ddev() failed\n");
                         goto error0;
                 }
         }
 
-        printk_d("walb_submit_datapack_request_to_ddev end\n");
+        LOGd("walb_submit_datapack_request_to_ddev end\n");
         return 0;
 
 error0:
@@ -250,7 +250,7 @@ int walb_submit_datapack_to_ddev(struct walb_datapack_entry* datapack_entry)
         struct walb_datapack_request_entry *req_entry, *tmp_req_entry;
         struct walb_bio_with_completion *bioc, *tmp_bioc;
         
-        printk_d("walb_submit_datapack_to_ddev begin\n");
+        LOGd("walb_submit_datapack_to_ddev begin\n");
 
         ASSERT(datapack_entry != NULL);
 
@@ -272,7 +272,7 @@ int walb_submit_datapack_to_ddev(struct walb_datapack_entry* datapack_entry)
                                  &datapack_entry->req_list, list) {
 
                 if (walb_submit_datapack_request_to_ddev(req_entry) != 0) {
-                        printk_e("walb_submit_datapack_request_to_ddev() failed\n");
+                        LOGe("walb_submit_datapack_request_to_ddev() failed\n");
                         is_fail = 1;
                 }
                 i ++;
@@ -300,7 +300,7 @@ int walb_submit_datapack_to_ddev(struct walb_datapack_entry* datapack_entry)
                 goto error0;
         }
 
-        printk_d("walb_submit_datapack_to_ddev end\n");
+        LOGd("walb_submit_datapack_to_ddev end\n");
         return 0;
         
 error0:
@@ -325,7 +325,7 @@ int walb_datapack_write(struct walb_dev *wdev,
 {
         struct walb_datapack_entry *datapack_entry;
 
-        printk_d("walb_datapack_write begin\n");
+        LOGd("walb_datapack_write begin\n");
 
         datapack_entry = walb_create_datapack_entry(wdev, logpack, reqp_ary);
         if (datapack_entry == NULL) {
@@ -335,7 +335,7 @@ int walb_datapack_write(struct walb_dev *wdev,
                 goto error1;
         }
         walb_destroy_datapack_entry(datapack_entry);
-        printk_d("walb_datapack_write end\n");
+        LOGd("walb_datapack_write end\n");
         return 0;
 
 error1:
