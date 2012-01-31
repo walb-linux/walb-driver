@@ -16,6 +16,8 @@ insmod.sh \
 test-hashtbl-mod.ko \
 test-treemap-mod.ko \
 memblk-mod.ko \
+test-memblk-data-mod.ko \
+test-sg-util-mod.ko \
 "
 list_in_tool="\
 walbctl \

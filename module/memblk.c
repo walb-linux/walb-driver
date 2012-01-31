@@ -16,6 +16,7 @@
 #include "walb/disk_name.h"
 #include "block_size.h"
 #include "treemap.h"
+#include "hashtbl.h"
 #include "block_size.h"
 #include "memblk.h"
 #include "memblk_io.h"
@@ -28,7 +29,7 @@
 int memblk_major_ = 0;
 
 /* Block size */
-int logical_bs_ = 512;
+int logical_bs_ = 512; /* Must be 512 currently. */
 int physical_bs_ = 4096;
 
 /**
@@ -50,6 +51,10 @@ struct workqueue_struct *wqm_; /* multi-thread */
 struct memblk_dev *devices_[MAX_N_DEVICES];
 int n_devices_ = 0; /* Number of active devices. */
 
+/* Make request functions */
+struct hash_tbl *make_request_map_;
+
+
 /*******************************************************************************
  * Module parameter definitions.
  *******************************************************************************/
@@ -66,7 +71,7 @@ module_param_named(devices, memblk_devices_str_, charp, S_IRUGO);
 #define ASSERT_MEMBLK_DEV(mdev) assert_memblk_dev(mdev)
 
 /*******************************************************************************
- * Function prototypes.
+ * Static functions prototype.
  *******************************************************************************/
 
 static int memblk_open(struct block_device *bdev, fmode_t mode);
@@ -90,7 +95,66 @@ static void register_all_mdevs(void);
 static void unregister_all_mdevs(void);
 
 /*******************************************************************************
- * Static function definitions.
+ * Global function definitions.
+ *******************************************************************************/
+
+#if 0
+/**
+ * Get the pointer to a sector in memory.
+ * @mdev Memory block device.
+ * @physical_sector_id Physical sector id.
+ * CONTEXT:
+ * Lock should be held for exclusive access.
+ * RETURN:
+ * Pointer to the physical sector.
+ */
+u8* get_physical_sector(struct memblk_dev *mdev, u64 physical_sector_id)
+{
+        u64 capacity_in_pb;
+        u8 *ret;
+
+        capacity_in_pb = MCALL(&mdev->bs_op, required_n_pb, mdev->capacity);
+        ASSERT(physical_sector_id < capacity_in_pb);
+
+        ret = (u8 *)map_lookup(mdev->index, physical_sector_id);
+        ASSERT(ret != 0);
+        return ret;
+}
+
+/**
+ *
+ */
+bool register_memblk_make_request(const char* name, make_request_fn *make_request_fn)
+{
+        int len;
+        
+        ASSERT(make_request_fn);
+        len = strnlen(name, MEMBLK_MAKE_REQUEST_NAME_MAX_LEN);
+        
+        if (make_request_fn) {
+                default_make_request
+
+        } else {
+
+        }
+
+        
+        /* now editing */
+        return false;
+}
+
+/**
+ *
+ */
+void unregister_memblk_make_request(const char* name)
+{
+        /* now editing */
+}
+
+#endif
+
+/*******************************************************************************
+ * Static functions definition.
  *******************************************************************************/
 
 /**

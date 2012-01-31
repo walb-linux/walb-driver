@@ -1,0 +1,8 @@
+#ifndef _BUILD_DATE_H_KERNEL
+#define _BUILD_DATE_H_KERNEL
+
+#include "check_kernel.h"
+
+#define BUILD_DATE "XXXXX"
+
+#endif /* _BUILD_DATE_H_KERNEL */
