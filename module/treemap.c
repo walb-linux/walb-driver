@@ -8,7 +8,6 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/list.h>
-#include <linux/random.h> /* This is for treemap_test(). */
 
 #include "walb/walb.h"
 #include "treemap.h"
@@ -19,10 +18,10 @@
  */
 #define ASSERT_TREEMAP(tmap) ASSERT((tmap) != NULL)
 
-#define ASSERT_TREENODE(tnode) ASSERT((tnode) != NULL && \
+#define ASSERT_TREENODE(tnode) ASSERT((tnode) != NULL &&                \
                                       (tnode)->val != TREEMAP_INVALID_VAL)
 
-#define ASSERT_TREECELL(tcell) ASSERT((tcell) != NULL && \
+#define ASSERT_TREECELL(tcell) ASSERT((tcell) != NULL &&                \
                                       (tcell)->val != TREEMAP_INVALID_VAL)
 
 #define ASSERT_MAP_CURSOR(cursor) ASSERT(is_valid_map_cursor(cursor))
@@ -33,7 +32,6 @@
  */
 static struct tree_node* map_lookup_node(const map_t *tmap, u64 key);
 static struct tree_node* map_lookup_node_detail(const map_t *tmap, u64 key, int search_flag);
-static u32 get_random_u32(void);
 
 static struct tree_node* map_first(const map_t *tmap);
 static struct tree_node* map_last(const map_t *tmap);
@@ -160,16 +158,6 @@ static struct tree_node* map_lookup_node_detail(const map_t *tmap, u64 key, int 
                 BUG();
         }
         return NULL;
-}
-
-/**
- * Get random integer.
- */
-static u32 get_random_u32(void)
-{
-        u32 ret;
-        get_random_bytes(&ret, sizeof(u32));
-        return ret;
 }
 
 /**
@@ -1314,7 +1302,8 @@ unsigned long multimap_del(multimap_t *tmap, u64 key, unsigned long val)
         struct tree_cell_head *chead;
         struct hlist_node *hlnode, *hlnext;
         int found;
-        unsigned long retval = TREEMAP_INVALID_VAL, ret;
+        unsigned long retval = TREEMAP_INVALID_VAL;
+        __UNUSED unsigned long ret;
         
         t = map_lookup_node((map_t *)tmap, key);
         if (t == NULL) { return TREEMAP_INVALID_VAL; }

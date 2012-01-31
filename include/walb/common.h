@@ -104,4 +104,24 @@ static inline void* amalloc(size_t size, size_t align)
  */
 #define MCALL(object, method, args...) (object)->method(object, ##args)
 
+/**
+ * Function/variable attribute macros.
+ */
+#define __DEPRECATED __attribute__((deprecated))
+#define __UNUSED __attribute__((unused))
+#define __NOT_YET_IMPLEMENTED __attribute__((warning("NOT YET IMPLEMENTED")))
+
+/**
+ * For test.
+ */
+#define __CHECK(cond, label) do {                                       \
+                if (! (cond)) {                                         \
+                        LOGe("CHECK FAILED in %s:%d:%s.\n",             \
+                             __FILE__, __LINE__, __func__);             \
+                        goto label;                                     \
+                }                                                       \
+        } while(0)
+
+#define WALB_CHECK(cond) __CHECK(cond, error)
+
 #endif /* _WALB_COMMON_H */
