@@ -26,7 +26,11 @@ static inline u32 get_random_u32(void)
  */
 static inline u32 get_random_u32_max(u32 max)
 {
-        return get_random_u32() % max;
+        if (max == 0) {
+                return 0;
+        } else {
+                return get_random_u32() % max;
+        }
 }
 
 /**
@@ -34,25 +38,20 @@ static inline u32 get_random_u32_max(u32 max)
  */
 static inline void fill_random(u8 *buf, size_t size)
 {
-        int i;
-        size_t off = 0;
-        size_t loop;
-        size_t count = 0;
+        size_t i, n, m, count = 0;
 
         LOGd("fill_random start.\n");
-        
-        loop = size / sizeof(u32);
-        for (i = 0; i < loop; i ++) {
 
-                off = i * sizeof(u32);
-                ((u32 *)buf)[off] = get_random_u32();
+        n = size / sizeof(u32);
+        m = size % sizeof(u32);
+        ASSERT(sizeof(u32) * n + m == size);
+        
+        for (i = 0; i < n; i ++) {
+                ((u32 *)buf)[i] = get_random_u32();
                 count += sizeof(u32);
         }
-        loop = size % sizeof(u32);
-        for (i = 0; i < loop; i ++) {
-
-                off = (size / sizeof(u32)) * sizeof(u32) + i;
-                buf[off] = (u8)get_random_u32();
+        for (i = 0; i < m; i ++) {
+                buf[n * sizeof(u32) + i] = (u8)get_random_u32();
                 count ++;
         }
         LOGe("fill_random %zu bytes filled.\n", count);
