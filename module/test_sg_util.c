@@ -14,10 +14,13 @@
 #include <linux/scatterlist.h>
 #include "walb/util.h"
 #include "sg_util.h"
+#include "build_date.h"
 
 static int __init test_init(void)
 {
         int i;
+        
+        LOGe("BUILD_DATE %s\n", BUILD_DATE);
         
         test_scatterlist(8, 32);
         test_scatterlist(8, 4096);

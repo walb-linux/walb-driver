@@ -40,7 +40,7 @@ static inline void fill_random(u8 *buf, size_t size)
 {
         size_t i, n, m, count = 0;
 
-        LOGd("fill_random start.\n");
+        /* LOGd("fill_random start.\n"); */
 
         n = size / sizeof(u32);
         m = size % sizeof(u32);
@@ -54,8 +54,8 @@ static inline void fill_random(u8 *buf, size_t size)
                 buf[n * sizeof(u32) + i] = (u8)get_random_u32();
                 count ++;
         }
-        LOGe("fill_random %zu bytes filled.\n", count);
-        LOGd("fill_random end.\n");
+        /* LOGe("fill_random %zu bytes filled.\n", count); */
+        /* LOGd("fill_random end.\n"); */
 }
 
 #endif /* _WALB_UTIL_H_KERNEL */

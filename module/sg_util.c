@@ -11,7 +11,6 @@
 #include "util.h"
 #include "sg_util.h"
 
-
 /*******************************************************************************
  * Static structs definition.
  *******************************************************************************/
@@ -205,7 +204,7 @@ unsigned int sg_data_length(const struct sg_table *sgt)
 }
 
 /**
- * Copy a scatterlist to another with offsets.
+ * Copy data in a scatterlist to another with offsets.
  * @dst destination scatterlist.
  * @dst_offset offset of the dst [bytes].
  * @src source scatterlist.
@@ -253,8 +252,11 @@ bool sg_copy_to_sg_offset(
 
 /**
  * Fill zero data to a scatterlist.
+ *
+ * Simple implementation.
  */
-void sg_fill_zero_old(struct sg_table *sgt)
+__DEPRECATED
+static void sg_fill_zero_old(struct sg_table *sgt)
 {
         struct scatterlist *sg;
         int i;
@@ -352,94 +354,6 @@ void sg_free_pages(struct sg_table *sgt)
                 }
         }
         sg_free_table(sgt);
-}
-
-
-/**
- * Copy data in a scatter list to another.
- * @dst destination.
- * @dst_off start offset of destination sg [bytes].
- * @src source.
- * @src_off start offset of source sg [bytes].
- * @size copy size [bytes].
- */
-void sg_copy_to_sg_offset_old(
-        struct sg_table *dst, unsigned int dst_offset,
-        const struct sg_table *src, unsigned int src_offset,
-        unsigned int size)
-{
-        unsigned int remaining = size, tmp_size;
-        struct scatterlist *dst_sg, *src_sg;
-        unsigned int off_dst, off_src; /* Offset in a sg of dst/src. */
-
-        ASSERT(dst);
-        ASSERT(src);
-        ASSERT(dst_offset < sg_data_length(dst));
-        ASSERT(src_offset < sg_data_length(src));
-        ASSERT(sg_data_length(dst) - dst_offset >= size);
-        ASSERT(sg_data_length(src) - src_offset >= size);
-
-        /* Initialize dst_sg and off_dst. */
-        dst_sg = dst->sgl; ASSERT(dst_sg);
-        off_dst = 0;
-        while (off_dst + dst_sg->length <= dst_offset) {
-                off_dst += dst_sg->length;
-                dst_sg = sg_next(dst_sg);
-                if (!dst_sg) {
-                        LOGe("dst_offset is too large.\n");
-                        return;
-                }
-        }
-        ASSERT(off_dst <= dst_offset);
-        ASSERT(dst_offset - off_dst < dst_sg->length);
-        off_dst = dst_offset - off_dst;
-        
-        /* Initialize src_sg and off_src. */
-        src_sg = dst->sgl; ASSERT(src_sg);
-        off_src = 0;
-        while (off_src + src_sg->length <= src_offset) {
-                off_src += src_sg->length;
-                src_sg = sg_next(src_sg);
-                if (!src_sg) {
-                        LOGe("src_offset is too large.\n ");
-                        return;
-                }
-        }
-        ASSERT(off_src <= src_offset);
-        ASSERT(src_offset - off_src < src_sg->length);
-        off_src = src_offset - off_src;
-        
-        /* Copy memory fragments one by one. */
-        while (remaining > 0) {
-                tmp_size = min(dst_sg->length - off_dst, src_sg->length - off_src);
-
-                memcpy((u8 *)sg_virt(dst_sg) + off_dst, 
-                       (u8 *)sg_virt(src_sg) + off_src, tmp_size);
-
-                off_dst += tmp_size;
-                off_src += tmp_size;
-                ASSERT(off_dst <= dst_sg->length);
-                ASSERT(off_src <= src_sg->length);
-                
-                if (off_dst == dst_sg->length) {
-                        dst_sg = sg_next(dst_sg);
-                        if (!dst_sg) {
-                                LOGe("dst scatterlist reached the end during copy.\n");
-                                return;
-                        }
-                        off_dst = 0;
-                }
-                if (off_src == src_sg->length) {
-                        src_sg = sg_next(src_sg);
-                        if (!src_sg) {
-                                LOGe("src scatterlist reached the end during copy.\n");
-                                return ;
-                        }
-                        off_src = 0;
-                }
-                remaining -= tmp_size;
-        }
-        ASSERT(remaining == 0);
 }
 
 /**
@@ -579,6 +493,9 @@ void test_scatterlist(unsigned int nents, unsigned int entsize)
         LOGd("test_scatterlist end\n");
 }
 
+/*******************************************************************************
+ * Test code.
+ *******************************************************************************/
 
 /**
  * This is for test.
@@ -634,7 +551,6 @@ static void free_sg_and_pages(struct sg_table *sgt)
         sg_free_table(sgt);
         LOGd("free_sg_and_pages end.\n");
 }
-        
 
 /**
  * Test sg_pos and related functions.
