@@ -17,6 +17,8 @@
 
 static int __init test_init(void)
 {
+        int i;
+        
         test_scatterlist(8, 32);
         test_scatterlist(8, 4096);
         test_scatterlist(128, 32);
@@ -24,7 +26,13 @@ static int __init test_init(void)
         test_scatterlist(256, 4096);
         test_scatterlist(1024, 4096);
 
-        test_sg_util();
+        for (i = 0; i < 100; i ++) {
+                test_sg_pos();
+        }
+        
+        for (i = 0; i < 100; i ++) {
+                test_sg_util();
+        }
         
         return -1;
 }
