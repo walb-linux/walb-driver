@@ -5,3 +5,4 @@
 modules.order
 Module.symvers
 .tmp_versions/
+build_date.h
