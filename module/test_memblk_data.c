@@ -13,19 +13,28 @@
 #include <linux/mm.h>
 #include <linux/scatterlist.h>
 #include "walb/util.h"
+#include "build_date.h"
 
 static int __init test_init(void)
 {
         int i;
         const int loop = 10;
 
-        for (i = 0; i < loop; i ++) {
-                test_memblk_data_1(128, 512);
-                test_memblk_data_1(128, 1024);
-                test_memblk_data_1(128, 2048);
-                test_memblk_data_1(128, 4096);
-        }
+        LOGe("BUILD_DATE %s\n", BUILD_DATE);
+
+        /* for (i = 0; i < loop; i ++) { */
+        /*         test_memblk_data_simple(128, 512); */
+        /*         test_memblk_data_simple(128, 1024); */
+        /*         test_memblk_data_simple(128, 2048); */
+        /*         test_memblk_data_simple(128, 4096); */
+        /* } */
         
+        for (i = 0; i < loop; i ++) {
+                test_memblk_data(128, 512);
+                test_memblk_data(128, 1024);
+                test_memblk_data(128, 2048);
+                test_memblk_data(128, 4096);
+        }
         return -1;
 }
 

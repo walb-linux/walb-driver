@@ -12,11 +12,16 @@
 #include "walb/common.h"
 #include "treemap.h"
 
+/**
+ * Memory blocks.
+ * Each block can be accessed by address with O(log N) where
+ * N is number of blocks.
+ */
 struct memblk_data
 {
         map_t *index;
 
-        u32 block_size; /* 512 to 4192 */
+        u32 block_size; /* 512 to 4096 */
         u64 capacity; /* capacity [block_size] */
 };
 
@@ -55,16 +60,20 @@ static inline u32 get_page_offset(u64 addr, u32 block_size)
         return addr % get_n_blocks_in_a_page(block_size);
 }
 
-
+/* Create/destroy. */
 struct memblk_data* create_memblk_data(u64 capacity, u32 block_size, gfp_t gfp_mask);
 void destroy_memblk_data(struct memblk_data *memblk_data);
+
 __NOT_YET_IMPLEMENTED
 struct memblk_data* create_memblk_data_lazy(u64 capacity, u32 block_size);
 
+/* Get pointer to the block data. */
 u8* memblk_data_get_block(struct memblk_data *mdev, u64 block_addr);
+/* Read/write a block. */
 void memblk_data_block_read(const struct memblk_data *mdata, u64 block_id, u8 *data);
 void memblk_data_block_write(struct memblk_data *mdata, u64 block_id, const u8 *data);
 
+/* Read/write continuous blocks. */
 void memblk_data_read_blocks(
         const struct memblk_data *mdata,
         u64 block_id, u32 n_blocks, u8 *dst);
@@ -84,6 +93,6 @@ void memblk_data_copy_to(
 __UNUSED
 bool test_memblk_data(u64 capacity, const u32 block_size);
 __UNUSED
-bool test_memblk_data_1(u64 capacity, const u32 block_size);
+bool test_memblk_data_simple(u64 capacity, const u32 block_size);
 
 #endif /* _WALB_MEMBLK_DATA_H_KERNEL */
