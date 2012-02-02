@@ -10,26 +10,34 @@
 #include "walb/common.h"
 
 /**
- * Class for block size.
+ * Logical/physical block sizes.
  */
-struct block_size_op
+struct block_sizes
 {
-        u32 logical_bs; /* Logical block size [bytes] */
-        u32 physical_bs; /* Physical block size [bytes] */
-        u32 n_lb_in_pb; /* Number of logical blocks in a physical block. */
-        
-        u64 (*off_in_p) (struct block_size_op *this, u64 logical_addr);
-        u64 (*to_p) (struct block_size_op *this, u64 logical_addr);
-        u64 (*required_n_pb) (struct block_size_op *this, u64 logical_capacity);
-        u64 (*to_l) (struct block_size_op *this, u64 physical_addr);
+        unsigned int lbs; /* Logical block size [bytes] */
+        unsigned int pbs; /* Physical block size [bytes] */
+        unsigned int n_lb_in_pb; /* Number of logical blocks in a physical block. */
 };
 
-struct block_size_op* alloc_block_size_op(gfp_t gfp_mask);
-void free_block_size_op(struct block_size_op *op);
+/* Allocate. */
+struct block_sizes* blksiz_alloc(gfp_t gfp_mask);
+/* Free */
+void blksiz_free(struct block_sizes *blksiz);
+/* Initialize */
+void blksiz_init(struct block_sizes *blksiz,
+                 unsigned int logical_block_size, unsigned int physical_block_size);
 
-void init_block_size_op(struct block_size_op *op, u32 logical_bs, u32 physical_bs);
+/* Assert */
+void blksiz_assert(const struct block_sizes *blksiz);
+#define ASSERT_BLKSIZ(blksiz) blksiz_assert(blksiz)
 
-struct block_size_op* create_block_size_op(u32 logical_bs, u32 physical_bs, gfp_t gfp_mask);
-#define destroy_block_size_op(op) free_block_size_op(op)
+/* Offset [logical block] in the physical block of logical address. */
+unsigned int blksiz_off_in_p(const struct block_sizes *blksiz, u64 logical_addr);
+/* Logical address -> physical address. */
+u64 blksiz_to_p(const struct block_sizes *blksiz, u64 logical_addr);
+/* Logical capacity [logical block] -> physical capacity [physical blocks]. */
+u64 blksiz_required_n_pb(const struct block_sizes *blksiz, u64 logical_capacity);
+/* Pyysical address -> logical address. */
+u64 blksiz_to_l(const struct block_sizes *blksiz, u64 physical_addr);
 
 #endif /* _WALB_BLOCK_SIZE_H */

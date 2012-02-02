@@ -4,92 +4,113 @@
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
+#include "check_kernel.h"
 
+#include <linux/kernel.h>
 #include "block_size.h"
-#include "treemap.h"
-
-/*******************************************************************************
- * Static functions.
- *******************************************************************************/
-
-static u64 __block_size_op__off_in_p(struct block_size_op *this, u64 logical_addr)
-{
-        ASSERT(this);
-        return logical_addr % (u64)this->n_lb_in_pb;
-}
-
-static u64 __block_size_op__to_p(struct block_size_op *this, u64 logical_addr)
-{
-        ASSERT(this);
-        return logical_addr / (u64)this->n_lb_in_pb;
-}
-
-static u64 __block_size_op__required_n_pb(struct block_size_op *this, u64 logical_capacity)
-{
-        ASSERT(this);
-        return (logical_capacity + (u64)this->n_lb_in_pb - 1) / (u64)this->n_lb_in_pb;
-}
-
-static u64 __block_size_op__to_l(struct block_size_op *this, u64 physical_addr)
-{
-        ASSERT(this);
-        return physical_addr * (u64)this->n_lb_in_pb;
-}
+#include "walb/common.h"
 
 /*******************************************************************************
  * Global functions.
  *******************************************************************************/
 
-struct block_size_op* alloc_block_size_op(gfp_t gfp_mask)
+/**
+ * Allocate block_sizes.
+ */
+struct block_sizes* blksiz_alloc(gfp_t gfp_mask)
 {
-        struct block_size_op *op;
+        struct block_sizes *blksiz;
         
-        op = MALLOC(sizeof(struct block_size_op), gfp_mask);
-        if (!op) {
+        blksiz = MALLOC(sizeof(struct block_sizes), gfp_mask);
+        if (!blksiz) {
                 LOGe("Memory allocation failed.\n");
                 goto error0;
         }
-        return op;
+        return blksiz;
 error0:
         return NULL;
 }
- 
-void free_block_size_op(struct block_size_op *op)
+
+/**
+ * Free block_sizes.
+ */
+void blksiz_free(struct block_sizes *blksiz)
 {
-        FREE(op);
+        if (blksiz) {
+                FREE(blksiz);
+        }
 }
 
-void init_block_size_op(struct block_size_op *op, u32 logical_bs, u32 physical_bs)
+/**
+ * Initialize block_sizes.
+ */
+void blksiz_init(struct block_sizes *blksiz,
+                 unsigned int logical_block_size, unsigned int physical_block_size)
 {
-        ASSERT(op);
-        ASSERT(0 < logical_bs);
-        ASSERT(logical_bs <= physical_bs);
-        ASSERT(physical_bs % logical_bs == 0);
+        unsigned int lbs = logical_block_size;
+        unsigned int pbs = physical_block_size;
         
-        op->logical_bs = logical_bs;
-        op->physical_bs = physical_bs;
-        op->n_lb_in_pb = physical_bs / logical_bs;
-        ASSERT(op->n_lb_in_pb * logical_bs == physical_bs);
+        ASSERT(blksiz);
+        ASSERT(0 < lbs);
+        ASSERT(lbs <= pbs);
+        ASSERT(pbs % lbs == 0);
         
-        op->off_in_p = __block_size_op__off_in_p;
-        op->to_p = __block_size_op__to_p;
-        op->required_n_pb = __block_size_op__required_n_pb;
-        op->to_l = __block_size_op__to_l;
+        blksiz->lbs = lbs;
+        blksiz->pbs = pbs;
+        blksiz->n_lb_in_pb = pbs / lbs;
+        ASSERT(blksiz->n_lb_in_pb * lbs == pbs);
 }
 
-struct block_size_op* create_block_size_op(
-        u32 logical_bs, u32 physical_bs, gfp_t gfp_mask)
+/**
+ * Assert block_sizes data.
+ */
+void blksiz_assert(const struct block_sizes *blksiz)
 {
-        struct block_size_op *op;
+        ASSERT(blksiz);
+        ASSERT(blksiz->lbs > 0);
+        ASSERT(blksiz->lbs <= blksiz->pbs);
+        ASSERT(blksiz->pbs / blksiz->lbs == blksiz->n_lb_in_pb);
+        ASSERT(blksiz->pbs % blksiz->lbs == 0);
+}
+
+/**
+ * Offset [logical block] in the physical block of logical address.
+ */
+unsigned int blksiz_off_in_p(const struct block_sizes *blksiz, u64 logical_addr)
+{
+        u64 tmp;
         
-        op = alloc_block_size_op(gfp_mask);
-        if (!op) { goto error0; }
+        ASSERT_BLKSIZ(blksiz);
+        tmp = logical_addr % (u64)blksiz->n_lb_in_pb;
+        ASSERT(tmp <= (u64)UINT_MAX);
+        return (unsigned int)tmp;
+}
 
-        init_block_size_op(op, logical_bs, physical_bs);
-        return op;
+/**
+ * Logical address -> physical address.
+ */
+u64 blksiz_to_p(const struct block_sizes *blksiz, u64 logical_addr)
+{
+        ASSERT_BLKSIZ(blksiz);
+        return logical_addr / (u64)blksiz->n_lb_in_pb;
+}
 
-error0:
-        return NULL;
+/**
+ * Logical capacity [logical block] -> physical capacity [physical blocks].
+ */
+u64 blksiz_required_n_pb(const struct block_sizes *blksiz, u64 logical_capacity)
+{
+        ASSERT_BLKSIZ(blksiz);
+        return (logical_capacity + (u64)blksiz->n_lb_in_pb - 1) / (u64)blksiz->n_lb_in_pb;
+}
+
+/**
+ * Pysical address -> logical address.
+ */
+u64 blksiz_to_l(const struct block_sizes *blksiz, u64 physical_addr)
+{
+        ASSERT_BLKSIZ(blksiz);
+        return physical_addr * (u64)blksiz->n_lb_in_pb;
 }
 
 /* end of file. */
