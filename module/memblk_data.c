@@ -79,7 +79,7 @@ static void __memblk_data_copy(
         /* Copy fragment of first block. */
         ASSERT(mdata->block_size >= offset);
         tmp_size = mdata->block_size - offset;
-        data = memblk_data_get_block(mdata, block_addr) + offset;
+        data = mdata_get_block(mdata, block_addr) + offset;
         if (is_from) {
                 memcpy(buf, data, tmp_size);
         } else {
@@ -91,7 +91,7 @@ static void __memblk_data_copy(
 
         /* Copy remaining blocks */
         while (remaining > 0) {
-                data = memblk_data_get_block(mdata, block_addr);
+                data = mdata_get_block(mdata, block_addr);
                 tmp_size = min((size_t)mdata->block_size, remaining);
                 buf2 = (u8 *)buf + (size - remaining);
                 if (is_from) {
@@ -144,7 +144,7 @@ static void __memblk_data_block_io(struct memblk_data *mdata, u64 block_id, u8 *
         ASSERT(block_id < mdata->capacity);
         ASSERT(data);
         
-        buf = memblk_data_get_block(mdata, block_id);
+        buf = mdata_get_block(mdata, block_id);
         ASSERT(buf);
         
         if (is_write) {
@@ -164,7 +164,7 @@ static void __memblk_data_block_io(struct memblk_data *mdata, u64 block_id, u8 *
 /**
  * Allocate memblk data.
  */
-struct memblk_data* create_memblk_data(u64 capacity, u32 block_size, gfp_t gfp_mask)
+struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask)
 {
         struct memblk_data *mdata;
         u64 ui, n_pages;
@@ -209,7 +209,7 @@ struct memblk_data* create_memblk_data(u64 capacity, u32 block_size, gfp_t gfp_m
         return mdata;
         
 error1:
-        destroy_memblk_data(mdata);
+        mdata_destroy(mdata);
 error0:
         return NULL;
 }
@@ -217,7 +217,7 @@ error0:
 /**
  * Destroy memblk_data.
  */
-void destroy_memblk_data(struct memblk_data *mdata)
+void mdata_destroy(struct memblk_data *mdata)
 {
         u64 n_pages;
         u64 page_id;
@@ -249,7 +249,7 @@ void destroy_memblk_data(struct memblk_data *mdata)
  * Pointer to the data.
  * The area of mdata->block_size is available at least.
  */
-u8* memblk_data_get_block(struct memblk_data *mdata, u64 block_addr)
+u8* mdata_get_block(struct memblk_data *mdata, u64 block_addr)
 {
         u64 page_id;
         unsigned long addr;
@@ -277,7 +277,7 @@ u8* memblk_data_get_block(struct memblk_data *mdata, u64 block_addr)
  * @buf buffer pointer to copy data to.
  * @size copy size [bytes].
  */
-void memblk_data_copy_from(
+void mdata_copy_from(
         struct memblk_data *mdata, u64 block_addr, u32 offset,
         void *buf, size_t size)
 {
@@ -296,7 +296,7 @@ void memblk_data_copy_from(
  * @buf buffer pointer to copy data from.
  * @size copy size [bytes]. Satisfy size <= block_size.
  */
-void memblk_data_copy_to(
+void mdata_copy_to(
         struct memblk_data *mdata, u64 block_addr, u32 offset,
         const void *buf, size_t size)
 {
@@ -311,7 +311,7 @@ void memblk_data_copy_to(
 /**
  * Read a block.
  */
-void memblk_data_read_block(const struct memblk_data *mdata, u64 block_id, u8 *dst)
+void mdata_read_block(const struct memblk_data *mdata, u64 block_id, u8 *dst)
 {
         __memblk_data_block_io((struct memblk_data *)mdata, block_id, dst, false);
 }
@@ -319,7 +319,7 @@ void memblk_data_read_block(const struct memblk_data *mdata, u64 block_id, u8 *d
 /**
  * Write a block.
  */
-void memblk_data_write_block(struct memblk_data *mdata, u64 block_id, const u8 *src)
+void mdata_write_block(struct memblk_data *mdata, u64 block_id, const u8 *src)
 {
         __memblk_data_block_io(mdata, block_id, (u8 *)src, true);
 }
@@ -327,7 +327,7 @@ void memblk_data_write_block(struct memblk_data *mdata, u64 block_id, const u8 *
 /**
  * Read blocks.
  */
-void memblk_data_read_blocks(
+void mdata_read_blocks(
         const struct memblk_data *mdata,
         u64 block_id, u32 n_blocks, u8 *dst)
 {
@@ -337,7 +337,7 @@ void memblk_data_read_blocks(
 /**
  * Write blocks.
  */
-void memblk_data_write_blocks(
+void mdata_write_blocks(
         struct memblk_data *mdata,
         u64 block_id, u32 n_blocks, const u8 *src)
 {
@@ -376,13 +376,13 @@ bool test_memblk_data_simple(u64 capacity, const u32 block_size)
         ASSERT(capacity > 0);
         assert_block_size(block_size);
 
-        mdata = create_memblk_data(capacity, block_size, GFP_KERNEL);
+        mdata = mdata_create(capacity, block_size, GFP_KERNEL);
         if (!mdata) {
                 LOGe("create_memblk_data failed.\n");
                 goto error0;
         }
         for (b_id = 0; b_id < mdata->capacity; b_id ++) {
-                data = memblk_data_get_block(mdata, b_id);
+                data = mdata_get_block(mdata, b_id);
                 LOGd("b_id %"PRIu64" capacity %"PRIu64" data %p\n",
                      b_id, mdata->capacity, data);
         }
@@ -412,7 +412,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         if (capacity == 0) {
                 capacity = get_random_capacity(block_size) + 4;
         }
-        mdata = create_memblk_data(capacity, block_size, GFP_KERNEL);
+        mdata = mdata_create(capacity, block_size, GFP_KERNEL);
         __CHECK(mdata, error);
 
         data1 = (u8 *)__get_free_page(GFP_KERNEL); count_ ++;
@@ -428,8 +428,8 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         /* First block */
         addr = 0;
         fill_random(data1, PAGE_SIZE);
-        memblk_data_write_block(mdata, addr, data1);
-        memblk_data_read_block(mdata, addr, data2);
+        mdata_write_block(mdata, addr, data1);
+        mdata_read_block(mdata, addr, data2);
 
         sprint_hex(strbuf, PAGE_SIZE, data1, 128);
         /* LOGd("data1: %s\n", strbuf); */
@@ -441,16 +441,16 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         /* Last block */
         addr = capacity - 1;
         fill_random(data1, PAGE_SIZE);
-        memblk_data_write_block(mdata, addr, data1);
-        memblk_data_read_block(mdata, addr, data2);
+        mdata_write_block(mdata, addr, data1);
+        mdata_read_block(mdata, addr, data2);
         __CHECK(memcmp(data1, data2, block_size) == 0, error);
 
         /* First two blocks */
         if (block_size * 2 <= PAGE_SIZE) {
                 addr = 0;
                 fill_random(data1, PAGE_SIZE);
-                memblk_data_write_blocks(mdata, 0, 2, data1);
-                memblk_data_read_blocks(mdata, 0, 2, data2);
+                mdata_write_blocks(mdata, 0, 2, data1);
+                mdata_read_blocks(mdata, 0, 2, data2);
                 __CHECK(memcmp(data1, data2, block_size * 2) == 0, error);
         }
         
@@ -465,8 +465,8 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 
                 /* LOGd("iteration %d (addr %"PRIu64" size %"PRIu32")\n", i, addr, size); */
 
-                memblk_data_write_blocks(mdata, addr, size, data1);
-                memblk_data_read_blocks(mdata, addr, size, data2);
+                mdata_write_blocks(mdata, addr, size, data1);
+                mdata_read_blocks(mdata, addr, size, data2);
                 
                 __CHECK(memcmp(data1, data2, size * block_size) == 0, error);
         }
@@ -474,7 +474,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         free_page((unsigned long)strbuf); count_ --;
         free_page((unsigned long)data2); count_ --;
         free_page((unsigned long)data1); count_ --;
-        destroy_memblk_data(mdata);
+        mdata_destroy(mdata);
 
         LOGd("test_memblk_data succeeded.\n");
         LOGd("count_: %d\n", count_);
@@ -490,7 +490,7 @@ error:
         if (data1) {
                 free_page((unsigned long)data1); count_ --;
         }
-        destroy_memblk_data(mdata);
+        mdata_destroy(mdata);
         LOGe("test_memblk_data failed..\n");
         return false;
 }

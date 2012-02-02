@@ -61,32 +61,29 @@ static inline u32 get_page_offset(u64 addr, u32 block_size)
 }
 
 /* Create/destroy. */
-struct memblk_data* create_memblk_data(u64 capacity, u32 block_size, gfp_t gfp_mask);
-void destroy_memblk_data(struct memblk_data *memblk_data);
-
-__NOT_YET_IMPLEMENTED
-struct memblk_data* create_memblk_data_lazy(u64 capacity, u32 block_size);
+struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask);
+void mdata_destroy(struct memblk_data *memblk_data);
 
 /* Get pointer to the block data. */
-u8* memblk_data_get_block(struct memblk_data *mdev, u64 block_addr);
+u8* mdata_get_block(struct memblk_data *mdev, u64 block_addr);
 /* Read/write a block. */
-void memblk_data_block_read(const struct memblk_data *mdata, u64 block_id, u8 *data);
-void memblk_data_block_write(struct memblk_data *mdata, u64 block_id, const u8 *data);
+void mdata_read_block(const struct memblk_data *mdata, u64 block_id, u8 *dst);
+void mdata_write_block(struct memblk_data *mdata, u64 block_id, const u8 *src);
 
 /* Read/write continuous blocks. */
-void memblk_data_read_blocks(
+void mdata_read_blocks(
         const struct memblk_data *mdata,
         u64 block_id, u32 n_blocks, u8 *dst);
-void memblk_data_write_blocks(
+void mdata_write_blocks(
         struct memblk_data *mdata,
         u64 block_id, u32 n_blocks, const u8 *src);
 
 __DEPRECATED
-void memblk_data_copy_from(
+void mdata_copy_from(
         struct memblk_data *mdata, u64 block_addr, u32 offset,
         void *buf, size_t size);
 __DEPRECATED
-void memblk_data_copy_to(
+void mdata_copy_to(
         struct memblk_data *mdata, u64 block_addr, u32 offset,
         const void *buf, size_t size);
 
