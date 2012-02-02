@@ -100,11 +100,6 @@ static inline void* amalloc(size_t size, size_t align)
 #endif
 
 /**
- * Method call with short names.
- */
-#define MCALL(object, method, args...) (object)->method(object, ##args)
-
-/**
  * Function/variable attribute macros.
  */
 #define __DEPRECATED __attribute__((deprecated))
