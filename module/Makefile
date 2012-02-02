@@ -19,6 +19,7 @@ test-hashtbl-mod-objs := test_hashtbl.o hashtbl.o
 test-treemap-mod-objs := test_treemap.o treemap.o
 test-memblk-data-mod-objs := test_memblk_data.o treemap.o memblk_data.o
 test-sg-util-mod-objs := test_sg_util.o sg_util.o
+test-size-list-mod-objs := test_size_list.o size_list.o
 #wrapblk-mod-objs := wrapblk.o
 #memblk-none-mod-objs := memblk.o treemap.o block_size.o memblk_io_none.o
 #memblk-simple-mod-objs := memblk.o treemap.o block_size.o memblk_io_simple.o
@@ -34,7 +35,7 @@ simple-blk-mod-objs := simple_blk.o block_size.o
 #	test-sg-util-mod.o \
 #	memblk-simple-mod.o
 
-obj-m := test-memblk-data-mod.o test-sg-util-mod.o simple-blk-mod.o
+obj-m := test-memblk-data-mod.o test-sg-util-mod.o test-size-list-mod.o simple-blk-mod.o
 
 else
 

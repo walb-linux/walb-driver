@@ -18,6 +18,7 @@ test-treemap-mod.ko \
 memblk-mod.ko \
 test-memblk-data-mod.ko \
 test-sg-util-mod.ko \
+test-size-list-mod.ko \
 simple-blk-mod.ko \
 "
 list_in_tool="\

@@ -80,7 +80,7 @@ static int memblk_ioctl(struct block_device *bdev, fmode_t mode,
                         unsigned int cmd, unsigned long arg);
 
 static int devices_str_get_n_devices(const char* devices_str);
-static u64 devices_str_get_capacity_of_nth_dev(const char* devices_str, int n, u32 logical_bs);
+static u64 sizlist_nth_size(const char* devices_str, int n, u32 logical_bs);
 
 static void assert_memblk_dev(struct memblk_dev *mdev);
 static struct memblk_dev* create_mdev(unsigned int minor, u64 capacity);
@@ -222,7 +222,7 @@ static int devices_str_get_n_devices(const char* devices_str)
  * RETURN:
  * Size in logical blocks.
  */
-static u64 devices_str_get_capacity_of_nth_dev(const char* devices_str, int n, u32 logical_bs)
+static u64 sizlist_nth_size(const char* devices_str, int n, u32 logical_bs)
 {
         int i;
         char *p = devices_str;
@@ -399,7 +399,7 @@ static int create_all_mdevs(void)
 
         /* Create each memblk_dev. */
         for (i = 0; i < n_devices_; i ++) {
-                capacity = devices_str_get_capacity_of_nth_dev(memblk_devices_str_, i, logical_bs_);
+                capacity = sizlist_nth_size(memblk_devices_str_, i, logical_bs_);
                 devices_[i] = create_mdev(i, capacity);
                 if (! devices_[i]) {
                         LOGe("Create device %d failed.\n", i);
