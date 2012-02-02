@@ -1,0 +1,680 @@
+/**
+ * simple_blk.c - Simple block device driver for performance test.
+ *
+ * Copyright(C) 2012, Cybozu Labs, Inc.
+ * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
+ */
+#include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <linux/init.h>
+
+#include <linux/blkdev.h>
+#include <linux/workqueue.h>
+#include <linux/string.h>
+
+#include "walb/common.h"
+#include "walb/disk_name.h"
+#include "block_size.h"
+#include "treemap.h"
+#include "hashtbl.h"
+#include "block_size.h"
+#include "simple_blk.h"
+
+/*******************************************************************************
+ * Module variable definitions.
+ *******************************************************************************/
+
+/* Device number (major). */
+int simple_blk_major_ = 0;
+
+/* Block size */
+int logical_bs_ = 512; /* Must be 512 currently. */
+int physical_bs_ = 4096;
+
+/* Workqueues */
+struct workqueue_struct *wqs_; /* single-thread */
+struct workqueue_struct *wqm_; /* multi-thread */
+
+/* Devices. */
+#define MAX_N_DEVICES 32
+struct sdev_devices
+{
+        struct simple_blk_dev *sdev[MAX_N_DEVICES];
+        unsigned int n_active_devices; /* Number of active devices. */
+        spinlock_t lock; /* Lock for access to devices_. */
+
+} devices_;
+
+/*******************************************************************************
+ * Module parameter definitions.
+ *******************************************************************************/
+
+module_param_named(simple_blk_major, simple_blk_major_, int, S_IRUGO);
+module_param_named(logical_bs, logical_bs_, int, S_IRUGO);
+module_param_named(physical_bs, physical_bs_, int, S_IRUGO);
+
+/*******************************************************************************
+ * Macro definitions.
+ *******************************************************************************/
+
+#define ASSERT_SIMPLE_BLK_DEV(sdev) assert_simple_blk_dev(sdev)
+
+/*******************************************************************************
+ * Static functions prototype.
+ *******************************************************************************/
+
+/* Utilities for name */
+static int devices_str_get_n_devices(const char* devices_str);
+static u64 devices_str_get_capacity_of_nth_dev(const char* devices_str, int n, u32 logical_bs);
+
+
+/* Block device operations. */
+static int simple_blk_open(struct block_device *bdev, fmode_t mode);
+static int simple_blk_release(struct gendisk *gd, fmode_t mode);
+static int simple_blk_ioctl(struct block_device *bdev, fmode_t mode,
+                            unsigned int cmd, unsigned long arg);
+
+/* Operations with devices_. */
+static void init_devices(void);
+static bool add_to_devices(struct simple_blk_dev *sdev);
+static struct simple_blk_dev* del_from_devices(unsigned int minor);
+static struct simple_blk_dev* get_from_devices(unsigned int minor);
+
+/* Utilities */
+static bool sdev_register_detail(unsigned int minor, u64 capacity,
+                                 make_request_fn *make_request_fn,
+                                 request_fn_proc *request_fn_proc);
+static struct simple_blk_dev* alloc_and_partial_init_sdev(unsigned int minor, u64 capacity);
+static bool init_queue_and_disk(struct simple_blk_dev *sdev);
+static void fin_queue_and_disk(struct simple_blk_dev *sdev);
+static void assert_simple_blk_dev(struct simple_blk_dev *sdev);
+
+/* For exit. */
+static void stop_and_unregister_all_devices(void);
+
+/*******************************************************************************
+ * Static variables definition.
+ *******************************************************************************/
+
+/**
+ * The device operations structure.
+ */
+static struct block_device_operations simple_blk_ops_ = {
+	.owner           = THIS_MODULE,
+	.open 	         = simple_blk_open,
+	.release 	 = simple_blk_release,
+	.ioctl	         = simple_blk_ioctl
+};
+
+/*******************************************************************************
+ * Exported Global function definitions.
+ *******************************************************************************/
+
+/**
+ * Register new block device with bio interface.
+ */
+bool sdev_register_with_bio(unsigned int minor, u64 capacity, make_request_fn *make_request_fn)
+{
+        return sdev_register_detail(minor, capacity, make_request_fn, NULL);
+}
+EXPORT_SYMBOL_GPL(sdev_register_with_bio);
+
+/**
+ * Register new block device with request interface.
+ */
+bool sdev_register_with_req(unsigned int minor, u64 capacity, request_fn_proc *request_fn_proc)
+{
+        return sdev_register_detail(minor, capacity, NULL, request_fn_proc);
+}
+EXPORT_SYMBOL_GPL(sdev_register_with_req);
+
+/**
+ * Unregister a block device.
+ */
+bool sdev_unregister(unsigned int minor)
+{
+        struct simple_blk_dev *sdev;
+
+        sdev = del_from_devices(minor);
+        if (!sdev) {
+                LOGe("Not found device with minor %u.\n", minor);
+                return false;
+        }        
+        fin_queue_and_disk(sdev);
+        FREE(sdev);
+        return true;
+}
+EXPORT_SYMBOL_GPL(sdev_unregister);
+
+/**
+ * Start a block device.
+ * Call this after @sdev_register_XXX().
+ */
+bool sdev_start(unsigned int minor)
+{
+        struct simple_blk_dev *sdev;
+        
+        sdev = get_from_devices(minor);
+        if (!sdev) {
+                LOGe("Not found device with minor %u.\n", minor);
+                goto error0;
+        }
+        ASSERT_SIMPLE_BLK_DEV(sdev);
+                
+        if (sdev->is_started) {
+                LOGe("Device with minor %u already started.\n", minor);
+                goto error0;
+        } else {
+                add_disk(sdev->gd);
+                sdev->is_started = true;
+                LOGi("Start device with minor %u.\n", minor);
+        }
+        return true;
+error0:
+        return false;
+}
+EXPORT_SYMBOL_GPL(sdev_start);
+
+/**
+ * Stop a block device.
+ * Call this before @sdev_unregister().
+ */
+bool sdev_stop(unsigned int minor)
+{
+        struct simple_blk_dev *sdev;
+        
+        sdev = get_from_devices(minor);
+        if (!sdev) {
+                LOGe("Not found device with minor %u.\n", minor);
+                goto error0;
+        }
+
+        ASSERT_SIMPLE_BLK_DEV(sdev);
+        
+        if (sdev->gd) {
+                spin_lock(&sdev->lock);
+                if (sdev->is_started) {
+                        sdev->is_started = false;
+                        del_gendisk(sdev->gd);
+                        LOGi("Stop device with minor %u.\n", minor);
+                } else {
+                        LOGe("Device wit minor %u is already stopped.\n", minor);
+                        goto error0;
+                }
+                spin_unlock(&sdev->lock);
+        }
+        return true;
+error0:
+        return false;
+}
+EXPORT_SYMBOL_GPL(sdev_stop);
+
+/**
+ * Get sdev from a request_queue.
+ */
+struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q)
+{
+        struct simple_blk_dev* sdev;
+
+        ASSERT(q);
+        sdev = (struct simple_blk_dev *)q->queuedata;
+        ASSERT_SIMPLE_BLK_DEV(sdev);
+        return sdev;
+}
+EXPORT_SYMBOL_GPL(sdev_get_from_queue);
+
+
+/*******************************************************************************
+ * Static functions definition.
+ *******************************************************************************/
+
+/**
+ * Device operation.
+ */
+static int simple_blk_open(struct block_device *bdev, fmode_t mode)
+{
+        return 0;
+}
+
+/**
+ * Device operation.
+ */
+static int simple_blk_release(struct gendisk *gd, fmode_t mode)
+{
+        return 0;
+}
+
+/**
+ * Device operation.
+ */
+static int simple_blk_ioctl(struct block_device *bdev, fmode_t mode,
+                        unsigned int cmd, unsigned long arg)
+{
+        return -ENOTTY;
+}
+
+/**
+ * Initialize sdev_devices and realted data.
+ */
+static void init_devices(void)
+{
+        int i;
+        
+        for (i = 0; i < MAX_N_DEVICES; i ++) {
+                devices_.sdev[i] = NULL;
+        }
+        devices_.n_active_devices = 0;
+        spin_lock_init(&devices_.lock);
+}
+
+/**
+ * Add a specified device.
+ */
+static bool add_to_devices(struct simple_blk_dev *sdev)
+{
+        ASSERT(sdev);
+
+        if (get_from_devices(sdev->minor)) {
+                return false;
+        }
+
+        spin_lock(&devices_.lock);
+        devices_.sdev[sdev->minor] = sdev;
+        devices_.n_active_devices ++;
+        ASSERT(devices_.n_active_devices >= 0);
+        spin_unlock(&devices_.lock);
+        return true;
+}
+
+/**
+ * Delete a specified device.
+ */
+static struct simple_blk_dev* del_from_devices(unsigned int minor)
+{
+        struct simple_blk_dev *sdev;
+
+        ASSERT(minor < MAX_N_DEVICES);
+
+        spin_lock(&devices_.lock);
+        sdev = devices_.sdev[minor];
+        if (sdev) {
+                devices_.sdev[minor] = NULL;
+                devices_.n_active_devices --;
+                ASSERT(devices_.n_active_devices >= 0);
+        }
+        spin_unlock(&devices_.lock);
+        return sdev;
+}
+
+/**
+ * Get a specified device.
+ *
+ * RETURN:
+ * Returns NULL if the device does not exist.
+ */
+static struct simple_blk_dev* get_from_devices(unsigned int minor)
+{
+        struct simple_blk_dev *sdev;
+        
+        if (minor >= MAX_N_DEVICES) {
+                return NULL;
+        }
+        spin_lock(&devices_.lock);
+        sdev = devices_.sdev[minor];
+        spin_unlock(&devices_.lock);
+        return sdev;
+}
+
+/**
+ * Create and initialize simple_blk_dev data.
+ *
+ * @minor minor device number.
+ * @capacity Device capacity [logical block]
+ * RETURN:
+ * Created sdev in success, or NULL.
+ * NOTE:
+ * Call this before @register_sdev();
+ */
+static struct simple_blk_dev* alloc_and_partial_init_sdev(unsigned int minor, u64 capacity)
+{
+        struct simple_blk_dev *sdev;
+        
+         /* Allocate */
+        sdev = ZALLOC(sizeof(struct simple_blk_dev), GFP_KERNEL);
+        if (sdev == NULL) {
+                LOGe("memory allocation failed.\n");
+                goto error0;
+        }
+        
+        /* Initialize */
+        sdev->minor = minor;
+        sdev->capacity = capacity;
+        snprintf(sdev->name, SIMPLE_BLK_DEV_NAME_MAX_LEN, "%d", minor);
+        blksiz_init(&sdev->blksiz, logical_bs_, physical_bs_);
+
+        spin_lock_init(&sdev->lock);
+        sdev->queue = NULL;
+        /* use_make_request_fn is not initialized here. */
+        /* make_request_fn and request_fn_proc is not initialized here. */
+        sdev->gd = NULL;
+        sdev->is_started = false;
+        sdev->private_data = NULL;
+
+        return sdev;
+error0:
+        return NULL;
+}
+
+/**
+ * Register a device.
+ *
+ * @minor minor device number.
+ * @capacity capacity [logical block].
+ * @make_request_fn callback for bio.
+ * @request_fn_proc callback for request.
+ *    This is used when make_request_fn is NULL.
+ * RETURN:
+ * true in success, or false.
+ */
+static bool sdev_register_detail(unsigned int minor, u64 capacity,
+                                 make_request_fn *make_request_fn,
+                                 request_fn_proc *request_fn_proc)
+{
+        struct simple_blk_dev *sdev;
+
+        /* Allocate and initialize partially. */
+        sdev = alloc_and_partial_init_sdev(minor, capacity);
+        if (!sdev) {
+                LOGe("Memory allocation failed.\n");
+                goto error0;
+        }
+
+        /* Set request callback. */
+        if (make_request_fn) {
+                sdev->use_make_request_fn = true;
+                sdev->make_request_fn = make_request_fn;
+        } else {
+                sdev->use_make_request_fn = false;
+                sdev->request_fn_proc = request_fn_proc;
+        }
+
+        /* Init quene and disk. */
+        if (!init_queue_and_disk(sdev)) {
+                LOGe("init_queue_and_disk() failed.\n");
+                goto error1;
+        }
+
+        /* Add the device to global variables. */
+        if (!add_to_devices(sdev)) {
+                LOGe("Already device with minor %u registered.\n", sdev->minor);
+                goto error2;
+        }
+        return true;
+
+error2:
+        fin_queue_and_disk(sdev);
+error1:
+        FREE(sdev);
+error0:
+        return false;
+}
+
+/**
+ * Initialize queue and disk data.
+ *
+ * CONTEXT:
+ * Non-IRQ.
+ * RETURN:
+ * true in success, or false.
+ */
+static bool init_queue_and_disk(struct simple_blk_dev *sdev)
+{
+        struct request_queue *q;
+        struct gendisk *gd;
+        
+        ASSERT(sdev);
+
+        /* Cleanup */
+        sdev->queue = NULL;
+        sdev->gd = NULL;
+
+        /* Allocate and initialize queue. */
+        if (sdev->use_make_request_fn) {
+                q = blk_alloc_queue(GFP_KERNEL);
+                if (!q) {
+                        LOGe("blk_alloc_queue failed.\n");
+                        goto error0;
+                }
+                blk_queue_make_request(q, sdev->make_request_fn);
+        } else {
+                q = blk_init_queue(sdev->request_fn_proc, &sdev->lock);
+                if (!q) {
+                        LOGe("blk_init_queue failed.\n");
+                        goto error0;
+                }
+                if (elevator_change(q, "noop")) {
+                        LOGe("changing elevator algorithm failed.\n");
+                        blk_cleanup_queue(q);
+                        goto error0;
+                }
+        }
+        blk_queue_logical_block_size(q, logical_bs_);
+        blk_queue_physical_block_size(q, physical_bs_);
+        q->queuedata = sdev;
+        sdev->queue = q;
+
+        /* Allocate and initialize disk. */
+        gd = alloc_disk(1);
+        if (!gd) {
+                LOGe("alloc_disk failed.\n");
+                goto error1;
+        }
+        gd->major = simple_blk_major_;
+        gd->first_minor = sdev->minor;
+        
+        gd->fops = &simple_blk_ops_;
+        gd->queue = sdev->queue;
+        gd->private_data = sdev;
+        set_capacity(gd, sdev->capacity);
+        snprintf(gd->disk_name, DISK_NAME_LEN,
+                 "%s/%s", SIMPLE_BLK_DIR_NAME, sdev->name);
+        sdev->gd = gd;
+
+        return true;
+
+error1:
+        fin_queue_and_disk(sdev);
+error0:
+        return false;
+}
+
+/**
+ * Finalize queue and disk data.
+ *
+ * CONTEXT:
+ * Non-IRQ.
+ */
+static void fin_queue_and_disk(struct simple_blk_dev *sdev)
+{
+        ASSERT(sdev);
+
+        if (sdev->gd) {
+                put_disk(sdev->gd);
+                sdev->gd = NULL;
+        }
+        if (sdev->queue) {
+                blk_cleanup_queue(sdev->queue);
+                sdev->queue = NULL;
+        }
+}
+
+static void assert_simple_blk_dev(struct simple_blk_dev *sdev)
+{
+        ASSERT(sdev);
+        ASSERT(sdev->capacity > 0);
+        ASSERT_BLKSIZ(&sdev->blksiz);
+        ASSERT(strlen(sdev->name) > 0);
+        ASSERT(sdev->queue);
+        ASSERT(sdev->gd);
+}
+
+static void stop_and_unregister_all_devices(void)
+{
+        int i;
+        struct simple_blk_dev *sdev;
+        
+        for (i = 0; i < MAX_N_DEVICES; i ++) {
+                sdev = get_from_devices(i);
+                if (sdev) {
+                        sdev_stop(i);
+                        sdev_unregister(i);
+                }
+        }
+}
+
+/*******************************************************************************
+ * Init/exit functions definition.
+ *******************************************************************************/
+
+static int __init simple_blk_init(void)
+{
+        LOGi("Simple-blk module init.\n");
+        
+        /* Register a block device module. */
+        simple_blk_major_ = register_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
+        if (simple_blk_major_ <= 0) {
+                LOGe("unable to get major device number.\n");
+                return -EBUSY;
+        }
+
+        /* Workqueue. */
+        wqs_ = create_singlethread_workqueue(SIMPLE_BLK_SINGLE_WQ_NAME);
+        if (wqs_ == NULL) {
+                LOGe("create single-thread workqueue failed.\n");
+                goto error0;
+        }
+        wqm_ = create_workqueue(SIMPLE_BLK_MULTI_WQ_NAME);
+        if (wqm_ == NULL) {
+                LOGe("create multi-thread workqueue failed.\n");
+                goto error1;
+        }
+
+        /* Initialize devices_. */
+        init_devices();
+
+        return 0;
+#if 0
+error2:
+        if (wqm_) { destroy_workqueue(wqm_); }
+#endif
+error1:
+        if (wqs_) { destroy_workqueue(wqs_); }
+error0:
+	unregister_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
+        return -ENOMEM;
+}
+
+static void simple_blk_exit(void)
+{
+        stop_and_unregister_all_devices();
+        flush_workqueue(wqm_);
+        flush_workqueue(wqs_);
+        destroy_workqueue(wqm_);
+        destroy_workqueue(wqs_);
+        unregister_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
+
+        LOGi("Simple-blk module exit.\n");
+}
+
+module_init(simple_blk_init);
+module_exit(simple_blk_exit);
+MODULE_LICENSE("Dual BSD/GPL");
+MODULE_DESCRIPTION("Memory Block Device for Test");
+MODULE_ALIAS(SIMPLE_BLK_NAME);
+/* MODULE_ALIAS_BLOCKDEV_MAJOR(SIMPLE_BLK_MAJOR); */
+
+
+/*******************************************************************************
+ * (Deprecated) Static functions definition.
+ *******************************************************************************/
+
+/**
+ * Get number of entries in devices_str.
+ * It returns 3 for "1g,2g,3g".
+ */
+static int devices_str_get_n_devices(const char* devices_str)
+{
+        int n;
+        int i;
+        int len = strlen(devices_str);
+
+        if (len == 0) {
+                return 0; /* No data. */
+        }
+        n = 1;
+        for (i = 0; i < len; i ++) {
+                if (devices_str[i] == ',' && 
+                    devices_str[i + 1] != '\0') {
+                        n ++;
+                }
+        }
+        ASSERT(n > 0);
+        return n;
+}
+
+/**
+ * Get capacity 
+ * @n 0 <= n < devices_str_get_n_devices.
+ * RETURN:
+ * Size in logical blocks.
+ */
+static u64 devices_str_get_capacity_of_nth_dev(const char* devices_str, int n, u32 logical_bs)
+{
+        int i;
+        const char *p = devices_str;
+        char *p_next;
+        int len;
+        u64 capacity;
+
+        ASSERT(n >= 0);
+
+        /* Skip ',' for n times. */
+        for (i = 0; i < n; i ++) {
+                p = strchr(p, ',') + 1;
+        }
+        ASSERT(p != NULL);
+
+        /* Get length of the entry string. */
+        p_next = strchr(p, ',');
+        if (p_next) {
+                len = p_next - p;
+        } else {
+                len = strlen(p);
+        }
+
+        /* Parse number (with suffix). */
+        capacity = 0;
+        for (i = 0; i < len; i ++) {
+
+                if ('0' <= p[i] && p[i] <= '9') {
+                        capacity *= 10;
+                        capacity += (u64)(p[i] - '0');
+                } else {
+                        switch (p[i]) {
+                        case 't':
+                                capacity *= 1024;
+                        case 'g':
+                                capacity *= 1024;
+                        case 'm':
+                                capacity *= 1024;
+                        case 'k':
+                                capacity *= 1024;
+                                break;
+                        default:
+                                ASSERT(0);
+                        }
+                }
+        }
+        return capacity;
+}
+
