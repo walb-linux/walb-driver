@@ -255,7 +255,7 @@ bool sg_copy_to_sg_offset(
  *
  * Simple implementation.
  */
-__DEPRECATED
+__DEPRECATED __UNUSED
 static void sg_fill_zero_old(struct sg_table *sgt)
 {
         struct scatterlist *sg;
