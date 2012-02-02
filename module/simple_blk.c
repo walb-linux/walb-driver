@@ -63,11 +63,6 @@ module_param_named(physical_bs, physical_bs_, int, S_IRUGO);
  * Static functions prototype.
  *******************************************************************************/
 
-/* Utilities for name */
-static int devices_str_get_n_devices(const char* devices_str);
-static u64 devices_str_get_capacity_of_nth_dev(const char* devices_str, int n, u32 logical_bs);
-
-
 /* Block device operations. */
 static int simple_blk_open(struct block_device *bdev, fmode_t mode);
 static int simple_blk_release(struct gendisk *gd, fmode_t mode);
@@ -592,89 +587,3 @@ MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("Memory Block Device for Test");
 MODULE_ALIAS(SIMPLE_BLK_NAME);
 /* MODULE_ALIAS_BLOCKDEV_MAJOR(SIMPLE_BLK_MAJOR); */
-
-
-/*******************************************************************************
- * (Deprecated) Static functions definition.
- *******************************************************************************/
-
-/**
- * Get number of entries in devices_str.
- * It returns 3 for "1g,2g,3g".
- */
-static int devices_str_get_n_devices(const char* devices_str)
-{
-        int n;
-        int i;
-        int len = strlen(devices_str);
-
-        if (len == 0) {
-                return 0; /* No data. */
-        }
-        n = 1;
-        for (i = 0; i < len; i ++) {
-                if (devices_str[i] == ',' && 
-                    devices_str[i + 1] != '\0') {
-                        n ++;
-                }
-        }
-        ASSERT(n > 0);
-        return n;
-}
-
-/**
- * Get capacity 
- * @n 0 <= n < devices_str_get_n_devices.
- * RETURN:
- * Size in logical blocks.
- */
-static u64 devices_str_get_capacity_of_nth_dev(const char* devices_str, int n, u32 logical_bs)
-{
-        int i;
-        const char *p = devices_str;
-        char *p_next;
-        int len;
-        u64 capacity;
-
-        ASSERT(n >= 0);
-
-        /* Skip ',' for n times. */
-        for (i = 0; i < n; i ++) {
-                p = strchr(p, ',') + 1;
-        }
-        ASSERT(p != NULL);
-
-        /* Get length of the entry string. */
-        p_next = strchr(p, ',');
-        if (p_next) {
-                len = p_next - p;
-        } else {
-                len = strlen(p);
-        }
-
-        /* Parse number (with suffix). */
-        capacity = 0;
-        for (i = 0; i < len; i ++) {
-
-                if ('0' <= p[i] && p[i] <= '9') {
-                        capacity *= 10;
-                        capacity += (u64)(p[i] - '0');
-                } else {
-                        switch (p[i]) {
-                        case 't':
-                                capacity *= 1024;
-                        case 'g':
-                                capacity *= 1024;
-                        case 'm':
-                                capacity *= 1024;
-                        case 'k':
-                                capacity *= 1024;
-                                break;
-                        default:
-                                ASSERT(0);
-                        }
-                }
-        }
-        return capacity;
-}
-
