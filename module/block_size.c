@@ -62,6 +62,17 @@ void blksiz_init(struct block_sizes *blksiz,
 }
 
 /**
+ * Initialize block_sizes.
+ */
+void blksiz_copy(struct block_sizes *dst, const struct block_sizes *src)
+{
+        ASSERT(dst);
+        ASSERT_BLKSIZ(src);
+
+        *dst = *src;
+}
+
+/**
  * Assert block_sizes data.
  */
 void blksiz_assert(const struct block_sizes *blksiz)

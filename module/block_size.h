@@ -26,6 +26,8 @@ void blksiz_free(struct block_sizes *blksiz);
 /* Initialize */
 void blksiz_init(struct block_sizes *blksiz,
                  unsigned int logical_block_size, unsigned int physical_block_size);
+/* Copy */
+void blksiz_copy(struct block_sizes *dst, const struct block_sizes *src);
 
 /* Assert */
 void blksiz_assert(const struct block_sizes *blksiz);

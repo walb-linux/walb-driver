@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_MEMBLK_IO_H_KERNEL
-#define _WALB_MEMBLK_IO_H_KERNEL
+#ifndef _WALB_MEMBLK_DATA_H_KERNEL
+#define _WALB_MEMBLK_DATA_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -26,7 +26,7 @@ struct memblk_data
 };
 
 __UNUSED
-static inline void assert_block_size(u32 block_size) 
+static inline void mdata_assert_block_size(u32 block_size) 
 {
         ASSERT(block_size >= 512);
         ASSERT(block_size <= PAGE_SIZE);
@@ -34,30 +34,30 @@ static inline void assert_block_size(u32 block_size)
 }
 
 __UNUSED
-static inline u32 get_n_blocks_in_a_page(u32 block_size)
+static inline u32 mdata_get_n_blocks_in_a_page(u32 block_size)
 {
-        assert_block_size(block_size);
+        mdata_assert_block_size(block_size);
         
         return PAGE_SIZE / block_size;
 }
 
 __UNUSED
-static inline u64 get_required_n_pages(u64 capacity, u32 block_size)
+static inline u64 mdata_get_required_n_pages(u64 capacity, u32 block_size)
 {
-        u64 n = (u64)get_n_blocks_in_a_page(block_size);
+        u64 n = (u64)mdata_get_n_blocks_in_a_page(block_size);
         return  (capacity + n - 1) / n;
 }
 
 __UNUSED
-static inline u64 get_page_id(u64 addr, u32 block_size)
+static inline u64 mdata_get_page_id(u64 addr, u32 block_size)
 {
-        return addr / get_n_blocks_in_a_page(block_size);
+        return addr / mdata_get_n_blocks_in_a_page(block_size);
 }
 
 __UNUSED
-static inline u32 get_page_offset(u64 addr, u32 block_size)
+static inline u32 mdata_get_page_offset(u64 addr, u32 block_size)
 {
-        return addr % get_n_blocks_in_a_page(block_size);
+        return addr % mdata_get_n_blocks_in_a_page(block_size);
 }
 
 /* Create/destroy. */

@@ -60,20 +60,30 @@ struct simple_blk_dev
         void *private_data; /* You can use this for any purpose. */
 };
 
+extern struct workqueue_struct *wqs_; /* single-thread */
+extern struct workqueue_struct *wqm_; /* multi-thread */
+
 /*******************************************************************************
  * Exported functions prototype.
  *******************************************************************************/
 
-/* (Un)register new block device. */
+/* (Un)register a new block device. */
 bool sdev_register_with_bio(
-        unsigned int minor, u64 capacity, make_request_fn *make_request_fn);
+        unsigned int minor, u64 capacity,
+        const struct block_sizes *blksiz,
+        make_request_fn *make_request_fn);
 bool sdev_register_with_req(
-        unsigned int minor, u64 capacity, request_fn_proc *request_fn_proc);
+        unsigned int minor, u64 capacity,
+        const struct block_sizes *blksiz,
+        request_fn_proc *request_fn_proc);
 bool sdev_unregister(unsigned int minor);
 
 /* Start/stop a registered device. */
 bool sdev_start(unsigned int minor);
 bool sdev_stop(unsigned int minor);
+
+/* Get a device. */
+struct simple_blk_dev* sdev_get(unsigned minor);
 
 /* Get a device from a queue. */
 struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q);

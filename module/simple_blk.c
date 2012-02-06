@@ -17,7 +17,6 @@
 #include "block_size.h"
 #include "treemap.h"
 #include "hashtbl.h"
-#include "block_size.h"
 #include "simple_blk.h"
 
 /*******************************************************************************
@@ -26,14 +25,6 @@
 
 /* Device number (major). */
 int simple_blk_major_ = 0;
-
-/* Block size */
-int logical_bs_ = 512; /* Must be 512 currently. */
-int physical_bs_ = 4096;
-
-/* Workqueues */
-struct workqueue_struct *wqs_; /* single-thread */
-struct workqueue_struct *wqm_; /* multi-thread */
 
 /* Devices. */
 #define MAX_N_DEVICES 32
@@ -45,13 +36,15 @@ struct sdev_devices
 
 } devices_;
 
+/* Workqueues */
+struct workqueue_struct *wqs_; /* single-thread */
+struct workqueue_struct *wqm_; /* multi-thread */
+
 /*******************************************************************************
  * Module parameter definitions.
  *******************************************************************************/
 
 module_param_named(simple_blk_major, simple_blk_major_, int, S_IRUGO);
-module_param_named(logical_bs, logical_bs_, int, S_IRUGO);
-module_param_named(physical_bs, physical_bs_, int, S_IRUGO);
 
 /*******************************************************************************
  * Macro definitions.
@@ -76,10 +69,15 @@ static struct simple_blk_dev* del_from_devices(unsigned int minor);
 static struct simple_blk_dev* get_from_devices(unsigned int minor);
 
 /* Utilities */
-static bool sdev_register_detail(unsigned int minor, u64 capacity,
-                                 make_request_fn *make_request_fn,
-                                 request_fn_proc *request_fn_proc);
-static struct simple_blk_dev* alloc_and_partial_init_sdev(unsigned int minor, u64 capacity);
+static bool sdev_register_detail(
+        unsigned int minor, u64 capacity,
+        const struct block_sizes *blksiz,
+        make_request_fn *make_request_fn,
+        request_fn_proc *request_fn_proc);
+static struct simple_blk_dev* alloc_and_partial_init_sdev(
+        unsigned int minor, u64 capacity,
+        const struct block_sizes *blksiz);
+
 static bool init_queue_and_disk(struct simple_blk_dev *sdev);
 static void fin_queue_and_disk(struct simple_blk_dev *sdev);
 static void assert_simple_blk_dev(struct simple_blk_dev *sdev);
@@ -108,18 +106,22 @@ static struct block_device_operations simple_blk_ops_ = {
 /**
  * Register new block device with bio interface.
  */
-bool sdev_register_with_bio(unsigned int minor, u64 capacity, make_request_fn *make_request_fn)
+bool sdev_register_with_bio(unsigned int minor, u64 capacity,
+                            const struct block_sizes *blksiz,
+                            make_request_fn *make_request_fn)
 {
-        return sdev_register_detail(minor, capacity, make_request_fn, NULL);
+        return sdev_register_detail(minor, capacity, blksiz, make_request_fn, NULL);
 }
 EXPORT_SYMBOL_GPL(sdev_register_with_bio);
 
 /**
  * Register new block device with request interface.
  */
-bool sdev_register_with_req(unsigned int minor, u64 capacity, request_fn_proc *request_fn_proc)
+bool sdev_register_with_req(unsigned int minor, u64 capacity,
+                            const struct block_sizes *blksiz,
+                            request_fn_proc *request_fn_proc)
 {
-        return sdev_register_detail(minor, capacity, NULL, request_fn_proc);
+        return sdev_register_detail(minor, capacity, blksiz, NULL, request_fn_proc);
 }
 EXPORT_SYMBOL_GPL(sdev_register_with_req);
 
@@ -205,6 +207,15 @@ error0:
 EXPORT_SYMBOL_GPL(sdev_stop);
 
 /**
+ * Get sdev with a minor number.
+ */
+struct simple_blk_dev* sdev_get(unsigned int minor)
+{
+        return get_from_devices(minor);
+}
+EXPORT_SYMBOL_GPL(sdev_get);
+
+/**
  * Get sdev from a request_queue.
  */
 struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q)
@@ -217,7 +228,6 @@ struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q)
         return sdev;
 }
 EXPORT_SYMBOL_GPL(sdev_get_from_queue);
-
 
 /*******************************************************************************
  * Static functions definition.
@@ -330,7 +340,9 @@ static struct simple_blk_dev* get_from_devices(unsigned int minor)
  * NOTE:
  * Call this before @register_sdev();
  */
-static struct simple_blk_dev* alloc_and_partial_init_sdev(unsigned int minor, u64 capacity)
+static struct simple_blk_dev* alloc_and_partial_init_sdev(
+        unsigned int minor, u64 capacity,
+        const struct block_sizes *blksiz)
 {
         struct simple_blk_dev *sdev;
         
@@ -345,7 +357,7 @@ static struct simple_blk_dev* alloc_and_partial_init_sdev(unsigned int minor, u6
         sdev->minor = minor;
         sdev->capacity = capacity;
         snprintf(sdev->name, SIMPLE_BLK_DEV_NAME_MAX_LEN, "%d", minor);
-        blksiz_init(&sdev->blksiz, logical_bs_, physical_bs_);
+        blksiz_copy(&sdev->blksiz, blksiz);
 
         spin_lock_init(&sdev->lock);
         sdev->queue = NULL;
@@ -365,6 +377,7 @@ error0:
  *
  * @minor minor device number.
  * @capacity capacity [logical block].
+ * @blksiz block size data.
  * @make_request_fn callback for bio.
  * @request_fn_proc callback for request.
  *    This is used when make_request_fn is NULL.
@@ -372,13 +385,14 @@ error0:
  * true in success, or false.
  */
 static bool sdev_register_detail(unsigned int minor, u64 capacity,
+                                 const struct block_sizes *blksiz,
                                  make_request_fn *make_request_fn,
                                  request_fn_proc *request_fn_proc)
 {
         struct simple_blk_dev *sdev;
 
         /* Allocate and initialize partially. */
-        sdev = alloc_and_partial_init_sdev(minor, capacity);
+        sdev = alloc_and_partial_init_sdev(minor, capacity, blksiz);
         if (!sdev) {
                 LOGe("Memory allocation failed.\n");
                 goto error0;
@@ -453,8 +467,21 @@ static bool init_queue_and_disk(struct simple_blk_dev *sdev)
                         goto error0;
                 }
         }
-        blk_queue_logical_block_size(q, logical_bs_);
-        blk_queue_physical_block_size(q, physical_bs_);
+        blk_queue_physical_block_size(q, sdev->blksiz.pbs);
+        blk_queue_logical_block_size(q, sdev->blksiz.lbs);
+        /* blk_queue_io_min(q, sdev->blksiz.pbs); */
+        blk_queue_io_opt(q, sdev->blksiz.pbs);
+
+        /* Accept REQ_DISCARD. */
+        /* q->limits.discard_granularity = PAGE_SIZE; */
+        q->limits.discard_granularity = sdev->blksiz.lbs;
+	q->limits.max_discard_sectors = UINT_MAX;
+	q->limits.discard_zeroes_data = 1;
+	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+
+        /* Accept REQ_FLUSH and REQ_FUA. */
+        blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
+        
         q->queuedata = sdev;
         sdev->queue = q;
 
@@ -584,6 +611,6 @@ static void simple_blk_exit(void)
 module_init(simple_blk_init);
 module_exit(simple_blk_exit);
 MODULE_LICENSE("Dual BSD/GPL");
-MODULE_DESCRIPTION("Memory Block Device for Test");
+MODULE_DESCRIPTION("Simple Block Device for Test");
 MODULE_ALIAS(SIMPLE_BLK_NAME);
 /* MODULE_ALIAS_BLOCKDEV_MAJOR(SIMPLE_BLK_MAJOR); */

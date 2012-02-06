@@ -24,18 +24,27 @@ test-size-list-mod-objs := test_size_list.o size_list.o
 #memblk-none-mod-objs := memblk.o treemap.o block_size.o memblk_io_none.o
 #memblk-simple-mod-objs := memblk.o treemap.o block_size.o memblk_io_simple.o
 simple-blk-mod-objs := simple_blk.o block_size.o
-
+SIMPLE_BLK_BIO_OBJS = simple_blk_bio.o block_size.o size_list.o
+simple-blk-bio-none-mod-objs := $(SIMPLE_BLK_BIO_OBJS) simple_blk_bio_none.o
+MEMBLK_DATA_OBJS = memblk_data.o treemap.o
+simple-blk-bio-mem-mod-objs := $(SIMPLE_BLK_BIO_OBJS) simple_blk_bio_mem.o $(MEMBLK_DATA_OBJS)
 
 #obj-m := walb-mod.o \
-#	test-hashtbl-mod.o \
-#	test-treemap-mod.o \
-#	wrapblk-mod.o \
-#	memblk-none-mod.o \
-#	test-memblk-data-mod.o \
-#	test-sg-util-mod.o \
-#	memblk-simple-mod.o
+#test-hashtbl-mod.o \
+#test-treemap-mod.o \
+#wrapblk-mod.o \
+#memblk-none-mod.o \
+#test-memblk-data-mod.o \
+#test-sg-util-mod.o \
+#memblk-simple-mod.o
 
-obj-m := test-memblk-data-mod.o test-sg-util-mod.o test-size-list-mod.o simple-blk-mod.o
+obj-m := \
+test-memblk-data-mod.o \
+test-sg-util-mod.o \
+test-size-list-mod.o \
+simple-blk-mod.o \
+simple-blk-bio-none-mod.o \
+simple-blk-bio-mem-mod.o
 
 else
 

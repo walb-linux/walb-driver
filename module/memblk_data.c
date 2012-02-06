@@ -170,7 +170,7 @@ struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask)
         u64 ui, n_pages;
         unsigned long addr;
 
-        assert_block_size(block_size);
+        mdata_assert_block_size(block_size);
         ASSERT(capacity > 0);
 
         /* Allocate mdata */
@@ -190,7 +190,7 @@ struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask)
         }
 
         /* Allocate each block */
-        n_pages = get_required_n_pages(capacity, block_size);
+        n_pages = mdata_get_required_n_pages(capacity, block_size);
         /* LOGd("n_pages: %"PRIu64"\n", n_pages); */
         for (ui = 0; ui < n_pages; ui ++) {
                 addr = __get_free_page(gfp_mask); count_ ++;
@@ -226,7 +226,7 @@ void mdata_destroy(struct memblk_data *mdata)
         if (!mdata) { return; }
 
         if (mdata->index) {
-                n_pages = get_required_n_pages(
+                n_pages = mdata_get_required_n_pages(
                         mdata->capacity, mdata->block_size);
                 for (page_id = 0; page_id < n_pages; page_id ++) {
                         addr = map_del(mdata->index, page_id);
@@ -256,14 +256,14 @@ u8* mdata_get_block(struct memblk_data *mdata, u64 block_addr)
 
         ASSERT(mdata);
         ASSERT(block_addr < mdata->capacity);
-        page_id = get_page_id(block_addr, mdata->block_size);
+        page_id = mdata_get_page_id(block_addr, mdata->block_size);
 
         addr = map_lookup(mdata->index, page_id);
         ASSERT(addr != TREEMAP_INVALID_VAL);
         ASSERT(addr != 0);
 
         addr += mdata->block_size *
-                get_page_offset(block_addr, mdata->block_size);
+                mdata_get_page_offset(block_addr, mdata->block_size);
 
         return (u8 *)addr;
 }
@@ -374,7 +374,7 @@ bool test_memblk_data_simple(u64 capacity, const u32 block_size)
         u8 *data;
         
         ASSERT(capacity > 0);
-        assert_block_size(block_size);
+        mdata_assert_block_size(block_size);
 
         mdata = mdata_create(capacity, block_size, GFP_KERNEL);
         if (!mdata) {
