@@ -27,7 +27,10 @@ simple-blk-mod-objs := simple_blk.o block_size.o
 SIMPLE_BLK_BIO_OBJS = simple_blk_bio.o block_size.o size_list.o
 simple-blk-bio-none-mod-objs := $(SIMPLE_BLK_BIO_OBJS) simple_blk_bio_none.o
 MEMBLK_DATA_OBJS = memblk_data.o treemap.o
-simple-blk-bio-mem-mod-objs := $(SIMPLE_BLK_BIO_OBJS) simple_blk_bio_mem.o $(MEMBLK_DATA_OBJS)
+simple-blk-bio-mem-mod-objs := \
+$(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem.o 
+simple-blk-bio-mem-barrier-mod-objs := \
+$(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem_barrier.o 
 
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
@@ -44,7 +47,8 @@ test-sg-util-mod.o \
 test-size-list-mod.o \
 simple-blk-mod.o \
 simple-blk-bio-none-mod.o \
-simple-blk-bio-mem-mod.o
+simple-blk-bio-mem-mod.o \
+simple-blk-bio-mem-barrier-mod.o
 
 else
 

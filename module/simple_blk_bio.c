@@ -74,6 +74,7 @@ static bool register_alldevs(void)
 
                 ret = sdev_register_with_bio(get_minor(i), capacity, &blksiz_,
                                              simple_blk_bio_make_request);
+
                 if (!ret) {
                         goto error;
                 }
@@ -81,6 +82,7 @@ static bool register_alldevs(void)
                 if (!create_private_data(sdev)) {
                         goto error;
                 }
+                customize_sdev(sdev);
         }
         return true;
 error:

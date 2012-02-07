@@ -1,5 +1,6 @@
 /**
- * simple_blk_bio_mem.c - make_request_fn which do memory read/write.
+ * simple_blk_bio_mem_barrier.c -
+ * make_request_fn which do memory read/write with barriers.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -9,7 +10,6 @@
 #include "simple_blk_bio.h"
 #include "memblk_data.h"
 
-
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
@@ -17,7 +17,6 @@
 /**
  * For debug.
  */
-__UNUSED
 static void log_bi_rw_flag(struct bio *bio)
 {
         LOGd("bio bi_sector %"PRIu64" bi_rw %0lx bi_size %u bi_vcnt %hu\n",
@@ -31,7 +30,18 @@ static void log_bi_rw_flag(struct bio *bio)
 }
 
 /**
- * Read/write from/to mdata.
+ * Currently discard just fills zero.
+ */
+static void mdata_exec_discard(struct memblk_data *mdata, u64 block_id, unsigned int n_blocks)
+{
+        unsigned int i;
+        for (i = 0; i < n_blocks; i ++) {
+                memset(mdata_get_block(mdata, block_id + i), 0, mdata->block_size);
+        }
+}
+
+/**
+ * Read from mdata.
  * CONTEXT:
  * IRQ.
  */
@@ -40,7 +50,7 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
         int i;
         sector_t sector;
         u64 block_id;
-        __UNUSED struct bio_vec *bvec;
+        struct bio_vec *bvec;
         u8 *buffer_bio;
         unsigned int is_write;
         unsigned int n_blk;
@@ -50,6 +60,24 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
         sector = bio->bi_sector;
         block_id = (u64)sector;
 
+        if (bio->bi_rw & REQ_DISCARD) {
+                log_bi_rw_flag(bio);
+                mdata_exec_discard(mdata, block_id, bio->bi_size / mdata->block_size);
+                return;
+        }
+
+        if (bio->bi_rw & REQ_FLUSH && bio->bi_size == 0) {
+                log_bi_rw_flag(bio);
+                LOGd("REQ_FLUSH\n");
+                return;
+        }
+
+        if (bio->bi_rw & REQ_FUA && bio->bi_size == 0) {
+                log_bi_rw_flag(bio);
+                LOGd("REQ_FUA\n");
+                return;
+        }
+        
         is_write = bio->bi_rw & REQ_WRITE;
         
         bio_for_each_segment(bvec, bio, i) {
@@ -108,7 +136,7 @@ bool create_private_data(struct simple_blk_dev *sdev)
         unsigned int block_size;
 
         ASSERT(sdev);
-
+        
         capacity = sdev->capacity;
         block_size = sdev->blksiz.lbs;
         mdata = mdata_create(capacity, block_size, GFP_KERNEL);
@@ -145,7 +173,19 @@ void destroy_private_data(struct simple_blk_dev *sdev)
  */
 void customize_sdev(struct simple_blk_dev *sdev)
 {
-}
+        struct request_queue *q;
+        ASSERT(sdev);
+        q = sdev->queue;
+        
+        /* Accept REQ_DISCARD. */
+        /* q->limits.discard_granularity = PAGE_SIZE; */
+        q->limits.discard_granularity = sdev->blksiz.lbs;
+	q->limits.max_discard_sectors = UINT_MAX;
+	q->limits.discard_zeroes_data = 1;
+	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
 
+        /* Accept REQ_FLUSH and REQ_FUA. */
+        blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
+}
 
 /* end of file. */

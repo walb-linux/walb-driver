@@ -22,6 +22,7 @@ test-size-list-mod.ko \
 simple-blk-mod.ko \
 simple-blk-bio-none-mod.ko \
 simple-blk-bio-mem-mod.ko \
+simple-blk-bio-mem-barrier-mod.ko \
 "
 list_in_tool="\
 walbctl \

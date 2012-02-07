@@ -33,4 +33,11 @@ void destroy_private_data(struct simple_blk_dev *sdev)
 {
 }
 
+/**
+ * Do nothing.
+ */
+void customize_sdev(struct simple_blk_dev *sdev)
+{
+}
+
 /* end of file. */
