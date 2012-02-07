@@ -40,4 +40,19 @@ void customize_sdev(struct simple_blk_dev *sdev)
 {
 }
 
+/**
+ * Do nothing.
+ */
+bool pre_register(void)
+{
+        return true;
+}
+
+/**
+ * Do nothing.
+ */
+void post_unregister(void)
+{
+}
+
 /* end of file. */

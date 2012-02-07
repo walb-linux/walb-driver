@@ -146,6 +146,8 @@ static int __init simple_blk_init(void)
         ASSERT(n_devices_ > 0);
         ASSERT(start_minor_ >= 0);
 
+        pre_register();
+        
         if (!register_alldevs()) {
                 goto error0;
         }
@@ -168,6 +170,7 @@ static void simple_blk_exit(void)
 {
         stop_alldevs();
         unregister_alldevs();
+        post_unregister();
 }
 
 module_init(simple_blk_init);

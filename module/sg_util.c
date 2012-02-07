@@ -504,7 +504,8 @@ static void alloc_sg_and_pages_randomly(
         struct sg_table *sgt, unsigned int nents,
         unsigned int min_entsize, unsigned int max_entsize)
 {
-        int ret, i;
+        __UNUSED int ret;
+        int i;
         struct scatterlist *sg;
         unsigned int siz, off;
         struct page *page;
@@ -562,7 +563,8 @@ void test_sg_pos(void)
 
         unsigned int nents = 32;
         unsigned int entsize = PAGE_SIZE / nents;
-        int ret, i;
+        __UNUSED int ret;
+        int i;
         unsigned int ui;
         u8 *tmp_data;
 
@@ -623,8 +625,8 @@ void test_sg_util(void)
 {
         struct sg_table sgt0, sgt1;
         unsigned int nents = get_random_u32_max(64) + 128;
-        int ret;
-        bool ret_b;
+        __UNUSED int ret;
+        __UNUSED bool ret_b;
         u8 *tmp_data0, *tmp_data1;
         struct scatterlist *sg;
         int i;

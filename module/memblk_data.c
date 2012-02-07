@@ -371,7 +371,7 @@ bool test_memblk_data_simple(u64 capacity, const u32 block_size)
 {
         struct memblk_data *mdata = NULL;
         u64 b_id;
-        u8 *data;
+        __UNUSED u8 *data;
         
         ASSERT(capacity > 0);
         mdata_assert_block_size(block_size);

@@ -16,6 +16,12 @@
 
 /* Make requrest for simpl_blk_bio_* modules. */
 int simple_blk_bio_make_request(struct request_queue *q, struct bio *bio);
+
+/* Called before register. */
+bool pre_register(void);
+/* Called after unregister. */
+void post_unregister(void);
+
 /* Create private data for sdev. */
 bool create_private_data(struct simple_blk_dev *sdev);
 /* Destroy private data for ssev. */

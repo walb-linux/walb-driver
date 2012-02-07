@@ -30,7 +30,8 @@ MEMBLK_DATA_OBJS = memblk_data.o treemap.o
 simple-blk-bio-mem-mod-objs := \
 $(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem.o 
 simple-blk-bio-mem-barrier-mod-objs := \
-$(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem_barrier.o 
+$(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem_barrier.o
+test-kmem-cache-mod-objs := test_kmem_cache.o
 
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
@@ -45,6 +46,7 @@ obj-m := \
 test-memblk-data-mod.o \
 test-sg-util-mod.o \
 test-size-list-mod.o \
+test-kmem-cache-mod.o \
 simple-blk-mod.o \
 simple-blk-bio-none-mod.o \
 simple-blk-bio-mem-mod.o \
