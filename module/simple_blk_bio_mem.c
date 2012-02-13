@@ -85,12 +85,11 @@ static struct memblk_data* get_mdata_from_queue(struct request_queue *q)
  * CONTEXT:
  * IRQ.
  */
-int simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
+void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
 {
         ASSERT(bio);
         mdata_exec_bio(get_mdata_from_queue(q), bio);
         bio_endio(bio, 0);
-        return 0; /* never retry */
 }
 
 /**

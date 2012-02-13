@@ -12,10 +12,9 @@
  * Make request that do nothing.
  * Currently do nothing.
  */
-int simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
+void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
 {
         bio_endio(bio, 0); /* do nothing */
-        return 0; /* never retry */
 }
 
 /**

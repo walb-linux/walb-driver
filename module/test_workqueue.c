@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 #include <linux/time.h>
+#include <linux/delay.h>
 
 #include "walb/common.h"
 #include "walb/util.h"

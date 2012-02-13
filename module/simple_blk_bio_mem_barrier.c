@@ -328,7 +328,7 @@ static void bio_worker(struct work_struct *work)
  * CONTEXT:
  * IRQ.
  */
-int simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
+void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
 {
         struct bio_work *bio_work;
         struct simple_blk_dev *sdev = sdev_get_from_queue(q);
@@ -348,10 +348,8 @@ int simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
         getnstimeofday(&bio_work->ts_enq1);
 #endif
         /* bio_endio(bio, 0); */
-        return 0; /* never retry */
 error0:
         bio_endio(bio, -EIO);
-        return 0; /* never retry */
 }
 
 /**

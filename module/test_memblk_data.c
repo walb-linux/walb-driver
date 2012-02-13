@@ -1,5 +1,5 @@
 /**
- * memblk.c - Memory block device driver for performance test.
+ * test_memblk_data.c - test functonalities of memblk_data.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>

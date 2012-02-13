@@ -15,7 +15,7 @@
  *******************************************************************************/
 
 /* Make requrest for simpl_blk_bio_* modules. */
-int simple_blk_bio_make_request(struct request_queue *q, struct bio *bio);
+void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio);
 
 /* Called before register. */
 bool pre_register(void);
