@@ -17,9 +17,11 @@ test-hashtbl-mod.ko \
 test-treemap-mod.ko \
 memblk-mod.ko \
 test-memblk-data-mod.ko \
+test-memblk-data-perf-mod.ko \
 test-sg-util-mod.ko \
 test-size-list-mod.ko \
 test-kmem-cache-mod.ko \
+test-kthread-mod.ko \
 simple-blk-mod.ko \
 simple-blk-bio-none-mod.ko \
 simple-blk-bio-mem-mod.ko \
