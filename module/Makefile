@@ -18,9 +18,12 @@ walb-mod-objs := walb.o control.o alldevs.o snapshot.o io.o hashtbl.o treemap.o 
 test-hashtbl-mod-objs := test_hashtbl.o hashtbl.o
 test-treemap-mod-objs := test_treemap.o treemap.o
 test-memblk-data-mod-objs := test_memblk_data.o treemap.o memblk_data.o
+test-memblk-data-perf-mod-objs := test_memblk_data_perf.o treemap.o memblk_data.o
 test-sg-util-mod-objs := test_sg_util.o sg_util.o
 test-size-list-mod-objs := test_size_list.o size_list.o
+test-kmem-cache-mod-objs := test_kmem_cache.o
 test-workqueue-mod-objs := test_workqueue.o
+test-kthread-mod-objs := test_kthread.o
 #wrapblk-mod-objs := wrapblk.o
 #memblk-none-mod-objs := memblk.o treemap.o block_size.o memblk_io_none.o
 #memblk-simple-mod-objs := memblk.o treemap.o block_size.o memblk_io_simple.o
@@ -32,7 +35,6 @@ simple-blk-bio-mem-mod-objs := \
 $(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem.o 
 simple-blk-bio-mem-barrier-mod-objs := \
 $(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem_barrier.o
-test-kmem-cache-mod-objs := test_kmem_cache.o
 
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
@@ -45,6 +47,8 @@ test-kmem-cache-mod-objs := test_kmem_cache.o
 
 obj-m := \
 test-memblk-data-mod.o \
+test-memblk-data-perf-mod.o \
+test-kthread-mod.o \
 test-sg-util-mod.o \
 test-size-list-mod.o \
 test-kmem-cache-mod.o \
