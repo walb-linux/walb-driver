@@ -176,18 +176,20 @@ static void run_benchmark(unsigned int n_threads, unsigned int n_io, enum io_mod
 
 static int __init test_init(void)
 {
-        int i;
+        int i, j;
         LOGe("BUILD_DATE %s\n", BUILD_DATE);
         
         create_test_data(1048576);
-        for (i = 1; i <= 8; i ++) {
-                run_benchmark(i,  1000000, IO_READ);
-        }
-        for (i = 1; i <= 8; i ++) {
-                run_benchmark(i,  1000000, IO_WRITE);
-        }
-        for (i = 1; i <= 8; i ++) {
-                run_benchmark(i,  1000000, IO_RW);
+        for (j = 0; j < 5; j ++) {
+                for (i = 1; i <= 8; i ++) {
+                        run_benchmark(i,  1000000, IO_READ);
+                }
+                for (i = 1; i <= 8; i ++) {
+                        run_benchmark(i,  1000000, IO_WRITE);
+                }
+                for (i = 1; i <= 8; i ++) {
+                        run_benchmark(i,  1000000, IO_RW);
+                }
         }
         destroy_test_data();
         
