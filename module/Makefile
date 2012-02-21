@@ -29,12 +29,15 @@ test-kthread-mod-objs := test_kthread.o
 #memblk-simple-mod-objs := memblk.o treemap.o block_size.o memblk_io_simple.o
 simple-blk-mod-objs := simple_blk.o block_size.o
 SIMPLE_BLK_BIO_OBJS = simple_blk_bio.o block_size.o size_list.o
+SIMPLE_BLK_REQ_OBJS = simple_blk_req.o block_size.o size_list.o
 simple-blk-bio-none-mod-objs := $(SIMPLE_BLK_BIO_OBJS) simple_blk_bio_none.o
 MEMBLK_DATA_OBJS = memblk_data.o treemap.o
 simple-blk-bio-mem-mod-objs := \
 $(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem.o 
 simple-blk-bio-mem-barrier-mod-objs := \
 $(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem_barrier.o
+simple-blk-req-mem-barrier-mod-objs := \
+$(SIMPLE_BLK_REQ_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_req_mem_barrier.o
 
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
@@ -56,7 +59,8 @@ test-workqueue-mod.o \
 simple-blk-mod.o \
 simple-blk-bio-none-mod.o \
 simple-blk-bio-mem-mod.o \
-simple-blk-bio-mem-barrier-mod.o
+simple-blk-bio-mem-barrier-mod.o \
+simple-blk-req-mem-barrier-mod.o
 
 else
 
