@@ -33,6 +33,9 @@ struct block_sizes blksiz_;
 /* Number of devices. */
 unsigned int n_devices_ = 0;
 
+/* Sleep in ms between seconds. */
+int sleep_ms_ = 0;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -40,6 +43,7 @@ unsigned int n_devices_ = 0;
 module_param_named(device_size_list, device_size_list_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
+module_param_named(sleep, sleep_ms_, int, S_IRUGO | S_IWUSR);
 
 /*******************************************************************************
  * Static functions prototype.

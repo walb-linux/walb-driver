@@ -66,6 +66,8 @@ struct kmem_cache *req_work_cache_ = NULL;
 struct workqueue_struct *wq_io_ = NULL;
 struct workqueue_struct *wq_misc_ = NULL;
 
+extern int sleep_ms_;
+
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
@@ -417,7 +419,14 @@ static void req_worker2(struct work_struct *work)
         struct request *req = req_work->req;
 
         mdata_exec_req(mdata, req);
-        /* LOGd("REQ %u: %"PRIu64" (%u).\n", req_work->id, blk_rq_pos(req), blk_rq_bytes(req)); /\* debug *\/ */
+#if 0
+        LOGd("REQ %u: %"PRIu64" (%u).\n", req_work->id, blk_rq_pos(req), blk_rq_bytes(req)); /* debug */
+#endif
+
+        if (unlikely(sleep_ms_ > 0)) {
+                msleep_interruptible(sleep_ms_);
+        }
+        
         blk_end_request_all(req, 0);
         destroy_req_work(req_work);
 }
