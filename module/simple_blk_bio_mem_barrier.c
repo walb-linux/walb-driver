@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/time.h>
 #include <linux/timer.h>
+#include <linux/delay.h>
 #include "simple_blk_bio.h"
 #include "memblk_data.h"
 
@@ -20,6 +21,7 @@
 
 /* #define PERFORMANCE_DEBUG */
 
+static atomic_t id_counter_ = ATOMIC_INIT(0);
 
 struct bio_work
 {
@@ -28,6 +30,8 @@ struct bio_work
         struct work_struct work;
         /* struct delayed_work dwork; */
         struct timer_list end_timer;
+
+        unsigned int id;
         
 #ifdef PERFORMANCE_DEBUG
         struct timespec ts_start;
@@ -70,9 +74,9 @@ static void bio_worker(struct work_struct *work);
  */
 static void log_bi_rw_flag(struct bio *bio)
 {
-        LOGd("bio bi_sector %"PRIu64" bi_size %u bi_vcnt %hu "
+        LOGd("bio bi_sector %"PRIu64" %0lx bi_size %u bi_vcnt %hu "
              "bi_rw %0lx [%s][%s][%s][%s][%s][%s].\n",
-             (u64)bio->bi_sector, bio->bi_size, bio->bi_vcnt,
+             (u64)bio->bi_sector, bio->bi_sector, bio->bi_size, bio->bi_vcnt,
              bio->bi_rw, 
              (bio->bi_rw & REQ_WRITE ? "REQ_WRITE" : ""),
              (bio->bi_rw & REQ_RAHEAD? "REQ_RAHEAD" : ""),
@@ -113,6 +117,8 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
         sector = bio->bi_sector;
         block_id = (u64)sector;
 
+        log_bi_rw_flag(bio);
+
         if (bio->bi_rw & REQ_DISCARD) {
                 log_bi_rw_flag(bio);
                 if (bio->bi_rw & REQ_SECURE) {
@@ -146,6 +152,7 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
                         mdata_read_blocks(mdata, block_id, n_blk, buffer_bio);
                 }
                 block_id += n_blk;
+                flush_kernel_dcache_page(bvec->bv_page);
                __bio_kunmap_atomic(bio, KM_USER0);
         }
 }
@@ -188,6 +195,7 @@ static struct bio_work* create_bio_work(struct bio *bio, struct simple_blk_dev *
         }
         work->bio = bio;
         work->sdev = sdev;
+        work->id = atomic_inc_return(&id_counter_);
         INIT_WORK(&work->work, bio_worker);
         return work;
 error0:
@@ -249,11 +257,16 @@ static void bio_io_worker(struct work_struct *work)
         struct simple_blk_dev *sdev = bio_work->sdev;
         struct memblk_data *mdata = get_mdata_from_sdev(sdev);
 
+
+        LOGd("bio_io_worker: BIO %u %0lx (%u)\n",
+             bio_work->id, bio->bi_sector, bio->bi_size); /* debug */
+
 #ifdef PERFORMANCE_DEBUG
         getnstimeofday(&bio_work->ts_deq2);
 #endif
         mdata_exec_bio(mdata, bio);
-#if 1
+        LOGd("bio_io_worker: BIO %u end.\n", bio_work->id);
+#if 0
         /* Delay with timer. */
         setup_timer(&bio_work->end_timer, bio_endio_timer_callback,
                     (unsigned long)bio_work);
@@ -265,8 +278,10 @@ static void bio_io_worker(struct work_struct *work)
         INIT_DELAYED_WORK(&bio_work->dwork, bio_endio_worker);
         queue_delayed_work(wq_io_, &bio_work->dwork, msecs_to_jiffies(5));
         
-#else        
-        bio_endio(bio, 0); /* Never fail. */
+#else
+        /* bio_flush_dcache_pages(bio); */
+        /* bio_endio(bio, 0); /\* Never fail. *\/ */
+        
 #ifdef PERFORMANCE_DEBUG
         getnstimeofday(&bio_work->ts_end);
         LOGd("start %ld enq1 %ld deq1 %ld enq2 %ld deq2 %ld end.\n",
@@ -286,6 +301,7 @@ static void bio_io_worker(struct work_struct *work)
 static void bio_worker(struct work_struct *work)
 {
         struct bio_work *bio_work = container_of(work, struct bio_work, work);
+        struct simple_blk_dev *sdev = bio_work->sdev;
         struct bio *bio = bio_work->bio;
         bool isDone = false;
 
@@ -310,8 +326,19 @@ static void bio_worker(struct work_struct *work)
 #endif
                 destroy_bio_work(bio_work);
         } else {
-                INIT_WORK(work, bio_io_worker);
-                queue_work(wq_io_, work);
+                LOGd("bio_worker: BIO %u %0lx (%u)\n",
+                     bio_work->id, bio->bi_sector, bio->bi_size); /* debug */
+                
+                /* destroy_bio_work(bio_work); */
+                /* bio_work = create_bio_work(bio, sdev, GFP_KERNEL); */
+                /* ASSERT(bio_work); */
+                /* INIT_WORK(&bio_work->work, bio_io_worker); */
+                /* queue_work(wq_io_, &bio_work->work); */
+
+                /* Reuse. */
+                INIT_WORK(&bio_work->work, bio_io_worker);
+                queue_work(wq_io_, &bio_work->work);
+                
 #ifdef PERFORMANCE_DEBUG
                 getnstimeofday(&bio_work->ts_enq2);
 #endif
@@ -322,6 +349,8 @@ static void bio_worker(struct work_struct *work)
  * Global functions definition.
  *******************************************************************************/
 
+
+#if 1
 /**
  * Make request.
  *
@@ -335,7 +364,9 @@ void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
         
         ASSERT(bio);
 
-        bio_work = create_bio_work(bio, sdev, GFP_ATOMIC);
+        /* LOGd("in_interrupt: %lu\n", in_interrupt()); */
+
+        bio_work = create_bio_work(bio, sdev, GFP_NOIO);
         if (!bio_work) {
                 LOGe("create_bio_work() failed.\n");
                 goto error0;
@@ -344,6 +375,7 @@ void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
         getnstimeofday(&bio_work->ts_start);
 #endif
         queue_work(wq_misc_, &bio_work->work);
+        
 #ifdef PERFORMANCE_DEBUG
         getnstimeofday(&bio_work->ts_enq1);
 #endif
@@ -351,6 +383,42 @@ void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
 error0:
         bio_endio(bio, -EIO);
 }
+#elif 1
+void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
+{
+        struct simple_blk_dev *sdev = sdev_get_from_queue(q);
+        struct memblk_data *mdata = get_mdata_from_sdev(sdev);
+        __UNUSED struct timespec t0, t1, td;
+        ASSERT(bio);
+
+#ifdef PERFORMANCE_DEBUG
+        getnstimeofday(&t0);
+#endif
+        mdata_exec_bio(mdata, bio);
+
+#ifdef PERFORMANCE_DEBUG
+        getnstimeofday(&t1);
+#endif
+
+        bio_endio(bio, 0);
+        
+#ifdef PERFORMANCE_DEBUG
+        td = timespec_sub(t1, t0);
+        LOGd("BIO %0lx(%u) %ld.%09ld %ld.%09ld\n",
+             bio->bi_sector, bio->bi_size,
+             t0.tv_sec, t0.tv_nsec, td.tv_sec, td.tv_nsec);
+#endif
+}
+#else
+/**
+ * Make request for test.
+ */
+void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
+{
+        bio_endio(bio, 0);
+}
+#endif
+
 
 /**
  * Create memory data.
@@ -410,15 +478,15 @@ void customize_sdev(struct simple_blk_dev *sdev)
         
         /* Accept REQ_DISCARD. */
         /* q->limits.discard_granularity = PAGE_SIZE; */
-        q->limits.discard_granularity = sdev->blksiz.lbs;
-	q->limits.max_discard_sectors = UINT_MAX;
-	q->limits.discard_zeroes_data = 1;
-	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
-	queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q);
+        /* q->limits.discard_granularity = sdev->blksiz.lbs; */
+	/* q->limits.max_discard_sectors = UINT_MAX; */
+	/* q->limits.discard_zeroes_data = 1; */
+	/* queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q); */
+	/* queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q); */
 
         /* Accept REQ_FLUSH and REQ_FUA. */
         /* blk_queue_flush(q, REQ_FLUSH | REQ_FUA); */
-        blk_queue_flush(q, REQ_FLUSH);
+        /* blk_queue_flush(q, REQ_FLUSH); */
 }
 
 /**
