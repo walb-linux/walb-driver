@@ -15,33 +15,24 @@
 #include "simple_blk_req.h"
 #include "memblk_data.h"
 
+
+/* #define PERFORMANCE_DEBUG */
+
+#define WQ_IO_NAME "simple_blk_req_mem_barrier_io"
+
+/*******************************************************************************
+ * Global data definition.
+ *******************************************************************************/
+
+/* module parameters. */
+extern int sleep_ms_;
+
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
 
-/* #define PERFORMANCE_DEBUG */
-
-
+/* for debug */
 static atomic_t id_counter_ = ATOMIC_INIT(0);
-
-struct bio_work
-{
-        struct bio *bio;
-        struct simple_blk_dev *sdev;
-        struct work_struct work;
-        /* struct delayed_work dwork; */
-        struct timer_list end_timer;
-        
-#ifdef PERFORMANCE_DEBUG
-        struct timespec ts_start;
-        struct timespec ts_enq1;
-        struct timespec ts_deq1;
-        struct timespec ts_enq2;
-        struct timespec ts_deq2;
-        struct timespec ts_end;
-#endif
-};
-
 
 struct req_work
 {
@@ -56,17 +47,12 @@ struct req_work
         struct timespec ts_start;
         struct timespec ts_enq1;
         struct timespec ts_deq1;
-        struct timespec ts_enq2;
-        struct timespec ts_deq2;
         struct timespec ts_end;
 #endif
 };
 
 struct kmem_cache *req_work_cache_ = NULL;
 struct workqueue_struct *wq_io_ = NULL;
-struct workqueue_struct *wq_misc_ = NULL;
-
-extern int sleep_ms_;
 
 /*******************************************************************************
  * Static functions definition.
@@ -75,21 +61,11 @@ extern int sleep_ms_;
 static void log_bi_rw_flag(struct bio *bio);
 
 static void mdata_exec_discard(struct memblk_data *mdata, u64 block_id, unsigned int n_blocks);
-static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio);
 static void mdata_exec_req(struct memblk_data *mdata, struct request *req);
 static void mdata_exec_req_cur(struct memblk_data *mdata, struct request *req);
 
-
 static struct memblk_data* get_mdata_from_sdev(struct simple_blk_dev *sdev);
 __UNUSED static struct memblk_data* get_mdata_from_queue(struct request_queue *q);
-
-static struct bio_work* create_bio_work(struct bio *bio, struct simple_blk_dev *sdev, gfp_t gfp_mask);
-static void destroy_bio_work(struct bio_work *work);
-
-static void bio_io_worker(struct work_struct *work);
-static void bio_worker(struct work_struct *work);
-
-
 
 static struct req_work* create_req_work(
         struct request *req, struct simple_blk_dev *sdev, gfp_t gfp_mask,
@@ -132,65 +108,6 @@ static void mdata_exec_discard(struct memblk_data *mdata, u64 block_id, unsigned
 }
 
 /**
- * Read from mdata.
- * CONTEXT:
- * Non-IRQ.
- */
-static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
-{
-        int i;
-        sector_t sector;
-        u64 block_id;
-        struct bio_vec *bvec;
-        u8 *buffer_bio;
-        unsigned int is_write;
-        unsigned int n_blk;
-
-        ASSERT(bio);
-
-        sector = bio->bi_sector;
-        block_id = (u64)sector;
-
-        /* log_bi_rw_flag(bio); */
-
-        if (bio->bi_rw & REQ_DISCARD) {
-                log_bi_rw_flag(bio);
-                if (bio->bi_rw & REQ_SECURE) {
-                        mdata_exec_discard(mdata, block_id, bio->bi_size / mdata->block_size);
-                }
-                return;
-        }
-
-        if (bio->bi_rw & REQ_FLUSH && bio->bi_size == 0) {
-                log_bi_rw_flag(bio);
-                LOGd("REQ_FLUSH\n");
-                return;
-        }
-
-        if (bio->bi_rw & REQ_FUA && bio->bi_size == 0) {
-                log_bi_rw_flag(bio);
-                LOGd("REQ_FUA\n");
-                return;
-        }
-        
-        is_write = bio->bi_rw & REQ_WRITE;
-        
-        bio_for_each_segment(bvec, bio, i) {
-                buffer_bio = (u8 *)__bio_kmap_atomic(bio, i, KM_USER0);
-                ASSERT(bio_cur_bytes(bio) % mdata->block_size == 0);
-
-                n_blk = bio_cur_bytes(bio) / mdata->block_size;
-                if (is_write) {
-                        mdata_write_blocks(mdata, block_id, n_blk, buffer_bio);
-                } else {
-                        mdata_read_blocks(mdata, block_id, n_blk, buffer_bio);
-                }
-                block_id += n_blk;
-               __bio_kunmap_atomic(bio, KM_USER0);
-        }
-}
-
-/**
  * Get mdata from a sdev.
  */
 static struct memblk_data* get_mdata_from_sdev(struct simple_blk_dev *sdev)
@@ -206,166 +123,6 @@ static struct memblk_data* get_mdata_from_queue(struct request_queue *q)
 {
         return get_mdata_from_sdev(sdev_get_from_queue(q));
 }
-
-/**
- * Create a bio_work.
- *
- * RETURN:
- * NULL if failed.
- * CONTEXT:
- * Any.
- */
-static struct bio_work* create_bio_work(struct bio *bio, struct simple_blk_dev *sdev, gfp_t gfp_mask)
-{
-        struct bio_work *work;
-
-        ASSERT(bio);
-        ASSERT(sdev);
-
-        work = kmem_cache_alloc(req_work_cache_, gfp_mask);
-        if (!work) {
-                goto error0;
-        }
-        work->bio = bio;
-        work->sdev = sdev;
-        INIT_WORK(&work->work, bio_worker);
-        return work;
-error0:
-        return NULL;
-}
-
-/**
- * Destory a bio_work.
- */
-static void destroy_bio_work(struct bio_work *work)
-{
-        ASSERT(work);
-        kmem_cache_free(req_work_cache_, work);
-}
-
-#if 0
-/**
- * BIO ENDIO worker.
- * CONTEXT:
- * Non-IRQ.
- */
-static void bio_endio_worker(struct work_struct *work)
-{
-        struct delayed_work *dwork =
-                container_of(work, struct delayed_work, work);
-        struct bio_work *bio_work = container_of(dwork, struct bio_work, dwork);
-        struct bio *bio = bio_work->bio;
-        /* struct simple_blk_dev *sdev = bio_work->sdev; */
-        /* struct memblk_data *mdata = get_mdata_from_sdev(sdev); */
-
-        bio_endio(bio, 0);
-        destroy_bio_work(bio_work);
-}
-#endif
-
-/**
- * BIO ENDIO callback for timer.
- * CONTEXT:
- * IRQ.
- */
-static void bio_endio_timer_callback(unsigned long data)
-{
-        struct bio_work *bio_work = (struct bio_work *)data;
-        
-        bio_endio(bio_work->bio, 0);
-        del_timer(&bio_work->end_timer);
-        destroy_bio_work(bio_work);
-}
-
-/**
- * BIO IO worker.
- * CONTEXT:
- * Non-IRQ.
- */
-static void bio_io_worker(struct work_struct *work)
-{
-        struct bio_work *bio_work = container_of(work, struct bio_work, work);
-        struct bio *bio = bio_work->bio;
-        struct simple_blk_dev *sdev = bio_work->sdev;
-        struct memblk_data *mdata = get_mdata_from_sdev(sdev);
-
-#ifdef PERFORMANCE_DEBUG
-        getnstimeofday(&bio_work->ts_deq2);
-#endif
-        mdata_exec_bio(mdata, bio);
-#if 0
-        /* Delay with timer. */
-        setup_timer(&bio_work->end_timer, bio_endio_timer_callback,
-                    (unsigned long)bio_work);
-        bio_work->end_timer.expires = jiffies + msecs_to_jiffies(5);
-        add_timer(&bio_work->end_timer);
-
-#elif 0
-        /* Delay with workqueue. */
-        INIT_DELAYED_WORK(&bio_work->dwork, bio_endio_worker);
-        queue_delayed_work(wq_io_, &bio_work->dwork, msecs_to_jiffies(5));
-        
-#else        
-        bio_endio(bio, 0); /* Never fail. */
-#ifdef PERFORMANCE_DEBUG
-        getnstimeofday(&bio_work->ts_end);
-        LOGd("start %ld enq1 %ld deq1 %ld enq2 %ld deq2 %ld end.\n",
-             timespec_sub(bio_work->ts_enq1, bio_work->ts_start).tv_nsec,
-             timespec_sub(bio_work->ts_deq1, bio_work->ts_enq1).tv_nsec,
-             timespec_sub(bio_work->ts_enq2, bio_work->ts_deq1).tv_nsec,
-             timespec_sub(bio_work->ts_deq2, bio_work->ts_enq2).tv_nsec,
-             timespec_sub(bio_work->ts_end, bio_work->ts_deq2).tv_nsec);
-#endif
-        destroy_bio_work(bio_work);
-#endif
-}
-
-/**
- * BIO worker (serialized).
- */
-static void bio_worker(struct work_struct *work)
-{
-        struct bio_work *bio_work = container_of(work, struct bio_work, work);
-        struct bio *bio = bio_work->bio;
-        bool isDone = false;
-
-        /* debug */
-        log_bi_rw_flag(bio);
-        bio_endio(bio, 0);
-        destroy_bio_work(bio_work);
-        LOGd("called bio_endio(bio, 0)\n");
-        return;
-        
-#ifdef PERFORMANCE_DEBUG
-        getnstimeofday(&bio_work->ts_deq1);
-#endif
-        if (bio->bi_rw & REQ_FLUSH) {
-                LOGd("flush wq_io_ workqueue.\n");
-                flush_workqueue(wq_io_);
-                if (bio->bi_size == 0) {
-                        bio_endio(bio, 0);
-                        isDone = true;
-                }
-        }
-        if (isDone) {
-#ifdef PERFORMANCE_DEBUG
-        getnstimeofday(&bio_work->ts_end);
-        LOGd("start %ld enq1 %ld deq1 %ld end.\n",
-             timespec_sub(bio_work->ts_enq1, bio_work->ts_start).tv_nsec,
-             timespec_sub(bio_work->ts_deq1, bio_work->ts_enq1).tv_nsec,
-             timespec_sub(bio_work->ts_end, bio_work->ts_deq1).tv_nsec);
-#endif
-                destroy_bio_work(bio_work);
-        } else {
-                INIT_WORK(work, bio_io_worker);
-                mb();
-                queue_work(wq_io_, work);
-#ifdef PERFORMANCE_DEBUG
-                getnstimeofday(&bio_work->ts_enq2);
-#endif
-        }
-}
-
 
 
 /**
@@ -411,7 +168,7 @@ static void destroy_req_work(struct req_work *work)
         kmem_cache_free(req_work_cache_, work);
 }
 
-static void req_worker2(struct work_struct *work)
+static void req_worker(struct work_struct *work)
 {
         struct req_work *req_work = container_of(work, struct req_work, work);
         struct simple_blk_dev *sdev = req_work->sdev;
@@ -420,31 +177,14 @@ static void req_worker2(struct work_struct *work)
 
         mdata_exec_req(mdata, req);
 #if 0
-        LOGd("REQ %u: %"PRIu64" (%u).\n", req_work->id, blk_rq_pos(req), blk_rq_bytes(req)); /* debug */
+        LOGd("REQ %u: %"PRIu64" (%u).\n", req_work->id, blk_rq_pos(req), blk_rq_bytes(req));
 #endif
-
         if (unlikely(sleep_ms_ > 0)) {
                 msleep_interruptible(sleep_ms_);
         }
         
         blk_end_request_all(req, 0);
         destroy_req_work(req_work);
-}
-
-static void req_worker1(struct work_struct *work)
-{
-        struct req_work *req_work = container_of(work, struct req_work, work);
-        struct simple_blk_dev *sdev = req_work->sdev;
-        struct memblk_data *mdata = get_mdata_from_sdev(sdev);
-        struct request *req = req_work->req;
-
-        if (mdata_exec_req_special(mdata, req)) {
-                blk_end_request_all(req, 0);
-                destroy_req_work(req_work);
-        } else {
-                INIT_WORK(&req_work->work, req_worker2);
-                queue_work(wq_io_, &req_work->work);
-        }
 }
 
 /**
@@ -549,7 +289,6 @@ static void mdata_exec_req(struct memblk_data *mdata, struct request *req)
 
         rq_for_each_segment(bvec, req, iter) {
                 buf = bvec_kmap_irq(bvec, &flags);
-
 #if 0
                 LOGd("bvec->bv_len: %u mdata->block_size %u\n",
                      bvec->bv_len, mdata->block_size);
@@ -600,7 +339,6 @@ void simple_blk_req_request_fn(struct request_queue *q)
 #else
 /**
  * With workqueue.
- *
  */ 
 void simple_blk_req_request_fn(struct request_queue *q)
 {
@@ -618,7 +356,7 @@ void simple_blk_req_request_fn(struct request_queue *q)
                         flush_workqueue(wq_io_);
                         __blk_end_request_all(req, 0);
                 } else {
-                        req_work = create_req_work(req, sdev, GFP_NOIO, req_worker2);
+                        req_work = create_req_work(req, sdev, GFP_NOIO, req_worker);
                         if (req_work) {
                                 queue_work(wq_io_, &req_work->work);
                         } else {
@@ -709,34 +447,27 @@ bool pre_register(void)
                 LOGe("req_work_cache creation failed.\n");
                 goto error0;
         }
-
-        /* wq_io_ = create_singlethread_workqueue("simple_blk_bio_mem_barrier_io"); */
-        /* wq_io_ = create_workqueue("simple_blk_bio_mem_barrier_io"); */
-        /* wq_io_ = alloc_workqueue("simple_blk_bio_mem_barrier_io", */
-        /*                          WQ_MEM_RECLAIM | WQ_NON_REENTRANT, 0); */
-        /* wq_io_ = alloc_workqueue("simple_blk_req_mem_barrier_io", */
-        /*                          WQ_MEM_RECLAIM | WQ_UNBOUND , 0); */
-        wq_io_ = alloc_workqueue("simple_blk_req_mem_barrier_io",
-                                 WQ_MEM_RECLAIM, 0);
+        
+#ifdef USE_WQ_SINGLE
+        /* Single thread workqueue. This may be slow. */
+        wq_io_ = create_singlethread_workqueue(WQ_IO_NAME);
+#elif defined USE_WQ_UNBOUND
+        /* Worker may not use the same CPU with enqueuer. */
+        wq_io_ = alloc_workqueue(WQ_IO_NAME, WQ_MEM_RECLAIM | WQ_UNBOUND , 0);
+#else
+        /* Default. This is the fastest. */
+        wq_io_ = alloc_workqueue(WQ_IO_NAME, WQ_MEM_RECLAIM, 0);
+#endif
+                                 
         if (!wq_io_) {
                 LOGe("create io queue failed.\n");
                 goto error1;
         }
-        wq_misc_ = create_singlethread_workqueue("simple_blk_req_mem_barrier_misc");
-        /* wq_misc_ = alloc_workqueue("simple_blk_bio_mem_barrier_misc", */
-        /*                            WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_NON_REENTRANT, 1); */
-        if (!wq_misc_) {
-                LOGe("create misc queue failed.\n");
-                goto error2;
-        }
-
         return true;
 #if 0
-error3:
-        destroy_workqueue(wq_misc_);
-#endif
 error2:
         destroy_workqueue(wq_io_);
+#endif
 error1:
         kmem_cache_destroy(req_work_cache_);
 error0:
@@ -748,7 +479,6 @@ error0:
  */
 void post_unregister(void)
 {
-        destroy_workqueue(wq_misc_);
         destroy_workqueue(wq_io_);
         kmem_cache_destroy(req_work_cache_);
 }

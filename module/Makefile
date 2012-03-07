@@ -1,6 +1,15 @@
 # Comment/uncomment the following line to disable/enable debugging
 #DEBUG = 1
 
+# WQ selector.
+ifeq ($(USE_WQ_SINGLE), 1)
+  WQ_FLAGS = -DUSE_WQ_SINGLE
+else ifeq ($(USE_WQ_UNBOUND), 1)
+  WQ_FLAGS = -DUSE_WQ_UNBOUND
+else
+  WQ_FLAGS = 
+endif
+
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DEBUG),1)
   DEBFLAGS = -O -g -DWALB_DEBUG # "-O" is needed to expand inlines
@@ -8,7 +17,7 @@ else
   DEBFLAGS = -O2
 endif
 
-EXTRA_CFLAGS += $(DEBFLAGS)
+EXTRA_CFLAGS += $(DEBFLAGS) $(WQ_FLAGS)
 EXTRA_CFLAGS += -I$(obj)/../include
 
 ifneq ($(KERNELRELEASE),)
