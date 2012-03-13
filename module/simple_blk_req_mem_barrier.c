@@ -451,12 +451,15 @@ bool pre_register(void)
 #ifdef USE_WQ_SINGLE
         /* Single thread workqueue. This may be slow. */
         wq_io_ = create_singlethread_workqueue(WQ_IO_NAME);
+        LOGe("USE_WQ_SINGLE");
 #elif defined USE_WQ_UNBOUND
         /* Worker may not use the same CPU with enqueuer. */
         wq_io_ = alloc_workqueue(WQ_IO_NAME, WQ_MEM_RECLAIM | WQ_UNBOUND , 0);
+        LOGe("USE_WQ_UNBOUND");
 #else
         /* Default. This is the fastest. */
         wq_io_ = alloc_workqueue(WQ_IO_NAME, WQ_MEM_RECLAIM, 0);
+        LOGe("USE_WQ_NORMAL");
 #endif
                                  
         if (!wq_io_) {
