@@ -26,12 +26,6 @@ int start_minor_ = 0;
 /* Physical block size. */
 int physical_block_size_ = 4096;
 
-/* Block sizes. */
-struct block_sizes blksiz_;
-
-#define WQ_IO_NAME "wrapper_blk_simple_io"
-
-
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -39,6 +33,34 @@ struct block_sizes blksiz_;
 module_param_named(device_str, device_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
+
+/*******************************************************************************
+ * Static data definition.
+ *******************************************************************************/
+
+/* Block sizes. */
+struct block_sizes blksiz_;
+
+/* Queue name */
+#define WQ_IO_NAME "wrapper_blk_simple_io"
+
+/* Workqueue for IO. */
+struct workqueue_struct *wq_io_ = NULL;
+
+/* kmem_cache name for request work. */
+#define KMEM_CACHE_REQ_NAME "req_work_cache"
+
+/* kmem_cache for request workst. */
+struct kmem_cache *req_work_cache_ = NULL;
+
+/* request work struct. */
+struct req_work
+{
+        struct request *req;
+        struct wrapper_blk_dev *wdev;
+        struct work_struct work;
+        /* unsigned int id; */
+};
 
 /*******************************************************************************
  * Static functions prototype.
@@ -58,13 +80,11 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev);
 /* Customize wdev after register before start. */
 static void customize_wdev(struct wrapper_blk_dev *wdev);
 
-
 static unsigned int get_minor(unsigned int id);
 static bool register_dev(void);
 static void unregister_dev(void);
 static bool start_dev(void);
 static void stop_dev(void);
-
 
 /*******************************************************************************
  * Static functions definition.
@@ -82,6 +102,8 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
                 __blk_end_request_all(req, 0);
                 req = blk_fetch_request(q);
         }
+        
+        /* now editing */
 }
 
 /* Called before register. */
@@ -89,23 +111,41 @@ static bool pre_register(void)
 {
         LOGd("pre_register called.");
 
+        /* Prepare kmem_cache. */
+        req_work_cache_ = kmem_cache_create(
+                KMEM_CACHE_REQ_NAME, sizeof(struct req_work), 0, 0, NULL);
+        if (!req_work_cache_) {
+                LOGe("failed to create kmem_cache.");
+                goto error0;
+        }
+        
         /* prepare workqueue. */
         wq_io_ = alloc_workqueue(WQ_IO_NAME, WQ_MEM_RECLAIM, 0);
-        LOGe("USE_WQ_NORMAL");
-        
-        /* now editing */
-        
+        if (!wq_io_) {
+                LOGe("failed to allocate a workqueue.");
+                goto error1;
+        }
+
         return true;
+error1:
+        kmem_cache_destroy(req_work_cache_);
+error0:
+        return false;
 }
 
 /* Called after unregister. */
 static void post_unregister(void)
 {
         LOGd("post_unregister called.");
-        /* finalize workqueue. */
 
-        
-        /* now editing */
+        /* finalize workqueue. */
+        if (wq_io_) {
+                flush_workqueue(wq_io_);
+                destroy_workqueue(wq_io_);
+        }
+
+        /* Destory kmem_cache. */
+        kmem_cache_destroy(req_work_cache_);
 }
 
 /* Create private data for wdev. */
