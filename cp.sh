@@ -27,6 +27,8 @@ simple-blk-bio-none-mod.ko \
 simple-blk-bio-mem-mod.ko \
 simple-blk-bio-mem-barrier-mod.ko \
 simple-blk-req-mem-barrier-mod.ko \
+wrapper-blk-mod.ko \
+wrapper-blk-simple-mod.ko \
 "
 list_in_tool="\
 walbctl \

@@ -47,6 +47,14 @@ simple-blk-bio-mem-barrier-mod-objs := \
 $(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem_barrier.o
 simple-blk-req-mem-barrier-mod-objs := \
 $(SIMPLE_BLK_REQ_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_req_mem_barrier.o
+#SIMPLE_BLK_WRAP_OBJS = simple_blk_wrapper.o block_size.o size_list.o
+#simple-blk-wrap-mod-objs := $(SIMPLE_BLK_WRAP_OBJS)
+
+wrapper-blk-mod-objs := wrapper_blk.o block_size.o
+wrapper-blk-simple-mod-objs := wrapper_blk_simple.o block_size.o
+
+wrapper_blk.o: wrapper_blk.c block_size.h wrapper_blk.h 
+wrapper_blk_simple.o: wrapper_blk_simple.c block_size.h wrapper_blk.h
 
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
@@ -69,7 +77,9 @@ simple-blk-mod.o \
 simple-blk-bio-none-mod.o \
 simple-blk-bio-mem-mod.o \
 simple-blk-bio-mem-barrier-mod.o \
-simple-blk-req-mem-barrier-mod.o
+simple-blk-req-mem-barrier-mod.o \
+wrapper-blk-mod.o \
+wrapper-blk-simple-mod.o
 
 else
 
