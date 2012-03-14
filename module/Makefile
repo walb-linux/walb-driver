@@ -53,9 +53,6 @@ $(SIMPLE_BLK_REQ_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_req_mem_barrier.o
 wrapper-blk-mod-objs := wrapper_blk.o block_size.o
 wrapper-blk-simple-mod-objs := wrapper_blk_simple.o block_size.o
 
-wrapper_blk.o: wrapper_blk.c block_size.h wrapper_blk.h 
-wrapper_blk_simple.o: wrapper_blk_simple.c block_size.h wrapper_blk.h
-
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
 #test-treemap-mod.o \
@@ -86,13 +83,10 @@ else
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD       := $(shell pwd)
 
-default: clean_build_date build_date.h buildmodule
+default: build_date.h buildmodule
 
 buildmodule:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
-
-endif
-
 
 clean: clean_build_date
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions
@@ -101,10 +95,15 @@ depend .depend dep:
 	$(CC) $(CFLAGS) -M *.c > .depend
 
 build_date.h: build_date.h.template
-	cat $< | sed "s/XXXXX/`env LC_ALL=C date`/" > $@
+	cat build_date.h.template | sed "s/XXXXX/`env LC_ALL=C date`/" > $@
 
 clean_build_date:
 	rm -f build_date.h
+
+wrapper_blk.o: wrapper_blk.c block_size.h wrapper_blk.h 
+wrapper_blk_simple.o: wrapper_blk_simple.c block_size.h wrapper_blk.h
+
+endif
 
 ifeq (.depend,$(wildcard .depend))
 include .depend
