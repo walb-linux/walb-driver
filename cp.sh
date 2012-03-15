@@ -29,6 +29,7 @@ simple-blk-bio-mem-barrier-mod.ko \
 simple-blk-req-mem-barrier-mod.ko \
 wrapper-blk-mod.ko \
 wrapper-blk-simple-plug-per-req-mod.ko \
+wrapper-blk-simple-plug-per-plug-mod.ko \
 "
 list_in_tool="\
 walbctl \
