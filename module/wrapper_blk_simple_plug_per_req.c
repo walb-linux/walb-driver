@@ -16,6 +16,7 @@
 #include "wrapper_blk_simple.h"
 
 /* #define PERFORMANCE_DEBUG */
+#define USE_EFFICIENT_ENDIO
 
 /*******************************************************************************
  * Static data definition.
@@ -52,6 +53,8 @@ struct bio_entry
         struct bio *bio;
         struct list_head list;
         struct completion done;
+        unsigned int bi_size; /* keep bi_size at initialization,
+                                 because bio->bi_size will be 0 after endio. */
         int error; /* bio error status. */
 };
 
@@ -170,6 +173,7 @@ static struct bio_entry* create_bio_entry(struct bio *bio, struct block_device *
         }
         init_completion(&bioe->done);
         bioe->error = 0;
+        bioe->bi_size = bio->bi_size;
 
         /* clone bio */
         bioe->bio = NULL;
@@ -233,7 +237,12 @@ static void req_work_task(struct work_struct *work)
         struct bio *bio;
         struct bio_entry *bioe, *next;
         struct list_head list;
+        
+#ifdef USE_EFFICIENT_ENDIO
+        int remaining;
+#else
         int err;
+#endif
         
         LOGd("req_work_task begin.\n");
         
@@ -265,25 +274,30 @@ static void req_work_task(struct work_struct *work)
                 generic_make_request(bioe->bio);
         }
         blk_finish_plug(&plug);
-        
-        /* wait comletion and destroy of all bio_entry s. */
-        err = 0;
-        list_for_each_entry(bioe, &list, list) {
-                wait_for_completion(&bioe->done);
-                /* ASSERT(bioe->bio->bi_size == blk_rq_cur_bytes(req)); */
-                /* blk_end_request_cur(req, bioe->error); */
-                if (bioe->error) { err = bioe->error; }
-        }
-        /* ASSERT(list_empty(&list)); */
-        blk_end_request_all(req, err);
 
-        list_for_each_entry(bioe, &list, list) {
+        /* wait comletion and destroy of all bio_entry s. */
+#ifdef USE_EFFICIENT_ENDIO
+        /* call blk_end_request per bio.
+           This is better for large IO with many bios. */
+        remaining = blk_rq_bytes(req);
+        list_for_each_entry_safe(bioe, next, &list, list) {
+                wait_for_completion(&bioe->done);
+                blk_end_request(req, bioe->error, bioe->bi_size);
+                remaining -= bioe->bi_size;
+                list_del(&bioe->list);
                 destroy_bio_entry(bioe);
         }
-        /* list_for_each_entry_safe(bioe, next, &list, list) { */
-        /*         list_del(&bioe->list); */
-        /*         destroy_bio_entry(bioe); */
-        /* } */
+        ASSERT(remaining == 0);
+#else /* call blk_end_request_all per request. */
+        err = 0;
+        list_for_each_entry_safe(bioe, next, &list, list) {
+                wait_for_completion(&bioe->done);
+                if (bioe->error) { err = bioe->error; }
+                list_del(&bioe->list);
+                destroy_bio_entry(bioe);
+        }
+        blk_end_request_all(req, err);
+#endif
         
         destroy_req_work(req_work);
 
@@ -331,7 +345,9 @@ error0:
         LOGd("forward_request_as_wq_task end with errors.\n");
 }
 
-
+/*******************************************************************************
+ * Global functions definition.
+ *******************************************************************************/
 
 /**
  * Make requrest callback.
