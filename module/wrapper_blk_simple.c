@@ -101,6 +101,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         blk_queue_logical_block_size(wdev->queue, lbs);
         blk_queue_physical_block_size(wdev->queue, pbs);
 
+        blk_queue_stack_limits(wdev->queue, bdev_get_queue(bdev));
+
         return true;
 error0:
         blkdev_put(wdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
