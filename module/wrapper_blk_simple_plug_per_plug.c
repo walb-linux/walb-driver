@@ -10,12 +10,14 @@
 #include <linux/list.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
+#include <linux/spinlock.h>
 
 #include "block_size.h"
 #include "wrapper_blk.h"
 #include "wrapper_blk_simple.h"
 
-#define PERFORMANCE_DEBUG
+/* #define PERFORMANCE_DEBUG */
+/* #define NUMBER_OF_PENDING_REQ */
 
 /*******************************************************************************
  * Static data definition.
@@ -36,6 +38,7 @@ struct req_fin_work
         struct request *req;
         struct wrapper_blk_dev *wdev;
         struct list_head bio_entry_list; /* list head of bio_entry */
+        struct list_head list; /* list entry */
 #ifdef PERFORMANCE_DEBUG
         unsigned int id;
 #endif
@@ -70,10 +73,15 @@ static atomic_t bio_entry_id_counter_ = ATOMIC_INIT(0);
 #endif
 
 /* number of pending request. */
+#ifdef NUMBER_OF_PENDING_REQ
 static atomic_t number_of_pending_req_ = ATOMIC_INIT(0);
 /* supports 10000 * 10 = 1,000,000 IOPS */
-#define MAX_PENDING_REQUEST 10000
+#define MAX_PENDING_REQUEST 100
 #define POLLING_WAIT_IN_MS 10
+
+static atomic_t n_bio_end_io_ = ATOMIC_INIT(0);
+static atomic_t n_submit_bio_ = ATOMIC_INIT(0);
+#endif
 
 /*******************************************************************************
  * Static functions prototype.
@@ -99,8 +107,12 @@ static void destroy_bio_entry(struct bio_entry *bioe);
 /* Request finalization task in parallel. */
 static void req_fin_work_task(struct work_struct *work);
 
-/* Execute normal request. */
-static void exec_normal_req(struct request *req, struct wrapper_blk_dev *wdev);
+/* For executing normal request. */
+static struct req_fin_work*
+create_cloned_bio_list(struct request *req, struct wrapper_blk_dev *wdev);
+static void submit_bio_entry_list(struct list_head *listh);
+static void submit_req_fin_work_list(struct list_head *listh);
+static void queue_req_fin_work_list(struct list_head *listh);
 
 /*******************************************************************************
  * Static functions definition.
@@ -178,6 +190,7 @@ static struct req_fin_work* create_req_fin_work(
         work->req = req;
         work->wdev = wdev;
         INIT_LIST_HEAD(&work->bio_entry_list);
+        INIT_LIST_HEAD(&work->list);
         
 #ifdef PERFORMANCE_DEBUG
         work->id = atomic_inc_return(&wq_id_counter_);
@@ -198,22 +211,32 @@ static void destroy_req_fin_work(struct req_fin_work *work)
         }
 }
 
+
 /**
  * endio callback for bio_entry.
  */
 static void bio_entry_end_io(struct bio *bio, int error)
 {
         struct bio_entry *bioe = bio->bi_private;
+        int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
         ASSERT(bioe);
-
+        ASSERT(bioe->bio == bio);
+        ASSERT(uptodate);
+        
+        /* LOGd("bio_entry_end_io() begin.\n"); */
 #ifdef PERFORMANCE_DEBUG
-        LOGd("bio_entry_end_io() %u begin.\n", bioe->id);
-#else
-        LOGd("bio_entry_end_io() begin.\n");
+        LOGd("complete bioe_id %u.\n", bioe->id);
+        /* LOGd("bio_entry_end_io: in_interrupt: %d\n", in_interrupt()); */
 #endif
         bioe->error = error;
+        bio_put(bio);
+        bioe->bio = NULL;
         complete(&bioe->done);
-        LOGd("bio_entry_end_io() end.\n");
+
+#ifdef NUMBER_OF_PENDING_REQ
+        LOGd("n_bio_end_io: %u\n", atomic_inc_return(&n_bio_end_io_));
+#endif
+        /* LOGd("bio_entry_end_io() end.\n"); */
 }
 
 /**
@@ -227,7 +250,7 @@ static struct bio_entry* create_bio_entry(struct bio *bio, struct block_device *
         struct bio_entry *bioe;
         struct bio *biotmp;
 
-        LOGd("create_bio_entry() begin.\n");
+        /* LOGd("create_bio_entry() begin.\n"); */
 
         bioe = kmem_cache_alloc(bio_entry_cache_, GFP_NOIO);
         if (!bioe) {
@@ -242,7 +265,7 @@ static struct bio_entry* create_bio_entry(struct bio *bio, struct block_device *
         bioe->bio = NULL;
         biotmp = bio_clone(bio, GFP_NOIO);
         if (!biotmp) {
-                LOGd("bio_clone() failed.");
+                LOGe("bio_clone() failed.");
                 goto error1;
         }
         biotmp->bi_bdev = bdev;
@@ -253,13 +276,13 @@ static struct bio_entry* create_bio_entry(struct bio *bio, struct block_device *
 #ifdef PERFORMANCE_DEBUG
         bioe->id = atomic_inc_return(&bio_entry_id_counter_);
 #endif
-        LOGd("create_bio_entry() end.\n");
+        /* LOGd("create_bio_entry() end.\n"); */
         return bioe;
 
 error1:
         destroy_bio_entry(bioe);
 error0:
-        LOGd("create_bio_entry() end with error.\n");
+        LOGe("create_bio_entry() end with error.\n");
         return NULL;
 }
 
@@ -277,6 +300,7 @@ static void destroy_bio_entry(struct bio_entry *bioe)
         if (bioe->bio) {
                 LOGd("bio_put %p\n", bioe->bio);
                 bio_put(bioe->bio);
+                bioe->bio = NULL;
         }
         kmem_cache_free(bio_entry_cache_, bioe);
 
@@ -301,44 +325,71 @@ static void req_fin_work_task(struct work_struct *work)
         struct request *req = req_fin_work->req;
         struct bio_entry *bioe, *next;
         int remaining = blk_rq_bytes(req);
+#ifdef PERFORMANCE_DEBUG
+        unsigned int last_bioe_id = 0;
+#endif
         
         LOGd("req_fin_work_task begin.\n");
         
         /* wait comletion and destroy of all bio_entry s. */
         list_for_each_entry_safe(bioe, next, &req_fin_work->bio_entry_list, list) {
+#ifdef PERFORMANCE_DEBUG
+                LOGd("wait_for_completion bioe_id %u\n", bioe->id);
+#endif
                 wait_for_completion(&bioe->done);
+#ifdef PERFORMANCE_DEBUG
+                LOGd("blk_end_request: bioe_id %u\n", bioe->id);
+#endif
                 blk_end_request(req, bioe->error, bioe->bi_size);
+#ifdef PERFORMANCE_DEBUG
+                LOGd("done: bioe_id %u\n", bioe->id);
+                last_bioe_id = bioe->id;
+#endif
                 remaining -= bioe->bi_size;
                 list_del(&bioe->list);
                 destroy_bio_entry(bioe);
         }
         ASSERT(remaining == 0);
         destroy_req_fin_work(req_fin_work);
+#ifdef NUMBER_OF_PENDING_REQ
         atomic_dec(&number_of_pending_req_);
-        
+        LOGd("dec n_pending_req: %u\n", atomic_read(&number_of_pending_req_));
+#endif
+
+#ifdef PERFORMANCE_DEBUG
+        LOGd("req_fin_work_task end (last_bioe_id %u).\n", last_bioe_id);
+#else
         LOGd("req_fin_work_task end.\n");
+#endif
 }
 
 /**
- * Execute a normal request.
+ * Create cloned bio list.
  * (1) create request finalize work.
  * (2) clone all bios in the request.
- * (3) submit all cloned bios.
- * (4) enqueue request finalize work.
+ *
+ * This does not submit cloned bios and enqueued task.
+ *
+ * If an error occurs, __blk_end_request_all(req, -EIO)
+ * will be called inside the function.
  *
  * CONTEXT:
  *   Non-IRQ.
  *   Request queue lock is held.
  *   (Other tasks may be running concurrently?)
+ * RETURN:
+ *   req_fin_work data created in success.
+ *   NULL in failure.
  */
-static void exec_normal_req(struct request *req, struct wrapper_blk_dev *wdev)
+static struct req_fin_work*
+create_cloned_bio_list(struct request *req, struct wrapper_blk_dev *wdev)
 {
         struct block_device *bdev = wdev->private_data;
         struct req_fin_work *work;
         struct bio *bio = NULL;
         struct bio_entry *bioe, *next;
         
-        LOGd("exec_normal_req begin\n");
+        LOGd("create_cloned_bio_list begin\n");
 
         ASSERT(wdev);
         ASSERT(!(req->cmd_flags & REQ_FUA)); /* Currently REQ_FUA is not supported. */
@@ -361,40 +412,93 @@ static void exec_normal_req(struct request *req, struct wrapper_blk_dev *wdev)
                         LOGd("create_bio_entry() failed.\n");
                         goto error1;
                 }
-                LOGd("list_add_tail\n");
+                /* LOGd("list_add_tail\n"); */
                 list_add_tail(&bioe->list, &work->bio_entry_list);
         }
         LOGd("all bioe is created.\n");
 
-        /* submit all bios. */
-        list_for_each_entry(bioe, &work->bio_entry_list, list) {
-                bio = bioe->bio;
-#ifdef PERFORMANCE_DEBUG
-                LOGd("submit bio %u %"PRIu64" %u (rw %lu)\n",
-                     bioe->id, (u64)bio->bi_sector, bio->bi_size, bio_rw(bio));
-#else
-                LOGd("submit bio %"PRIu64" %u (rw %lu)\n",
-                     (u64)bio->bi_sector, bio->bi_size, bio_rw(bio));
-#endif
-                generic_make_request(bio);
-        }
-
-        /* enqueue req_fin_work. */
-        queue_work(wq_req_fin_, &work->work);
-
-        LOGd("exec_normal_req end.\n");
-        return;
+        LOGd("create_cloned_bio_list end\n");
+        return work;
 error1:
         list_for_each_entry_safe(bioe, next, &work->bio_entry_list, list) {
                 list_del(&bioe->list);
                 destroy_bio_entry(bioe);
         }
-        __blk_end_request_all(req, -EIO);
+#ifdef NUMBER_OF_PENDING_REQ
         atomic_dec(&number_of_pending_req_);
-        LOGd("exec_normal_req end.\n");
+        LOGd("dec n_pending_req: %u\n", atomic_read(&number_of_pending_req_));
+#endif
 error0:
         ASSERT(list_empty(&work->bio_entry_list));
         destroy_req_fin_work(work);
+        __blk_end_request_all(req, -EIO);
+        LOGd("create_cloned_bio_list error\n");
+        return NULL;
+}
+
+/**
+ * Submit all cloned bios.
+ *
+ * @listh list head of bio_entry.
+ */
+static void submit_bio_entry_list(struct list_head *listh)
+{
+        struct bio *bio;
+        struct bio_entry *bioe;
+        
+        /* submit all bios. */
+        list_for_each_entry(bioe, listh, list) {
+                bio = bioe->bio;
+#ifdef PERFORMANCE_DEBUG
+                LOGd("submit bio (bioe_id %u) %"PRIu64" %u (rw %lu)\n",
+                     bioe->id, (u64)bio->bi_sector, bio->bi_size, bio_rw(bio));
+#else
+                LOGd("submit bio %"PRIu64" %u (rw %lu)\n",
+                     (u64)bio->bi_sector, bio->bi_size, bio_rw(bio));
+#endif
+                ASSERT(bioe->bio->bi_end_io == bio_entry_end_io);
+                generic_make_request(bioe->bio);
+#ifdef NUMBER_OF_PENDING_REQ
+                LOGd("n_submit_bio: %u\n", atomic_inc_return(&n_submit_bio_));
+#endif
+        }
+}
+
+/**
+ * Submit all realted bios in a req_fin_work.
+ *
+ * @listh list head of req_fin_work.
+ */
+static void submit_req_fin_work_list(struct list_head *listh)
+{
+        struct req_fin_work *work;
+        struct blk_plug plug;
+
+#ifdef PERFORMANCE_DEBUG
+        LOGd("submit_req_fin_work_list begin.\n");
+#endif
+        blk_start_plug(&plug);
+        list_for_each_entry(work, listh, list) {
+                submit_bio_entry_list(&work->bio_entry_list);
+        }
+        blk_finish_plug(&plug);
+#ifdef PERFORMANCE_DEBUG
+        LOGd("submit_req_fin_work_list end.\n");
+#endif
+}
+
+/**
+ * Enqueue all req_fin_work data in a list.
+ *
+ * @listh list head of req_fin_work.
+ */
+static void queue_req_fin_work_list(struct list_head *listh)
+{
+        struct req_fin_work *work;
+        
+        list_for_each_entry(work, listh, list) {
+                queue_work(wq_req_fin_, &work->work);
+        }
 }
 
 /*******************************************************************************
@@ -410,35 +514,51 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 {
         struct wrapper_blk_dev *wdev = wdev_get_from_queue(q);
         struct request *req;
-        struct blk_plug plug;
-        
-        blk_start_plug(&plug);
+        struct req_fin_work *work;
+        struct list_head listh;
+
+        LOGd("wrapper_blk_req_request_fn: in_interrupt: %lu\n", in_interrupt());
+        INIT_LIST_HEAD(&listh);
         req = blk_fetch_request(q);
-        atomic_inc(&number_of_pending_req_);
         while (req) {
                 /* LOGd("REQ: %"PRIu64" (%u)\n", (u64)blk_rq_pos(req), blk_rq_bytes(req)); */
                 print_req_flags(req); /* debug */
 
                 if (req->cmd_flags & REQ_FLUSH) {
-                        LOGi("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
-                        blk_finish_plug(&plug);
+                        LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
+                        submit_req_fin_work_list(&listh);
+                        queue_req_fin_work_list(&listh);
+                        INIT_LIST_HEAD(&listh);
                         flush_workqueue(wq_req_fin_);
                         ASSERT(blk_rq_bytes(req) == 0);
                         __blk_end_request_all(req, 0);
+#ifdef NUMBER_OF_PENDING_REQ
                         atomic_dec(&number_of_pending_req_);
-                        blk_start_plug(&plug);
+                        LOGd("dec n_pending_req: %u\n", atomic_read(&number_of_pending_req_));
+#endif
                 } else {
-                        exec_normal_req(req, wdev);
+                        work = create_cloned_bio_list(req, wdev);
+                        if (work) {
+                                list_add_tail(&work->list, &listh);
+#ifdef NUMBER_OF_PENDING_REQ
+                                atomic_inc(&number_of_pending_req_);
+                                LOGd("inc n_pending_req: %u\n", atomic_read(&number_of_pending_req_));
+#endif
+                        }
+                        
                 }
                 req = blk_fetch_request(q);
-                atomic_inc(&number_of_pending_req_);
         }
-        blk_finish_plug(&plug);
-
-#if 0
+        submit_req_fin_work_list(&listh);
+        queue_req_fin_work_list(&listh);
+        INIT_LIST_HEAD(&listh);
+        LOGd("wrapper_blk_req_request_fn: end.\n");
+        
+#if defined(NUMBER_OF_PENDING_REQ) && 0
+        /* deprecated code. will be removed. */
         /* throttling for asynchronouse finalization. */
         while (atomic_read(&number_of_pending_req_) > MAX_PENDING_REQUEST) {
-                LOGi("sleep %d ms because %d > MAX_PENDING_REQUEST.\n",
+                LOGd("sleep %d ms because %d > MAX_PENDING_REQUEST.\n",
                      POLLING_WAIT_IN_MS, atomic_read(&number_of_pending_req_));
                 msleep_interruptible(POLLING_WAIT_IN_MS);
         }
@@ -468,6 +588,7 @@ bool pre_register(void)
         
         /* prepare workqueue. */
         wq_req_fin_ = alloc_workqueue(WQ_REQ_FIN_NAME, WQ_MEM_RECLAIM, 0);
+        /* wq_req_fin_ = create_singlethread_workqueue(WQ_REQ_FIN_NAME); */
         if (!wq_req_fin_) {
                 LOGe("failed to allocate a workqueue.");
                 goto error2;
