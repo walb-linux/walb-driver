@@ -193,6 +193,8 @@ bool sdev_stop(unsigned int minor)
                 if (sdev->is_started) {
                         sdev->is_started = false;
                         del_gendisk(sdev->gd);
+                        put_disk(sdev->gd);
+                        sdev->gd = NULL;
                         LOGi("Stop device with minor %u.\n", minor);
                 } else {
                         LOGe("Device wit minor %u is already stopped.\n", minor);
