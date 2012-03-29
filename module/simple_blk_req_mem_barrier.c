@@ -356,7 +356,7 @@ void simple_blk_req_request_fn(struct request_queue *q)
                         flush_workqueue(wq_io_);
                         __blk_end_request_all(req, 0);
                 } else {
-                        req_work = create_req_work(req, sdev, GFP_NOIO, req_worker);
+                        req_work = create_req_work(req, sdev, GFP_ATOMIC, req_worker);
                         if (req_work) {
                                 queue_work(wq_io_, &req_work->work);
                         } else {

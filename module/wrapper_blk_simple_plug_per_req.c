@@ -330,7 +330,7 @@ static void forward_request_as_wq_task(struct wrapper_blk_dev *wdev, struct requ
         ASSERT(!(req->cmd_flags & REQ_FLUSH)); /* REQ_FLUSH must be processed before. */
         
         /* Prepare a task. */
-        req_work = create_req_work(req, wdev, GFP_NOIO, req_work_task);
+        req_work = create_req_work(req, wdev, GFP_ATOMIC, req_work_task);
         if (!req_work) {
                 LOGd("create_req_work() failed.");
                 goto error0;
