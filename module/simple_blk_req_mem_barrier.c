@@ -143,6 +143,8 @@ static struct req_work* create_req_work(
 {
         struct req_work *work;
 
+        /* LOGd("create_req_work begin\n"); */
+        
         ASSERT(req);
         ASSERT(sdev);
 
@@ -154,8 +156,11 @@ static struct req_work* create_req_work(
         work->sdev = sdev;
         work->id = atomic_inc_return(&id_counter_);
         INIT_WORK(&work->work, worker);
+
+        /* LOGd("create_req_work end\n"); */
         return work;
 error0:
+        /* LOGd("create_req_work error\n"); */
         return NULL;
 }
 
@@ -347,6 +352,8 @@ void simple_blk_req_request_fn(struct request_queue *q)
         struct request *req;
         struct req_work *req_work;
 
+        /* LOGd("simple_blk_req_request_fn begin.\n"); */
+        
         req = blk_fetch_request(q);
         while (req) {
                 /* LOGd("REQ: %"PRIu64" (%u)\n", (u64)blk_rq_pos(req), blk_rq_bytes(req)); */
@@ -365,6 +372,8 @@ void simple_blk_req_request_fn(struct request_queue *q)
                 }
                 req = blk_fetch_request(q);
         }
+
+        /* LOGd("simple_blk_req_request_fn end.\n"); */
 }
 #endif
 

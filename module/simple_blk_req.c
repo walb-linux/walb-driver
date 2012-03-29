@@ -144,6 +144,8 @@ static void stop_alldevs(void)
 
 static int __init simple_blk_init(void)
 {
+        ASSERT(!in_interrupt());
+        
         blksiz_init(&blksiz_, LOGICAL_BLOCK_SIZE, physical_block_size_);
 
         n_devices_ = sizlist_length(device_size_list_str_);
@@ -172,6 +174,9 @@ error0:
 
 static void simple_blk_exit(void)
 {
+        ASSERT(!in_interrupt());
+        LOGd("in_atomic: %u.\n", in_atomic());
+        
         stop_alldevs();
         unregister_alldevs();
         post_unregister();

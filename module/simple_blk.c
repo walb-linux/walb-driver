@@ -558,6 +558,7 @@ static void stop_and_unregister_all_devices(void)
 
 static int __init simple_blk_init(void)
 {
+        ASSERT(!in_interrupt());
         LOGi("Simple-blk module init.\n");
         
         /* Register a block device module. */
@@ -596,6 +597,9 @@ error0:
 
 static void simple_blk_exit(void)
 {
+        ASSERT(!in_interrupt());
+        LOGd("in_atomic: %u.\n", in_atomic());
+        
         stop_and_unregister_all_devices();
         flush_workqueue(wqm_);
         flush_workqueue(wqs_);
