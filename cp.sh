@@ -10,34 +10,12 @@ fi
 
 SCRIPT_DIR=$(cd $(dirname $0);pwd)
 
-list_in_module="\
-walb-mod.ko \
-insmod.sh \
-test-hashtbl-mod.ko \
-test-treemap-mod.ko \
-memblk-mod.ko \
-test-memblk-data-mod.ko \
-test-memblk-data-perf-mod.ko \
-test-sg-util-mod.ko \
-test-size-list-mod.ko \
-test-kmem-cache-mod.ko \
-test-kthread-mod.ko \
-simple-blk-mod.ko \
-simple-blk-bio-none-mod.ko \
-simple-blk-bio-mem-mod.ko \
-simple-blk-bio-mem-barrier-mod.ko \
-simple-blk-req-mem-barrier-mod.ko \
-simple-blk-req-none-mod.ko \
-wrapper-blk-mod.ko \
-wrapper-blk-simple-plug-per-req-mod.ko \
-wrapper-blk-simple-plug-per-plug-mod.ko \
-"
 list_in_tool="\
 walbctl \
 test_rw \
 "
 
-for f in $list_in_module; do
+for f in *.ko; do
   scp -p ${SCRIPT_DIR}/module/${f} ${TARGET_HOST}:${TARGET_DIR} &
 done
 

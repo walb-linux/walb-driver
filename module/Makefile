@@ -12,7 +12,7 @@ endif
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DEBUG),1)
-  DEBFLAGS = -O -g -DWALB_DEBUG # "-O" is needed to expand inlines
+  DEBFLAGS = -O -g -DDEBUG -DWALB_DEBUG # "-O" is needed to expand inlines
 else
   DEBFLAGS = -O2
 endif
