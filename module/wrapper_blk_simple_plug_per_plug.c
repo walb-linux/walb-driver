@@ -492,6 +492,7 @@ static void req_flush_task(struct work_struct *work)
 	struct req_list_work *rlwork = container_of(work, struct req_list_work, work);
 	struct request_queue *q = rlwork->wdev->queue;
 	int is_restart_queue = rlwork->is_restart_queue;
+	unsigned long flags;
         
 	LOGd("req_flush_task begin.\n");
 	ASSERT(rlwork->flush_req);
@@ -502,9 +503,10 @@ static void req_flush_task(struct work_struct *work)
 
 	/* Restart queue if required. */
 	if (is_restart_queue) {
-		spin_lock(q->queue_lock);
+		spin_lock_irqsave(q->queue_lock, flags);
+		ASSERT(blk_queue_stopped(q));
 		blk_start_queue(q);
-		spin_unlock(q->queue_lock);
+		spin_unlock_irqrestore(q->queue_lock, flags);
 	}
         
 	if (list_empty(&rlwork->req_entry_list)) {
@@ -524,7 +526,9 @@ static void req_flush_task(struct work_struct *work)
 /**
  * Make requrest callback.
  *
- * CONTEXT: in_interrupt(): false, is_atomic(): true.
+ * CONTEXT:
+ *     in_interrupt(): false. is_atomic(): true.
+ *     queue lock is held.
  */
 void wrapper_blk_req_request_fn(struct request_queue *q)
 {
