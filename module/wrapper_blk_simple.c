@@ -146,7 +146,8 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
                         blk_queue_flush(q, REQ_FLUSH);
                 }
         } else {
-                LOGn("Not support REQ_FLUSH.");
+                LOGn("Not support REQ_FLUSH (but support).");
+		blk_queue_flush(q, REQ_FLUSH);
         }
 
         if (blk_queue_discard(uq)) {
