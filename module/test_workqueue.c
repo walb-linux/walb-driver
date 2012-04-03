@@ -71,7 +71,7 @@ static void test_workqueue(void);
 
 static void test_work_task_detail(struct work_struct *work, int id)
 {
-        __UNUSED struct timespec delta[3];
+        UNUSED struct timespec delta[3];
         struct test_work* test_work = container_of(work, struct test_work, work);
 
         getnstimeofday(&test_work->deq_ts);

@@ -255,7 +255,7 @@ bool sg_copy_to_sg_offset(
  *
  * Simple implementation.
  */
-__DEPRECATED __UNUSED
+DEPRECATED UNUSED
 static void sg_fill_zero_old(struct sg_table *sgt)
 {
         struct scatterlist *sg;
@@ -504,7 +504,7 @@ static void alloc_sg_and_pages_randomly(
         struct sg_table *sgt, unsigned int nents,
         unsigned int min_entsize, unsigned int max_entsize)
 {
-        __UNUSED int ret;
+        UNUSED int ret;
         int i;
         struct scatterlist *sg;
         unsigned int siz, off;
@@ -563,7 +563,7 @@ void test_sg_pos(void)
 
         unsigned int nents = 32;
         unsigned int entsize = PAGE_SIZE / nents;
-        __UNUSED int ret;
+        UNUSED int ret;
         int i;
         unsigned int ui;
         u8 *tmp_data;
@@ -625,8 +625,8 @@ void test_sg_util(void)
 {
         struct sg_table sgt0, sgt1;
         unsigned int nents = get_random_u32_max(64) + 128;
-        __UNUSED int ret;
-        __UNUSED bool ret_b;
+        UNUSED int ret;
+        UNUSED bool ret_b;
         u8 *tmp_data0, *tmp_data1;
         struct scatterlist *sg;
         int i;

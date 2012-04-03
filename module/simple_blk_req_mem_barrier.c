@@ -65,7 +65,7 @@ static void mdata_exec_req(struct memblk_data *mdata, struct request *req);
 static void mdata_exec_req_cur(struct memblk_data *mdata, struct request *req);
 
 static struct memblk_data* get_mdata_from_sdev(struct simple_blk_dev *sdev);
-__UNUSED static struct memblk_data* get_mdata_from_queue(struct request_queue *q);
+UNUSED static struct memblk_data* get_mdata_from_queue(struct request_queue *q);
 
 static struct req_work* create_req_work(
         struct request *req, struct simple_blk_dev *sdev, gfp_t gfp_mask,

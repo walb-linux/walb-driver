@@ -1303,7 +1303,7 @@ unsigned long multimap_del(multimap_t *tmap, u64 key, unsigned long val)
         struct hlist_node *hlnode, *hlnext;
         int found;
         unsigned long retval = TREEMAP_INVALID_VAL;
-        __UNUSED unsigned long ret;
+        UNUSED unsigned long ret;
         
         t = map_lookup_node((map_t *)tmap, key);
         if (t == NULL) { return TREEMAP_INVALID_VAL; }

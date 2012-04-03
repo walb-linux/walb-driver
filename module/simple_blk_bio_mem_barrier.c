@@ -57,7 +57,7 @@ static void mdata_exec_discard(struct memblk_data *mdata, u64 block_id, unsigned
 static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio);
 
 static struct memblk_data* get_mdata_from_sdev(struct simple_blk_dev *sdev);
-__UNUSED static struct memblk_data* get_mdata_from_queue(struct request_queue *q);
+UNUSED static struct memblk_data* get_mdata_from_queue(struct request_queue *q);
 
 static struct bio_work* create_bio_work(struct bio *bio, struct simple_blk_dev *sdev, gfp_t gfp_mask);
 static void destroy_bio_work(struct bio_work *work);
@@ -388,7 +388,7 @@ void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
 {
         struct simple_blk_dev *sdev = sdev_get_from_queue(q);
         struct memblk_data *mdata = get_mdata_from_sdev(sdev);
-        __UNUSED struct timespec t0, t1, td;
+        UNUSED struct timespec t0, t1, td;
         ASSERT(bio);
 
 #ifdef PERFORMANCE_DEBUG

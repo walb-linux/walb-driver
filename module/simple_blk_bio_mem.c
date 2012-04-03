@@ -17,7 +17,7 @@
 /**
  * For debug.
  */
-__UNUSED
+UNUSED
 static void log_bi_rw_flag(struct bio *bio)
 {
         LOGd("bio bi_sector %"PRIu64" bi_rw %0lx bi_size %u bi_vcnt %hu\n",
@@ -40,7 +40,7 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
         int i;
         sector_t sector;
         u64 block_id;
-        __UNUSED struct bio_vec *bvec;
+        UNUSED struct bio_vec *bvec;
         u8 *buffer_bio;
         unsigned int is_write;
         unsigned int n_blk;
