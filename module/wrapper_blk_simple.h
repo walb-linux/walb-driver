@@ -18,4 +18,12 @@ bool pre_register(void);
 /* Called after unregister. */
 void post_unregister(void);
 
+enum plug_policy {
+	PLUG_PER_PLUG,
+	PLUG_PER_REQ
+};
+
+/* Get policy */
+enum plug_policy get_policy(void);
+
 #endif /* WALB_WRAPPER_BLK_SIMPLE_H_KERNEL */

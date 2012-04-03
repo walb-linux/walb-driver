@@ -79,6 +79,12 @@ struct bio_entry
 #define KMEM_CACHE_BIO_ENTRY_NAME "bio_entry_cache"
 struct kmem_cache *bio_entry_cache_ = NULL;
 
+/*******************************************************************************
+ * Macros definition.
+ *******************************************************************************/
+
+/* Check plugging policy is plug_per_plug or not. */
+#define isPlugPerPlug() (get_policy() == PLUG_PER_PLUG)
 
 /*******************************************************************************
  * Static functions prototype.
@@ -421,6 +427,20 @@ static void wait_for_req_entry(struct req_entry *reqe)
 	ASSERT(remaining == 0);
 }
 
+static void blk_start_plug_p(struct blk_plug *plug, bool pred)
+{
+	if (pred) {
+		blk_start_plug(plug);
+	}
+}
+
+static void blk_finish_plug_p(struct blk_plug *plug, bool pred)
+{
+	if (pred) {
+		blk_finish_plug(plug);
+	}
+}
+
 /**
  * Execute request list.
  *
@@ -447,15 +467,17 @@ static void req_list_work_task(struct work_struct *work)
 	ASSERT(rlwork->flush_req == NULL);
 
 	/* prepare and submit */
-	blk_start_plug(&plug);
+	blk_start_plug_p(&plug, isPlugPerPlug());
 	list_for_each_entry(reqe, &rlwork->req_entry_list, list) {
 		if (!create_bio_entry_list(reqe, wdev)) {
 			LOGe("create_bio_entry_list failed.\n");
 			goto error0;
 		}
+		blk_start_plug_p(&plug, !isPlugPerPlug());
 		submit_req_entry(reqe);
+		blk_finish_plug_p(&plug, !isPlugPerPlug());
 	}
-	blk_finish_plug(&plug);
+	blk_finish_plug_p(&plug, isPlugPerPlug());
 
 	/* wait completion and end requests. */
 	list_for_each_entry_safe(reqe, next, &rlwork->req_entry_list, list) {
@@ -515,6 +537,7 @@ static void req_flush_task(struct work_struct *work)
 		INIT_WORK(&rlwork->work, req_list_work_task);
 		queue_work(wq_req_list_, &rlwork->work);
 	}
+	LOGd("req_flush_task end.\n");
 }
 
 /*******************************************************************************
@@ -539,8 +562,8 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 
 	INIT_LIST_HEAD(&listh);
 
-	LOGd("wrapper_blk_req_request_fn: in_interrupt: %lu in_atomic: %d\n",
-		in_interrupt(), in_atomic());
+	/* LOGd("wrapper_blk_req_request_fn: in_interrupt: %lu in_atomic: %d\n", */
+	/* 	in_interrupt(), in_atomic()); */
 
 	work = create_req_list_work(NULL, wdev, GFP_ATOMIC, req_list_work_task);
 	if (!work) { goto error0; }
@@ -586,12 +609,13 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		}
 	}
 	INIT_LIST_HEAD(&listh);
-	LOGd("wrapper_blk_req_request_fn: end.\n");
+	/* LOGd("wrapper_blk_req_request_fn: end.\n"); */
 	return;
 error0:
 	while ((req = blk_fetch_request(q)) != NULL) {
 		__blk_end_request_all(req, -EIO);
 	}
+	/* LOGe("wrapper_blk_req_request_fn: error.\n"); */
 }
         
 /* Called before register. */
