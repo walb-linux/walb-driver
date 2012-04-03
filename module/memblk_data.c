@@ -371,7 +371,7 @@ bool test_memblk_data_simple(u64 capacity, const u32 block_size)
 {
         struct memblk_data *mdata = NULL;
         u64 b_id;
-        __UNUSED u8 *data;
+        UNUSED u8 *data;
         
         ASSERT(capacity > 0);
         mdata_assert_block_size(block_size);
@@ -407,18 +407,18 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 
         LOGd("test_memblk_data start.\n");
         strbuf = (char *)__get_free_page(GFP_KERNEL); count_ ++;
-        __CHECK(strbuf, error);
+        WALB_CHECK(strbuf);
 
         if (capacity == 0) {
                 capacity = get_random_capacity(block_size) + 4;
         }
         mdata = mdata_create(capacity, block_size, GFP_KERNEL);
-        __CHECK(mdata, error);
+        WALB_CHECK(mdata);
 
         data1 = (u8 *)__get_free_page(GFP_KERNEL); count_ ++;
-        __CHECK(data1, error);
+        WALB_CHECK(data1);
         data2 = (u8 *)__get_free_page(GFP_KERNEL); count_ ++;
-        __CHECK(data2, error);
+        WALB_CHECK(data2);
 
         sprint_hex(strbuf, PAGE_SIZE, data1, 128);
         /* LOGd("data1: %s\n", strbuf); */
@@ -436,14 +436,14 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         sprint_hex(strbuf, PAGE_SIZE, data2, 128);
         /* LOGd("data2: %s\n", strbuf); */
         
-        __CHECK(memcmp(data1, data2, block_size) == 0, error);
+        WALB_CHECK(memcmp(data1, data2, block_size) == 0);
 
         /* Last block */
         addr = capacity - 1;
         fill_random(data1, PAGE_SIZE);
         mdata_write_block(mdata, addr, data1);
         mdata_read_block(mdata, addr, data2);
-        __CHECK(memcmp(data1, data2, block_size) == 0, error);
+        WALB_CHECK(memcmp(data1, data2, block_size) == 0);
 
         /* First two blocks */
         if (block_size * 2 <= PAGE_SIZE) {
@@ -451,7 +451,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
                 fill_random(data1, PAGE_SIZE);
                 mdata_write_blocks(mdata, 0, 2, data1);
                 mdata_read_blocks(mdata, 0, 2, data2);
-                __CHECK(memcmp(data1, data2, block_size * 2) == 0, error);
+                WALB_CHECK(memcmp(data1, data2, block_size * 2) == 0);
         }
         
         /* Random area */
@@ -468,7 +468,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
                 mdata_write_blocks(mdata, addr, size, data1);
                 mdata_read_blocks(mdata, addr, size, data2);
                 
-                __CHECK(memcmp(data1, data2, size * block_size) == 0, error);
+                WALB_CHECK(memcmp(data1, data2, size * block_size) == 0);
         }
 
         free_page((unsigned long)strbuf); count_ --;

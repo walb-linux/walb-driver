@@ -125,7 +125,7 @@ static void wait_for_req_entry(struct req_entry *reqe);
 /**
  * Print request flags for debug.
  */
-__UNUSED
+UNUSED
 static void print_req_flags(struct request *req)
 {
 	LOGd("REQ_FLAGS: "

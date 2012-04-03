@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SIZE_LIST_H_KERNEL
-#define _WALB_SIZE_LIST_H_KERNEL
+#ifndef WALB_SIZE_LIST_H_KERNEL
+#define WALB_SIZE_LIST_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -14,7 +14,7 @@ unsigned int sizlist_length(const char* sizlist_str);
 u64 sizlist_nth_size(const char* sizlist_str, unsigned int n);
 
 /* Test */
-__UNUSED
+UNUSED
 void test_sizlist(void);
 
 #endif /* _WALB_SIZE_LIST_H_KERNEL */

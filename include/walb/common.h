@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_COMMON_H
-#define _WALB_COMMON_H
+#ifndef WALB_COMMON_H
+#define WALB_COMMON_H
 
 /**
  * Assert macro, integer typedef, etc.
@@ -105,21 +105,21 @@ static inline void* amalloc(size_t size, size_t align)
 /**
  * Function/variable attribute macros.
  */
-#define __DEPRECATED __attribute__((deprecated))
-#define __UNUSED __attribute__((unused))
-#define __NOT_YET_IMPLEMENTED __attribute__((warning("NOT YET IMPLEMENTED")))
+#define DEPRECATED __attribute__((deprecated))
+#define UNUSED __attribute__((unused))
+#define NOT_YET_IMPLEMENTED __attribute__((warning("NOT YET IMPLEMENTED")))
 
 /**
  * For test.
  */
-#define __CHECK(cond, label) do {                                       \
-                if (! (cond)) {                                         \
-                        LOGe("CHECK FAILED in %s:%d:%s.\n",             \
-                             __FILE__, __LINE__, __func__);             \
-                        goto label;                                     \
-                }                                                       \
-        } while(0)
+#define WALB_CHECK_LABEL(cond, label) do {			\
+		if (! (cond)) {					\
+			LOGe("CHECK FAILED in %s:%d:%s.\n",	\
+				__FILE__, __LINE__, __func__);	\
+			goto label;				\
+		}						\
+	} while(0)
 
-#define WALB_CHECK(cond) __CHECK(cond, error)
+#define WALB_CHECK(cond) WALB_CHECK_LABEL(cond, error)
 
 #endif /* _WALB_COMMON_H */

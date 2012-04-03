@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SG_UTIL_H_KERNEL
-#define _WALB_SG_UTIL_H_KERNEL
+#ifndef WALB_SG_UTIL_H_KERNEL
+#define WALB_SG_UTIL_H_KERNEL
 
 #include "check_kernel.h"
 #include <linux/scatterlist.h>
@@ -37,13 +37,13 @@ bool sg_copy_from_buffer_offset(
         const u8 *buf, unsigned int size);
 
 /* Test original scatterlist functionalities. */
-__UNUSED
+UNUSED
 void test_scatterlist(unsigned int nents, unsigned int entsize);
 /* Test utilities defined in thie header file. */
-__UNUSED
+UNUSED
 void test_sg_util(void);
 /* Test sg_pos and related function. */
-__UNUSED
+UNUSED
 void test_sg_pos(void);
 
 #endif /* WALB_SG_UTIL_H_KERNEL */
