@@ -54,10 +54,8 @@ $(SIMPLE_BLK_REQ_OBJS) simple_blk_req_none.o
 
 wrapper-blk-mod-objs := wrapper_blk.o block_size.o
 WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o block_size.o
-wrapper-blk-simple-plug-per-req-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
-wrapper_blk_simple_plug_per_req.o
-wrapper-blk-simple-plug-per-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
-wrapper_blk_simple_plug_per_plug.o
+wrapper-blk-simple-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
+wrapper_blk_simple_plug.o
 
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
@@ -83,8 +81,7 @@ simple-blk-bio-mem-barrier-mod.o \
 simple-blk-req-none-mod.o \
 simple-blk-req-mem-barrier-mod.o \
 wrapper-blk-mod.o \
-wrapper-blk-simple-plug-per-req-mod.o \
-wrapper-blk-simple-plug-per-plug-mod.o
+wrapper-blk-simple-plug-mod.o \
 
 else
 

@@ -31,6 +31,12 @@ int start_minor_ = 0;
 /* Physical block size. */
 int physical_block_size_ = 4096;
 
+/**
+ * Plugging policy.
+ * 'plug_per_plug' or 'plug_per_req'.
+ */
+char *plug_policy_str_ = "plug_per_plug";
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -38,13 +44,17 @@ int physical_block_size_ = 4096;
 module_param_named(device_str, device_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
-
+module_param_named(plug_policy, plug_policy_str_, charp, S_IRUGO);
+	
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
 
 /* Block sizes. */
 struct block_sizes blksiz_;
+
+/* Policy. */
+enum plug_policy plug_policy_;
 
 /*******************************************************************************
  * Static functions prototype.
@@ -221,6 +231,26 @@ static void stop_dev(void)
         wdev_stop(get_minor(i));
 }
 
+static void set_policy(void)
+{
+	if (strcmp(plug_policy_str_, "plug_per_req") == 0) {
+		plug_policy_ = PLUG_PER_REQ;
+		LOGn("plug_policy: plug_per_req\n");
+	} else {
+		plug_policy_ = PLUG_PER_PLUG;
+		LOGn("plug_policy: plug_per_plug\n");
+	}
+}
+
+/*******************************************************************************
+ * Global function definition.
+ *******************************************************************************/
+
+enum plug_policy get_policy(void)
+{
+	return plug_policy_;
+}
+
 /*******************************************************************************
  * Init/exit definition.
  *******************************************************************************/
@@ -228,7 +258,8 @@ static void stop_dev(void)
 static int __init wrapper_blk_init(void)
 {
         blksiz_init(&blksiz_, LOGICAL_BLOCK_SIZE, physical_block_size_);
-
+	set_policy();
+	
         pre_register();
         
         if (!register_dev()) {
