@@ -96,8 +96,7 @@ static void print_req_flags(struct request *req);
 /* req_list_work related. */
 static struct req_list_work* create_req_list_work(
 	struct request *flush_req,
-	struct wrapper_blk_dev *wdev, gfp_t gfp_mask,
-	void (*worker)(struct work_struct *work));
+	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
 static void destroy_req_list_work(struct req_list_work *work);
 
 /* req_entry related. */
@@ -126,6 +125,7 @@ static void wait_for_req_entry(struct req_entry *reqe);
 /**
  * Print request flags for debug.
  */
+__UNUSED
 static void print_req_flags(struct request *req)
 {
 	LOGd("REQ_FLAGS: "
@@ -177,8 +177,7 @@ static void print_req_flags(struct request *req)
 static struct req_list_work* create_req_list_work(
 	struct request *flush_req,
 	struct wrapper_blk_dev *wdev,
-	gfp_t gfp_mask,
-	void (*worker)(struct work_struct *work))
+	gfp_t gfp_mask)
 {
 	struct req_list_work *work;
 
@@ -189,7 +188,6 @@ static struct req_list_work* create_req_list_work(
 	if (!work) {
 		goto error0;
 	}
-	INIT_WORK(&work->work, worker);
 	work->wdev = wdev;
 	INIT_LIST_HEAD(&work->req_entry_list);
 	work->flush_req = flush_req;
@@ -540,6 +538,33 @@ static void req_flush_task(struct work_struct *work)
 	LOGd("req_flush_task end.\n");
 }
 
+
+/**
+ * Enqueue all works in a list.
+ *
+ * CONTEXT:
+ *     in_interrupt(): false. is_atomic(): true.
+ *     queue lock is held.
+ */
+static void enqueue_work_list(struct list_head *listh, struct request_queue *q)
+{
+	struct req_list_work *work;
+	
+	list_for_each_entry(work, listh, list) {
+		if (work->flush_req) {
+			if (list_is_last(&work->list, &listh)) {
+				work->is_restart_queue = true;
+				blk_stop_queue(q);
+			}
+			INIT_WORK(&work->work, req_flush_task);
+			queue_work(wq_req_flush_, &work->work);
+		} else {
+			INIT_WORK(&work->work, req_list_work_task);
+			queue_work(wq_req_list_, &work->work);
+		}
+	}
+}
+
 /*******************************************************************************
  * Global functions definition.
  *******************************************************************************/
@@ -560,17 +585,16 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	struct list_head listh;
 	bool errorOccurd = false;
 
-	INIT_LIST_HEAD(&listh);
-
 	/* LOGd("wrapper_blk_req_request_fn: in_interrupt: %lu in_atomic: %d\n", */
 	/* 	in_interrupt(), in_atomic()); */
 
-	work = create_req_list_work(NULL, wdev, GFP_ATOMIC, req_list_work_task);
+	INIT_LIST_HEAD(&listh);
+	work = create_req_list_work(NULL, wdev, GFP_ATOMIC);
 	if (!work) { goto error0; }
 	
 	while ((req = blk_fetch_request(q)) != NULL) {
 
-		print_req_flags(req); /* debug */
+		/* print_req_flags(req); */
 
 		if (errorOccurd) {
 			__blk_end_request_all(req, -EIO);
@@ -581,33 +605,23 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 			LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
 
 			list_add_tail(&work->list, &listh);
-			work = create_req_list_work(req, wdev, GFP_ATOMIC, req_flush_task);
+			work = create_req_list_work(req, wdev, GFP_ATOMIC);
 			if (!work) {
 				errorOccurd = true;
 				__blk_end_request_all(req, -EIO);
+				continue;
 			}
 		} else {
 			reqe = create_req_entry(req, GFP_ATOMIC);
 			if (!reqe) {
 				__blk_end_request_all(req, -EIO);
-			} else {
-				list_add_tail(&reqe->list, &work->req_entry_list);
+				continue;
 			}
+			list_add_tail(&reqe->list, &work->req_entry_list);
 		}
 	}
 	list_add_tail(&work->list, &listh);
-
-	list_for_each_entry(work, &listh, list) {
-		if (work->flush_req) {
-			if (list_is_last(&work->list, &listh)) {
-				work->is_restart_queue = true;
-				blk_stop_queue(q);
-			}
-			queue_work(wq_req_flush_, &work->work);
-		} else {
-			queue_work(wq_req_list_, &work->work);
-		}
-	}
+	enqueue_work_list(&listh, q);
 	INIT_LIST_HEAD(&listh);
 	/* LOGd("wrapper_blk_req_request_fn: end.\n"); */
 	return;
