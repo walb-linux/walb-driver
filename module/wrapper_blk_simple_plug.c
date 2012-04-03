@@ -552,7 +552,7 @@ static void enqueue_work_list(struct list_head *listh, struct request_queue *q)
 	
 	list_for_each_entry(work, listh, list) {
 		if (work->flush_req) {
-			if (list_is_last(&work->list, &listh)) {
+			if (list_is_last(&work->list, listh)) {
 				work->is_restart_queue = true;
 				blk_stop_queue(q);
 			}
