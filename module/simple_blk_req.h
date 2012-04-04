@@ -3,11 +3,12 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SIMPLE_BLK_REQ_H_KERNEL
-#define _WALB_SIMPLE_BLK_REQ_H_KERNEL
+#ifndef WALB_SIMPLE_BLK_REQ_H_KERNEL
+#define WALB_SIMPLE_BLK_REQ_H_KERNEL
 
 #include "check_kernel.h"
 #include <linux/blkdev.h>
+#include <linux/workqueue.h>
 #include "simple_blk.h"
 
 /*******************************************************************************
@@ -29,4 +30,8 @@ void destroy_private_data(struct simple_blk_dev *sdev);
 /* Customize sdev after register before start. */
 void customize_sdev(struct simple_blk_dev *sdev);
 
-#endif /* _WALB_SIMPLE_BLK_REQ_H_KERNEL */
+/* Create an IO workqueue.
+   The details will be decidec by module parameter. */
+struct workqueue_struct* create_wq_io(const char *name);
+
+#endif /* WALB_SIMPLE_BLK_REQ_H_KERNEL */
