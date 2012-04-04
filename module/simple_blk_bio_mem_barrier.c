@@ -492,14 +492,14 @@ bool pre_register(void)
                 goto error0;
         }
 
-        wq_io_ = alloc_workqueue(WQ_IO_NAME, WQ_MEM_RECLAIM, 0);
+        wq_io_ = create_wq_io(WQ_IO_NAME);
         if (!wq_io_) {
-                LOGe("create io queue failed.\n");
+                LOGe("create io workqueue failed.\n");
                 goto error1;
         }
         wq_flush_ = create_singlethread_workqueue(WQ_FLUSH_NAME);
         if (!wq_flush_) {
-                LOGe("create misc queue failed.\n");
+                LOGe("create flush workqueue failed.\n");
                 goto error2;
         }
 

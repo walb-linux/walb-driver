@@ -33,6 +33,14 @@ struct block_sizes blksiz_;
 /* Number of devices. */
 unsigned int n_devices_ = 0;
 
+/**
+ * IO workqueue type.
+ *
+ * "normal", "single", "unbound"
+ *
+ **/
+char *wq_io_type_str_ = "normal";
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -40,6 +48,17 @@ unsigned int n_devices_ = 0;
 module_param_named(device_size_list, device_size_list_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
+module_param_named(wq_io_type, wq_io_type_str_, charp, S_IRUGO);
+
+/*******************************************************************************
+ * Static data definition.
+ *******************************************************************************/
+
+enum workqueue_type {
+	WQ_TYPE_SINGLE, WQ_TYPE_UNBOUND, WQ_TYPE_NORMAL
+};
+
+static enum workqueue_type wq_io_type_;
 
 /*******************************************************************************
  * Static functions prototype.
@@ -50,6 +69,7 @@ static bool register_alldevs(void);
 static void unregister_alldevs(void);
 static bool start_alldevs(void);
 static void stop_alldevs(void);
+static void set_workqueue_type(void);
 
 /*******************************************************************************
  * Static functions definition.
@@ -134,6 +154,52 @@ static void stop_alldevs(void)
         }
 }
 
+static void set_workqueue_type(void)
+{
+	if (strcmp(wq_io_type_str_, "single") == 0) {
+		wq_io_type_ = WQ_TYPE_SINGLE;
+		LOGn("wq_io_type: single\n");
+	} else if (strcmp(wq_io_type_str_, "unbound") == 0) {
+		wq_io_type_ = WQ_TYPE_UNBOUND;
+		LOGn("wq_io_type: unbound\n");
+	} else {
+		wq_io_type_ = WQ_TYPE_NORMAL;
+		LOGn("wq_io_type: normal\n");
+	}
+}
+
+/*******************************************************************************
+ * Global functions definition.
+ *******************************************************************************/
+
+struct workqueue_struct* create_wq_io(const char *name)
+{
+	struct workqueue_struct *wq = NULL;
+
+	switch (wq_io_type_) {
+	case WQ_TYPE_SINGLE:
+		/* Single thread workqueue. This may be slow. */
+		wq = create_singlethread_workqueue(name);
+		LOGn("USE_WQ_SINGLE");
+		break;
+		
+	case WQ_TYPE_UNBOUND:
+		/* Worker may not use the same CPU with enqueuer. */
+		wq = alloc_workqueue(name, WQ_MEM_RECLAIM | WQ_UNBOUND , 0);
+		LOGn("USE_WQ_UNBOUND");
+		break;
+		
+	case WQ_TYPE_NORMAL:
+		/* Default. This is the fastest. */	
+		wq = alloc_workqueue(name, WQ_MEM_RECLAIM, 0);
+		LOGn("USE_WQ_NORMAL");
+		break;
+	default:
+		LOGe("Not supported wq_io_type %s.\n", name);
+	}
+	return wq;
+}
+
 /*******************************************************************************
  * Init/exit definition.
  *******************************************************************************/
@@ -141,6 +207,7 @@ static void stop_alldevs(void)
 static int __init simple_blk_init(void)
 {
         blksiz_init(&blksiz_, LOGICAL_BLOCK_SIZE, physical_block_size_);
+	set_workqueue_type();
 
         n_devices_ = sizlist_length(device_size_list_str_);
         ASSERT(n_devices_ > 0);
