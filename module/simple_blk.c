@@ -36,10 +36,6 @@ struct sdev_devices
 
 } devices_;
 
-/* Workqueues */
-struct workqueue_struct *wqs_; /* single-thread */
-struct workqueue_struct *wqm_; /* multi-thread */
-
 /*******************************************************************************
  * Module parameter definitions.
  *******************************************************************************/
@@ -565,19 +561,7 @@ static int __init simple_blk_init(void)
         simple_blk_major_ = register_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
         if (simple_blk_major_ <= 0) {
                 LOGe("unable to get major device number.\n");
-                return -EBUSY;
-        }
-
-        /* Workqueue. */
-        wqs_ = create_singlethread_workqueue(SIMPLE_BLK_SINGLE_WQ_NAME);
-        if (wqs_ == NULL) {
-                LOGe("create single-thread workqueue failed.\n");
-                goto error0;
-        }
-        wqm_ = create_workqueue(SIMPLE_BLK_MULTI_WQ_NAME);
-        if (wqm_ == NULL) {
-                LOGe("create multi-thread workqueue failed.\n");
-                goto error1;
+		goto error0;
         }
 
         /* Initialize devices_. */
@@ -585,14 +569,12 @@ static int __init simple_blk_init(void)
 
         return 0;
 #if 0
-error2:
-        if (wqm_) { destroy_workqueue(wqm_); }
-#endif
 error1:
-        if (wqs_) { destroy_workqueue(wqs_); }
-error0:
 	unregister_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
         return -ENOMEM;
+#endif
+error0:
+	return -EBUSY;
 }
 
 static void simple_blk_exit(void)
@@ -601,10 +583,6 @@ static void simple_blk_exit(void)
         LOGd("in_atomic: %u.\n", in_atomic());
         
         stop_and_unregister_all_devices();
-        flush_workqueue(wqm_);
-        flush_workqueue(wqs_);
-        destroy_workqueue(wqm_);
-        destroy_workqueue(wqs_);
         unregister_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
 
         LOGi("Simple-blk module exit.\n");

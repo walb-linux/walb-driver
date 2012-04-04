@@ -24,9 +24,6 @@
 #define SIMPLE_BLK_DEV_NAME_MAX_LEN                                         \
         (DISK_NAME_LEN - sizeof(SIMPLE_BLK_DIR_NAME) - sizeof("/dev//"))
 
-#define SIMPLE_BLK_SINGLE_WQ_NAME "simple_blk_s"
-#define SIMPLE_BLK_MULTI_WQ_NAME "simple_blk_m"
-
 /*******************************************************************************
  * Data definition.
  *******************************************************************************/
@@ -59,9 +56,6 @@ struct simple_blk_dev
         
         void *private_data; /* You can use this for any purpose. */
 };
-
-extern struct workqueue_struct *wqs_; /* single-thread */
-extern struct workqueue_struct *wqm_; /* multi-thread */
 
 /*******************************************************************************
  * Exported functions prototype.
