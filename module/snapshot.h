@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SNAPSHOT_H_KERNEL
-#define _WALB_SNAPSHOT_H_KERNEL
+#ifndef WALB_SNAPSHOT_H_KERNEL
+#define WALB_SNAPSHOT_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -162,4 +162,4 @@ void snapshot_read_unlock(struct snapshot_data *snapd);
 void snapshot_write_lock(struct snapshot_data *snapd);
 void snapshot_write_unlock(struct snapshot_data *snapd);
 
-#endif /* _WALB_SNAPSHOT_H_KERNEL */
+#endif /* WALB_SNAPSHOT_H_KERNEL */

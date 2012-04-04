@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_U64BITS_H
-#define _WALB_U64BITS_H
+#ifndef WALB_U64BITS_H
+#define WALB_U64BITS_H
 
 #include "common.h"
 
@@ -40,4 +40,4 @@ static inline void clear_u64bits(int nr, u64 *bits)
         (*bits) &= ~((u64)(1) << nr);
 }
 
-#endif /* _WALB_U64BITS_H */
+#endif /* WALB_U64BITS_H */

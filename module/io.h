@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_IO_H_KERNEL
-#define _WALB_IO_H_KERNEL
+#ifndef WALB_IO_H_KERNEL
+#define WALB_IO_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -146,4 +146,4 @@ void walb_full_request(struct request_queue *q);
 int walb_make_request(struct request_queue *q, struct bio *bio);
 #endif
 
-#endif /* _WALB_IO_H_KERNEL */
+#endif /* WALB_IO_H_KERNEL */

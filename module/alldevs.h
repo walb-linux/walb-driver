@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_ALLDEVS_H_KERNEL
-#define _WALB_ALLDEVS_H_KERNEL
+#ifndef WALB_ALLDEVS_H_KERNEL
+#define WALB_ALLDEVS_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -44,4 +44,4 @@ void alldevs_read_unlock(void);
 void alldevs_write_lock(void);
 void alldevs_write_unlock(void);
 
-#endif /* _WALB_ALLDEVS_H_KERNEL */
+#endif /* WALB_ALLDEVS_H_KERNEL */

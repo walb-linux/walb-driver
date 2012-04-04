@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SIMPLE_BLK_BIO_H_KERNEL
-#define _WALB_SIMPLE_BLK_BIO_H_KERNEL
+#ifndef WALB_SIMPLE_BLK_BIO_H_KERNEL
+#define WALB_SIMPLE_BLK_BIO_H_KERNEL
 
 #include "check_kernel.h"
 #include <linux/blkdev.h>
@@ -32,4 +32,4 @@ void customize_sdev(struct simple_blk_dev *sdev);
 /* Create a workqueue that type is specified by module parameter. */
 struct workqueue_struct* create_wq_io(const char *name);
 
-#endif /* _WALB_SIMPLE_BLK_BIO_H_KERNEL */
+#endif /* WALB_SIMPLE_BLK_BIO_H_KERNEL */

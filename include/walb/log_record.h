@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_LOG_RECORD_H
-#define _WALB_LOG_RECORD_H
+#ifndef WALB_LOG_RECORD_H
+#define WALB_LOG_RECORD_H
 
 #include "walb.h"
 #include "util.h"
@@ -223,4 +223,4 @@ static inline void log_record_init(walb_log_record_t* rec)
         rec->offset = 0;
 }
 
-#endif /* _WALB_LOG_RECORD_H */
+#endif /* WALB_LOG_RECORD_H */

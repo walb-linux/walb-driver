@@ -17,4 +17,4 @@ u64 sizlist_nth_size(const char* sizlist_str, unsigned int n);
 UNUSED
 void test_sizlist(void);
 
-#endif /* _WALB_SIZE_LIST_H_KERNEL */
+#endif /* WALB_SIZE_LIST_H_KERNEL */

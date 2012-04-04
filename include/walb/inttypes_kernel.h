@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_INT_TYPES_KERNEL_H
-#define _WALB_INT_TYPES_KERNEL_H
+#ifndef WALB_INT_TYPES_KERNEL_H
+#define WALB_INT_TYPES_KERNEL_H
 
 #ifdef CONFIG_64BIT
 #define __PRI64_PREFIX "ll"
@@ -22,4 +22,4 @@
 #define PRIu32 "u"
 #define PRIu64 __PRI64_PREFIX "u"
 
-#endif /* _WALB_INT_TYPES_KERNEL_H */
+#endif /* WALB_INT_TYPES_KERNEL_H */

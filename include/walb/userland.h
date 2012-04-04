@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_USERLAND_H
-#define _WALB_USERLAND_H
+#ifndef WALB_USERLAND_H
+#define WALB_USERLAND_H
 
 /* Integer types */
 #define __STDC_FORMAT_MACROS
@@ -40,4 +40,4 @@ typedef int64_t  s64;
 /* bool */
 #include <stdbool.h>
 
-#endif /* _WALB_USERLAND_H */
+#endif /* WALB_USERLAND_H */

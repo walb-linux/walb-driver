@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_DATAPACK_H_KERNEL
-#define _WALB_DATAPACK_H_KERNEL
+#ifndef WALB_DATAPACK_H_KERNEL
+#define WALB_DATAPACK_H_KERNEL
 
 #include <linux/blkdev.h>
 #include <linux/bio.h>
@@ -103,4 +103,4 @@ int walb_datapack_write(struct walb_dev *wdev,
                         struct request **reqp_ary);
 
 
-#endif /* _WALB_DATAPACK_H_KERNEL */
+#endif /* WALB_DATAPACK_H_KERNEL */

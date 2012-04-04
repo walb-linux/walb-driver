@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SNAPSHOT_H
-#define _WALB_SNAPSHOT_H
+#ifndef WALB_SNAPSHOT_H
+#define WALB_SNAPSHOT_H
 
 #include "walb.h"
 #include "sector.h"
@@ -586,4 +586,4 @@ static inline int is_valid_snapshot_sector(const struct sector_data *sect)
         return (count == 0);
 }
 
-#endif /* _WALB_SNAPSHOT_H */
+#endif /* WALB_SNAPSHOT_H */

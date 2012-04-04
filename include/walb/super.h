@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SUPER_H
-#define _WALB_SUPER_H
+#ifndef WALB_SUPER_H
+#define WALB_SUPER_H
 
 #include "walb.h"
 #include "sector.h"
@@ -155,4 +155,4 @@ static inline char* set_super_sector_name(walb_super_sector_t* super_sect, const
         return super_sect->name;
 }
 
-#endif /* _WALB_SUPER_H */
+#endif /* WALB_SUPER_H */

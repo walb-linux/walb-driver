@@ -3,8 +3,8 @@
  * 
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_BITMAP_H
-#define _WALB_BITMAP_H
+#ifndef WALB_BITMAP_H
+#define WALB_BITMAP_H
 
 #include "common.h"
 
@@ -200,4 +200,4 @@ static inline void walb_bitmap_print(walb_bitmap_t *bmp)
         PRINT(KERN_INFO, "\n");
 }
 
-#endif /* _WALB_BITMAP_H */
+#endif /* WALB_BITMAP_H */

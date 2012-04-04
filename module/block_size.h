@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_BLOCK_SIZE_H_KERNEL
-#define _WALB_BLOCK_SIZE_H_KERNEL
+#ifndef WALB_BLOCK_SIZE_H_KERNEL
+#define WALB_BLOCK_SIZE_H_KERNEL
 
 #include "check_kernel.h"
 #include "walb/common.h"
@@ -42,4 +42,4 @@ u64 blksiz_required_n_pb(const struct block_sizes *blksiz, u64 logical_capacity)
 /* Pyysical address -> logical address. */
 u64 blksiz_to_l(const struct block_sizes *blksiz, u64 physical_addr);
 
-#endif /* _WALB_BLOCK_SIZE_H_KERNEL */
+#endif /* WALB_BLOCK_SIZE_H_KERNEL */

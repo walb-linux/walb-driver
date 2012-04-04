@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_CHECKSUM_H
-#define _WALB_CHECKSUM_H
+#ifndef WALB_CHECKSUM_H
+#define WALB_CHECKSUM_H
 
 #include "common.h"
 
@@ -60,4 +60,4 @@ static inline u32 checksum(const u8 *data, u32 size)
         return checksum_finish(checksum_partial(0, data, size));
 }
 
-#endif /* _WALB_CHECKSUM_H */
+#endif /* WALB_CHECKSUM_H */

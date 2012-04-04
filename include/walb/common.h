@@ -122,4 +122,4 @@ static inline void* amalloc(size_t size, size_t align)
 
 #define WALB_CHECK(cond) WALB_CHECK_LABEL(cond, error)
 
-#endif /* _WALB_COMMON_H */
+#endif /* WALB_COMMON_H */

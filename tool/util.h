@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_UTIL_USER_H
-#define _WALB_UTIL_USER_H
+#ifndef WALB_UTIL_USER_H
+#define WALB_UTIL_USER_H
 
 #include "check_userland.h"
 
@@ -89,4 +89,4 @@ bool write_data(int fd, const u8* data, size_t size);
 bool is_same_block_size(const char* devpath1, const char* devpath2);
 
 
-#endif /* _WALB_UTIL_USER_H */
+#endif /* WALB_UTIL_USER_H */

@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_LOGPACK_USER_H
-#define _WALB_LOGPACK_USER_H
+#ifndef WALB_LOGPACK_USER_H
+#define WALB_LOGPACK_USER_H
 
 #include "check_userland.h"
 
@@ -107,4 +107,4 @@ static inline u64 logpack_get_lsid(logpack_t* logpack)
     return logpack_get_header(logpack)->logpack_lsid;
 }
 
-#endif /* _WALB_LOGPACK_USER_H */
+#endif /* WALB_LOGPACK_USER_H */

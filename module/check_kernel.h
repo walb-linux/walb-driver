@@ -3,11 +3,11 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_CHECK_KERNEL_H_KERNEL
-#define _WALB_CHECK_KERNEL_H_KERNEL
+#ifndef WALB_CHECK_KERNEL_H_KERNEL
+#define WALB_CHECK_KERNEL_H_KERNEL
 
 #ifndef __KERNEL__
 #error This header supports only kernel code.
 #endif
 
-#endif /* _WALB_CHECK_KERNEL_H_KERNEL */
+#endif /* WALB_CHECK_KERNEL_H_KERNEL */

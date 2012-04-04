@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SNAPSHOT_USER_H
-#define _WALB_SNAPSHOT_USER_H
+#ifndef WALB_SNAPSHOT_USER_H
+#define WALB_SNAPSHOT_USER_H
 
 #include "check_userland.h"
 
@@ -111,4 +111,4 @@ int snapshot_list(const struct snapshot_data_u *snapd,
                   struct walb_snapshot_record **rec_ary_p, size_t ary_size);
 
 
-#endif /* _WALB_SNAPSHOT_USER_H */
+#endif /* WALB_SNAPSHOT_USER_H */

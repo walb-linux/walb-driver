@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_LOG_DEVICE_H
-#define _WALB_LOG_DEVICE_H
+#ifndef WALB_LOG_DEVICE_H
+#define WALB_LOG_DEVICE_H
 
 #include "log_record.h"
 #include "super.h"
@@ -222,4 +222,4 @@ static inline u64 get_offset_of_lsid_2
                 (lsid % super_sect->ring_buffer_size);
 }
 
-#endif /* _WALB_LOG_DEVICE_H */
+#endif /* WALB_LOG_DEVICE_H */

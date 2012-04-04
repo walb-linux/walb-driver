@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_DISK_NAME_H
-#define _WALB_DISK_NAME_H
+#ifndef WALB_DISK_NAME_H
+#define WALB_DISK_NAME_H
 
 #include "common.h"
 
@@ -19,4 +19,4 @@
 #endif
 #define ASSERT_DISK_NAME_LEN() ASSERT(DISK_NAME_LEN == DISK_NAME_LEN_USER)
 
-#endif /* _WALB_DISK_NAME_H */
+#endif /* WALB_DISK_NAME_H */

@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_UTIL_H
-#define _WALB_UTIL_H
+#ifndef WALB_UTIL_H
+#define WALB_UTIL_H
 
 #include "common.h"
 
@@ -55,4 +55,4 @@ static inline void sprint_uuid(char *str, int str_size, const u8 *uuid)
         sprint_hex(str, str_size, uuid, 16);
 }
 
-#endif /* _WALB_UTIL_H */
+#endif /* WALB_UTIL_H */

@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_RANDOM_USER_H
-#define _WALB_RANDOM_USER_H
+#ifndef WALB_RANDOM_USER_H
+#define WALB_RANDOM_USER_H
 
 #include "check_userland.h"
 
@@ -90,4 +90,4 @@ static inline void test_random()
         }
 }
 
-#endif /* _WALB_RANDOM_USER_H */
+#endif /* WALB_RANDOM_USER_H */

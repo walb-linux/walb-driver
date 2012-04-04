@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_IOCTL_H
-#define _WALB_IOCTL_H
+#ifndef WALB_IOCTL_H
+#define WALB_IOCTL_H
 
 #include "walb.h"
 
@@ -169,4 +169,4 @@ enum {
 };
 
 
-#endif /* _WALB_IOCTL_H */
+#endif /* WALB_IOCTL_H */

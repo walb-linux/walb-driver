@@ -92,4 +92,4 @@ bool test_memblk_data(u64 capacity, const u32 block_size);
 UNUSED
 bool test_memblk_data_simple(u64 capacity, const u32 block_size);
 
-#endif /* _WALB_MEMBLK_DATA_H_KERNEL */
+#endif /* WALB_MEMBLK_DATA_H_KERNEL */

@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SIMPLE_BLK_H_KERNEL
-#define _WALB_SIMPLE_BLK_H_KERNEL
+#ifndef WALB_SIMPLE_BLK_H_KERNEL
+#define WALB_SIMPLE_BLK_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -88,4 +88,4 @@ struct simple_blk_dev* sdev_get(unsigned minor);
 /* Get a device from a queue. */
 struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q);
 
-#endif /* _WALB_SIMPLE_BLK_H_KERNEL */
+#endif /* WALB_SIMPLE_BLK_H_KERNEL */

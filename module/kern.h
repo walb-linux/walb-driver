@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_KERN_H_KERNEL
-#define _WALB_KERN_H_KERNEL
+#ifndef WALB_KERN_H_KERNEL
+#define WALB_KERN_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -211,4 +211,4 @@ void register_wdev(struct walb_dev *wdev);
 void unregister_wdev(struct walb_dev *wdev);
 
 
-#endif /* _WALB_KERN_H_KERNEL */
+#endif /* WALB_KERN_H_KERNEL */

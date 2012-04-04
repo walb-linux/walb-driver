@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_CONTROL_H_KERNEL
-#define _WALB_CONTROL_H_KERNEL
+#ifndef WALB_CONTROL_H_KERNEL
+#define WALB_CONTROL_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -24,4 +24,4 @@ int walb_put_ctl(void __user *userctl, struct walb_ctl *ctl);
 int walb_control_init(void);
 void walb_control_exit(void);
 
-#endif /* _WALB_CONTROL_H_KERNEL */
+#endif /* WALB_CONTROL_H_KERNEL */

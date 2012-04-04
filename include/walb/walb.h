@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_H
-#define _WALB_H
+#ifndef WALB_H
+#define WALB_H
 
 #include "common.h"
 #include "disk_name.h"
@@ -47,4 +47,4 @@
 #define INVALID_LSID ((u64)(-1))
 #define MAX_LSID     ((u64)(-2))
 
-#endif /* _WALB_H */
+#endif /* WALB_H */

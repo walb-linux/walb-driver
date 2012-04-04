@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_UTIL_H_KERNEL
-#define _WALB_UTIL_H_KERNEL
+#ifndef WALB_UTIL_H_KERNEL
+#define WALB_UTIL_H_KERNEL
 
 #include "check_kernel.h"
 #include <linux/random.h>
@@ -58,4 +58,4 @@ static inline void fill_random(u8 *buf, size_t size)
         /* LOGd("fill_random end.\n"); */
 }
 
-#endif /* _WALB_UTIL_H_KERNEL */
+#endif /* WALB_UTIL_H_KERNEL */

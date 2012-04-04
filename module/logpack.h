@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_LOGPACK_H_KERNEL
-#define _WALB_LOGPACK_H_KERNEL
+#ifndef WALB_LOGPACK_H_KERNEL
+#define WALB_LOGPACK_H_KERNEL
 
 #include <linux/blkdev.h>
 #include <linux/bio.h>
@@ -133,4 +133,4 @@ int walb_logpack_calc_checksum(struct walb_logpack_header *lhead,
                                struct request** reqp_ary, int n_req);
 
 
-#endif /* _WALB_LOGPACK_H_KERNEL */
+#endif /* WALB_LOGPACK_H_KERNEL */

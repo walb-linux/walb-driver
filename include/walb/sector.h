@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_SECTOR_H
-#define _WALB_SECTOR_H
+#ifndef WALB_SECTOR_H
+#define WALB_SECTOR_H
 
 #include "walb.h"
 
@@ -594,4 +594,4 @@ static inline int sector_array_sprint(char *str, int str_size, const struct sect
         return 1;
 }
 
-#endif /* _WALB_SECTOR_H */
+#endif /* WALB_SECTOR_H */

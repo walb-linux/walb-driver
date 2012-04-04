@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _WALB_WRAPPER_BLK_H_KERNEL
-#define _WALB_WRAPPER_BLK_H_KERNEL
+#ifndef WALB_WRAPPER_BLK_H_KERNEL
+#define WALB_WRAPPER_BLK_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -85,4 +85,4 @@ struct wrapper_blk_dev* wdev_get(unsigned minor);
 /* Get a device from a queue. */
 struct wrapper_blk_dev* wdev_get_from_queue(struct request_queue *q);
 
-#endif /* _WALB_WRAPPER_BLK_H_KERNEL */
+#endif /* WALB_WRAPPER_BLK_H_KERNEL */
