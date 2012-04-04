@@ -9,6 +9,13 @@
 #include "simple_blk_bio.h"
 #include "memblk_data.h"
 
+/*******************************************************************************
+ * Static functions prototype.
+ *******************************************************************************/
+
+UNUSED static void log_bi_rw_flag(struct bio *bio);
+static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio);
+static struct memblk_data* get_mdata_from_queue(struct request_queue *q);
 
 /*******************************************************************************
  * Static functions definition.
@@ -17,7 +24,6 @@
 /**
  * For debug.
  */
-UNUSED
 static void log_bi_rw_flag(struct bio *bio)
 {
         LOGd("bio bi_sector %"PRIu64" bi_rw %0lx bi_size %u bi_vcnt %hu\n",
