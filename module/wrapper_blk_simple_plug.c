@@ -268,7 +268,7 @@ static void destroy_req_entry(struct req_entry *reqe)
 static void bio_entry_end_io(struct bio *bio, int error)
 {
 	struct bio_entry *bioe = bio->bi_private;
-	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
+	UNUSED int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	ASSERT(bioe);
 	ASSERT(bioe->bio == bio);
 	ASSERT(uptodate);
