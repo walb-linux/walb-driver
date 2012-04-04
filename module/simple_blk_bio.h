@@ -29,7 +29,7 @@ void destroy_private_data(struct simple_blk_dev *sdev);
 /* Customize sdev after register before start. */
 void customize_sdev(struct simple_blk_dev *sdev);
 
-/* Create a workqueue that type is specified by module parameter. */
-struct workqueue_struct* create_wq_io(const char *name);
+/* Workqueue type. */
+enum workqueue_type get_workqueue_type(void);
 
 #endif /* WALB_SIMPLE_BLK_BIO_H_KERNEL */

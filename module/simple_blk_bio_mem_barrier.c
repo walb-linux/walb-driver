@@ -492,7 +492,7 @@ bool pre_register(void)
                 goto error0;
         }
 
-        wq_io_ = create_wq_io(WQ_IO_NAME);
+        wq_io_ = create_wq_io(WQ_IO_NAME, get_workqueue_type());
         if (!wq_io_) {
                 LOGe("create io workqueue failed.\n");
                 goto error1;

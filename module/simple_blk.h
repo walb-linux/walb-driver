@@ -10,6 +10,7 @@
 
 #include <linux/blkdev.h>
 #include <linux/genhd.h>
+#include <linux/workqueue.h>
 
 #include "walb/common.h"
 #include "walb/disk_name.h"
@@ -57,6 +58,13 @@ struct simple_blk_dev
         void *private_data; /* You can use this for any purpose. */
 };
 
+/**
+ * Workqueue type for IO.
+ */
+enum workqueue_type {
+	WQ_TYPE_SINGLE, WQ_TYPE_UNBOUND, WQ_TYPE_NORMAL
+};
+
 /*******************************************************************************
  * Exported functions prototype.
  *******************************************************************************/
@@ -81,5 +89,9 @@ struct simple_blk_dev* sdev_get(unsigned minor);
 
 /* Get a device from a queue. */
 struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q);
+
+/* Create a workqueue with a type. */
+struct workqueue_struct* create_wq_io(
+	const char *name, enum workqueue_type type);
 
 #endif /* WALB_SIMPLE_BLK_H_KERNEL */

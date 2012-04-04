@@ -227,6 +227,38 @@ struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q)
 }
 EXPORT_SYMBOL_GPL(sdev_get_from_queue);
 
+/**
+ * Create a workqueue with a type.
+ */
+struct workqueue_struct* create_wq_io(const char *name, enum workqueue_type type)
+{
+	struct workqueue_struct *wq = NULL;
+
+	switch (type) {
+	case WQ_TYPE_SINGLE:
+		/* Single thread workqueue. This may be slow. */
+		wq = create_singlethread_workqueue(name);
+		LOGn("Use workqueue type: SINGLE.\n");
+		break;
+		
+	case WQ_TYPE_UNBOUND:
+		/* Worker may not use the same CPU with enqueuer. */
+		wq = alloc_workqueue(name, WQ_MEM_RECLAIM | WQ_UNBOUND , 0);
+		LOGn("Use workqueue type: UNBOUND.\n");
+		break;
+		
+	case WQ_TYPE_NORMAL:
+		/* Default. This is the fastest. */	
+		wq = alloc_workqueue(name, WQ_MEM_RECLAIM, 0);
+		LOGn("Use workqueue type: NORMAL.\n");
+		break;
+	default:
+		LOGe("Not supported wq_io_type %s.\n", name);
+	}
+	return wq;
+}
+EXPORT_SYMBOL_GPL(create_wq_io);
+
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
