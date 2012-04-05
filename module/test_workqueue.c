@@ -42,6 +42,16 @@ struct test_work
 
 typedef void (test_work_task_fn)(struct work_struct *work);
 
+
+/**
+ * Simply tail-recursion task.
+ */
+struct tail_recur_work
+{
+	int i;
+	struct work_struct work;
+};
+
 /*******************************************************************************
  * Static functions prototype.
  *******************************************************************************/
@@ -62,6 +72,11 @@ static void destroy_test_work(struct test_work *test_work);
 static void init_workqueue(void);
 static void fin_workqueue(void);
 
+static struct tail_recur_work* create_tail_recur_work(int i);
+static void destroy_tail_recur_work(struct tail_recur_work* work);
+static void tail_recur_task(struct work_struct *work);
+
+static void test_recursive_enqueue(void);
 static void test_workqueue(void);
 
 
@@ -177,6 +192,59 @@ static void fin_workqueue(void)
         }
 }
 
+static struct tail_recur_work* create_tail_recur_work(int i)
+{
+	struct tail_recur_work *work;
+	work = kmalloc(sizeof(struct tail_recur_work), GFP_KERNEL);
+	if (!work) {
+		goto end;
+	}
+	work->i = i;
+	INIT_WORK(&work->work, tail_recur_task);
+end:
+	return work;
+}
+
+static void destroy_tail_recur_work(struct tail_recur_work* work)
+{
+	if (work) {
+		kfree(work);
+	}
+}
+
+static void tail_recur_task(struct work_struct *work)
+{
+	struct tail_recur_work *trwork =
+		container_of(work, struct tail_recur_work, work);
+
+	LOGn("i: %d\n", trwork->i);
+	if (trwork->i > 0) {
+		trwork->i --;
+		INIT_WORK(&trwork->work, tail_recur_task);
+		queue_work(wq_[0], &trwork->work);
+	} else {
+		destroy_tail_recur_work(trwork);
+		LOGn("tail recursion done.\n");
+	}
+}
+
+/**
+ * Recursive enqueue test.
+ */
+static void test_recursive_enqueue(void)
+{
+	struct tail_recur_work *work;
+	LOGn("begin.\n");
+	work = create_tail_recur_work(100);
+	if (!work) {
+		LOGe("create_tail_recur_work() failed.\n");
+		return;
+	}
+	queue_work(wq_[0], &work->work);
+	flush_workqueue(wq_[0]);
+	LOGn("flush_workqueue done.\n");
+}
+
 static void test_workqueue(void)
 {
         /* Test1 */
@@ -210,6 +278,9 @@ static void test_workqueue(void)
         create_and_enqueue_task(1, test_work_task_1, 100);
         flush_workqueue(wq_[0]);
         flush_workqueue(wq_[1]);
+
+	/* Test5 */
+	test_recursive_enqueue();
 }
 
 static int __init test_init(void)
