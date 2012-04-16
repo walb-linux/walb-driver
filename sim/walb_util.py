@@ -37,6 +37,7 @@ class Request:
     def executeIO(self, diskImage):
         """
         execute IO.
+        diskImage :: DiskImage
         return :: None
         
         """
@@ -82,6 +83,10 @@ class Pack:
         self.__reqL.append(req)
 
     def getL(self):
+        """
+        return :: [Request]
+        
+        """
         return self.__reqL
 
     def isWrite(self):
@@ -245,7 +250,6 @@ def dumpDiskImage(diskImage, f):
     assert(isinstance(diskImage, DiskImage))
     cPickle.dump(diskImage, f, -1)
 
-
 def getDiskImageDiff(lhs, rhs):
     """
     lhs :: DiskImage
@@ -275,8 +279,23 @@ def getDiskImageDiff(lhs, rhs):
 class Operation:
     """
     Base class for operation.
-    
+
     """
-    def __init__(self, packId, opId):
-        self.__packId
-        # now editing
+    def __init__(self, pack, opId):
+
+        assert(isinstance(pack, Pack))
+        assert(isinstance(opId, int))
+        assert(opId >= 0)
+        
+        self.__pack = pack
+        self.__opId = opId
+
+    def opId(self):
+        return self.__opId
+
+    def pack(self):
+        return self.__pack
+
+    def __str__(self):
+        raise "You must use subclass instance."
+

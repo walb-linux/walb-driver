@@ -19,13 +19,16 @@ import sys
 import random
 from walb_util import loadDiskImage, loadPlugPackList, \
     DiskImage, getDiskImageDiff, printPlugPackList
-from walb_easy import PackStateManager, ReadPackState
+#from walb_easy import PackStateManager, ReadPackState
+#from walb_easy import PackStateManager
+from walb_fast import PackStateManager
 
 def simulate(diskImage, plugPackList, nPlug, shuffle=True):
     """
     Simulate IO sequence with WalB constraints.
 
     diskImage :: DiskImage
+       This is not unchanged.
     plugPackList :: const [[Pack]]
     nPlug :: const int
     shuffule :: bool
@@ -80,20 +83,30 @@ def main():
     assert(nLoop > 0)
 
     printPlugPackList(plugPackList)
+
+    print "loop 0 start"
+    opHistoryL, mgr = simulate(diskImage, plugPackList, nPlug, shuffle=False)
+    assert(getDiskImageDiff(mgr.vStorage(), mgr.rStorage()) == [])
+    testDiskImage = mgr.rStorage()
+    print "testStorage:", testDiskImage.disk()
     
-    for loop in xrange(nLoop):
-        tmpDiskImage = diskImage.clone()
-        #print tmpDiskImage.disk()  #debug
-        shuffle = (loop != 0)
-        if not shuffle:
-            testDiskImage = tmpDiskImage
-        opHistoryL, mgr = simulate(tmpDiskImage, plugPackList, nPlug, shuffle=shuffle)
-        print "loop %d done" % loop
-        if shuffle:
-            # Validate results.
-            diskDiff = getDiskImageDiff(testDiskImage, tmpDiskImage)
-            if diskDiff != []:
-                print "ERROR ", diskDiff, opHistoryL
+    for loop in xrange(1, nLoop):
+        print "loop %d start" % loop
+        #print diskImage.disk()  #debug
+        opHistoryL, mgr = simulate(diskImage, plugPackList, nPlug, shuffle=True)
+        diff = getDiskImageDiff(mgr.vStorage(), mgr.rStorage())
+        if diff != []:
+            print "ERROR", opHistoryL
+            print "vStorage: ", mgr.vStorage().disk()
+            print "rStorage: ", mgr.rStorage().disk()
+            
+        # Validate results.
+        diskDiff = getDiskImageDiff(testDiskImage, mgr.rStorage())
+        if diskDiff != []:
+            print "ERROR", opHistoryL
+            print "DIFF", diskDiff
+            print "testStorage:", testDiskImage.disk()
+            print "resStorage: ", mgr.rStorage().disk()
         # for packS in filter(lambda x:isinstance(x, ReadPackState), mgr.packStateList()):
         #     print packS.pack()
         #print tmpDiskImage.disk()  #debug

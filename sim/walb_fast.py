@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-WalB Easy Algorithm.
+WalB Fast Algorithm.
 
 """
 
@@ -77,8 +77,8 @@ class PackState:
 class ReadPackState(PackState):
 
     N_OP = 4
-    SUBMIT, READ_RSTORAGE, COMPLETE, END_REQ = range(N_OP)
-    OP_NAME = ['SUBMIT', 'READ_RSTORAGE', 'COMPLETE', 'END_REQ']
+    SUBMIT, READ_VSTORAGE, COMPLETE, END_REQ = range(N_OP)
+    OP_NAME = ['SUBMIT', 'READ_VSTORAGE', 'COMPLETE', 'END_REQ']
     
     def __init__(self, pack):
         """
@@ -100,10 +100,10 @@ class ReadPackState(PackState):
         candidates = [
             (ReadPackState.SUBMIT,
              not self.st(ReadPackState.SUBMIT)),
-            (ReadPackState.READ_RSTORAGE,
-             not self.st(ReadPackState.READ_RSTORAGE) and self.st(ReadPackState.SUBMIT)),
+            (ReadPackState.READ_VSTORAGE,
+             not self.st(ReadPackState.READ_VSTORAGE) and self.st(ReadPackState.SUBMIT)),
             (ReadPackState.COMPLETE,
-             not self.st(ReadPackState.COMPLETE) and self.st(ReadPackState.READ_RSTORAGE)),
+             not self.st(ReadPackState.COMPLETE) and self.st(ReadPackState.READ_VSTORAGE)),
             (ReadPackState.END_REQ,
              not self.st(ReadPackState.END_REQ) and self.st(ReadPackState.COMPLETE))
             ]
@@ -123,8 +123,8 @@ class ReadPackState(PackState):
         assert(op < ReadPackState.N_OP)
         self.setSt(op)
         
-        if op == ReadPackState.READ_RSTORAGE:
-            self.executeIO(rStorage)
+        if op == ReadPackState.READ_VSTORAGE:
+            self.executeIO(vStorage)
 
     def executeIO(self, storage):
         assert(isinstance(storage, DiskImage))
@@ -139,11 +139,11 @@ class ReadPackState(PackState):
 class WritePackState(PackState):
 
     N_OP = 7
-    SUBMIT_LPACK, COMPLETE_LPACK, WRITE_VSTORAGE, \
-    SUBMIT_DPACK, WRITE_RSTORAGE, COMPLETE_DPACK, END_REQ = range(N_OP)
+    SUBMIT_LPACK, COMPLETE_LPACK, WRITE_VSTORAGE, END_REQ, \
+    SUBMIT_DPACK, WRITE_RSTORAGE, COMPLETE_DPACK = range(N_OP)
     OP_NAME = [
-        'SUBMIT_LPACK', 'COMPLETE_LPACK', 'WRITE_VSTORAGE',
-        'SUBMIT_DPACK', 'WRITE_RSTORAGE', 'COMPLETE_DPACK', 'END_REQ'
+        'SUBMIT_LPACK', 'COMPLETE_LPACK', 'WRITE_VSTORAGE', 'END_REQ',
+        'SUBMIT_DPACK', 'WRITE_RSTORAGE', 'COMPLETE_DPACK'
         ]
     
     def __init__(self, pack):
@@ -174,9 +174,7 @@ class WritePackState(PackState):
         for packState in packStateList:
             assert(isinstance(packState, PackState))
             if isinstance(packState, WritePackState):
-                # condition (1)
-                if not packState.st(WritePackState.COMPLETE_LPACK):
-                    return False
+                # condition (1) is already satisfied by WRITE_VSTORAGE constraints.
                 # condition (2)
                 if isOverlap(packState.pack(), self.pack()) and \
                         not packState.st(WritePackState.COMPLETE_DPACK):
@@ -226,7 +224,7 @@ class WritePackState(PackState):
                  self.isReadyToWriteVstorage(packStateList)),
             (WritePackState.SUBMIT_DPACK,
              not self.st(WritePackState.SUBMIT_DPACK) and \
-                 self.st(WritePackState.COMPLETE_LPACK) and \
+                 self.st(WritePackState.WRITE_VSTORAGE) and \
                  self.isReadyToSubmitDpack(packStateList)),
             (WritePackState.WRITE_RSTORAGE,
              not self.st(WritePackState.WRITE_RSTORAGE) and \
@@ -236,7 +234,7 @@ class WritePackState(PackState):
                  self.st(WritePackState.WRITE_RSTORAGE)),
             (WritePackState.END_REQ,
              not self.st(WritePackState.END_REQ) and \
-                 self.st(WritePackState.COMPLETE_DPACK))
+                 self.st(WritePackState.WRITE_VSTORAGE))
             ]
 
         def p((op, isReady)):
@@ -270,7 +268,7 @@ class WritePackState(PackState):
 
     def isEnd(self):
         return self.st(WritePackState.END_REQ) and \
-            self.st(WritePackState.WRITE_VSTORAGE)
+            self.st(WritePackState.COMPLETE_DPACK)
 
 def createPackState(pack):
     """
