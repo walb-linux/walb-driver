@@ -27,7 +27,7 @@ def simulate(diskImage, plugPackList, nPlug,
     Simulate IO sequence with WalB constraints.
 
     diskImage :: DiskImage
-       This is not unchanged.
+       This is not changed.
     plugPackList :: const [[Pack]]
     nPlug :: const int
     shuffule :: bool
