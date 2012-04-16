@@ -13,12 +13,17 @@ from walb_util import Pack, isOverlap, DiskImage
 
 class PackState:
 
-    def __init__(self, pack, nBits):
+    def __init__(self, pack, nBits, isFast):
         assert(isinstance(pack, Pack))
         self.__pack = pack
         assert(isinstance(nBits, int))
         assert(nBits > 0)
         self.__state = [False] * nBits
+        assert(isinstance(isFast, bool))
+        self.__isFast = isFast
+
+    def isFast(self):
+        return self.__isFast
 
     def pack(self):
         return self.__pack
@@ -80,14 +85,14 @@ class PackState:
 
 class ReadPackState(PackState):
 
-    N_OP = 4
-    SUBMIT, READ_VSTORAGE, COMPLETE, END_REQ = range(N_OP)
-    OP_NAME = ['SUBMIT', 'READ_VSTORAGE', 'COMPLETE', 'END_REQ']
-    
-    def __init__(self, pack):
+    N_OP = 5
+    SUBMIT, COMPLETE, READ_VSTORAGE, READ_RSTORAGE, END_REQ = range(N_OP)
+    OP_NAME = ['SUBMIT', 'COMPLETE', 'READ_VSTORAGE', 'READ_RSTORAGE', 'END_REQ']
+
+    def __init__(self, pack, isFast):
         """
         """
-        PackState.__init__(self, pack, ReadPackState.N_OP)
+        PackState.__init__(self, pack, ReadPackState.N_OP, isFast)
         assert(not pack.isWrite())
 
     def getCandidates(self, packStateList):
@@ -100,18 +105,30 @@ class ReadPackState(PackState):
 
         """
         assert(isinstance(packStateList, list))
-        
-        candidates = [
-            (ReadPackState.SUBMIT,
-             not self.st(ReadPackState.SUBMIT)),
-            (ReadPackState.READ_VSTORAGE,
-             not self.st(ReadPackState.READ_VSTORAGE) and self.st(ReadPackState.SUBMIT)),
-            (ReadPackState.COMPLETE,
-             not self.st(ReadPackState.COMPLETE) and self.st(ReadPackState.READ_VSTORAGE)),
-            (ReadPackState.END_REQ,
-             not self.st(ReadPackState.END_REQ) and self.st(ReadPackState.COMPLETE))
-            ]
-        
+
+        if self.isFast():
+            candidates = [
+                (ReadPackState.SUBMIT,
+                 not self.st(ReadPackState.SUBMIT)),
+                (ReadPackState.READ_VSTORAGE,
+                 not self.st(ReadPackState.READ_VSTORAGE) and self.st(ReadPackState.SUBMIT)),
+                (ReadPackState.COMPLETE,
+                 not self.st(ReadPackState.COMPLETE) and self.st(ReadPackState.READ_VSTORAGE)),
+                (ReadPackState.END_REQ,
+                 not self.st(ReadPackState.END_REQ) and self.st(ReadPackState.COMPLETE))
+                ]
+        else:        
+            candidates = [
+                (ReadPackState.SUBMIT,
+                 not self.st(ReadPackState.SUBMIT)),
+                (ReadPackState.READ_RSTORAGE,
+                 not self.st(ReadPackState.READ_RSTORAGE) and self.st(ReadPackState.SUBMIT)),
+                (ReadPackState.COMPLETE,
+                 not self.st(ReadPackState.COMPLETE) and self.st(ReadPackState.READ_RSTORAGE)),
+                (ReadPackState.END_REQ,
+                 not self.st(ReadPackState.END_REQ) and self.st(ReadPackState.COMPLETE))
+                ]
+            
         def p((op, isReady)):
             return isReady
         def f((op, isReady)):
@@ -129,6 +146,8 @@ class ReadPackState(PackState):
         
         if op == ReadPackState.READ_VSTORAGE:
             self.executeIO(vStorage)
+        if op == ReadPackState.READ_RSTORAGE:
+            self.executeIO(rStorage)
 
     def executeIO(self, storage):
         assert(isinstance(storage, DiskImage))
@@ -143,17 +162,21 @@ class ReadPackState(PackState):
 class WritePackState(PackState):
 
     N_OP = 7
-    SUBMIT_LPACK, COMPLETE_LPACK, WRITE_VSTORAGE, END_REQ, \
-    SUBMIT_DPACK, WRITE_RSTORAGE, COMPLETE_DPACK = range(N_OP)
+    SUBMIT_LPACK, COMPLETE_LPACK, \
+    SUBMIT_DPACK, COMPLETE_DPACK, \
+    WRITE_VSTORAGE, WRITE_RSTORAGE, \
+    END_REQ = range(N_OP)
     OP_NAME = [
-        'SUBMIT_LPACK', 'COMPLETE_LPACK', 'WRITE_VSTORAGE', 'END_REQ',
-        'SUBMIT_DPACK', 'WRITE_RSTORAGE', 'COMPLETE_DPACK'
+        'SUBMIT_LPACK', 'COMPLETE_LPACK',
+        'SUBMIT_DPACK', 'COMPLETE_DPACK', 
+        'WRITE_VSTORAGE', 'WRITE_RSTORAGE',
+        'END_REQ'
         ]
     
-    def __init__(self, pack):
+    def __init__(self, pack, isFast):
         """
         """
-        PackState.__init__(self, pack, WritePackState.N_OP)
+        PackState.__init__(self, pack, WritePackState.N_OP, isFast)
         assert(pack.isWrite())
 
     def isReadyToSubmitDpack(self, packStateList):
@@ -178,7 +201,13 @@ class WritePackState(PackState):
         for packState in packStateList:
             assert(isinstance(packState, PackState))
             if isinstance(packState, WritePackState):
-                # condition (1) is already satisfied by WRITE_VSTORAGE constraints.
+                # condition (1)
+                if self.isFast():
+                    # Already satisfied by WRITE_VSTORAGE constraints.
+                    pass
+                else:
+                    if not packState.st(WritePackState.COMPLETE_LPACK):
+                        return False
                 # condition (2)
                 if isOverlap(packState.pack(), self.pack()) and \
                         not packState.st(WritePackState.COMPLETE_DPACK):
@@ -200,7 +229,7 @@ class WritePackState(PackState):
         for packState in packStateList:
             assert(isinstance(packState, PackState))
             if isinstance(packState, WritePackState):
-                # condition (1)
+                # condition (3)
                 if not packState.st(WritePackState.WRITE_VSTORAGE):
                     return False
         return True
@@ -215,31 +244,57 @@ class WritePackState(PackState):
 
         """
         assert(isinstance(packStateList, list))
-        
-        candidates = [
-            (WritePackState.SUBMIT_LPACK,
-             not self.st(WritePackState.SUBMIT_LPACK)),
-            (WritePackState.COMPLETE_LPACK,
-             not self.st(WritePackState.COMPLETE_LPACK) and \
-                 self.st(WritePackState.SUBMIT_LPACK)),
-            (WritePackState.WRITE_VSTORAGE,
-             not self.st(WritePackState.WRITE_VSTORAGE) and \
-                 self.st(WritePackState.COMPLETE_LPACK) and \
-                 self.isReadyToWriteVstorage(packStateList)),
-            (WritePackState.SUBMIT_DPACK,
-             not self.st(WritePackState.SUBMIT_DPACK) and \
-                 self.st(WritePackState.WRITE_VSTORAGE) and \
-                 self.isReadyToSubmitDpack(packStateList)),
-            (WritePackState.WRITE_RSTORAGE,
-             not self.st(WritePackState.WRITE_RSTORAGE) and \
-                 self.st(WritePackState.SUBMIT_DPACK)),
-            (WritePackState.COMPLETE_DPACK,
-             not self.st(WritePackState.COMPLETE_DPACK) and \
-                 self.st(WritePackState.WRITE_RSTORAGE)),
-            (WritePackState.END_REQ,
-             not self.st(WritePackState.END_REQ) and \
-                 self.st(WritePackState.WRITE_VSTORAGE))
-            ]
+
+        if self.isFast():
+            candidates = [
+                (WritePackState.SUBMIT_LPACK,
+                 not self.st(WritePackState.SUBMIT_LPACK)),
+                (WritePackState.COMPLETE_LPACK,
+                 not self.st(WritePackState.COMPLETE_LPACK) and \
+                     self.st(WritePackState.SUBMIT_LPACK)),
+                (WritePackState.WRITE_VSTORAGE,
+                 not self.st(WritePackState.WRITE_VSTORAGE) and \
+                     self.st(WritePackState.COMPLETE_LPACK) and \
+                     self.isReadyToWriteVstorage(packStateList)),
+                (WritePackState.SUBMIT_DPACK,
+                 not self.st(WritePackState.SUBMIT_DPACK) and \
+                     self.st(WritePackState.WRITE_VSTORAGE) and \
+                     self.isReadyToSubmitDpack(packStateList)),
+                (WritePackState.WRITE_RSTORAGE,
+                 not self.st(WritePackState.WRITE_RSTORAGE) and \
+                     self.st(WritePackState.SUBMIT_DPACK)),
+                (WritePackState.COMPLETE_DPACK,
+                 not self.st(WritePackState.COMPLETE_DPACK) and \
+                     self.st(WritePackState.WRITE_RSTORAGE)),
+                (WritePackState.END_REQ,
+                 not self.st(WritePackState.END_REQ) and \
+                     self.st(WritePackState.WRITE_VSTORAGE))
+                ]
+        else:
+            candidates = [
+                (WritePackState.SUBMIT_LPACK,
+                 not self.st(WritePackState.SUBMIT_LPACK)),
+                (WritePackState.COMPLETE_LPACK,
+                 not self.st(WritePackState.COMPLETE_LPACK) and \
+                     self.st(WritePackState.SUBMIT_LPACK)),
+                (WritePackState.WRITE_VSTORAGE,
+                 not self.st(WritePackState.WRITE_VSTORAGE) and \
+                     self.st(WritePackState.COMPLETE_LPACK) and \
+                     self.isReadyToWriteVstorage(packStateList)),
+                (WritePackState.SUBMIT_DPACK,
+                 not self.st(WritePackState.SUBMIT_DPACK) and \
+                     self.st(WritePackState.COMPLETE_LPACK) and \
+                     self.isReadyToSubmitDpack(packStateList)),
+                (WritePackState.WRITE_RSTORAGE,
+                 not self.st(WritePackState.WRITE_RSTORAGE) and \
+                     self.st(WritePackState.SUBMIT_DPACK)),
+                (WritePackState.COMPLETE_DPACK,
+                 not self.st(WritePackState.COMPLETE_DPACK) and \
+                     self.st(WritePackState.WRITE_RSTORAGE)),
+                (WritePackState.END_REQ,
+                 not self.st(WritePackState.END_REQ) and \
+                     self.st(WritePackState.COMPLETE_DPACK))
+                ]
 
         def p((op, isReady)):
             return isReady
@@ -271,20 +326,25 @@ class WritePackState(PackState):
             req.executeIO(storage)
 
     def isEnd(self):
-        return self.st(WritePackState.END_REQ) and \
-            self.st(WritePackState.COMPLETE_DPACK)
+        if self.isFast():
+            return self.st(WritePackState.END_REQ) and \
+                self.st(WritePackState.COMPLETE_DPACK)
+        else:
+            return self.st(WritePackState.END_REQ) and \
+                self.st(WritePackState.WRITE_VSTORAGE)
 
-def createPackState(pack):
+def createPackState(pack, isFast):
     """
     pack :: Pack
     return :: WritePackState | ReadPackState
     
     """
     assert(isinstance(pack, Pack))
+    assert(isinstance(isFast, bool))
     if pack.isWrite():
-        return WritePackState(pack)
+        return WritePackState(pack, isFast)
     else:
-        return ReadPackState(pack)
+        return ReadPackState(pack, isFast)
     
         
 class PackStateManager:
@@ -303,7 +363,7 @@ class PackStateManager:
     self.__diskImage :: DiskImage
     
     """
-    def __init__(self, diskImage, plugPackList):
+    def __init__(self, diskImage, plugPackList, isFast):
         """
         diskImage :: DiskImage
         plugPackList :: [[Pack]]
@@ -316,6 +376,9 @@ class PackStateManager:
         assert(isinstance(plugPackList, list))
         self.__plugPackList = plugPackList
 
+        assert(isinstance(isFast, bool))
+        self.__isFast = isFast
+
         packStateList = []
         firstPackIdList = []
         pid = 0 # pack id.
@@ -326,7 +389,7 @@ class PackStateManager:
             for pack in packList:
                 pack.setPid(pid)
                 pid += 1
-                packStateList.append(createPackState(pack))
+                packStateList.append(createPackState(pack, self.isFast()))
                 for req in pack.getL():
                     req.setRid(rid)
                     rid += 1
@@ -338,6 +401,9 @@ class PackStateManager:
 
         self.setFirstNotEndedPackId(0)
 
+    def isFast(self):
+        return self.__isFast
+        
     def vStorage(self):
         return self.__vStorage
 

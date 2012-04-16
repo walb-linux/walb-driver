@@ -19,12 +19,10 @@ import sys
 import random
 from walb_util import loadDiskImage, loadPlugPackList, \
     DiskImage, getDiskImageDiff, printPlugPackList
-#from walb_easy import PackStateManager, ReadPackState
-#from walb_easy import PackStateManager
-from walb_fast import PackStateManager
+from walb_algorithm import PackStateManager
 
 def simulate(diskImage, plugPackList, nPlug,
-             shuffle=True, crashPctPerTick=0):
+             shuffle=True, crashPctPerTick=0, isFast=True):
     """
     Simulate IO sequence with WalB constraints.
 
@@ -38,6 +36,8 @@ def simulate(diskImage, plugPackList, nPlug,
     crashPctPerTick :: int
         If it is more than 0, the simulator will randomly stop simulation
         in crashPctPerTick percentage at every execution tick.
+    isFast :: bool
+       Use fast algorithm if true, or easy algorithm.
     
     return :: [Operation], PackStateManager
         Operation :: (packId :: int, op :: int)
@@ -49,8 +49,9 @@ def simulate(diskImage, plugPackList, nPlug,
     assert(isinstance(shuffle, bool))
     assert(isinstance(crashPctPerTick, int))
     assert(crashPctPerTick >= 0)
+    assert(isinstance(isFast, bool))
     
-    mgr = PackStateManager(diskImage, plugPackList)
+    mgr = PackStateManager(diskImage, plugPackList, isFast)
 
     numOp = 0
     opHistoryL = []
@@ -83,7 +84,7 @@ def simulate(diskImage, plugPackList, nPlug,
 def main():
     if len(sys.argv) < 5:
         print "Usage: %s [diskImage.cpickle] [plugPackList.cpickle] " \
-            "[nPlug] [nLoop] ([crashPctPerTick])" % sys.argv[0]
+            "[nPlug] [nLoop] (fast/easy) ([crashPctPerTick])" % sys.argv[0]
         exit(1)
 
     f = open(sys.argv[1])
@@ -96,8 +97,12 @@ def main():
     assert(nPlug > 0)
     nLoop = int(sys.argv[4])
     assert(nLoop > 0)
+    isFast = True
     if len(sys.argv) >= 6:
-        crashPctPerTick = int(sys.argv[5])
+        if sys.argv[5] == 'easy':
+            isFast = False
+    if len(sys.argv) >= 7:
+        crashPctPerTick = int(sys.argv[6])
     else:
         crashPctPerTick = 0
 
@@ -105,7 +110,7 @@ def main():
 
     print "loop 0 start"
     opHistoryL, mgr = simulate(diskImage, plugPackList, nPlug,
-                               shuffle=False, crashPctPerTick=0)
+                               shuffle=False, crashPctPerTick=0, isFast=isFast)
     assert(getDiskImageDiff(mgr.vStorage(), mgr.rStorage()) == [])
     testDiskImage = mgr.rStorage()
     print "testStorage:", testDiskImage.disk()
@@ -116,7 +121,8 @@ def main():
         print "loop %d start" % loop
         #print diskImage.disk()  #debug
         opHistoryL, mgr = simulate(diskImage, plugPackList, nPlug,
-                                   shuffle=True, crashPctPerTick=crashPctPerTick)
+                                   shuffle=True, crashPctPerTick=crashPctPerTick,
+                                   isFast=isFast)
         packId = mgr.doCrashRecovery()
         print packId
         
