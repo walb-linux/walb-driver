@@ -30,6 +30,10 @@ class PackState:
         assert(not self.st(stateBit))
         self.__state[stateBit] = True
 
+    def setAllState(self, state):
+        assert(isinstance(state, bool))
+        self.__state = map(lambda x: state, self.__state)
+
     def getCandidates(self, packStateList):
         """
         Get operation candidates.
@@ -376,6 +380,12 @@ class PackStateManager:
         assert(packId >= 0)
         self.__firstNotEndedPackId = packId
 
+    def totalNumPacks(self):
+        return self.__totalNumPacks
+
+    def totalNumReqs(self):
+        return self.__totalNumReqs
+
     def getCandidates(self, nPlug):
         """
         Get operation candidates.
@@ -438,10 +448,28 @@ class PackStateManager:
                 ret = True
         return ret
 
-    def recovery(self):
+    def doCrashRecovery(self):
         """
         Redo all write requests that is not ended but its logpack written.
         getDiskImageDiff(self.vStorage(), self.rStorage()) will be [].
+
+        return :: next packId of last recovered.
         
         """
-        raise 'NOT YET IMPLEMENTATION'
+        packId0 = self.firstNotEndedPackId()
+        for packS in self.packStateList()[packId0:]:
+            if packS.pack().isWrite():
+                if not packS.st(WritePackState.COMPLETE_LPACK):
+                    break
+                if packS.st(WritePackState.COMPLETE_LPACK) and (
+                    (not packS.st(WritePackState.WRITE_VSTORAGE) or
+                     not packS.st(WritePackState.WRITE_RSTORAGE))):
+                    packS.setAllState(False)
+                    packS.execute(WritePackState.WRITE_VSTORAGE,
+                                  self.vStorage(), self.rStorage())
+                    packS.execute(WritePackState.WRITE_RSTORAGE,
+                                  self.vStorage(), self.rStorage())
+            packS.setAllState(True)
+            self.setFirstNotEndedPackId(packS.pack().pid() + 1)
+
+        return self.firstNotEndedPackId() 
