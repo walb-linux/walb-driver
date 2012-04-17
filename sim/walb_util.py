@@ -185,6 +185,33 @@ def forAllAddrInPack(pack):
         for addr in forAllAddrInReq(req):
             yield addr
 
+def dataAt(a, addr):
+    """
+    a :: Request | Pack | DiskImage
+    addr :: int
+    return :: int
+        data of the block.
+    
+    """
+    def getOverlapReq(pack, addr):
+        for req in pack.getL():
+            if isOverlapAt(req, addr):
+                return req
+        raise "does not overlap."
+    def getDataFromReq(req, addr):
+        return req.data()[addr - req.addr()]
+    
+    assert(isinstance(addr, int))
+    if isinstance(a, DiskImage):
+        return a.disk()[addr]
+    elif isinstance(a, Request):
+        assert(isOverlapAt(a, addr))
+        return getDataFromReq(a, addr)
+    else:
+        assert(isinstance(a, Pack))
+        assert(isOverlapAt(a, addr))
+        return getDataFromReq(getOverlapReq(a, addr))
+            
 def createPlugPackList(plugReqList):
     """
     plugReqList :: [[Request]]
