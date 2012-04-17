@@ -133,6 +133,38 @@ def isOverlap(a, b):
             return True
     return False
 
+
+def hasAddr(a, addr):
+    """
+    a :: Request | Pack | DiskImage
+    addr :: int
+        block address.
+    return :: bool
+
+    """
+    def isDiskImageHasAddr(diskImage):
+        assert(isinstance(diskImage, DiskImage))
+        return 0 <= addr and addr < len(diskImage.data())
+    def isReqHasAddr(req):
+        assert(isinstance(req, Request))
+        return req.addr() <= addr and addr < req.addr() + req.size()
+    def isPackHasAddr(pack):
+        assert(isinstance(pack, Pack))
+        for req in pack.getL():
+            if isReqHasAddr(req, addr):
+                return True
+        return False
+
+    if isinstance(a, DiskImage):
+        return isDiskImageHasAddr(a)
+    elif isinstance(a, Pack):
+        return isPackHasAddr(a)
+    elif isinstance(a, Request):
+        return isReqHasAddr(a)
+    else:
+        assert(False)
+
+
 def isOverlapAt(a, b, addr):
     """
     a :: Request | Pack
@@ -147,20 +179,6 @@ def isOverlapAt(a, b, addr):
     assert(isinstance(addr, int))
     assert(addr >= 0)
 
-    def isReqHasAddr(req, addr):
-        assert(isinstance(req, Request))
-        return req.addr() <= addr and addr < req.addr() + req.size()
-    def isPackHasAddr(pack, addr):
-        assert(isinstance(pack, Pack))
-        for req in pack.getL():
-            if isReqHasAddr(req, addr):
-                return True
-        return False
-    def hasAddr(reqOrPack, addr):
-        if (isinstance(reqOrPack, Pack)):
-            return isPackHasAddr(reqOrPack)
-        else:
-            return isReqHasAddr(reqOrPack)
     return hasAddr(a) and hasAddr(b)
 
 def forAllAddrInReq(req):
