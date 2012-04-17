@@ -133,6 +133,58 @@ def isOverlap(a, b):
             return True
     return False
 
+def isOverlapAt(a, b, addr):
+    """
+    a :: Request | Pack
+    b :; Request | Pack
+    addr :: int
+        block address.
+    return :: bool
+
+    """
+    assert(isinstance(a, Request) or isinstance(a, Pack))
+    assert(isinstance(b, Request) or isinstance(b, Pack))
+    assert(isinstance(addr, int))
+    assert(addr >= 0)
+
+    def isReqHasAddr(req, addr):
+        assert(isinstance(req, Request))
+        return req.addr() <= addr and addr < req.addr() + req.size()
+    def isPackHasAddr(pack, addr):
+        assert(isinstance(pack, Pack))
+        for req in pack.getL():
+            if isReqHasAddr(req, addr):
+                return True
+        return False
+    def hasAddr(reqOrPack, addr):
+        if (isinstance(reqOrPack, Pack)):
+            return isPackHasAddr(reqOrPack)
+        else:
+            return isReqHasAddr(reqOrPack)
+    return hasAddr(a) and hasAddr(b)
+
+def forAllAddrInReq(req):
+    """
+    req :: Request
+    return :: generator(int)
+        addr generator.
+    
+    """
+    assert(isinstance(req, Request))
+    return xrange(req.addr(), req.addr() + req.size())
+
+def forAllAddrInPack(pack):
+    """
+    pack :: Pack
+    return :: generator(int)
+        addr generator.
+
+    """
+    assert(isinstance(pack, Pack))
+    for req in pack.getL():
+        for addr in forAllAddrInReq(req):
+            yield addr
+
 def createPlugPackList(plugReqList):
     """
     plugReqList :: [[Request]]
