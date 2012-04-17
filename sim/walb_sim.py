@@ -124,7 +124,7 @@ def main():
                                    shuffle=True, crashPctPerTick=crashPctPerTick,
                                    isFast=isFast)
         packId = mgr.doCrashRecovery()
-        print packId
+        print 'next of recovered packId %u' % packId
         
         diff = getDiskImageDiff(mgr.vStorage(), mgr.rStorage())
         if diff != []:

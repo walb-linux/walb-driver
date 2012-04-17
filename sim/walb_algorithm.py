@@ -9,7 +9,7 @@ __all__ = ['PackState', 'ReadPackState', 'WritePackState',
            'PackStateManager']
 
 import bisect
-from walb_util import Pack, isOverlap, DiskImage
+from walb_util import Pack, DiskImage, isOverlap, dataAt, hasAddr, forAllAddrInPack
 
 class PackState:
 
@@ -27,7 +27,10 @@ class PackState:
 
     def pack(self):
         return self.__pack
-        
+
+    def state(self):
+        return self.__state
+    
     def st(self, stateBit):
         return self.__state[stateBit]
 
@@ -61,7 +64,14 @@ class PackState:
             
         """
         raise "Not defined."
-        
+
+    def isBegin(self):
+        """
+        return :: bool
+            True if one or more operations are executed.
+        """
+        return any(self.__state)
+
     def isEnd(self):
         """
         return :: bool
@@ -94,6 +104,7 @@ class ReadPackState(PackState):
         """
         PackState.__init__(self, pack, ReadPackState.N_OP, isFast)
         assert(not pack.isWrite())
+        self.__possibleDataMap = {}
 
     def getCandidates(self, packStateList):
         """
@@ -157,6 +168,32 @@ class ReadPackState(PackState):
 
     def isEnd(self):
         return self.st(ReadPackState.END_REQ)
+
+    def checkValidAddr(self, addr):
+        assert(isinstance(addr, int))
+        assert(hasAddr(self.pack(), addr))
+    
+    def setPossibleData(self, addr, possibleData):
+        """
+        addr :: int
+        possibleData :: (int, [WritePackState])
+        return :: None
+
+        """
+        self.checkValidAddr(addr)
+        self.__possibleDataMap[addr] = possibleData
+
+    def possibleData(self, addr):
+        """
+        addr :: int
+        return :: (int, [WritePackState])
+        
+        """
+        self.checkValidAddr(addr)
+        return self.__possibleDataMap[addr]
+
+    def __str__(self):
+        return str(self.pack()) + str(zip(ReadPackState.OP_NAME, self.state()))
 
 
 class WritePackState(PackState):
@@ -315,6 +352,10 @@ class WritePackState(PackState):
         if op == WritePackState.WRITE_RSTORAGE:
             #print 'Write rStorage', self.pack()
             self.executeIO(rStorage)
+            if False:
+                for addr in forAllAddrInPack(self.pack()): #debug
+                    print self.pack().pid(), addr, 'Write', dataAt(self.pack(), addr)
+            
         if op == WritePackState.WRITE_VSTORAGE:
             #print 'Write vStorage', self.pack()
             self.executeIO(vStorage)
@@ -333,6 +374,10 @@ class WritePackState(PackState):
             return self.st(WritePackState.END_REQ) and \
                 self.st(WritePackState.WRITE_VSTORAGE)
 
+    def __str__(self):
+        return str(self.pack()) + str(zip(WritePackState.OP_NAME, self.state()))
+
+
 def createPackState(pack, isFast):
     """
     pack :: Pack
@@ -346,7 +391,7 @@ def createPackState(pack, isFast):
     else:
         return ReadPackState(pack, isFast)
     
-        
+
 class PackStateManager:
     """
     Simulator.
@@ -403,7 +448,10 @@ class PackStateManager:
 
     def isFast(self):
         return self.__isFast
-        
+
+    def fStorage(self):
+        return self.__fStorage
+    
     def vStorage(self):
         return self.__vStorage
 
@@ -482,6 +530,118 @@ class PackStateManager:
 
         return ret
 
+    def calcReadPossibleData(self, op, packState):
+        """
+        Calculate read possibilities for each block.
+        
+        """
+        assert(isinstance(packState, PackState))
+        pack = packState.pack()
+        if pack.isWrite():
+            return
+        assert(isinstance(packState, ReadPackState))
+        if op != ReadPackState.SUBMIT: # not just after began.
+            return
+        
+        def possibleDataWithCondition1(addr):
+            """
+            addr :: int
+            return :: int
+            
+            """
+            assert(isinstance(addr, int))
+            firstOverlapPackS = None
+            packId = self.totalNumPacks() - 1
+            while packId >= 0:
+                packS = self.packStateList()[packId]
+                if (packS.isEnd() and
+                    packS.pack().isWrite() and
+                    hasAddr(packS.pack(), addr)):
+                    firstOverlapPackS = packS
+                    break
+                packId -= 1
+            if firstOverlapPackS is None:
+                return dataAt(self.fStorage(), addr)
+            else:
+                return dataAt(firstOverlapPackS.pack(), addr)
+        def possiblePackStateListWithCondition2a(addr):
+            """
+            addr :: int
+            return :: [PackStateList]
+            
+            """
+            assert(isinstance(addr, int))
+            def f1(packS):
+                assert(isinstance(packS, PackState))
+                return (not packS.isEnd() and 
+                        packS.pack().isWrite() and
+                        hasAddr(packS.pack(), addr))
+            #return filter(f1, self.packStateList()[self.firstNotEndedPackId():])
+            return filter(f1, self.packStateList())
+
+        # calculate possibleData for each block in the pack.
+        for addr in forAllAddrInPack(pack):
+            writtenData = possibleDataWithCondition1(addr)
+            possiblePackStateL = possiblePackStateListWithCondition2a(addr)
+            if False: #debug
+                print packState.pack().pid(), addr, '___', [writtenData] + \
+                    map(lambda packS: dataAt(packS.pack(), addr), possiblePackStateL) 
+            possibleData = (writtenData, possiblePackStateL)
+            packState.setPossibleData(addr, possibleData)
+        pass
+        
+    def validateRead(self, op, packState):
+        """
+        Validate a read pack just after IO execution.
+
+        op :: int
+        packState :: PackState
+        return :: None
+
+        """
+        assert(isinstance(packState, PackState))
+        pack = packState.pack()
+        if pack.isWrite():
+            return
+        assert(isinstance(packState, ReadPackState))
+        if op != ReadPackState.END_REQ: # not just after ended.
+            return
+
+        def possiblePackStateListWithCondition2b(addr, possiblePackStateList):
+            """
+            addr :: int
+            possiblePackStateList :; [WritePackState]
+            return :: [WritePackState]
+            
+            """
+            assert(isinstance(addr, int))
+            def f1(packS):
+                assert(isinstance(packS, PackState))
+                return (packS.isBegin() and 
+                        packS.pack().isWrite() and
+                        hasAddr(packS.pack(), addr))
+
+            return filter(f1, possiblePackStateList)
+        
+        # validate data for each block in the pack.
+        for addr in forAllAddrInPack(pack):
+            readData = dataAt(pack, addr)
+            writtenData, possibleStatePackL = packState.possibleData(addr)
+            possibleDataL \
+                = [writtenData] + \
+                map(lambda packS: dataAt(packS.pack(), addr),
+                    possiblePackStateListWithCondition2b(addr, possibleStatePackL))
+
+            #print pack.pid(), addr, readData, possibleDataL #debug
+            found = False
+            for possibleData in possibleDataL:
+                if readData == possibleData:
+                    found = True
+            if not found: #debug
+                for packS in self.packStateList():
+                    print packS
+            assert(found)
+
     def execute(self, packId, op):
         """
         Execute specified operation at packId.
@@ -494,8 +654,18 @@ class PackStateManager:
         assert(isinstance(op, int))
 
         packState = self.packStateList()[packId]
+        assert(packId == packState.pack().pid())
+        if False:
+            if packState.pack().isWrite():  #debug
+                print packId, WritePackState.opStr(op)  
+            else:
+                print packId, ReadPackState.opStr(op)
         packState.execute(op, self.vStorage(), self.rStorage())
-        packId = packState.pack().pid()
+
+        # Calculate read possibilities.
+        self.calcReadPossibleData(op, packState)
+        # Validate WRITE-READ consistency.
+        self.validateRead(op, packState)
 
         # Change firstNotEndedPackId if needed.
         ret = False

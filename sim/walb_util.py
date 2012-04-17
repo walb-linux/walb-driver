@@ -2,7 +2,8 @@
 
 __all__ = ['Request', 'Pack', 'isOverlap', 'createPlugPackList',
            'loadPlugPackList', 'dumpPlugPackList', 'printPlugPackList', 
-           'DiskImage', 'loadDiskImage', 'dumpDiskImage', 'Operation']
+           'DiskImage', 'loadDiskImage', 'dumpDiskImage', 'Operation',
+           'forAllAddrInPack']
 
 import cPickle
 import random
@@ -151,7 +152,7 @@ def hasAddr(a, addr):
     def isPackHasAddr(pack):
         assert(isinstance(pack, Pack))
         for req in pack.getL():
-            if isReqHasAddr(req, addr):
+            if isReqHasAddr(req):
                 return True
         return False
 
@@ -213,7 +214,7 @@ def dataAt(a, addr):
     """
     def getOverlapReq(pack, addr):
         for req in pack.getL():
-            if isOverlapAt(req, addr):
+            if hasAddr(req, addr):
                 return req
         raise "does not overlap."
     def getDataFromReq(req, addr):
@@ -223,13 +224,14 @@ def dataAt(a, addr):
     if isinstance(a, DiskImage):
         return a.disk()[addr]
     elif isinstance(a, Request):
-        assert(isOverlapAt(a, addr))
+        assert(hasAddr(a, addr))
         return getDataFromReq(a, addr)
     else:
         assert(isinstance(a, Pack))
-        assert(isOverlapAt(a, addr))
-        return getDataFromReq(getOverlapReq(a, addr))
-            
+        assert(hasAddr(a, addr))
+        return getDataFromReq(getOverlapReq(a, addr), addr)
+
+
 def createPlugPackList(plugReqList):
     """
     plugReqList :: [[Request]]
