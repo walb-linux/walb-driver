@@ -18,12 +18,13 @@ bool pre_register(void);
 /* Called after unregister. */
 void post_unregister(void);
 
-enum plug_policy {
-	PLUG_PER_PLUG,
-	PLUG_PER_REQ
+/**
+ * Private data as wrapper_dev.private_data.
+ */
+struct pdata
+{
+	struct block_device *ldev;
+	struct block_device *ddev;
 };
-
-/* Get policy */
-enum plug_policy get_policy(void);
 
 #endif /* WALB_WRAPPER_BLK_WALB_H_KERNEL */

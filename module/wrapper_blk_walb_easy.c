@@ -83,9 +83,6 @@ struct kmem_cache *bio_entry_cache_ = NULL;
  * Macros definition.
  *******************************************************************************/
 
-/* Check plugging policy is plug_per_plug or not. */
-#define isPlugPerPlug() (get_policy() == PLUG_PER_PLUG)
-
 /*******************************************************************************
  * Static functions prototype.
  *******************************************************************************/
@@ -360,7 +357,8 @@ static bool create_bio_entry_list(struct req_entry *reqe, struct wrapper_blk_dev
 {
 	struct bio_entry *bioe, *next;
 	struct bio *bio;
-	struct block_device *bdev = wdev->private_data;
+	struct pdata *pdata = wdev->private_data;
+	struct block_device *bdev = pdata->ddev;
         
 	ASSERT(reqe);
 	ASSERT(reqe->req);
@@ -425,20 +423,6 @@ static void wait_for_req_entry(struct req_entry *reqe)
 	ASSERT(remaining == 0);
 }
 
-static void blk_start_plug_p(struct blk_plug *plug, bool pred)
-{
-	if (pred) {
-		blk_start_plug(plug);
-	}
-}
-
-static void blk_finish_plug_p(struct blk_plug *plug, bool pred)
-{
-	if (pred) {
-		blk_finish_plug(plug);
-	}
-}
-
 /**
  * Execute request list.
  *
@@ -465,17 +449,15 @@ static void req_list_work_task(struct work_struct *work)
 	ASSERT(rlwork->flush_req == NULL);
 
 	/* prepare and submit */
-	blk_start_plug_p(&plug, isPlugPerPlug());
+	blk_start_plug(&plug);
 	list_for_each_entry(reqe, &rlwork->req_entry_list, list) {
 		if (!create_bio_entry_list(reqe, wdev)) {
 			LOGe("create_bio_entry_list failed.\n");
 			goto error0;
 		}
-		blk_start_plug_p(&plug, !isPlugPerPlug());
 		submit_req_entry(reqe);
-		blk_finish_plug_p(&plug, !isPlugPerPlug());
 	}
-	blk_finish_plug_p(&plug, isPlugPerPlug());
+	blk_finish_plug(&plug);
 
 	/* wait completion and end requests. */
 	list_for_each_entry_safe(reqe, next, &rlwork->req_entry_list, list) {
