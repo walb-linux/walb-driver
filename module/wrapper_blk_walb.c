@@ -22,7 +22,8 @@
  *******************************************************************************/
 
 /* Device size list string. The unit of each size is bytes. */
-char *device_str_ = "/dev/walb_blk/0";
+char *log_device_str_ = "/dev/simple_blk/0";
+char *data_device_str_ = "/dev/simple_blk/1";
 /* Minor id start. */
 int start_minor_ = 0;
 
@@ -31,30 +32,21 @@ int start_minor_ = 0;
 /* Physical block size. */
 int physical_block_size_ = 4096;
 
-/**
- * Plugging policy.
- * 'plug_per_plug' or 'plug_per_req'.
- */
-char *plug_policy_str_ = "plug_per_plug";
-
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
 
-module_param_named(device_str, device_str_, charp, S_IRUGO);
+module_param_named(log_device_str, log_device_str_, charp, S_IRUGO);
+module_param_named(data_device_str, data_device_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
-module_param_named(plug_policy, plug_policy_str_, charp, S_IRUGO);
-	
+
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
 
 /* Block sizes. */
 struct block_sizes blksiz_;
-
-/* Policy. */
-enum plug_policy plug_policy_;
 
 /*******************************************************************************
  * Static functions prototype.
@@ -81,61 +73,101 @@ static void stop_dev(void);
 /* Create private data for wdev. */
 static bool create_private_data(struct wrapper_blk_dev *wdev)
 {
-        struct block_device *bdev;
+	struct pdata *pdata;
+        struct block_device *ldev, *ddev;
         unsigned int lbs, pbs;
         
         LOGd("create_private_data called");
 
-        /* open underlying device. */
-        bdev = blkdev_get_by_path(
-                device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
+	/* Allocate pdata. */
+	pdata = kmalloc(sizeof(struct pdata), GFP_KERNEL);
+	if (!pdata) {
+		LOGe("kmalloc failed.\n");
+		goto error0;
+	}
+	pdata->ldev = NULL;
+	pdata->ddev = NULL;
+	
+        /* open underlying log device. */
+        ldev = blkdev_get_by_path(
+                log_device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
                 create_private_data);
-        if (IS_ERR(bdev)) {
-                LOGe("open %s failed.", device_str_);
-                return false;
+        if (IS_ERR(ldev)) {
+                LOGe("open %s failed.", log_device_str_);
+                goto error1;
         }
-        wdev->private_data = bdev;
+
+        /* open underlying data device. */
+	ddev = blkdev_get_by_path(
+		data_device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
+                create_private_data);
+	if (IS_ERR(ddev)) {
+		LOGe("open %s failed.", data_device_str_);
+		goto error2;
+	}
+
+	/* Prepare pdata. */
+	pdata->ldev = ldev;
+	pdata->ddev = ddev;
+        wdev->private_data = pdata;
 
         /* capacity */
-        wdev->capacity = get_capacity(bdev->bd_disk);
+        wdev->capacity = get_capacity(ddev->bd_disk);
         set_capacity(wdev->gd, wdev->capacity);
 
         /* Block size */
-        lbs = bdev_logical_block_size(bdev);
-        pbs = bdev_physical_block_size(bdev);
+        lbs = bdev_logical_block_size(ddev);
+        pbs = bdev_physical_block_size(ddev);
         
         if (lbs != LOGICAL_BLOCK_SIZE) {
-                goto error0;
+		LOGe("logical block size must be %u but %u.\n",
+			LOGICAL_BLOCK_SIZE, lbs);
+                goto error3;
         }
         blksiz_init(&wdev->blksiz, lbs, pbs);
         blk_queue_logical_block_size(wdev->queue, lbs);
         blk_queue_physical_block_size(wdev->queue, pbs);
 
-        blk_queue_stack_limits(wdev->queue, bdev_get_queue(bdev));
+        blk_queue_stack_limits(wdev->queue, bdev_get_queue(ddev));
 
         return true;
+error3:
+        blkdev_put(ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+error2:
+        blkdev_put(ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+error1:
+	kfree(pdata);
 error0:
-        blkdev_put(wdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
         return false;
 }
 
 /* Destroy private data for ssev. */
 static void destroy_private_data(struct wrapper_blk_dev *wdev)
 {
-        LOGd("destoroy_private_data called.");
+	struct pdata *pdata;
 
-        /* close underlying device. */
-        blkdev_put(wdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+        LOGd("destoroy_private_data called.");
+	
+	pdata = wdev->private_data;
+	ASSERT(pdata);
+	
+        /* close underlying devices. */
+        blkdev_put(pdata->ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+        blkdev_put(pdata->ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+	kfree(pdata);
+	wdev->private_data = NULL;
 }
 
 /* Customize wdev after register before start. */
 static void customize_wdev(struct wrapper_blk_dev *wdev)
 {
         struct request_queue *q, *uq;
+	struct pdata *pdata;
         ASSERT(wdev);
         q = wdev->queue;
+	pdata = wdev->private_data;
 
-        uq = bdev_get_queue(wdev->private_data);
+        uq = bdev_get_queue(pdata->ddev);
         /* Accept REQ_FLUSH and REQ_FUA. */
         if (uq->flush_flags & REQ_FLUSH) {
                 if (uq->flush_flags & REQ_FUA) {
@@ -146,7 +178,7 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
                         blk_queue_flush(q, REQ_FLUSH);
                 }
         } else {
-                LOGn("Not support REQ_FLUSH (but support).");
+                LOGn("Supports REQ_FLUSH (the underlying device does not support).");
 		blk_queue_flush(q, REQ_FLUSH);
         }
 
@@ -232,25 +264,9 @@ static void stop_dev(void)
         wdev_stop(get_minor(i));
 }
 
-static void set_policy(void)
-{
-	if (strcmp(plug_policy_str_, "plug_per_req") == 0) {
-		plug_policy_ = PLUG_PER_REQ;
-		LOGn("plug_policy: plug_per_req\n");
-	} else {
-		plug_policy_ = PLUG_PER_PLUG;
-		LOGn("plug_policy: plug_per_plug\n");
-	}
-}
-
 /*******************************************************************************
  * Global function definition.
  *******************************************************************************/
-
-enum plug_policy get_policy(void)
-{
-	return plug_policy_;
-}
 
 /*******************************************************************************
  * Init/exit definition.
@@ -259,8 +275,7 @@ enum plug_policy get_policy(void)
 static int __init wrapper_blk_init(void)
 {
         blksiz_init(&blksiz_, LOGICAL_BLOCK_SIZE, physical_block_size_);
-	set_policy();
-	
+
         pre_register();
         
         if (!register_dev()) {
