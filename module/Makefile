@@ -47,6 +47,9 @@ wrapper-blk-mod-objs := wrapper_blk.o
 WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o
 wrapper-blk-simple-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
 wrapper_blk_simple_plug.o
+WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o
+wrapper-blk-walb-easy-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
+wrapper_blk_walb_easy.o
 
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
@@ -73,6 +76,7 @@ simple-blk-req-none-mod.o \
 simple-blk-req-mem-barrier-mod.o \
 wrapper-blk-mod.o \
 wrapper-blk-simple-plug-mod.o \
+wrapper-blk-walb-easy-mod.o \
 
 else
 
@@ -98,6 +102,7 @@ clean_build_date:
 
 wrapper_blk.o: wrapper_blk.c wrapper_blk.h 
 wrapper_blk_simple.o: wrapper_blk_simple.c wrapper_blk.h
+wrapper_blk_walb.o: wrapper_blk_walb.c wrapper_blk.h
 
 endif
 
