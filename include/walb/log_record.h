@@ -17,7 +17,7 @@
 /**
  * Log record.
  */
-typedef struct walb_log_record {
+struct walb_log_record {
 
         /* 8 + 2 * 4 + 8 * 2 = 32 bytes */
 
@@ -32,7 +32,8 @@ typedef struct walb_log_record {
         /* Local sequence id as the data offset in the log record. */
         u16 lsid_local; 
         u16 is_padding; /* Non-zero if this is padding log */
-        u16 io_size; /* IO size [logical sector]. */
+        u16 io_size; /* IO size [logical sector].
+			512B * (65K - 1) = (32M-512)B is the maximum request size. */
         u16 is_exist; /* Non-zero if this record is exist. */
         
         u64 offset; /* IO offset [logical sector]. */
@@ -44,14 +45,14 @@ typedef struct walb_log_record {
          *   offset = lsid_to_offset(lsid) - lsid_local
          */
         
-} __attribute__((packed)) walb_log_record_t;
+} __attribute__((packed));
 
 /**
  * This is for validation of log record.
  * 
  * @return Non-zero if valid, or 0.
  */
-static inline int is_valid_log_record(walb_log_record_t* rec)
+static inline int is_valid_log_record(struct walb_log_record *rec)
 {
         CHECK(rec);
         CHECK(rec->is_exist);
@@ -70,9 +71,9 @@ error:
 /**
  * Logpack header data inside sector.
  *
- * sizeof(walb_logpack_header_t) <= walb_super_sector.sector_size.
+ * sizeof(struct walb_logpack_header) <= walb_super_sector.sector_size.
  */
-typedef struct walb_logpack_header {
+struct walb_logpack_header {
 
         u32 checksum; /* checksum of whole log pack. */
         u16 sector_type; /* type identifier */
@@ -86,10 +87,10 @@ typedef struct walb_logpack_header {
         u16 n_padding; /* Number of padding record. 0 or 1. */
         u32 reserved1;
         
-        walb_log_record_t record[0];
+        struct walb_log_record record[0];
         /* continuous records */
         
-} __attribute__((packed)) walb_logpack_header_t;
+} __attribute__((packed));
 
 
 /**
@@ -99,7 +100,7 @@ typedef struct walb_logpack_header {
  *
  * @return Non-zero in success, or 0.
  */
-static inline int is_valid_logpack_header(const walb_logpack_header_t* lhead) {
+static inline int is_valid_logpack_header(const struct walb_logpack_header *lhead) {
 
         CHECK(lhead);
         CHECK(lhead->n_records > 0);
@@ -132,8 +133,8 @@ error:
  * for each macro for records in a logpack.
  *
  * int i;
- * walb_log_record_t *lrec;
- * walb_logpack_header_t *lhead;
+ * struct walb_log_record *lrec;
+ * struct walb_logpack_header *lhead;
  */
 #define for_each_logpack_record(i, lrec, lhead)                         \
         for (i = 0; i < lhead->n_records && ({lrec = &lhead->record[i]; 1;}); i ++)
@@ -154,8 +155,8 @@ static inline int lb_in_pb(int logical_bs, int physical_bs);
  */
 static inline int max_n_log_record_in_sector(int sector_size)
 {
-        return (sector_size - sizeof(walb_logpack_header_t)) /
-                sizeof(walb_log_record_t);
+        return (sector_size - sizeof(struct walb_logpack_header)) /
+                sizeof(struct walb_log_record);
 }
 
 /**
@@ -208,7 +209,7 @@ static inline int pb_to_lb(int logical_bs, int physical_bs, int n_pb)
 /**
  * Initialize a log record.
  */
-static inline void log_record_init(walb_log_record_t* rec)
+static inline void log_record_init(struct walb_log_record *rec)
 {
         ASSERT(rec);
         

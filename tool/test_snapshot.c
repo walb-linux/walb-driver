@@ -38,7 +38,7 @@ void test(int sector_size, int n_snapshots)
         /* Prepare snapshot data for userland. */
         struct snapshot_data_u *snapd;
         snapd = alloc_snapshot_data_u
-                (fd, (const walb_super_sector_t *)super_sect->data);
+                (fd, (const struct walb_super_sector *)super_sect->data);
         clear_snapshot_data_u(snapd);
         initialize_snapshot_data_u(snapd);
         ASSERT_SNAPSHOT_SECTOR_DATA_U(snapd);

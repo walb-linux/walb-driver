@@ -532,7 +532,7 @@ bool sector_array_write(int fd, u64 offset,
  * @n_snapshots number of snapshots to keep.
  * @name name of the walb device, or NULL.
  */
-void __init_super_sector(walb_super_sector_t* super_sect,
+void __init_super_sector(struct walb_super_sector* super_sect,
                          int logical_bs, int physical_bs,
                          u64 ddev_lb, u64 ldev_lb, int n_snapshots,
                          const char *name)
@@ -543,7 +543,7 @@ void __init_super_sector(walb_super_sector_t* super_sect,
         ASSERT(ddev_lb < (u64)(-1));
         ASSERT(ldev_lb < (u64)(-1));
 
-        ASSERT(sizeof(walb_super_sector_t) <= (size_t)physical_bs);
+        ASSERT(sizeof(struct walb_super_sector) <= (size_t)physical_bs);
 
         /* Set sector type. */
         super_sect->sector_type = SECTOR_TYPE_SUPER;
@@ -599,7 +599,7 @@ void init_super_sector(struct sector_data *sect,
  * Print super sector for debug.
  * This will be obsolute. Use print_super_sector() instead.
  */
-void __print_super_sector(const walb_super_sector_t* super_sect)
+void __print_super_sector(const struct walb_super_sector* super_sect)
 {
         ASSERT(super_sect != NULL);
         printf("checksum: %08x\n"
@@ -630,7 +630,7 @@ void __print_super_sector(const walb_super_sector_t* super_sect)
 void print_super_sector(const struct sector_data *sect)
 {
         ASSERT_SUPER_SECTOR(sect);
-        __print_super_sector((const walb_super_sector_t *)sect->data);
+        __print_super_sector((const struct walb_super_sector *)sect->data);
 }
 
 /**
@@ -641,7 +641,7 @@ void print_super_sector(const struct sector_data *sect)
  *
  * @return true in success, or false.
  */
-bool __write_super_sector(int fd, const walb_super_sector_t* super_sect)
+bool __write_super_sector(int fd, const struct walb_super_sector* super_sect)
 {
         ASSERT(super_sect != NULL);
         u32 sect_sz = super_sect->physical_bs;
@@ -655,10 +655,10 @@ bool __write_super_sector(int fd, const walb_super_sector_t* super_sect)
         memcpy(sector_buf, super_sect, sizeof(*super_sect));
 
         /* Set sector type. */
-        ((walb_super_sector_t *)sector_buf)->sector_type = SECTOR_TYPE_SUPER;
+        ((struct walb_super_sector *)sector_buf)->sector_type = SECTOR_TYPE_SUPER;
         
         /* Calculate checksum. */
-        walb_super_sector_t *super_sect_tmp = (walb_super_sector_t *)sector_buf;
+        struct walb_super_sector *super_sect_tmp = (struct walb_super_sector *)sector_buf;
         super_sect_tmp->checksum = 0;
         u32 csum = checksum(sector_buf, sect_sz);
         print_binary_hex(sector_buf, sect_sz);/* debug */
@@ -749,7 +749,7 @@ bool read_sectors(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n)
  *
  * @return true in success, or false.
  */
-bool __read_super_sector(int fd, walb_super_sector_t* super_sect,
+bool __read_super_sector(int fd, struct walb_super_sector* super_sect,
                          u32 sector_size, u32 n_snapshots)
 {
         /* 1. Read two sectors
@@ -778,18 +778,18 @@ bool __read_super_sector(int fd, walb_super_sector_t* super_sect,
         if (ret1 && checksum(buf1, sector_size) != 0) {
                 ret1 = -1;
         }
-        if (ret0 && ((walb_super_sector_t *)buf0)->sector_type != SECTOR_TYPE_SUPER) {
+        if (ret0 && ((struct walb_super_sector *)buf0)->sector_type != SECTOR_TYPE_SUPER) {
                 ret0 = -1;
         }
-        if (ret1 && ((walb_super_sector_t *)buf1)->sector_type != SECTOR_TYPE_SUPER) {
+        if (ret1 && ((struct walb_super_sector *)buf1)->sector_type != SECTOR_TYPE_SUPER) {
                 ret1 = -1;
         }
         if (! ret0 && ! ret1) {
                 LOGe("Both superblocks are broken.\n");
                 goto error1;
         } else if (ret0 && ret1) {
-                u64 lsid0 = ((walb_super_sector_t *)buf0)->written_lsid;
-                u64 lsid1 = ((walb_super_sector_t *)buf1)->written_lsid;
+                u64 lsid0 = ((struct walb_super_sector *)buf0)->written_lsid;
+                u64 lsid1 = ((struct walb_super_sector *)buf1)->written_lsid;
                 if (lsid0 >= lsid1) {
                         memcpy(super_sect, buf0, sizeof(*super_sect));
                 } else {

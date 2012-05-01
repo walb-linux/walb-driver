@@ -173,7 +173,7 @@ static inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
 /**
  * Get offset of primary super sector.
  */
-static inline u64 get_super_sector0_offset_2(const walb_super_sector_t* super_sect)
+static inline u64 get_super_sector0_offset_2(const struct walb_super_sector* super_sect)
 {
         ASSERT(super_sect != NULL);
         return get_super_sector0_offset(super_sect->physical_bs);
@@ -182,7 +182,7 @@ static inline u64 get_super_sector0_offset_2(const walb_super_sector_t* super_se
 /**
  * Get offset of first metadata sector.
  */
-static inline u64 get_metadata_offset_2(const walb_super_sector_t* super_sect)
+static inline u64 get_metadata_offset_2(const struct walb_super_sector* super_sect)
 {
         ASSERT(super_sect != NULL);
         return get_metadata_offset(super_sect->physical_bs);
@@ -191,7 +191,7 @@ static inline u64 get_metadata_offset_2(const walb_super_sector_t* super_sect)
 /**
  * Get offset of secondary super sector.
  */
-static inline u64 get_super_sector1_offset_2(const walb_super_sector_t* super_sect)
+static inline u64 get_super_sector1_offset_2(const struct walb_super_sector* super_sect)
 {
         ASSERT(super_sect != NULL);
         return  get_metadata_offset(super_sect->physical_bs) +
@@ -203,7 +203,7 @@ static inline u64 get_super_sector1_offset_2(const walb_super_sector_t* super_se
  *
  * @return offset in log device [physical sector].
  */
-static inline u64 get_ring_buffer_offset_2(const walb_super_sector_t* super_sect)
+static inline u64 get_ring_buffer_offset_2(const struct walb_super_sector* super_sect)
 {
         ASSERT(super_sect != NULL);
         return  get_super_sector1_offset_2(super_sect) + 1;
@@ -216,7 +216,7 @@ static inline u64 get_ring_buffer_offset_2(const walb_super_sector_t* super_sect
  * @return offset in log device [physical sector].
  */
 static inline u64 get_offset_of_lsid_2
-(const walb_super_sector_t* super_sect, u64 lsid)
+(const struct walb_super_sector* super_sect, u64 lsid)
 {
         return  get_ring_buffer_offset_2(super_sect) +
                 (lsid % super_sect->ring_buffer_size);

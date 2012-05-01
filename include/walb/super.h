@@ -17,9 +17,9 @@
 /**
  * Super block data of the log device.
  *
- * sizeof(walb_super_sector_t) must be <= physical block size.
+ * sizeof(struct walb_super_sector) must be <= physical block size.
  */
-typedef struct walb_super_sector {
+struct walb_super_sector {
 
         /* (4 * 4) + (2 * 4) + 16 + 64 + (8 * 5) = 144 bytes */
 
@@ -92,7 +92,7 @@ typedef struct walb_super_sector {
         /* Size of wrapper block device [logical block] */
         u64 device_size;
         
-} __attribute__((packed)) walb_super_sector_t;
+} __attribute__((packed));
 
 /**
  * Check super sector.
@@ -103,7 +103,7 @@ typedef struct walb_super_sector {
  *
  * @return non-zero if valid, or 0.
  */
-static inline int __is_valid_super_sector(const walb_super_sector_t* sect, int physical_bs)
+static inline int __is_valid_super_sector(const struct walb_super_sector *sect, int physical_bs)
 {
         /* physical_bs */
         CHECK(physical_bs > 0);
@@ -145,7 +145,8 @@ static inline int is_valid_super_sector(const struct sector_data* sect)
  *
  * @return pointer to result name.
  */
-static inline char* set_super_sector_name(walb_super_sector_t* super_sect, const char *name)
+static inline char* set_super_sector_name(
+	struct walb_super_sector *super_sect, const char *name)
 {
         if (name) {
                 strncpy(super_sect->name, name, DISK_NAME_LEN);

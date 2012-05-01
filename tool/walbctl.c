@@ -302,7 +302,7 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
         ASSERT(ldev_lb < (u64)(-1));
         /* name can be null. */
 
-        walb_super_sector_t super_sect;
+        struct walb_super_sector super_sect;
 
         /* Initialize super sector. */
         __init_super_sector(&super_sect,
@@ -834,8 +834,8 @@ bool do_cat_wldev(const config_t *cfg)
         }
         
         /* Allocate memory and read super block */
-        walb_super_sector_t *super_sectp = 
-                (walb_super_sector_t *)alloc_sector(physical_bs);
+        struct walb_super_sector *super_sectp = 
+                (struct walb_super_sector *)alloc_sector(physical_bs);
         if (super_sectp == NULL) {
                 LOGe(NOMEM_STR);
                 goto error1;
@@ -851,8 +851,8 @@ bool do_cat_wldev(const config_t *cfg)
                 goto error1;
         }
         
-        walb_logpack_header_t *logpack =
-                (walb_logpack_header_t *)alloc_sector(physical_bs);
+        struct walb_logpack_header *logpack =
+                (struct walb_logpack_header *)alloc_sector(physical_bs);
         if (logpack == NULL) {
                 LOGe(NOMEM_STR);
                 goto error2;
@@ -1028,8 +1028,8 @@ bool do_redo_wlog(const config_t *cfg)
         }
 
         /* Allocate for logpack header. */
-        walb_logpack_header_t *logpack =
-                (walb_logpack_header_t *)alloc_sector(pbs);
+        struct walb_logpack_header *logpack =
+                (struct walb_logpack_header *)alloc_sector(pbs);
         if (logpack == NULL) {
                 LOGe(NOMEM_STR);
                 goto error2;
@@ -1137,7 +1137,7 @@ bool do_redo(const config_t *cfg)
         if (dfd < 0) { perror("open failed."); goto error1; }
 
         /* Read super sector. */
-        walb_super_sector_t *super = (walb_super_sector_t *)alloc_sector(pbs);
+        struct walb_super_sector *super = (struct walb_super_sector *)alloc_sector(pbs);
         if (super == NULL) { LOGe(NOMEM_STR); goto error2; }
         u64 off0 = get_super_sector0_offset(pbs);
         if (! read_sector(lfd, (u8 *)super, pbs, off0)) {
@@ -1154,8 +1154,8 @@ bool do_redo(const config_t *cfg)
         u8 *buf = alloc_sectors(pbs, bufsize / pbs);
         if (buf == NULL) { LOGe(NOMEM_STR); goto error3; }
 
-        walb_logpack_header_t *logpack =
-                (walb_logpack_header_t *)alloc_sector(pbs);
+        struct walb_logpack_header *logpack =
+                (struct walb_logpack_header *)alloc_sector(pbs);
         if (logpack == NULL) { LOGe(NOMEM_STR); goto error4; }
         
         u64 lsid = super->written_lsid;
@@ -1332,8 +1332,8 @@ bool do_show_wldev(const config_t *cfg)
         if (fd < 0) { perror("open failed"); goto error0; }
         
         /* Allocate memory and read super block */
-        walb_super_sector_t *super_sectp = 
-                (walb_super_sector_t *)alloc_sector(physical_bs);
+        struct walb_super_sector *super_sectp = 
+                (struct walb_super_sector *)alloc_sector(physical_bs);
         if (super_sectp == NULL) { LOGe(NOMEM_STR); goto error1; }
 
         u64 off0 = get_super_sector0_offset(physical_bs);
@@ -1342,8 +1342,8 @@ bool do_show_wldev(const config_t *cfg)
                 goto error1;
         }
         
-        walb_logpack_header_t *logpack =
-                (walb_logpack_header_t *)alloc_sector(physical_bs);
+        struct walb_logpack_header *logpack =
+                (struct walb_logpack_header *)alloc_sector(physical_bs);
         if (logpack == NULL) { LOGe(NOMEM_STR); goto error2; }
 
         __print_super_sector(super_sectp);
