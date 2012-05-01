@@ -243,6 +243,7 @@ class WritePackState(PackState):
                     # Already satisfied by WRITE_VSTORAGE constraints.
                     pass
                 else:
+                    # This is required for crash recovery consistency.
                     if not packState.st(WritePackState.COMPLETE_LPACK):
                         return False
                 # condition (2)
