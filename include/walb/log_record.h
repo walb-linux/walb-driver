@@ -119,6 +119,8 @@ error:
  * Macros.
  *******************************************************************************/
 
+#define LOGICAL_BLOCK_SIZE 512 /* fixed */
+
 /**
  * Assertion of logical/physical block size.
  */
@@ -126,6 +128,8 @@ error:
                 logical_bs > 0 &&                       \
                 physical_bs >= logical_bs &&            \
                 physical_bs % logical_bs == 0)
+
+#define ASSERT_PBS(pbs) ASSERT_LBS_PBS(LOGICAL_BLOCK_SIZE, pbs)
 
 /**
  * NOT TESTED YET.
@@ -143,30 +147,34 @@ error:
  * Prototype of static inline functions. 
  *******************************************************************************/
 
-static inline int max_n_log_record_in_sector(int sector_size);
-static inline int lb_in_pb(int logical_bs, int physical_bs);
-
+static inline unsigned int max_n_log_record_in_sector(unsigned int pbs);
+static inline unsigned int lb_in_pb(unsigned int pbs);
+static inline unsigned int lb_to_pb(unsigned int pbs, unsigned int n_lb);
+static inline unsigned int pb_to_lb(unsigned int pbs, unsigned int n_pb);
+static inline void log_record_init(struct walb_log_record *rec);
 
 /*******************************************************************************
  * Definition of static inline functions. 
  *******************************************************************************/
 /**
  * Get number of log records that a log pack can store.
+ * @pbs physical block size.
  */
-static inline int max_n_log_record_in_sector(int sector_size)
+static inline unsigned int max_n_log_record_in_sector(unsigned int pbs)
 {
-        return (sector_size - sizeof(struct walb_logpack_header)) /
+	ASSERT(pbs > sizeof(struct walb_logpack_header));
+        return (pbs - sizeof(struct walb_logpack_header)) /
                 sizeof(struct walb_log_record);
 }
 
 /**
  * Get number of logical blocks in a physical block.
  */
-static inline int lb_in_pb(int logical_bs, int physical_bs)
+static inline unsigned int lb_in_pb(unsigned int pbs)
 {
-        int ret;
-        ASSERT_LBS_PBS(logical_bs, physical_bs);
-        ret = physical_bs / logical_bs;
+        unsigned int ret;
+        ASSERT_PBS(pbs);
+        ret = pbs / LOGICAL_BLOCK_SIZE;
         ASSERT(ret > 0);
         return ret;
 }
@@ -174,36 +182,32 @@ static inline int lb_in_pb(int logical_bs, int physical_bs)
 /**
  * [Logical block] -> [Physial block]
  *
- * @logical_bs logical block size in bytes.
- * @physical_bs physical block size in bytes.
+ * @pbs physical block size in bytes.
  * @n_lb number of logical blocks.
  *
- * @return number of physical blocks.
+ * @return number of physical blocks required to store
+ *   n_lb logical blocks.
  */
-static inline int lb_to_pb(int logical_bs, int physical_bs, int n_lb)
+static inline unsigned int lb_to_pb(unsigned int pbs, unsigned int n_lb)
 {
-        int lp;
-        ASSERT_LBS_PBS(logical_bs, physical_bs);
-        ASSERT(n_lb >= 0);
-        lp = lb_in_pb(logical_bs, physical_bs);
+        unsigned int lp;
+        ASSERT_PBS(pbs);
+        lp = lb_in_pb(pbs);
         return ((n_lb + lp - 1) / lp);
 }
 
 /**
  * [Physial block] -> [Logical block]
  *
- * @logical_bs logical block size in bytes.
- * @physical_bs physical block size in bytes.
+ * @pbs physical block size in bytes.
  * @n_pb number of physical blocks.
  *
  * @return number of logical blocks.
  */
-static inline int pb_to_lb(int logical_bs, int physical_bs, int n_pb)
+static inline unsigned int pb_to_lb(unsigned int pbs, unsigned int n_pb)
 {
-        ASSERT_LBS_PBS(logical_bs, physical_bs);
-        ASSERT(n_pb >= 0);
-
-        return (n_pb * lb_in_pb(logical_bs, physical_bs));
+        ASSERT_PBS(pbs);
+        return (n_pb * lb_in_pb(pbs));
 }
 
 /**
