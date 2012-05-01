@@ -20,7 +20,7 @@
 struct snapshot_data_u
 {
         int fd; /* file descriptor of the log device. */
-        const walb_super_sector_t *super; /* super sector */
+        const struct walb_super_sector *super; /* super sector */
         u32 next_snapshot_id; /* next snapshot id. */
         
         struct sector_data_array *sect_ary;
@@ -64,16 +64,16 @@ struct snapshot_data_u
  */
 void print_snapshot_record(const walb_snapshot_record_t* snap_rec);
 void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_size);
-bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
+bool write_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
                            walb_snapshot_sector_t* snap_sect, u32 idx);
-bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
+bool read_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
                           walb_snapshot_sector_t* snap_sect, u32 idx);
 
 /*
  * Prototypes for struct snapshot_data_u.
  */
 struct snapshot_data_u* alloc_snapshot_data_u(
-        int fd, const walb_super_sector_t* super_sectp);
+        int fd, const struct walb_super_sector* super_sectp);
 void free_snapshot_data_u(struct snapshot_data_u* snapd);
 void initialize_snapshot_data_u(struct snapshot_data_u* snapd);
 void clear_snapshot_data_u(struct snapshot_data_u *snapd);

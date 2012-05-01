@@ -92,7 +92,7 @@ void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_s
  *
  * @return true in success, or false.
  */
-bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
+bool write_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
                            walb_snapshot_sector_t* snap_sect, u32 idx)
 {
         ASSERT(fd >= 0);
@@ -132,7 +132,7 @@ bool write_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
  *
  * @return true in success, or false.
  */
-bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
+bool read_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
                           walb_snapshot_sector_t* snap_sect, u32 idx)
 {
         ASSERT(fd >= 0);
@@ -172,7 +172,7 @@ bool read_snapshot_sector(int fd, const walb_super_sector_t* super_sect,
  * @return snapshot data in success, or NULL.
  */
 struct snapshot_data_u* alloc_snapshot_data_u(
-        int fd, const walb_super_sector_t* super_sectp)
+        int fd, const struct walb_super_sector* super_sectp)
 {
         ASSERT(fd > 0);
         ASSERT(super_sectp != NULL);

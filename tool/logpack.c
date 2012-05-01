@@ -28,7 +28,7 @@
  * @return Non-zero in success, or 0.
  */
 bool is_valid_logpack_header_with_checksum(
-        const walb_logpack_header_t* lhead, int physical_bs)
+        const struct walb_logpack_header* lhead, int physical_bs)
 {
         CHECK(is_valid_logpack_header(lhead));
         CHECK(checksum((const u8 *)lhead, physical_bs) == 0);
@@ -51,8 +51,8 @@ error:
  * @return ture in success, or false.
  */
 bool read_logpack_header_from_wldev(int fd,
-                                    const walb_super_sector_t* super_sectp,
-                                    u64 lsid, walb_logpack_header_t* lhead)
+                                    const struct walb_super_sector* super_sectp,
+                                    u64 lsid, struct walb_logpack_header* lhead)
 {
         /* calc offset in the ring buffer */
         u64 ring_buffer_offset = get_ring_buffer_offset_2(super_sectp);
@@ -89,7 +89,7 @@ error0:
  *
  * @logpack log pack data.
  */
-void print_logpack_header(const walb_logpack_header_t* lhead)
+void print_logpack_header(const struct walb_logpack_header* lhead)
 {
         ASSERT(lhead != NULL);
         int i;
@@ -137,7 +137,7 @@ void print_logpack_header(const walb_logpack_header_t* lhead)
  */
 bool write_logpack_header(int fd,
                           int physical_bs,
-                          const walb_logpack_header_t* lhead)
+                          const struct walb_logpack_header* lhead)
 {
         return write_data(fd, (const u8 *)lhead, physical_bs);
 }
@@ -155,8 +155,8 @@ bool write_logpack_header(int fd,
  * @return true in success, or false.
  */
 bool read_logpack_data_from_wldev(int fd,
-                                  const walb_super_sector_t* super_sectp,
-                                  const walb_logpack_header_t* lhead,
+                                  const struct walb_super_sector* super_sectp,
+                                  const struct walb_logpack_header* lhead,
                                   u8* buf, size_t bufsize)
 {
         int logical_bs = super_sectp->logical_bs;
@@ -232,7 +232,7 @@ error0:
  */
 bool read_logpack_header(int fd,
                          int physical_bs,
-                         walb_logpack_header_t* lhead)
+                         struct walb_logpack_header* lhead)
 {
         /* Read */
         if (! read_data(fd, (u8 *)lhead, physical_bs)) {
@@ -261,7 +261,7 @@ bool read_logpack_header(int fd,
  */
 bool read_logpack_data(int fd,
                        int logical_bs, int physical_bs,
-                       const walb_logpack_header_t* lhead,
+                       const struct walb_logpack_header* lhead,
                        u8* buf, size_t bufsize)
 {
         ASSERT(physical_bs % logical_bs == 0);
@@ -323,7 +323,7 @@ error0:
  */
 bool redo_logpack(int fd,
                   int logical_bs, int physical_bs,
-                  const walb_logpack_header_t* lhead,
+                  const struct walb_logpack_header* lhead,
                   const u8* buf)
 {
         int i;
@@ -360,7 +360,7 @@ error0:
  *
  * @return true in success, or false.
  */
-bool write_invalid_logpack_header(int fd, const walb_super_sector_t* super_sectp, int physical_bs, u64 lsid)
+bool write_invalid_logpack_header(int fd, const struct walb_super_sector* super_sectp, int physical_bs, u64 lsid)
 {
         u64 off = get_offset_of_lsid_2(super_sectp, lsid);
 
@@ -411,7 +411,7 @@ logpack_t* alloc_logpack(int logical_bs, int physical_bs, int n_sectors)
         logpack->data_sects = sector_array_alloc(physical_bs, n_sectors);
         if (! logpack->data_sects) { goto error; }
 
-        walb_logpack_header_t *lhead = logpack_get_header(logpack);
+        struct walb_logpack_header *lhead = logpack_get_header(logpack);
         ASSERT(lhead);
         lhead->checksum = 0;
         lhead->sector_type = SECTOR_TYPE_LOGPACK;
@@ -519,9 +519,9 @@ bool logpack_add_io_request(logpack_t* logpack,
         u32 pbs = logpack->physical_bs;
 
         /* Initialize log record. */
-        walb_logpack_header_t* lhead = logpack_get_header(logpack);
+        struct walb_logpack_header* lhead = logpack_get_header(logpack);
         u16 rec_id = lhead->n_records;
-        walb_log_record_t *rec = &lhead->record[rec_id];
+        struct walb_log_record *rec = &lhead->record[rec_id];
         log_record_init(rec);
 
         /* Set IO offset. */
@@ -535,7 +535,7 @@ bool logpack_add_io_request(logpack_t* logpack,
         if (rec_id == 0) {
                 rec->lsid_local = 1;
         } else {
-                walb_log_record_t *rec_prev = &lhead->record[rec_id - 1];
+                struct walb_log_record *rec_prev = &lhead->record[rec_id - 1];
                 rec->lsid_local = rec_prev->lsid_local +
                         (u16)lb_to_pb(lbs, pbs, rec_prev->io_size);
         }
@@ -546,7 +546,7 @@ bool logpack_add_io_request(logpack_t* logpack,
         /* Realloc sector data array if needed. */
         int current_size = 0;
         int i;
-        walb_log_record_t *lrec;
+        struct walb_log_record *lrec;
         for_each_logpack_record(i, lrec, lhead) {
                 current_size += lb_to_pb(lbs, pbs, lrec->io_size);
         }
@@ -580,7 +580,7 @@ error:
 /**
  * Create random logpack data.
  */
-walb_logpack_header_t* create_random_logpack(int logical_bs, int physical_bs, const u8* buf)
+struct walb_logpack_header* create_random_logpack(int logical_bs, int physical_bs, const u8* buf)
 {
         /* now editing */
 
