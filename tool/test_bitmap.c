@@ -12,7 +12,7 @@
 void test(int size)
 {
         int i;
-        walb_bitmap_t *bmp;
+        struct walb_bitmap *bmp;
 
         printf("test with size %d...\n", size);
 
