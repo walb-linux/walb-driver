@@ -384,23 +384,20 @@ error0:
 /**
  * Alloate empty logpack data.
  *
- * @logical_bs logical block size.
  * @physical_bs physical block size.
  * @n_sectors initial number of sectors. n_sectors > 0.
  *
  * @return pointer to allocated logpack in success, or NULL.
  */
-logpack_t* alloc_logpack(int logical_bs, int physical_bs, int n_sectors)
+logpack_t* alloc_logpack(int physical_bs, int n_sectors)
 {
-        ASSERT(logical_bs > 0);
-        ASSERT(physical_bs >= logical_bs);
-        ASSERT(physical_bs % logical_bs == 0);
+        ASSERT_PBS(physical_bs);
         ASSERT(n_sectors > 0);
 
         /* Allocate for itself. */
         logpack_t* logpack = (logpack_t *)malloc(sizeof(logpack_t));
         if (! logpack) { goto error; }
-        logpack->logical_bs = logical_bs;
+        logpack->logical_bs = LOGICAL_BLOCK_SIZE;
         logpack->physical_bs = physical_bs;
 
         /* Header sector. */
@@ -515,7 +512,6 @@ bool logpack_add_io_request(logpack_t* logpack,
         ASSERT(offset <= MAX_LSID);
 
         /* Short name. */
-        u32 lbs = logpack->logical_bs;
         u32 pbs = logpack->physical_bs;
 
         /* Initialize log record. */
@@ -528,8 +524,8 @@ bool logpack_add_io_request(logpack_t* logpack,
         rec->offset = offset;
     
         /* Calc data size in logical blocks. */
-        rec->io_size = size / lbs;
-        int n_pb = lb_to_pb(lbs, pbs, rec->io_size);
+        rec->io_size = size / LOGICAL_BLOCK_SIZE;
+        int n_pb = lb_to_pb(pbs, rec->io_size);
     
         /* Calc data offset in the logpack in physical bs. */
         if (rec_id == 0) {
@@ -537,7 +533,7 @@ bool logpack_add_io_request(logpack_t* logpack,
         } else {
                 struct walb_log_record *rec_prev = &lhead->record[rec_id - 1];
                 rec->lsid_local = rec_prev->lsid_local +
-                        (u16)lb_to_pb(lbs, pbs, rec_prev->io_size);
+                        (u16)lb_to_pb(pbs, rec_prev->io_size);
         }
 
         /* Padding */
@@ -548,7 +544,7 @@ bool logpack_add_io_request(logpack_t* logpack,
         int i;
         struct walb_log_record *lrec;
         for_each_logpack_record(i, lrec, lhead) {
-                current_size += lb_to_pb(lbs, pbs, lrec->io_size);
+                current_size += lb_to_pb(pbs, lrec->io_size);
         }
         if (current_size + n_pb > logpack->data_sects->size) {
                 if (! realloc_logpack(logpack, current_size + n_pb)) {

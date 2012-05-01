@@ -21,32 +21,28 @@
  */
 void TEST_lb_to_pb()
 {
-    ASSERT(lb_to_pb(512, 512, 0) == 0);
-    ASSERT(lb_to_pb(512, 4096, 0) == 0);
-    ASSERT(lb_to_pb(512, 512, 3) == 3);
-    ASSERT(lb_to_pb(512, 512, 4) == 4);
-    ASSERT(lb_to_pb(512, 512, 5) == 5);
-    ASSERT(lb_to_pb(512, 4096, 23) == 3);
-    ASSERT(lb_to_pb(512, 4096, 24) == 3);
-    ASSERT(lb_to_pb(512, 4096, 25) == 4);
+    ASSERT(lb_to_pb(512, 0) == 0);
+    ASSERT(lb_to_pb(4096, 0) == 0);
+    ASSERT(lb_to_pb(512, 3) == 3);
+    ASSERT(lb_to_pb(512, 4) == 4);
+    ASSERT(lb_to_pb(512, 5) == 5);
+    ASSERT(lb_to_pb(4096, 23) == 3);
+    ASSERT(lb_to_pb(4096, 24) == 3);
+    ASSERT(lb_to_pb(4096, 25) == 4);
 }
 
 /**
  * Snapshot logpack.
  *
- * @lbs logical block size.
  * @pbs physical block size.
  */
-void test(int lbs, int pbs)
+void test(int pbs)
 {
     int fd = open(LOG_DEV_FILE, O_RDWR | O_TRUNC | O_CREAT, 0755);
     ASSERT(fd > 0);
 
-    logpack_t *logpack = alloc_logpack(lbs, pbs, 1);
+    logpack_t *logpack = alloc_logpack(pbs, 1);
     ASSERT(logpack);
-
-    
-
     
     /* now editing */
 }
@@ -55,8 +51,8 @@ int main()
 {
     TEST_lb_to_pb();
     
-    test(512, 512);
-    test(512, 4096);
-    test(4096, 4096);
+    test(512);
+    test(4096);
+    test(4096);
     return 0;
 }

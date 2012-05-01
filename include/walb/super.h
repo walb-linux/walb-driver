@@ -47,7 +47,7 @@ struct walb_super_sector {
            the same logical block size and physical block size.
            Each IO (offset and size) is aligned by logical block size.
            Each log (offset and size) on log device is aligned. */
-        u32 logical_bs;
+        u32 logical_bs; /* currently fixed as LOGICAL_BLOCK_SIZE. */
         u32 physical_bs;
         
         /* Number of physical blocks for snapshot metadata. */
