@@ -33,23 +33,25 @@ struct workqueue_struct *wq_req_list_ = NULL;
 struct workqueue_struct *wq_req_flush_ = NULL;
 
 /**
- * Request list work struct.
+ * Flush work.
  *
- * if flush_req is NULL, req_entry_list can be executed in parallel,
- * else, run flush_req first, then enqueue req_entry_list.
+ * if flush_req is NULL, packs in the list can be executed in parallel,
+ * else, run flush_req first, then enqueue packs in the list.
  */
-struct req_list_work
+struct flush_work
 {
 	struct work_struct work;
 	struct list_head list; /* list entry */
 	struct wrapper_blk_dev *wdev;
 	struct request *flush_req; /* flush request if flush */
 	int is_restart_queue; /* If non-zero, the task must restart queue. */
-	struct list_head req_entry_list; /* list head of req_entry */
+
+	struct list_head wpack_list; /* list head of writepack. */
+	struct list_head rpack_list; /* list head of readpack. */
 };
-/* kmem_cache for req_list_work. */
-#define KMEM_CACHE_REQ_LIST_WORK_NAME "req_list_work_cache"
-struct kmem_cache *req_list_work_cache_ = NULL;
+/* kmem_cache for flush_work. */
+#define KMEM_CACHE_FLUSH_WORK_NAME "flush_work_cache"
+struct kmem_cache *flush_work_cache_ = NULL;
 
 /**
  * Request entry struct.
@@ -64,6 +66,21 @@ struct req_entry
 /* kmem cache for dbio. */
 #define KMEM_CACHE_REQ_ENTRY_NAME "req_entry_cache"
 struct kmem_cache *req_entry_cache_ = NULL;
+
+/**
+ * A pack.
+ * There are no overlapping requests in a pack.
+ */
+struct pack
+{
+	struct list_head list; /* list entry. */
+	struct list_head req_ent_list; /* list head of req_entry. */
+	bool is_write; /* true if write, or read. */
+	u64 lsid; /* lsid of the pack if write. */
+        u16 n_sectors; /* IO size of total requests [logical block]. */
+};
+#define KMEM_CACHE_PACK_NAME "pack_cache"
+struct kmem_cache *pack_cache_ = NULL;
 
 /* bio as a list entry. */
 struct bio_entry
@@ -83,6 +100,9 @@ struct kmem_cache *bio_entry_cache_ = NULL;
  * Macros definition.
  *******************************************************************************/
 
+#define create_readpack(gfp_mask) create_pack(false, gfp_mask)
+#define create_writepack(gfp_mask) create_pack(true, gfp_mask)
+
 /*******************************************************************************
  * Static functions prototype.
  *******************************************************************************/
@@ -90,11 +110,11 @@ struct kmem_cache *bio_entry_cache_ = NULL;
 /* Print request flags for debug. */
 static void print_req_flags(struct request *req);
 
-/* req_list_work related. */
-static struct req_list_work* create_req_list_work(
+/* flush_work related. */
+static struct flush_work* create_flush_work(
 	struct request *flush_req,
 	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
-static void destroy_req_list_work(struct req_list_work *work);
+static void destroy_flush_work(struct flush_work *work);
 
 /* req_entry related. */
 static struct req_entry* create_req_entry(struct request *req, gfp_t gfp_mask);
@@ -106,9 +126,20 @@ static struct bio_entry* create_bio_entry(
 	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
 static void destroy_bio_entry(struct bio_entry *bioe);
 
-/* Request list work tasks. */
-static void req_list_work_task(struct work_struct *work);
-static void req_flush_task(struct work_struct *work);
+/* pack related. */
+static struct pack* create_pack(bool is_write, gfp_t gfp_mask);
+static void destroy_pack(struct pack *pack);
+static bool pack_add_reqe(struct pack *pack, struct req_entry *reqe);
+
+/* helper function. */
+static bool pack_add_req(struct list_head *pack_list,
+			struct pack **packp, struct request *req);
+static u64 calc_lsid(u64 next_lsid, struct list_head *wpack_list);
+
+
+/* Request flush_work tasks. */
+static void flush_work_task(struct work_struct *work); /* in parallel. */
+static void req_flush_task(struct work_struct *work); /* sequential. */
 
 /* Helper functions. */
 static bool create_bio_entry_list(struct req_entry *reqe, struct wrapper_blk_dev *wdev);
@@ -164,31 +195,33 @@ static void print_req_flags(struct request *req)
 }
 
 /**
- * Create a req_list_work.
+ * Create a flush_work.
  *
  * RETURN:
  * NULL if failed.
  * CONTEXT:
  * Any.
  */
-static struct req_list_work* create_req_list_work(
+static struct flush_work* create_flush_work(
 	struct request *flush_req,
 	struct wrapper_blk_dev *wdev,
 	gfp_t gfp_mask)
 {
-	struct req_list_work *work;
+	struct flush_work *work;
 
 	ASSERT(wdev);
-	ASSERT(req_list_work_cache_);
+	ASSERT(flush_work_cache_);
 
-	work = kmem_cache_alloc(req_list_work_cache_, gfp_mask);
+	work = kmem_cache_alloc(flush_work_cache_, gfp_mask);
 	if (!work) {
 		goto error0;
 	}
+	INIT_LIST_HEAD(&work->list);
 	work->wdev = wdev;
-	INIT_LIST_HEAD(&work->req_entry_list);
 	work->flush_req = flush_req;
 	work->is_restart_queue = 0;
+	INIT_LIST_HEAD(&work->wpack_list);
+	INIT_LIST_HEAD(&work->rpack_list);
         
 	return work;
 error0:
@@ -196,24 +229,29 @@ error0:
 }
 
 /**
- * Destory a req_list_work.
+ * Destory a flush_work.
  */
-static void destroy_req_list_work(struct req_list_work *work)
+static void destroy_flush_work(struct flush_work *work)
 {
-	struct req_entry *reqe, *next;
-        
-	if (work) {
-		list_for_each_entry_safe(reqe, next, &work->req_entry_list, list) {
-			list_del(&reqe->list);
-			destroy_req_entry(reqe);
-		}
-#ifdef WALB_DEBUG
-		work->flush_req = NULL;
-		work->wdev = NULL;
-		INIT_LIST_HEAD(&work->req_entry_list);
-#endif
-		kmem_cache_free(req_list_work_cache_, work);
+	struct pack *pack, *next;
+
+	if (!work) { return; }
+	
+	list_for_each_entry_safe(pack, next, &work->rpack_list, list) {
+		list_del(&pack->list);
+		destroy_pack(pack);
 	}
+	list_for_each_entry_safe(pack, next, &work->wpack_list, list) {
+		list_del(&pack->list);
+		destroy_pack(pack);
+	}
+#ifdef WALB_DEBUG
+	work->flush_req = NULL;
+	work->wdev = NULL;
+	INIT_LIST_HEAD(&work->rpack_list);
+	INIT_LIST_HEAD(&work->wpack_list);
+#endif
+	kmem_cache_free(flush_work_cache_, work);
 }
 
 /**
@@ -345,6 +383,183 @@ static void destroy_bio_entry(struct bio_entry *bioe)
 }
 
 /**
+ * Create a pack.
+ */
+static struct pack* create_pack(bool is_write, gfp_t gfp_mask)
+{
+	struct pack *pack;
+
+	/* LOGd("create_bio_entry() begin.\n"); */
+
+	pack = kmem_cache_alloc(pack_cache_, gfp_mask);
+	if (!pack) {
+		LOGd("kmem_cache_alloc() failed.");
+		goto error0;
+	}
+	LIST_HEAD_INIT(&pack->list);
+	LIST_HEAD_INIT(&pack->req_ent_list);
+	pack->is_write = is_write;
+	
+	return pack;
+#if 0
+error1:
+	destory_pack(pack);
+#endif
+error0:
+	LOGe("create_pack() end with error.\n");
+	return NULL;
+}
+
+/**
+ * Destory a pack.
+ */
+static void destroy_pack(struct pack *pack)
+{
+	struct req_entry *reqe, *next;
+	
+	if (!pack) { return; }
+	
+	list_for_each_entry_safe(reqe, next, &pack->req_ent_list, list) {
+		list_del(&reqe->list);
+		destroy_req_entry(reqe);
+	}
+#ifdef WALB_DEBUG
+	INIT_LIST_HEAD(&work->req_ent_list);
+#endif
+	kmem_cache_free(pack_cache_, pack);
+}
+
+/**
+ * Add a request entry to a pack.
+ *
+ * @pack pack to added.
+ * @reqe req_entry to add.
+ * @max_sectors_in_pack maximum number of sectors in a pack.
+ *
+ * If an overlapping request exists or
+ *   total number of sectors in the pack exceeds @max_pack_sectors,
+ *   add nothing and return false.
+ * 
+ * Else, add the request and return true.
+ */
+static bool pack_add_reqe(struct pack *pack, struct req_entry *reqe,
+			unsigned int max_sectors_in_pack)
+{
+	struct req_entry *tmp_reqe;
+	
+	ASSERT(pack);
+	ASSERT(reqe);
+	ASSERT(pack->is_write == (reqe->req->cmd_flags & REQ_WRITE != 0));
+
+	/* Check pack size limitation. */
+	if (pack->sectors + blk_rq_sectors(blk_reqe->req) > max_pack_sectors) {
+		return false;
+	}
+	
+	/* Search overlapping requests. */
+	list_for_each_entry(tmp_reqe, &pack->req_ent_list, list) {
+		if (is_overlap_req(tmp_reqe->req, reqe->req)) {
+			return false;
+		}
+	}
+
+	list_add_tail(reqe, &pack->req_ent_list);
+	return true;
+}
+
+/**
+ * Helper function to add request to a pack.
+ * 
+ * @pack_list pack list.
+ * @packp pointer to pack pointer.
+ * @req reqeuest to add.
+ * @max_sectors_in_pack maximum number of sectors in a pack.
+ *
+ * RETURN:
+ *   true: succeeded.
+ *   false: out of memory.
+ *
+ * CONTEXT:
+ *   IRQ: no, ATOMIC: yes.
+ *   queue lock is held.
+ */
+static bool pack_add_req(
+	struct list_head *pack_list, struct pack **packp, struct request *req
+	unsigned int max_sectors_in_pack)
+{
+	struct req_entry *reqe;
+	struct pack *pack;
+	bool ret;
+	bool is_write;
+
+	ASSERT(pack_list);
+	ASSERT(packp);
+	ASSERT(req);
+
+	pack = *packp;
+
+	is_write = (req->cmd_flags & REQ_WRITE) != 0;
+	ASSERT(pack->is_write == is_write);
+	
+	reqe = create_req_entry(req, GFP_ATOMIC);
+	if (!reqe) {
+		goto error0;
+	}
+	if (!pack_add_reqe(pack, reqe, max_sectors_in_pack)) {
+		/* overlap found then create a new pack. */
+		list_add_tail(&pack->list, pack_list);
+		pack = create_pack(is_write, GFP_ATOMIC);
+		if (!pack) { goto error1; }
+		ret = pack_add_reqe(pack, reqe);
+		ASSERT(ret);
+		*packp = pack;
+	}
+	return true;
+error1:
+	destroy_req_entry(reqe);
+error0:
+	return false;
+}
+
+/**
+ * Calculate each writepack lsid.
+ *
+ * @pbs physical block size in bytes.
+ *
+ * Logical block size is fixed 512 bytes.
+ *
+ * RETURN:
+ *   next lsid.
+ *
+ * CONTEXT:
+ *   any.
+ */
+static u64 calc_lsid(u64 next_lsid, struct list_head *wpack_list, 
+		unsigend int pbs)
+{
+	struct pack *wpack;
+	struct req_entry *reqe;
+	sector_t n_sectors;
+	
+	list_for_each_entry(wpack, wpack_list, list) {
+
+		ASSERT(wpack->is_write);
+		n_sectors = 0;
+		list_for_each_entry(reqe, &wpack->req_ent_list, list) {
+
+			ASSERT(reqe);
+			ASSERT(reqe->req);
+			n_sectors += blk_rq_sectors(reqe->req);
+		}
+		
+	}
+
+	
+
+
+}
+
+/**
  * Create bio_entry list for a request.
  *
  * RETURN:
@@ -437,14 +652,14 @@ static void wait_for_req_entry(struct req_entry *reqe)
  *   Request queue lock is not held.
  *   Other tasks may be running concurrently.
  */
-static void req_list_work_task(struct work_struct *work)
+static void flush_work_task(struct work_struct *work)
 {
-	struct req_list_work *rlwork = container_of(work, struct req_list_work, work);
+	struct flush_work *rlwork = container_of(work, struct flush_work, work);
 	struct wrapper_blk_dev *wdev = rlwork->wdev;
 	struct req_entry *reqe, *next;
 	struct blk_plug plug;
 
-	/* LOGd("req_list_work_task begin.\n"); */
+	/* LOGd("flush_work_task begin.\n"); */
         
 	ASSERT(rlwork->flush_req == NULL);
 
@@ -466,8 +681,8 @@ static void req_list_work_task(struct work_struct *work)
 		destroy_req_entry(reqe);
 	}
 	/* destroy work struct */
-	destroy_req_list_work(rlwork);
-	/* LOGd("req_list_work_task end.\n"); */
+	destroy_flush_work(rlwork);
+	/* LOGd("flush_work_task end.\n"); */
 	return;
 
 error0:
@@ -480,8 +695,8 @@ error0:
 		list_del(&reqe->list);
 		destroy_req_entry(reqe);
 	}
-	destroy_req_list_work(rlwork);
-	LOGd("req_list_work_task error.\n");
+	destroy_flush_work(rlwork);
+	LOGd("flush_work_task error.\n");
 }
 
 /**
@@ -489,7 +704,7 @@ error0:
  */
 static void req_flush_task(struct work_struct *work)
 {
-	struct req_list_work *rlwork = container_of(work, struct req_list_work, work);
+	struct flush_work *rlwork = container_of(work, struct flush_work, work);
 	struct request_queue *q = rlwork->wdev->queue;
 	int is_restart_queue = rlwork->is_restart_queue;
 	unsigned long flags;
@@ -510,11 +725,11 @@ static void req_flush_task(struct work_struct *work)
 	}
         
 	if (list_empty(&rlwork->req_entry_list)) {
-		destroy_req_list_work(rlwork);
+		destroy_flush_work(rlwork);
 	} else {
 		/* Enqueue the following requests */
 		rlwork->flush_req = NULL;
-		INIT_WORK(&rlwork->work, req_list_work_task);
+		INIT_WORK(&rlwork->work, flush_work_task);
 		queue_work(wq_req_list_, &rlwork->work);
 	}
 	LOGd("req_flush_task end.\n");
@@ -530,7 +745,7 @@ static void req_flush_task(struct work_struct *work)
  */
 static void enqueue_work_list(struct list_head *listh, struct request_queue *q)
 {
-	struct req_list_work *work;
+	struct flush_work *work;
 	
 	list_for_each_entry(work, listh, list) {
 		if (work->flush_req) {
@@ -541,7 +756,7 @@ static void enqueue_work_list(struct list_head *listh, struct request_queue *q)
 			INIT_WORK(&work->work, req_flush_task);
 			queue_work(wq_req_flush_, &work->work);
 		} else {
-			INIT_WORK(&work->work, req_list_work_task);
+			INIT_WORK(&work->work, flush_work_task);
 			queue_work(wq_req_list_, &work->work);
 		}
 	}
@@ -555,15 +770,104 @@ static void enqueue_work_list(struct list_head *listh, struct request_queue *q)
  * Make requrest callback.
  *
  * CONTEXT:
- *     in_interrupt(): false. is_atomic(): true.
+ *     IRQ: no. ATOMIC: yes.
  *     queue lock is held.
  */
 void wrapper_blk_req_request_fn(struct request_queue *q)
 {
 	struct wrapper_blk_dev *wdev = wdev_get_from_queue(q);
+	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct request *req;
 	struct req_entry *reqe;
-	struct req_list_work *work;
+	struct flush_work *fwork;
+	struct list_head listh;
+	struct pack *wpack, *rpack, *pack;
+	struct bool ret;
+	struct bool is_write;
+	u64 next_lsid;
+	unsigned int max_sectors_in_pack
+		= wdev->blksiz.n_lb_in_pb * 65535; /* 16bit unsigned */
+	
+	bool errorOccurd = false;
+
+	next_lsid = pdata->next_lsid;
+
+	INIT_LIST_HEAD(&listh);
+	fwork = create_flush_work(NULL, wdev, GFP_ATOMIC);
+	if (!fwork) { goto error0; }
+	wpack = create_writepack(GFP_ATOMIC);
+	if (!wpack) { goto error1; }
+	rpack = create_readpack(GFP_ATOMIC);
+	if (!rpack) { goto error2; }
+
+	while ((req = blk_fetch_request(q)) != NULL) {
+
+		/* print_req_flags(req); */
+		if (errorOccurd) { goto req_error; }
+
+		if (req->cmd_flags & REQ_FLUSH) {
+			LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
+			list_add_tail(&fwork->list, &listh);
+			fwork = create_flush_work(req, wdev, GFP_ATOMIC);
+			if (!fwork) {
+				errorOccurd = true;
+				goto req_error;
+			}
+		} else if (req->cmd_flags & REQ_WRITE) {
+			ret = pack_add_req(fwork->wpack_list, &wpack, req,
+					max_sectors_in_pack);
+			if (!ret) { goto req_error; }
+		} else {
+			ret = pack_add_req(fwork->rpack_list, &rpack, req,
+				max_sectors_in_pack);
+			if (!ret) { goto req_error; }
+		}
+		continue;
+	req_error:
+		__blk_end_request_all(req, -EIO);
+	}
+	list_add_tail(&wpack->list, &fwork->wpack_list);
+	list_add_tail(&rpack->list, &fwork->rpack_list);
+	list_add_tail(&fwork->list, &listh);
+
+	list_for_each_entry(fwork, &listh, list) {
+
+		next_lsid = calc_lsid(next_lsid, &fwork->wpack_list);
+	}
+	
+	/* now editing */
+		
+	
+	enqueue_fwork_list(&listh, q);
+	INIT_LIST_HEAD(&listh);
+	/* LOGd("wrapper_blk_req_request_fn: end.\n"); */
+	return;
+#if 0
+error3:
+	destroy_pack(rpack);
+#endif
+error2:
+	destroy_pack(wpack);	
+error1:
+	destroy_flush_work(fwork);
+error0:
+	while ((req = blk_fetch_request(q)) != NULL) {
+		__blk_end_request_all(req, -EIO);
+	}
+	/* LOGe("wrapper_blk_req_request_fn: error.\n"); */
+}
+
+/**
+ * Deprecated on 20120501.
+ * Will be removed.
+ */
+DEPRECATED
+void wrapper_blk_req_request_fn_old(struct request_queue *q)
+{
+	struct wrapper_blk_dev *wdev = wdev_get_from_queue(q);
+	struct request *req;
+	struct req_entry *reqe;
+	struct flush_work *work;
 	struct list_head listh;
 	bool errorOccurd = false;
 
@@ -571,7 +875,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	/* 	in_interrupt(), in_atomic()); */
 
 	INIT_LIST_HEAD(&listh);
-	work = create_req_list_work(NULL, wdev, GFP_ATOMIC);
+	work = create_flush_work(NULL, wdev, GFP_ATOMIC);
 	if (!work) { goto error0; }
 	
 	while ((req = blk_fetch_request(q)) != NULL) {
@@ -587,7 +891,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 			LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
 
 			list_add_tail(&work->list, &listh);
-			work = create_req_list_work(req, wdev, GFP_ATOMIC);
+			work = create_flush_work(req, wdev, GFP_ATOMIC);
 			if (!work) {
 				errorOccurd = true;
 				__blk_end_request_all(req, -EIO);
@@ -620,10 +924,10 @@ bool pre_register(void)
 	LOGd("pre_register called.");
 
 	/* Prepare kmem_cache data. */
-	req_list_work_cache_ = kmem_cache_create(
-		KMEM_CACHE_REQ_LIST_WORK_NAME,
-		sizeof(struct req_list_work), 0, 0, NULL);
-	if (!req_list_work_cache_) {
+	flush_work_cache_ = kmem_cache_create(
+		KMEM_CACHE_FLUSH_WORK_NAME,
+		sizeof(struct flush_work), 0, 0, NULL);
+	if (!flush_work_cache_) {
 		LOGe("failed to create a kmem_cache.\n");
 		goto error0;
 	}
@@ -641,28 +945,42 @@ bool pre_register(void)
 		LOGe("failed to create a kmem_cache.\n");
 		goto error2;
 	}
-        
+	pack_cache_ = kmem_cache_create(
+		KMEM_CACHE_PACK_NAME,
+		sizeof(struct pack), 0, 0, NULL);
+	if (pack_cache_) {
+		LOGe("failed to create a kmem_cache.\n");
+		goto error3;
+	}
+	
 	/* prepare workqueue data. */
 	wq_req_list_ = alloc_workqueue(WQ_REQ_LIST_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_req_list_) { goto error3; }
+	if (!wq_req_list_) {
+		LOGe("failed to allocate a workqueue.");
+		goto error4;
+	}
 	wq_req_flush_ = create_singlethread_workqueue(WQ_REQ_FLUSH_NAME);
-	if (!wq_req_flush_) { goto error4; }
+	if (!wq_req_flush_) {
+		LOGe("failed to allocate a workqueue.");
+		goto error5;
+	}
 
 	return true;
 
 #if 0
-error5:
+error6:
 	destroy_workqueue(wq_req_flush_);
 #endif
-error4:
+error5:
 	destroy_workqueue(wq_req_list_);
+error4:	
+	kmem_cache_destroy(pack_cache_);
 error3:
-	LOGe("failed to allocate a workqueue.");
 	kmem_cache_destroy(bio_entry_cache_);
 error2:
 	kmem_cache_destroy(req_entry_cache_);
 error1:
-	kmem_cache_destroy(req_list_work_cache_);
+	kmem_cache_destroy(flush_work_cache_);
 error0:
 	return false;
 }
@@ -679,12 +997,14 @@ void post_unregister(void)
 	wq_req_list_ = NULL;
 
 	/* Destory kmem_cache data. */
+	kmem_cache_destroy(pack_cache_);
+	pack_cache_ = NULL;
 	kmem_cache_destroy(bio_entry_cache_);
 	bio_entry_cache_ = NULL;
 	kmem_cache_destroy(req_entry_cache_);
 	req_entry_cache_ = NULL;
-	kmem_cache_destroy(req_list_work_cache_);
-	req_list_work_cache_ = NULL;
+	kmem_cache_destroy(flush_work_cache_);
+	flush_work_cache_ = NULL;
 }
 
 /* end of file. */

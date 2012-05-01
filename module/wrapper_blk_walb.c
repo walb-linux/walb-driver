@@ -87,6 +87,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	}
 	pdata->ldev = NULL;
 	pdata->ddev = NULL;
+	spin_lock_init(&pdata->pending_data_lock);
+	LIST_HEAD_INIT(&pdata->writepack_list);
 	
         /* open underlying log device. */
         ldev = blkdev_get_by_path(
