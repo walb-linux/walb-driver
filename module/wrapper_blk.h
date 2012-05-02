@@ -13,7 +13,6 @@
 
 #include "walb/common.h"
 #include "walb/disk_name.h"
-#include "block_size.h"
 
 /*******************************************************************************
  * Macros definition.
@@ -41,9 +40,9 @@ struct wrapper_blk_dev
 
         /* name of the device. terminated by '\0'. */
         char name[WRAPPER_BLK_DEV_NAME_MAX_LEN];
-        
-        struct block_sizes blksiz; /* Block sizes. */
 
+	unsigned int pbs; /* physical block size. */
+	
         spinlock_t lock; /* Lock data for this struct and queue if need. */
         struct request_queue *queue; /* request queue */
         bool use_make_request_fn; /* true if using wdev_register_with_bio(). */
@@ -66,12 +65,10 @@ struct wrapper_blk_dev
 
 /* (Un)register a new block device. */
 bool wdev_register_with_bio(
-        unsigned int minor, u64 capacity,
-        const struct block_sizes *blksiz,
+        unsigned int minor, u64 capacity, unsigned int pbs,
         make_request_fn *make_request_fn);
 bool wdev_register_with_req(
-        unsigned int minor, u64 capacity,
-        const struct block_sizes *blksiz,
+        unsigned int minor, u64 capacity, unsigned int pbs,
         request_fn_proc *request_fn_proc);
 bool wdev_unregister(unsigned int minor);
 

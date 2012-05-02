@@ -25,11 +25,11 @@ test-kmem-cache-mod-objs := test_kmem_cache.o
 test-workqueue-mod-objs := test_workqueue.o
 test-kthread-mod-objs := test_kthread.o
 #wrapblk-mod-objs := wrapblk.o
-#memblk-none-mod-objs := memblk.o treemap.o block_size.o memblk_io_none.o
-#memblk-simple-mod-objs := memblk.o treemap.o block_size.o memblk_io_simple.o
-simple-blk-mod-objs := simple_blk.o block_size.o
-SIMPLE_BLK_BIO_OBJS = simple_blk_bio.o block_size.o size_list.o
-SIMPLE_BLK_REQ_OBJS = simple_blk_req.o block_size.o size_list.o
+#memblk-none-mod-objs := memblk.o treemap.o memblk_io_none.o
+#memblk-simple-mod-objs := memblk.o treemap.o memblk_io_simple.o
+simple-blk-mod-objs := simple_blk.o
+SIMPLE_BLK_BIO_OBJS = simple_blk_bio.o size_list.o
+SIMPLE_BLK_REQ_OBJS = simple_blk_req.o size_list.o
 simple-blk-bio-none-mod-objs := $(SIMPLE_BLK_BIO_OBJS) simple_blk_bio_none.o
 MEMBLK_DATA_OBJS = memblk_data.o treemap.o
 simple-blk-bio-mem-mod-objs := \
@@ -40,14 +40,14 @@ simple-blk-req-mem-barrier-mod-objs := \
 $(SIMPLE_BLK_REQ_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_req_mem_barrier.o
 simple-blk-req-none-mod-objs := \
 $(SIMPLE_BLK_REQ_OBJS) simple_blk_req_none.o
-#SIMPLE_BLK_WRAP_OBJS = simple_blk_wrapper.o block_size.o size_list.o
+#SIMPLE_BLK_WRAP_OBJS = simple_blk_wrapper.o size_list.o
 #simple-blk-wrap-mod-objs := $(SIMPLE_BLK_WRAP_OBJS)
 
-wrapper-blk-mod-objs := wrapper_blk.o block_size.o
-WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o block_size.o
+wrapper-blk-mod-objs := wrapper_blk.o
+WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o
 wrapper-blk-simple-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
 wrapper_blk_simple_plug.o
-WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o block_size.o
+WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o
 wrapper-blk-walb-easy-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
 wrapper_blk_walb_easy.o
 
@@ -100,9 +100,9 @@ build_date.h: build_date.h.template
 clean_build_date:
 	rm -f build_date.h
 
-wrapper_blk.o: wrapper_blk.c block_size.h wrapper_blk.h 
-wrapper_blk_simple.o: wrapper_blk_simple.c block_size.h wrapper_blk.h
-wrapper_blk_walb.o: wrapper_blk_walb.c block_size.h wrapper_blk.h
+wrapper_blk.o: wrapper_blk.c wrapper_blk.h 
+wrapper_blk_simple.o: wrapper_blk_simple.c wrapper_blk.h
+wrapper_blk_walb.o: wrapper_blk_walb.c wrapper_blk.h
 
 endif
 

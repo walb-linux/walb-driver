@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "walb/block_size.h"
 #include "util.h"
 #include "logpack.h"
 
@@ -17,18 +18,18 @@
 #define LOG_DEV_FILE "tmp/logpack_test.tmp"
 
 /**
- * TEST of lb_to_pb().
+ * TEST of capacity_pb().
  */
-void TEST_lb_to_pb()
+void TEST_capacity_pb()
 {
-    ASSERT(lb_to_pb(512, 0) == 0);
-    ASSERT(lb_to_pb(4096, 0) == 0);
-    ASSERT(lb_to_pb(512, 3) == 3);
-    ASSERT(lb_to_pb(512, 4) == 4);
-    ASSERT(lb_to_pb(512, 5) == 5);
-    ASSERT(lb_to_pb(4096, 23) == 3);
-    ASSERT(lb_to_pb(4096, 24) == 3);
-    ASSERT(lb_to_pb(4096, 25) == 4);
+    ASSERT(capacity_pb(512, 0) == 0);
+    ASSERT(capacity_pb(4096, 0) == 0);
+    ASSERT(capacity_pb(512, 3) == 3);
+    ASSERT(capacity_pb(512, 4) == 4);
+    ASSERT(capacity_pb(512, 5) == 5);
+    ASSERT(capacity_pb(4096, 23) == 3);
+    ASSERT(capacity_pb(4096, 24) == 3);
+    ASSERT(capacity_pb(4096, 25) == 4);
 }
 
 /**
@@ -49,7 +50,7 @@ void test(int pbs)
 
 int main()
 {
-    TEST_lb_to_pb();
+    TEST_capacity_pb();
     
     test(512);
     test(4096);

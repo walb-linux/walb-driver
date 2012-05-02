@@ -13,6 +13,7 @@
 #include <linux/timer.h>
 #include <linux/delay.h>
 #include <linux/list.h>
+#include "walb/block_size.h"
 #include "simple_blk_req.h"
 #include "memblk_data.h"
 
@@ -486,7 +487,7 @@ bool create_private_data(struct simple_blk_dev *sdev)
         ASSERT(sdev);
         
         capacity = sdev->capacity;
-        block_size = sdev->blksiz.lbs;
+        block_size = LOGICAL_BLOCK_SIZE;
         mdata = mdata_create(capacity, block_size, GFP_KERNEL);
         
         if (!mdata) {
@@ -527,7 +528,7 @@ void customize_sdev(struct simple_blk_dev *sdev)
         
         /* Accept REQ_DISCARD. */
         q->limits.discard_granularity = PAGE_SIZE;
-        q->limits.discard_granularity = sdev->blksiz.lbs;
+        q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
 	q->limits.max_discard_sectors = UINT_MAX;
 	q->limits.discard_zeroes_data = 1;
 	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);

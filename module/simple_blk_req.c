@@ -8,7 +8,7 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 
-#include "block_size.h"
+#include "walb/block_size.h"
 #include "size_list.h"
 #include "simple_blk.h"
 #include "simple_blk_req.h"
@@ -26,9 +26,6 @@ int start_minor_ = 0;
 #define LOGICAL_BLOCK_SIZE 512
 /* Physical block size. */
 int physical_block_size_ = 4096;
-
-/* Block sizes. */
-struct block_sizes blksiz_;
 
 /* Number of devices. */
 unsigned int n_devices_ = 0;
@@ -86,13 +83,13 @@ static bool register_alldevs(void)
         u64 capacity;
         bool ret;
         struct simple_blk_dev *sdev;
-        
+	
         for (i = 0; i < n_devices_; i ++) {
                 capacity = sizlist_nth_size(device_size_list_str_, i)
                         / LOGICAL_BLOCK_SIZE;
                 ASSERT(capacity > 0);
 
-                ret = sdev_register_with_req(get_minor(i), capacity, &blksiz_,
+                ret = sdev_register_with_req(get_minor(i), capacity, physical_block_size_,
                                              simple_blk_req_request_fn);
                 
                 if (!ret) {
@@ -183,9 +180,10 @@ enum workqueue_type get_workqueue_type(void)
 
 static int __init simple_blk_init(void)
 {
-        ASSERT(!in_interrupt());
-        
-        blksiz_init(&blksiz_, LOGICAL_BLOCK_SIZE, physical_block_size_);
+	if (!is_valid_pbs(physical_block_size_)) {
+		goto error0;
+	}
+	
 	set_workqueue_type();
 
         n_devices_ = sizlist_length(device_size_list_str_);
@@ -214,7 +212,6 @@ error0:
 
 static void simple_blk_exit(void)
 {
-        ASSERT(!in_interrupt());
         LOGd("in_atomic: %u.\n", in_atomic());
         
         stop_alldevs();
