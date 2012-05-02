@@ -13,7 +13,9 @@
 #include <linux/completion.h>
 #include <linux/delay.h>
 
-#include "block_size.h"
+#include "walb/walb.h"
+#include "walb/block_size.h"
+#include "walb/block_size.h"
 #include "wrapper_blk.h"
 #include "wrapper_blk_walb.h"
 
@@ -27,8 +29,6 @@ char *data_device_str_ = "/dev/simple_blk/1";
 /* Minor id start. */
 int start_minor_ = 0;
 
-/* Logical block size is 512. */
-#define LOGICAL_BLOCK_SIZE 512
 /* Physical block size. */
 int physical_block_size_ = 4096;
 
@@ -44,9 +44,6 @@ module_param_named(pbs, physical_block_size_, int, S_IRUGO);
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
-
-/* Block sizes. */
-struct block_sizes blksiz_;
 
 /*******************************************************************************
  * Static functions prototype.
@@ -87,8 +84,9 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	}
 	pdata->ldev = NULL;
 	pdata->ddev = NULL;
+	pdata->next_lsid = INVALID_LSID;
 	spin_lock_init(&pdata->pending_data_lock);
-	LIST_HEAD_INIT(&pdata->writepack_list);
+	INIT_LIST_HEAD(&pdata->writepack_list);
 	
         /* open underlying log device. */
         ldev = blkdev_get_by_path(
@@ -113,6 +111,11 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->ddev = ddev;
         wdev->private_data = pdata;
 
+	/* Load super block. */
+
+	/* now editing */
+	
+
         /* capacity */
         wdev->capacity = get_capacity(ddev->bd_disk);
         set_capacity(wdev->gd, wdev->capacity);
@@ -126,7 +129,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 			LOGICAL_BLOCK_SIZE, lbs);
                 goto error3;
         }
-        blksiz_init(&wdev->blksiz, lbs, pbs);
+	wdev->pbs = pbs;
         blk_queue_logical_block_size(wdev->queue, lbs);
         blk_queue_physical_block_size(wdev->queue, pbs);
 
@@ -188,7 +191,7 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
                 /* Accept REQ_DISCARD. */
                 LOGn("Supports REQ_DISCARD.");
                 q->limits.discard_granularity = PAGE_SIZE;
-                q->limits.discard_granularity = wdev->blksiz.lbs;
+                q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
                 q->limits.max_discard_sectors = UINT_MAX;
                 q->limits.discard_zeroes_data = 1;
                 queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
@@ -213,8 +216,9 @@ static bool register_dev(void)
         LOGe("register_dev begin");
         
         /* capacity must be set lator. */
-        ret = wdev_register_with_req(get_minor(i), capacity, &blksiz_,
-                                     wrapper_blk_req_request_fn);
+        ret = wdev_register_with_req(get_minor(i), capacity,
+				physical_block_size_,
+				wrapper_blk_req_request_fn);
                 
         if (!ret) {
                 goto error;
@@ -276,8 +280,10 @@ static void stop_dev(void)
 
 static int __init wrapper_blk_init(void)
 {
-        blksiz_init(&blksiz_, LOGICAL_BLOCK_SIZE, physical_block_size_);
-
+	if (!is_valid_pbs(physical_block_size_)) {
+		goto error0;
+	}
+	
         pre_register();
         
         if (!register_dev()) {

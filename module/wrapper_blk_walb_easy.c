@@ -11,7 +11,6 @@
 #include <linux/delay.h>
 #include <linux/spinlock.h>
 
-#include "block_size.h"
 #include "wrapper_blk.h"
 #include "wrapper_blk_walb.h"
 

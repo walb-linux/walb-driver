@@ -22,7 +22,7 @@ bool pre_register(void);
 void post_unregister(void);
 
 /**
- * Private data as wrapper_dev.private_data.
+ * Private data as wrapper_blk_dev.private_data.
  */
 struct pdata
 {
@@ -37,7 +37,7 @@ struct pdata
 					    pending_data_lock must be held. */
 };
 
-static inline pdata_get_from_wdev(struct wrapper_dev *wdev)
+static inline struct pdata* pdata_get_from_wdev(struct wrapper_blk_dev *wdev)
 {
 	return (struct pdata *)wdev->private_data;
 }
