@@ -15,9 +15,10 @@
 
 #include "walb/walb.h"
 #include "walb/block_size.h"
-#include "walb/block_size.h"
+#include "walb/sector.h"
 #include "wrapper_blk.h"
 #include "wrapper_blk_walb.h"
+#include "sector_io.h"
 
 /*******************************************************************************
  * Module variables definition.
@@ -73,6 +74,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	struct pdata *pdata;
         struct block_device *ldev, *ddev;
         unsigned int lbs, pbs;
+	struct walb_super_sector *ssect;
         
         LOGd("create_private_data called");
 
@@ -85,6 +87,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->ldev = NULL;
 	pdata->ddev = NULL;
 	pdata->next_lsid = INVALID_LSID;
+	spin_lock_init(&pdata->lsid_lock);
+	spin_lock_init(&pdata->lsuper0_lock);
 	spin_lock_init(&pdata->pending_data_lock);
 	INIT_LIST_HEAD(&pdata->writepack_list);
 	
@@ -112,10 +116,20 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         wdev->private_data = pdata;
 
 	/* Load super block. */
-
-	/* now editing */
+	pdata->lsuper0 = sector_alloc(pbs);
+	if (!pdata->lsuper0) {
+		goto error3;
+	}
+	if (!walb_read_super_sector(pdata->ldev, pdata->lsuper0)) {
+		LOGe("read super sector 0 failed.\n");
+		goto error4;
+	}
+	ssect = get_super_sector(pdata->lsuper0);
+	pdata->written_lsid = ssect->written_lsid;
+	pdata->oldest_lsid = ssect->oldest_lsid;
+	pdata->latest_lsid = pdata->written_lsid; /* redo must be done. */
+	pdata->ring_buffer_size = ssect->ring_buffer_size;
 	
-
         /* capacity */
         wdev->capacity = get_capacity(ddev->bd_disk);
         set_capacity(wdev->gd, wdev->capacity);
@@ -127,7 +141,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         if (lbs != LOGICAL_BLOCK_SIZE) {
 		LOGe("logical block size must be %u but %u.\n",
 			LOGICAL_BLOCK_SIZE, lbs);
-                goto error3;
+                goto error4;
         }
 	wdev->pbs = pbs;
         blk_queue_logical_block_size(wdev->queue, lbs);
@@ -135,7 +149,11 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 
         blk_queue_stack_limits(wdev->queue, bdev_get_queue(ddev));
 
+	
         return true;
+
+error4:
+	sector_free(pdata->lsuper0);
 error3:
         blkdev_put(ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 error2:
@@ -150,15 +168,28 @@ error0:
 static void destroy_private_data(struct wrapper_blk_dev *wdev)
 {
 	struct pdata *pdata;
+	struct walb_super_sector *ssect;
 
         LOGd("destoroy_private_data called.");
 	
 	pdata = wdev->private_data;
 	ASSERT(pdata);
+
+	/* sync super block.
+	   The locks are not required because
+	   block device is now offline. */
+	ssect = get_super_sector(pdata->lsuper0);
+	ssect->written_lsid = pdata->written_data;
+	ssect->oldest_lsid = pdata->oldest_lsid;
+	if (!walb_write_super_sector(pdata->ldev, pdata->lsuper0)) {
+		LOGe("super block write failed.\n");
+	}
 	
         /* close underlying devices. */
         blkdev_put(pdata->ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
         blkdev_put(pdata->ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+
+	sector_free(pdata->lsuper0);
 	kfree(pdata);
 	wdev->private_data = NULL;
 }
@@ -273,6 +304,23 @@ static void stop_dev(void)
 /*******************************************************************************
  * Global function definition.
  *******************************************************************************/
+
+/**
+ *
+ *
+ * RETURN:
+ *   
+ *
+ */
+u64 get_log_capacity(struct wrapper_blk_dev *wdev)
+{
+	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	
+        ASSERT_SECTOR_DATA(pdata->lsuper0);
+        return get_super_sector(pdata->lsuper0)->ring_buffer_size;
+	
+	/* now editing */
+}
 
 /*******************************************************************************
  * Init/exit definition.

@@ -52,16 +52,117 @@ void walb_logpack_header_print(const char *level,
         }
 }
 
+/**
+ * NOT TESTED YET.
+ *
+ * Add a request to a logpack header.
+ * Do not validate checksum.
+ *
+ * @lhead log pack header.
+ *   lhead->logpack_lsid must be set correctly.
+ *   lhead->sector_type must be set correctly.
+ * @logpack_lsid lsid of the log pack.
+ * @req request to add. must be write and its size > 0.
+ * @pbs physical block size.
+ * @ring_buffer_size ring buffer size [physical block]
+ *
+ * RETURN:
+ *   true in success, or false.
+ */
+bool walb_logpack_header_add_req(
+	struct walb_logpack_header *lhead,
+	struct request *req,
+	unsigned int pbs, u64 ring_buffer_size)
+{
+	u64 logpack_lsid;
+	u64 req_lsid;
+	unsigned int req_lb, req_pb;
+	unsinged int padding_pb;
+	unsigned int max_n_rec;
+	int idx;
+	
+	ASSERT(lhead);
+	ASSERT(lhead->sector_type == SECTOR_TYPE_LOGPACK);
+	ASSERT(req);
+	ASSERT_PBS(pbs);
+	ASSERT(req->cmd_flags & REQ_WRITE);
+
+	logpack_lsid = lhead->logpack_lsid;
+	max_n_rec = max_n_log_record_in_sector(pbs);
+	idx = lhead->n_records;
+	
+	ASSERT(lhead->n_records <= max_n_rec);
+	if (lhead->n_records == max_n_rec) {
+		LOGd("no more request can not be added.\n");
+		goto error0;
+	}
+
+	req_lsid = logpack_lsid + 1 + lhead->total_io_size;
+	req_lb = blk_rq_sectors(req);
+	ASSERT(0 < req_lb);
+	ASSERT(65536 > req_lb); /* can be u16. */
+	req_pb = capacity_pb(pbs, req_lb);
+
+	if (req_lsid % ring_buffer_size + req_pb > ring_buffer_size) {
+		/* Log of this request will cross the end of ring buffer.
+		   So padding is required. */
+		padding_pb = ring_buffer_size - (req_lsid % ring_buffer_size);
+
+		if ((unsinged int)lhead->total_io_size + padding_pb
+			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
+			LOGd("no more request can not be added.\n");
+			goto error0;
+		}
+		
+		lhead->record[idx].is_exist = 1;
+		lhead->record[idx].lsid = req_lsid;
+		lhead->record[idx].lsid_local = req_lsid - logpack_lsid;
+		lhead->record[idx].is_padding = 1;
+		lhead->record[idx].offset = 0;
+		lhead->record[idx].io_size = capacity_lb(pbs, padding_pb);
+		lhead->n_padding ++;
+		lhead->n_records ++;
+		lhead->total_io_size += padding_pb;
+
+		req_lsid += padding_pb;
+		idx ++;
+		
+		if (lhead->n_records == max_n_rec) {
+			LOGd("no more request can not be added.\n");
+			goto error0;
+		}
+	}
+
+	if ((unsinged int)lhead->total_io_size + padding_pb
+		> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
+		LOGd("no more request can not be added.\n");
+		goto error0;
+	}
+
+	lhead->record[idx].is_exist = 1;
+	lhead->record[idx].lsid = req_lsid;
+	lhead->record[idx].lsid_local = req_lsid - logpack_lsid;
+	lhead->record[idx].is_padding = 0;
+	lhead->record[idx].offset = (u64)blk_rq_pos(req);
+	lhead->record[idx].io_size = (u16)req_lb;
+
+	req_lsid += req_pb;
+	idx ++;
+	
+	return true;
+error0:
+	return false;
+}
+
 
 /**
- * Add record to log pack.
+ * Set requests to a log pack header.
  *
  * @lhead header of log pack.
  * @logpack_lsid lsid of the log pack.
  * @reqp_ary requests to add.
  * @n_req number of requests.
  * @n_lb_in_pb number of logical blocks in a physical block
- * @ring_buffer_offset ring buffer offset [physical block]
  * @ring_buffer_size ring buffer size [physical block]
  *
  * @return physical sectors of the log pack in success, or -1.
@@ -70,7 +171,6 @@ int walb_logpack_header_fill(struct walb_logpack_header *lhead,
                              u64 logpack_lsid,
                              struct request** reqp_ary, int n_req,
                              int n_lb_in_pb,
-                             u64 ring_buffer_offset,
                              u64 ring_buffer_size)
 {
         struct request* req;

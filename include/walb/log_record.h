@@ -76,6 +76,8 @@ struct walb_logpack_header {
  * Macros.
  *******************************************************************************/
 
+#define MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER (((unsigned int)(1) << 16) - 1)
+
 #define ASSERT_LOG_RECORD(rec) ASSERT(is_valid_log_record(rec))
 
 /**
@@ -98,6 +100,7 @@ static inline unsigned int max_n_log_record_in_sector(unsigned int pbs);
 static inline void log_record_init(struct walb_log_record *rec);
 static inline int is_valid_log_record(struct walb_log_record *rec);
 static inline int is_valid_logpack_header(const struct walb_logpack_header *lhead);
+static inline u64 get_next_lsid(const struct walb_logpack_header *lhead);
 
 /*******************************************************************************
  * Definition of static inline functions. 
@@ -153,6 +156,7 @@ error:
 
 /**
  * Check validness of a logpack header.
+ * This does not validate checksum.
  *
  * @logpack logpack to be checked.
  *
@@ -173,6 +177,18 @@ error:
              lhead->n_records, lhead->total_io_size,
              lhead->sector_type);
         return 0;
+}
+
+/**
+ * Get next lsid of the logpack header.
+ */
+static inline u64 get_next_lsid(const struct walb_logpack_header *lhead)
+{
+	if (!is_valid_logpack_header(lhead)) {
+		LOGe("invalid logpack header.\n");
+		return INVALID_LSID;
+	}
+	return lhead->lsid + 1 + lhead->total_io_size;
 }
 
 #endif /* WALB_LOG_RECORD_H */

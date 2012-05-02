@@ -102,12 +102,16 @@ struct walb_logpack_request_entry {
 
 void walb_logpack_header_print(const char *level,
                                struct walb_logpack_header *lhead);
-int walb_logpack_header_fill(struct walb_logpack_header *lhead,
-                             u64 logpack_lsid,
-                             struct request** reqp_ary, int n_req,
-                             int n_lb_in_pb,
-                             u64 ring_buffer_offset,
-                             u64 ring_buffer_size);
+bool walb_logpack_header_add_req(
+	struct walb_logpack_header *lhead,
+	struct request *req,
+	unsigned int pbs, u64 ring_buffer_size);
+DEPRECATED int walb_logpack_header_fill(
+	struct walb_logpack_header *lhead,
+	u64 logpack_lsid,
+	struct request** reqp_ary, int n_req,
+	int n_lb_in_pb,
+	u64 ring_buffer_size);
 struct walb_logpack_request_entry* walb_create_logpack_request_entry(
         struct walb_logpack_entry *logpack_entry, int idx);
 void walb_destroy_logpack_request_entry(
