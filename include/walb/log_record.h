@@ -48,27 +48,6 @@ struct walb_log_record {
 } __attribute__((packed));
 
 /**
- * This is for validation of log record.
- * 
- * @return Non-zero if valid, or 0.
- */
-static inline int is_valid_log_record(struct walb_log_record *rec)
-{
-        CHECK(rec);
-        CHECK(rec->is_exist);
-        
-        CHECK(rec->io_size > 0);
-        CHECK(rec->lsid_local > 0);
-        CHECK(rec->lsid <= MAX_LSID);
-        
-        return 1; /* valid */
-error:
-        return 0; /* invalid */
-}
-
-#define ASSERT_LOG_RECORD(rec) ASSERT(is_valid_log_record(rec))
-
-/**
  * Logpack header data inside sector.
  *
  * sizeof(struct walb_logpack_header) <= walb_super_sector.sector_size.
@@ -93,39 +72,11 @@ struct walb_logpack_header {
 } __attribute__((packed));
 
 
-/**
- * Check validness of a logpack header.
- *
- * @logpack logpack to be checked.
- *
- * @return Non-zero in success, or 0.
- */
-static inline int is_valid_logpack_header(const struct walb_logpack_header *lhead) {
-
-        CHECK(lhead);
-        CHECK(lhead->n_records > 0);
-        CHECK(lhead->total_io_size > 0);
-        CHECK(lhead->sector_type == SECTOR_TYPE_LOGPACK);
-        return 1;
-error:
-        LOGe("log pack header is invalid "
-             "(n_records: %u total_io_size %u sector_type %u).\n",
-             lhead->n_records, lhead->total_io_size,
-             lhead->sector_type);
-        return 0;
-}
-
 /*******************************************************************************
  * Macros.
  *******************************************************************************/
 
-/**
- * Assertion of logical/physical block size.
- */
-#define ASSERT_LBS_PBS(logical_bs, physical_bs) ASSERT( \
-                logical_bs > 0 &&                       \
-                physical_bs >= logical_bs &&            \
-                physical_bs % logical_bs == 0)
+#define ASSERT_LOG_RECORD(rec) ASSERT(is_valid_log_record(rec))
 
 /**
  * NOT TESTED YET.
@@ -143,67 +94,24 @@ error:
  * Prototype of static inline functions. 
  *******************************************************************************/
 
-static inline int max_n_log_record_in_sector(int sector_size);
-static inline int lb_in_pb(int logical_bs, int physical_bs);
-
+static inline unsigned int max_n_log_record_in_sector(unsigned int pbs);
+static inline void log_record_init(struct walb_log_record *rec);
+static inline int is_valid_log_record(struct walb_log_record *rec);
+static inline int is_valid_logpack_header(const struct walb_logpack_header *lhead);
 
 /*******************************************************************************
  * Definition of static inline functions. 
  *******************************************************************************/
+
 /**
  * Get number of log records that a log pack can store.
+ * @pbs physical block size.
  */
-static inline int max_n_log_record_in_sector(int sector_size)
+static inline unsigned int max_n_log_record_in_sector(unsigned int pbs)
 {
-        return (sector_size - sizeof(struct walb_logpack_header)) /
+	ASSERT(pbs > sizeof(struct walb_logpack_header));
+        return (pbs - sizeof(struct walb_logpack_header)) /
                 sizeof(struct walb_log_record);
-}
-
-/**
- * Get number of logical blocks in a physical block.
- */
-static inline int lb_in_pb(int logical_bs, int physical_bs)
-{
-        int ret;
-        ASSERT_LBS_PBS(logical_bs, physical_bs);
-        ret = physical_bs / logical_bs;
-        ASSERT(ret > 0);
-        return ret;
-}
-
-/**
- * [Logical block] -> [Physial block]
- *
- * @logical_bs logical block size in bytes.
- * @physical_bs physical block size in bytes.
- * @n_lb number of logical blocks.
- *
- * @return number of physical blocks.
- */
-static inline int lb_to_pb(int logical_bs, int physical_bs, int n_lb)
-{
-        int lp;
-        ASSERT_LBS_PBS(logical_bs, physical_bs);
-        ASSERT(n_lb >= 0);
-        lp = lb_in_pb(logical_bs, physical_bs);
-        return ((n_lb + lp - 1) / lp);
-}
-
-/**
- * [Physial block] -> [Logical block]
- *
- * @logical_bs logical block size in bytes.
- * @physical_bs physical block size in bytes.
- * @n_pb number of physical blocks.
- *
- * @return number of logical blocks.
- */
-static inline int pb_to_lb(int logical_bs, int physical_bs, int n_pb)
-{
-        ASSERT_LBS_PBS(logical_bs, physical_bs);
-        ASSERT(n_pb >= 0);
-
-        return (n_pb * lb_in_pb(logical_bs, physical_bs));
 }
 
 /**
@@ -222,6 +130,49 @@ static inline void log_record_init(struct walb_log_record *rec)
         rec->is_exist = 0;
         
         rec->offset = 0;
+}
+
+/**
+ * This is for validation of log record.
+ * 
+ * @return Non-zero if valid, or 0.
+ */
+static inline int is_valid_log_record(struct walb_log_record *rec)
+{
+        CHECK(rec);
+        CHECK(rec->is_exist);
+        
+        CHECK(rec->io_size > 0);
+        CHECK(rec->lsid_local > 0);
+        CHECK(rec->lsid <= MAX_LSID);
+        
+        return 1; /* valid */
+error:
+        return 0; /* invalid */
+}
+
+/**
+ * Check validness of a logpack header.
+ *
+ * @logpack logpack to be checked.
+ *
+ * @return Non-zero in success, or 0.
+ */
+static inline int is_valid_logpack_header(
+	const struct walb_logpack_header *lhead)
+{
+
+        CHECK(lhead);
+        CHECK(lhead->n_records > 0);
+        CHECK(lhead->total_io_size > 0);
+        CHECK(lhead->sector_type == SECTOR_TYPE_LOGPACK);
+        return 1;
+error:
+        LOGe("log pack header is invalid "
+             "(n_records: %u total_io_size %u sector_type %u).\n",
+             lhead->n_records, lhead->total_io_size,
+             lhead->sector_type);
+        return 0;
 }
 
 #endif /* WALB_LOG_RECORD_H */

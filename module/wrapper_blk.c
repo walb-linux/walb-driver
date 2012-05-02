@@ -14,7 +14,7 @@
 
 #include "walb/common.h"
 #include "walb/disk_name.h"
-#include "block_size.h"
+#include "walb/block_size.h"
 #include "wrapper_blk.h"
 
 /*******************************************************************************
@@ -64,13 +64,11 @@ static struct wrapper_blk_dev* get_from_devices(unsigned int minor);
 
 /* Utilities */
 static bool wdev_register_detail(
-        unsigned int minor, u64 capacity,
-        const struct block_sizes *blksiz,
+        unsigned int minor, u64 capacity, unsigned int pbs,
         make_request_fn *make_request_fn,
         request_fn_proc *request_fn_proc);
 static struct wrapper_blk_dev* alloc_and_partial_init_wdev(
-        unsigned int minor, u64 capacity,
-        const struct block_sizes *blksiz);
+        unsigned int minor, u64 capacity, unsigned int pbs);
 
 static bool init_queue_and_disk(struct wrapper_blk_dev *wdev);
 static void fin_queue_and_disk(struct wrapper_blk_dev *wdev);
@@ -101,10 +99,10 @@ static struct block_device_operations wrapper_blk_ops_ = {
  * Register new block device with bio interface.
  */
 bool wdev_register_with_bio(unsigned int minor, u64 capacity,
-                            const struct block_sizes *blksiz,
-                            make_request_fn *make_request_fn)
+			unsigned int pbs,
+			make_request_fn *make_request_fn)
 {
-        return wdev_register_detail(minor, capacity, blksiz, make_request_fn, NULL);
+        return wdev_register_detail(minor, capacity, pbs, make_request_fn, NULL);
 }
 EXPORT_SYMBOL_GPL(wdev_register_with_bio);
 
@@ -112,10 +110,10 @@ EXPORT_SYMBOL_GPL(wdev_register_with_bio);
  * Register new block device with request interface.
  */
 bool wdev_register_with_req(unsigned int minor, u64 capacity,
-                            const struct block_sizes *blksiz,
-                            request_fn_proc *request_fn_proc)
+			unsigned int pbs,
+			request_fn_proc *request_fn_proc)
 {
-        return wdev_register_detail(minor, capacity, blksiz, NULL, request_fn_proc);
+        return wdev_register_detail(minor, capacity, pbs, NULL, request_fn_proc);
 }
 EXPORT_SYMBOL_GPL(wdev_register_with_req);
 
@@ -335,8 +333,7 @@ static struct wrapper_blk_dev* get_from_devices(unsigned int minor)
  * Call this before @register_wdev();
  */
 static struct wrapper_blk_dev* alloc_and_partial_init_wdev(
-        unsigned int minor, u64 capacity,
-        const struct block_sizes *blksiz)
+        unsigned int minor, u64 capacity, unsigned int pbs)
 {
         struct wrapper_blk_dev *wdev;
         
@@ -351,7 +348,7 @@ static struct wrapper_blk_dev* alloc_and_partial_init_wdev(
         wdev->minor = minor;
         wdev->capacity = capacity;
         snprintf(wdev->name, WRAPPER_BLK_DEV_NAME_MAX_LEN, "%d", minor);
-        blksiz_copy(&wdev->blksiz, blksiz);
+	wdev->pbs = pbs;
 
         spin_lock_init(&wdev->lock);
         wdev->queue = NULL;
@@ -371,7 +368,7 @@ error0:
  *
  * @minor minor device number.
  * @capacity capacity [logical block].
- * @blksiz block size data.
+ * @pbs physical block size.
  * @make_request_fn callback for bio.
  * @request_fn_proc callback for request.
  *    This is used when make_request_fn is NULL.
@@ -379,14 +376,14 @@ error0:
  * true in success, or false.
  */
 static bool wdev_register_detail(unsigned int minor, u64 capacity,
-                                 const struct block_sizes *blksiz,
-                                 make_request_fn *make_request_fn,
-                                 request_fn_proc *request_fn_proc)
+				unsigned int pbs,
+				make_request_fn *make_request_fn,
+				request_fn_proc *request_fn_proc)
 {
         struct wrapper_blk_dev *wdev;
 
         /* Allocate and initialize partially. */
-        wdev = alloc_and_partial_init_wdev(minor, capacity, blksiz);
+        wdev = alloc_and_partial_init_wdev(minor, capacity, pbs);
         if (!wdev) {
                 LOGe("Memory allocation failed.\n");
                 goto error0;
@@ -461,10 +458,10 @@ static bool init_queue_and_disk(struct wrapper_blk_dev *wdev)
                         goto error0;
                 }
         }
-        blk_queue_physical_block_size(q, wdev->blksiz.pbs);
-        blk_queue_logical_block_size(q, wdev->blksiz.lbs);
-        /* blk_queue_io_min(q, wdev->blksiz.pbs); */
-        blk_queue_io_opt(q, wdev->blksiz.pbs);
+        blk_queue_physical_block_size(q, wdev->pbs);
+        blk_queue_logical_block_size(q, LOGICAL_BLOCK_SIZE);
+        /* blk_queue_io_min(q, wdev->pbs); */
+        blk_queue_io_opt(q, wdev->pbs);
 
         /* Accept REQ_DISCARD. */
         /* Do nothing. */
@@ -524,7 +521,7 @@ static void assert_wrapper_blk_dev(struct wrapper_blk_dev *wdev)
 {
         ASSERT(wdev);
         ASSERT(wdev->capacity > 0);
-        ASSERT_BLKSIZ(&wdev->blksiz);
+        ASSERT_PBS(&wdev->pbs);
         ASSERT(strlen(wdev->name) > 0);
         ASSERT(wdev->queue);
         ASSERT(wdev->gd);

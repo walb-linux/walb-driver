@@ -68,7 +68,7 @@ typedef struct logpack {
  */
 #define ASSERT_LOGPACK(logpack, is_checksum) ASSERT(is_valid_logpack(logpack, is_checksum))
 
-logpack_t* alloc_logpack(int logical_bs, int physical_bs, int n_sectors);
+logpack_t* alloc_logpack(unsigned int physical_bs, unsigned int n_sectors);
 void free_logpack(logpack_t* logpack);
 bool realloc_logpack(logpack_t* logpack, int n_sectors);
 

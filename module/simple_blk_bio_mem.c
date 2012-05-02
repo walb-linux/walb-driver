@@ -6,6 +6,8 @@
  */
 #include "check_kernel.h"
 #include <linux/blkdev.h>
+
+#include "walb/block_size.h"
 #include "simple_blk_bio.h"
 #include "memblk_data.h"
 
@@ -115,7 +117,7 @@ bool create_private_data(struct simple_blk_dev *sdev)
         ASSERT(sdev);
 
         capacity = sdev->capacity;
-        block_size = sdev->blksiz.lbs;
+        block_size = LOGICAL_BLOCK_SIZE;
         mdata = mdata_create(capacity, block_size, GFP_KERNEL);
         
         if (!mdata) {

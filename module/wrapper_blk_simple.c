@@ -13,7 +13,7 @@
 #include <linux/completion.h>
 #include <linux/delay.h>
 
-#include "block_size.h"
+#include "walb/block_size.h"
 #include "wrapper_blk.h"
 #include "wrapper_blk_simple.h"
 
@@ -49,9 +49,6 @@ module_param_named(plug_policy, plug_policy_str_, charp, S_IRUGO);
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
-
-/* Block sizes. */
-struct block_sizes blksiz_;
 
 /* Policy. */
 enum plug_policy plug_policy_;
@@ -107,7 +104,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         if (lbs != LOGICAL_BLOCK_SIZE) {
                 goto error0;
         }
-        blksiz_init(&wdev->blksiz, lbs, pbs);
+	wdev->pbs = pbs;
         blk_queue_logical_block_size(wdev->queue, lbs);
         blk_queue_physical_block_size(wdev->queue, pbs);
 
@@ -154,7 +151,7 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
                 /* Accept REQ_DISCARD. */
                 LOGn("Supports REQ_DISCARD.");
                 q->limits.discard_granularity = PAGE_SIZE;
-                q->limits.discard_granularity = wdev->blksiz.lbs;
+                q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
                 q->limits.max_discard_sectors = UINT_MAX;
                 q->limits.discard_zeroes_data = 1;
                 queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
@@ -179,8 +176,8 @@ static bool register_dev(void)
         LOGe("register_dev begin");
         
         /* capacity must be set lator. */
-        ret = wdev_register_with_req(get_minor(i), capacity, &blksiz_,
-                                     wrapper_blk_req_request_fn);
+        ret = wdev_register_with_req(get_minor(i), capacity, physical_block_size_,
+				wrapper_blk_req_request_fn);
                 
         if (!ret) {
                 goto error;
@@ -258,7 +255,10 @@ enum plug_policy get_policy(void)
 
 static int __init wrapper_blk_init(void)
 {
-        blksiz_init(&blksiz_, LOGICAL_BLOCK_SIZE, physical_block_size_);
+	if (!is_valid_pbs(physical_block_size_)) {
+		goto error0;
+	}
+
 	set_policy();
 	
         pre_register();
