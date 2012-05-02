@@ -7,6 +7,7 @@
  */
 #include <string.h>
 
+#include "walb/block_size.h"
 #include "util.h"
 #include "logpack.h"
 
@@ -389,7 +390,7 @@ error0:
  *
  * @return pointer to allocated logpack in success, or NULL.
  */
-logpack_t* alloc_logpack(int physical_bs, int n_sectors)
+logpack_t* alloc_logpack(unsigned int physical_bs, unsigned int n_sectors)
 {
         ASSERT_PBS(physical_bs);
         ASSERT(n_sectors > 0);
@@ -525,7 +526,7 @@ bool logpack_add_io_request(logpack_t* logpack,
     
         /* Calc data size in logical blocks. */
         rec->io_size = size / LOGICAL_BLOCK_SIZE;
-        int n_pb = lb_to_pb(pbs, rec->io_size);
+        unsigned int n_pb = capacity_pb(pbs, rec->io_size);
     
         /* Calc data offset in the logpack in physical bs. */
         if (rec_id == 0) {
@@ -533,7 +534,7 @@ bool logpack_add_io_request(logpack_t* logpack,
         } else {
                 struct walb_log_record *rec_prev = &lhead->record[rec_id - 1];
                 rec->lsid_local = rec_prev->lsid_local +
-                        (u16)lb_to_pb(pbs, rec_prev->io_size);
+                        (u16)capacity_pb(pbs, rec_prev->io_size);
         }
 
         /* Padding */
@@ -544,7 +545,7 @@ bool logpack_add_io_request(logpack_t* logpack,
         int i;
         struct walb_log_record *lrec;
         for_each_logpack_record(i, lrec, lhead) {
-                current_size += lb_to_pb(pbs, lrec->io_size);
+                current_size += capacity_pb(pbs, lrec->io_size);
         }
         if (current_size + n_pb > logpack->data_sects->size) {
                 if (! realloc_logpack(logpack, current_size + n_pb)) {
