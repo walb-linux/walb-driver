@@ -13,6 +13,9 @@
 #include <linux/blkdev.h>
 #include "walb/walb.h"
 #include "walb/sector.h"
+#include "walb/super.h"
+#include "walb/log_record.h"
+#include "walb/log_device.h"
 
 /**
  * BIO wrapper flag.
@@ -44,10 +47,10 @@ bool sector_io(int rw, struct block_device *bdev,
 	u64 off, struct sector_data *sect);
 
 /* Super sector functions. */
-static void walb_print_super_sector(struct walb_super_sector *lsuper0);
-static bool walb_read_super_sector(
+void walb_print_super_sector(struct walb_super_sector *lsuper0);
+bool walb_read_super_sector(
 	struct block_device *ldev, struct sector_data *lsuper);
-static bool walb_write_super_sector(
+bool walb_write_super_sector(
 	struct block_device *ldev, struct sector_data *lsuper);
 
 /*******************************************************************************

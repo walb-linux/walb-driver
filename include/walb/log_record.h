@@ -184,11 +184,8 @@ error:
  */
 static inline u64 get_next_lsid(const struct walb_logpack_header *lhead)
 {
-	if (!is_valid_logpack_header(lhead)) {
-		LOGe("invalid logpack header.\n");
-		return INVALID_LSID;
-	}
-	return lhead->lsid + 1 + lhead->total_io_size;
+	ASSERT(is_valid_logpack_header(lhead));
+	return lhead->logpack_lsid + 1 + lhead->total_io_size;
 }
 
 #endif /* WALB_LOG_RECORD_H */

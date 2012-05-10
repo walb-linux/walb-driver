@@ -126,7 +126,7 @@ error0:
  *
  * @lsuper0 super sector.
  */
-static void walb_print_super_sector(struct walb_super_sector *lsuper0)
+void walb_print_super_sector(struct walb_super_sector *lsuper0)
 {
 #ifdef WALB_DEBUG
         const int str_size = 16 * 3 + 1;
@@ -167,7 +167,7 @@ static void walb_print_super_sector(struct walb_super_sector *lsuper0)
  *
  * @return true in success, or false.
  */
-struct bool walb_read_super_sector(
+bool walb_read_super_sector(
 	struct block_device *ldev, struct sector_data *lsuper)
 {
         u64 off0;

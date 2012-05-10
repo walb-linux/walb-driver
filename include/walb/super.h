@@ -8,6 +8,7 @@
 
 #include "walb.h"
 #include "sector.h"
+#include "util.h"
 
 /**
  * Assert macro.

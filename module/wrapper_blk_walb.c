@@ -86,7 +86,6 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	}
 	pdata->ldev = NULL;
 	pdata->ddev = NULL;
-	pdata->next_lsid = INVALID_LSID;
 	spin_lock_init(&pdata->lsid_lock);
 	spin_lock_init(&pdata->lsuper0_lock);
 	spin_lock_init(&pdata->pending_data_lock);
@@ -116,7 +115,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         wdev->private_data = pdata;
 
 	/* Load super block. */
-	pdata->lsuper0 = sector_alloc(pbs);
+	pdata->lsuper0 = sector_alloc(GFP_KERNEL, pbs);
 	if (!pdata->lsuper0) {
 		goto error3;
 	}
@@ -179,7 +178,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 	   The locks are not required because
 	   block device is now offline. */
 	ssect = get_super_sector(pdata->lsuper0);
-	ssect->written_lsid = pdata->written_data;
+	ssect->written_lsid = pdata->written_lsid;
 	ssect->oldest_lsid = pdata->oldest_lsid;
 	if (!walb_write_super_sector(pdata->ldev, pdata->lsuper0)) {
 		LOGe("super block write failed.\n");
@@ -318,6 +317,11 @@ u64 get_log_capacity(struct wrapper_blk_dev *wdev)
 	
         ASSERT_SECTOR_DATA(pdata->lsuper0);
         return get_super_sector(pdata->lsuper0)->ring_buffer_size;
+
+	
+	
+
+
 	
 	/* now editing */
 }

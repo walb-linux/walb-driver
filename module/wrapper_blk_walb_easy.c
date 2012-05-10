@@ -13,6 +13,10 @@
 
 #include "wrapper_blk.h"
 #include "wrapper_blk_walb.h"
+#include "sector_io.h"
+#include "logpack.h"
+#include "walb/walb.h"
+#include "walb/block_size.h"
 
 /*******************************************************************************
  * Static data definition.
@@ -129,15 +133,15 @@ static struct pack* create_writepack(
 	gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
 static struct pack* create_readpack(gfp_t gfp_mask);
 static void destroy_pack(struct pack *pack);
-static bool pack_add_reqe(struct pack *pack, struct req_entry *reqe);
+static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe);
 
 /* helper function. */
 static bool readpack_add_req(
-	struct list_head *rpack_list, struct pack **rpackp, struct request *req);
+	struct list_head *rpack_list, struct pack **rpackp, struct request *req,
+	gfp_t gfp_mask);
 static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
-	u64 ring_buffer_size, u64 *latest_lsidp);
-
+	u64 ring_buffer_size, u64 *latest_lsidp, gfp_t gfp_mask);
 
 /* Request flush_work tasks. */
 static void flush_work_task(struct work_struct *work); /* in parallel. */
@@ -398,8 +402,8 @@ static struct pack* create_pack(bool is_write, gfp_t gfp_mask)
 		LOGd("kmem_cache_alloc() failed.");
 		goto error0;
 	}
-	LIST_HEAD_INIT(&pack->list);
-	LIST_HEAD_INIT(&pack->req_ent_list);
+	INIT_LIST_HEAD(&pack->list);
+	INIT_LIST_HEAD(&pack->req_ent_list);
 	pack->is_write = is_write;
 	
 	return pack;
@@ -426,7 +430,7 @@ static struct pack* create_writepack(
 	gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid)
 {
 	struct pack *pack;
-	struct lopgack_header *lhead;
+	struct walb_logpack_header *lhead;
 
 	ASSERT(logpack_lsid != INVALID_LSID);
 	pack = create_pack(true, gfp_mask);
@@ -488,6 +492,25 @@ static void destroy_pack(struct pack *pack)
 }
 
 /**
+ * Check a request in a pack and a request is overlapping.
+ */
+static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe)
+{
+	struct req_entry *tmp_reqe;
+
+	ASSERT(pack);
+	ASSERT(reqe);
+	ASSERT(reqe->req);
+	
+	list_for_each_entry(tmp_reqe, &pack->req_ent_list, list) {
+		if (is_overlap_req(tmp_reqe->req, reqe->req)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
  * Add a request entry to a pack.
  *
  * @pack pack to added.
@@ -496,24 +519,23 @@ static void destroy_pack(struct pack *pack)
  * If an overlapping request exists, add nothing and return false.
  * Else, add the request and return true.
  */
-static bool pack_add_reqe(struct pack *pack, struct req_entry *reqe)
-{
-	struct req_entry *tmp_reqe;
+/* DEPRECATED */
+/* static bool pack_add_reqe(struct pack *pack, struct req_entry *reqe) */
+/* { */
+/* 	struct req_entry *tmp_reqe; */
 	
-	ASSERT(pack);
-	ASSERT(reqe);
-	ASSERT(pack->is_write == (reqe->req->cmd_flags & REQ_WRITE != 0));
+/* 	ASSERT(pack); */
+/* 	ASSERT(reqe); */
+/* 	ASSERT(pack->is_write == (reqe->req->cmd_flags & REQ_WRITE != 0)); */
 
-	/* Search overlapping requests. */
-	list_for_each_entry(tmp_reqe, &pack->req_ent_list, list) {
-		if (is_overlap_req(tmp_reqe->req, reqe->req)) {
-			return false;
-		}
-	}
-
-	list_add_tail(reqe, &pack->req_ent_list);
-	return true;
-}
+/* 	/\* Search overlapping requests. *\/ */
+/* 	if (is_overlap_pack_reqe(pack, reqe)) { */
+/* 		return false; */
+/* 	} else { */
+/* 		list_add_tail(&reqe->list, &pack->req_ent_list); */
+/* 		return true; */
+/* 	} */
+/* } */
 
 /**
  * Helper function to add request to a readpack.
@@ -531,11 +553,11 @@ static bool pack_add_reqe(struct pack *pack, struct req_entry *reqe)
  *   queue lock is held.
  */
 static bool readpack_add_req(
-	struct list_head *rpack_list, struct pack **rpackp, struct request *req)
+	struct list_head *rpack_list, struct pack **rpackp,
+	struct request *req, gfp_t gfp_mask)
 {
 	struct req_entry *reqe;
 	struct pack *pack;
-	bool ret;
 
 	ASSERT(rpack_list);
 	ASSERT(rpackp);
@@ -546,17 +568,17 @@ static bool readpack_add_req(
 	ASSERT(!pack->is_write);
 	ASSERT(!pack->logpack_header_sector);
 	
-	reqe = create_req_entry(req, GFP_ATOMIC);
+	reqe = create_req_entry(req, gfp_mask);
 	if (!reqe) { goto error0; }
-	if (!pack_add_reqe(pack, reqe)) {
+
+	if (is_overlap_pack_reqe(pack, reqe)) {
 		/* overlap found then create a new pack. */
-		list_add_tail(&pack->list, pack_list);
-		pack = create_readpack(GFP_ATOMIC);
+		list_add_tail(&pack->list, rpack_list);
+		pack = create_readpack(gfp_mask);
 		if (!pack) { goto error1; }
-		ret = pack_add_reqe(pack, reqe);
-		ASSERT(ret);
 		*rpackp = pack;
 	}
+	list_add_tail(&reqe->list, &pack->req_ent_list);
 	return true;
 error1:
 	destroy_req_entry(reqe);
@@ -569,31 +591,32 @@ error0:
  */
 static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
-	u64 ring_buffer_size, u64 *latest_lsidp)
+	u64 ring_buffer_size, u64 *latest_lsidp, gfp_t gfp_mask)
 {
 	struct req_entry *reqe;
 	struct pack *pack;
 	bool ret;
 	unsigned int pbs;
-	struct logpack_header *lhead;
+	struct walb_logpack_header *lhead;
 
 	ASSERT(wpack_list);
 	ASSERT(wpackp);
 	ASSERT(*wpackp);
 	ASSERT(req);
 	ASSERT(!(req->cmd_flags & REQ_WRITE));
-	pack = *packp;
+	pack = *wpackp;
 	ASSERT(pack->is_write);
 	ASSERT(pack->logpack_header_sector);
 	
-	reqe = create_req_entry(req, GFP_ATOMIC);
+	reqe = create_req_entry(req, gfp_mask);
 	if (!reqe) { goto error0; }
 
 	pbs = pack->logpack_header_sector->size;
+	ASSERT_PBS(pbs);
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ASSERT(*latest_lsidp == lhead->logpack_lsid);
 
-	if (!pack_add_reqe(pack, reqe)) {
+	if (is_overlap_pack_reqe(pack, reqe)) {
 		/* overlap found so create a new pack. */
 		goto newpack;
 	}
@@ -603,24 +626,25 @@ static bool writepack_add_req(
 		/* logpack header capacity full so create a new pack. */
 		goto newpack;
 	}
-	
+
+	/* The request is just added to the pack. */
+	list_add_tail(&reqe->list, &pack->req_ent_list);
 	return true;
 
 newpack:
-	list_add_tail(&pack->list, pack_list);
+	list_add_tail(&pack->list, wpack_list);
 	*latest_lsidp = get_next_lsid(lhead);
-	pack = create_writepack(GFP_ATOMIC, *latest_lsidp);
+	pack = create_writepack(gfp_mask, pbs, *latest_lsidp);
 	if (!pack) { goto error1; }
-	ret = pack_add_reqe(pack, reqe);
-	ASSERT(ret);
+	*wpackp = pack;
+
 	ret = walb_logpack_header_add_req(
 		get_logpack_header(pack->logpack_header_sector),
 		req, pbs, ring_buffer_size);
 	ASSERT(ret);
-	*wpackp = pack;
 
+	list_add_tail(&reqe->list, &pack->req_ent_list);
 	return true;
-	
 error1:
 	destroy_req_entry(reqe);
 error0:
@@ -722,6 +746,9 @@ static void wait_for_req_entry(struct req_entry *reqe)
  */
 static void flush_work_task(struct work_struct *work)
 {
+	/* now editing */
+
+	
 	struct flush_work *rlwork = container_of(work, struct flush_work, work);
 	struct wrapper_blk_dev *wdev = rlwork->wdev;
 	struct req_entry *reqe, *next;
@@ -848,7 +875,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	struct request *req;
 	struct req_entry *reqe;
 	struct flush_work *fwork;
-	struct list_head listh;
+	struct list_head fwork_list;
 	struct pack *wpack, *rpack, *pack;
 	struct bool ret;
 	struct bool is_write;
@@ -862,7 +889,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	spin_unlock(&pdata->lsid_lock);
 	latest_lsid_old = latest_lsid;
 
-	INIT_LIST_HEAD(&listh);
+	INIT_LIST_HEAD(&fwork_list);
 	fwork = create_flush_work(NULL, wdev, GFP_ATOMIC);
 	if (!fwork) { goto error0; }
 	wpack = create_writepack(GFP_ATOMIC, pdata->pbs, latest_lsid);
@@ -877,32 +904,35 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 
 		if (req->cmd_flags & REQ_FLUSH) {
 			LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
-			list_add_tail(&fwork->list, &listh);
+			list_add_tail(&fwork->list, &fwork_list);
 			fwork = create_flush_work(req, wdev, GFP_ATOMIC);
 			if (!fwork) {
 				errorOccurd = true;
 				goto req_error;
 			}
 		} else if (req->cmd_flags & REQ_WRITE) {
-			ret = writepack_add_req(fwork->wpack_list, &wpack, req,
+			ret = writepack_add_req(&fwork->wpack_list, &wpack, req,
 						pdata->ring_buffer_size,
-						&latest_lsid);
+						&latest_lsid, GFP_ATOMIC);
 			if (!ret) { goto req_error; }
 		} else {
-			ret = readpack_add_req(fwork->rpack_list, &rpack, req);
+			ret = readpack_add_req(&fwork->rpack_list, &rpack, req, GFP_ATOMIC);
 			if (!ret) { goto req_error; }
 		}
 		continue;
 	req_error:
 		__blk_end_request_all(req, -EIO);
 	}
-	latest_lsid = get_next_lsid(get_logpack_header(wpack->logpack_header_sector));
+	ASSERT(get_next_lsid(get_logpack_header(wpack->logpack_header_sector)) == latest_lsid)
 	list_add_tail(&wpack->list, &fwork->wpack_list);
 	list_add_tail(&rpack->list, &fwork->rpack_list);
-	list_add_tail(&fwork->list, &listh);
+	list_add_tail(&fwork->list, &fwork_list);
 
 	ASSERT(latest_lsid >= latest_lsid_old);
 
+	/* Currently all requests are packed and lsid of all writepacks is defined. */
+	
+	
 	/* list_for_each_entry(fwork, &listh, list) { */
 
 	/* 	latest_lsid = calc_lsid(latest_lsid, &fwork->wpack_list); */

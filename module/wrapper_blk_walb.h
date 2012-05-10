@@ -46,8 +46,8 @@ struct pdata
 	spinlock_t lsuper0_lock; /* Use spin_lock() and spin_unlock(). */
 	struct sector_data *lsuper0; /* lsuper0_lock must be held
 					to access the sector image. */
-	struct u64 ring_buffer_size; /* To avoid lock lsuper0
-					in the request_fn. */
+	u64 ring_buffer_size; /* To avoid lock lsuper0
+				 in the request_fn. */
 
 	
 	spinlock_t pending_data_lock; /* Use spin_lock() and spin_unlock(). */
