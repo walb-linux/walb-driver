@@ -967,67 +967,6 @@ error0:
 	/* LOGe("wrapper_blk_req_request_fn: error.\n"); */
 }
 
-/**
- * Deprecated on 20120501.
- * Will be removed.
- */
-DEPRECATED
-void wrapper_blk_req_request_fn_old(struct request_queue *q)
-{
-	struct wrapper_blk_dev *wdev = wdev_get_from_queue(q);
-	struct request *req;
-	struct req_entry *reqe;
-	struct flush_work *work;
-	struct list_head listh;
-	bool errorOccurd = false;
-
-	/* LOGd("wrapper_blk_req_request_fn: in_interrupt: %lu in_atomic: %d\n", */
-	/* 	in_interrupt(), in_atomic()); */
-
-	INIT_LIST_HEAD(&listh);
-	work = create_flush_work(NULL, wdev, GFP_ATOMIC);
-	if (!work) { goto error0; }
-	
-	while ((req = blk_fetch_request(q)) != NULL) {
-
-		/* print_req_flags(req); */
-
-		if (errorOccurd) {
-			__blk_end_request_all(req, -EIO);
-			continue;
-		}
-
-		if (req->cmd_flags & REQ_FLUSH) {
-			LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
-
-			list_add_tail(&work->list, &listh);
-			work = create_flush_work(req, wdev, GFP_ATOMIC);
-			if (!work) {
-				errorOccurd = true;
-				__blk_end_request_all(req, -EIO);
-				continue;
-			}
-		} else {
-			reqe = create_req_entry(req, GFP_ATOMIC);
-			if (!reqe) {
-				__blk_end_request_all(req, -EIO);
-				continue;
-			}
-			list_add_tail(&reqe->list, &work->req_entry_list);
-		}
-	}
-	list_add_tail(&work->list, &listh);
-	enqueue_work_list(&listh, q);
-	INIT_LIST_HEAD(&listh);
-	/* LOGd("wrapper_blk_req_request_fn: end.\n"); */
-	return;
-error0:
-	while ((req = blk_fetch_request(q)) != NULL) {
-		__blk_end_request_all(req, -EIO);
-	}
-	/* LOGe("wrapper_blk_req_request_fn: error.\n"); */
-}
-        
 /* Called before register. */
 bool pre_register(void)
 {
