@@ -304,28 +304,6 @@ static void stop_dev(void)
  * Global function definition.
  *******************************************************************************/
 
-/**
- *
- *
- * RETURN:
- *   
- *
- */
-u64 get_log_capacity(struct wrapper_blk_dev *wdev)
-{
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
-	
-        ASSERT_SECTOR_DATA(pdata->lsuper0);
-        return get_super_sector(pdata->lsuper0)->ring_buffer_size;
-
-	
-	
-
-
-	
-	/* now editing */
-}
-
 /*******************************************************************************
  * Init/exit definition.
  *******************************************************************************/
