@@ -27,10 +27,10 @@ struct walb_log_record {
         u32 checksum;
         u32 reserved1;
         
-        u64 lsid; /* Log sequence id */
-
-        /* Local sequence id as the data offset in the log record. */
-        u16 lsid_local; 
+        u64 lsid; /* Log sequence id of the record. */
+        
+        u16 lsid_local; /* Local sequence id as the data offset in the log record.
+			   lsid - lsid_local is logpack lsid. */
         u16 is_padding; /* Non-zero if this is padding log */
         u16 io_size; /* IO size [logical sector].
 			512B * (65K - 1) = (32M-512)B is the maximum request size. */
