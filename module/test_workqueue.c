@@ -12,6 +12,8 @@
 #include <linux/workqueue.h>
 #include <linux/time.h>
 #include <linux/delay.h>
+#include <linux/completion.h>
+#include <linux/spinlock.h>
 
 #include "walb/common.h"
 #include "walb/util.h"
@@ -25,6 +27,8 @@ struct workqueue_struct *wq_[N_WQ];
 #define WQ_NAME_PREFIX "test_workqueue_"
 char *wq_name_[N_WQ];
 
+struct workqueue_struct *wq_single_;
+#define WQ_NAME_SINGLE "test_workqueue_single"
 
 /**
  * A wrapper of work.
@@ -38,6 +42,8 @@ struct test_work
         struct timespec enq_ts; /* enqueue */
         struct timespec deq_ts; /* dequeue */
         struct timespec end_ts; /* end */
+
+	unsigned int id;
 };
 
 typedef void (test_work_task_fn)(struct work_struct *work);
@@ -50,6 +56,7 @@ struct tail_recur_work
 {
 	int i;
 	struct work_struct work;
+	struct completion done;
 };
 
 /*******************************************************************************
@@ -177,6 +184,17 @@ static void init_workqueue(void)
 #endif
                 ASSERT(wq_[i]);
         }
+
+
+	/* (1) is slower than (2). */
+#if 0
+	/* (1) */
+	wq_single_ = alloc_workqueue(WQ_NAME_SINGLE, WQ_MEM_RECLAIM |WQ_NON_REENTRANT, 1);
+#else
+	/* (2) */
+	wq_single_ = alloc_workqueue(WQ_NAME_SINGLE, WQ_MEM_RECLAIM |WQ_UNBOUND, 1);
+#endif
+	ASSERT(wq_single_);
 }
 
 static void fin_workqueue(void)
@@ -190,6 +208,8 @@ static void fin_workqueue(void)
                 FREE(wq_name_[i]);
                 wq_name_[i] = NULL;
         }
+	flush_workqueue(wq_single_);
+	destroy_workqueue(wq_single_);
 }
 
 static struct tail_recur_work* create_tail_recur_work(int i)
@@ -201,6 +221,7 @@ static struct tail_recur_work* create_tail_recur_work(int i)
 	}
 	work->i = i;
 	INIT_WORK(&work->work, tail_recur_task);
+	init_completion(&work->done);
 end:
 	return work;
 }
@@ -223,7 +244,7 @@ static void tail_recur_task(struct work_struct *work)
 		INIT_WORK(&trwork->work, tail_recur_task);
 		queue_work(wq_[0], &trwork->work);
 	} else {
-		destroy_tail_recur_work(trwork);
+		complete(&trwork->done);
 		LOGn("tail recursion done.\n");
 	}
 }
@@ -241,8 +262,76 @@ static void test_recursive_enqueue(void)
 		return;
 	}
 	queue_work(wq_[0], &work->work);
-	flush_workqueue(wq_[0]);
+	wait_for_completion(&work->done);
+	destroy_tail_recur_work(work);
 	LOGn("flush_workqueue done.\n");
+}
+
+static void test_wq_single_task(struct work_struct *work)
+{
+	struct test_work *w =
+		container_of(work, struct test_work, work);
+	/* struct timespec ts; */
+
+	/* getnstimeofday(&ts); */
+
+	/* LOGn("%u BEGIN\n", w->id); */
+        /* msleep_interruptible(w->msec_sleep); */
+	/* LOGn("%u END\n", w->id); */
+
+	destroy_test_work(w);
+	
+	/* LOGn("test_wq_single_task timestamp %ld.%09ld\n", */
+	/* 	ts.tv_sec, ts.tv_nsec); */
+}
+
+/**
+ * NON_REENTRANT flag test.
+ */
+static void test_wq_single(void)
+{
+	const unsigned int N_TRIAL = 1000000;
+	struct test_work *w;
+	unsigned int i;
+
+        struct timespec bgn_ts, end_ts, sub_ts;
+
+	getnstimeofday(&bgn_ts);
+	for (i = 0; i < N_TRIAL; i ++) {
+		w = create_test_work(GFP_KERNEL);
+		ASSERT(w);
+		w->msec_sleep = 100;
+		w->id = i;
+		INIT_WORK(&w->work, test_wq_single_task);
+		queue_work(wq_single_, &w->work);
+	}
+	flush_workqueue(wq_single_);
+	getnstimeofday(&end_ts);
+
+	sub_ts = timespec_sub(end_ts, bgn_ts);
+	LOGn("test_wq_single: %ld.%09ld", sub_ts.tv_sec, sub_ts.tv_nsec);
+}
+
+/**
+ * Spinlock overhead.
+ */
+static void test_spinlock(void)
+{
+	const unsigned int N_TRIAL = 1000000;
+	spinlock_t lock;
+	int i;
+	struct timespec bgn_ts, end_ts, sub_ts;
+	
+	spin_lock_init(&lock);
+	getnstimeofday(&bgn_ts);
+	for (i = 0; i < N_TRIAL; i ++) {
+		spin_lock(&lock);
+		spin_unlock(&lock);
+	}
+	getnstimeofday(&end_ts);
+	
+	sub_ts = timespec_sub(end_ts, bgn_ts);
+	LOGn("test_spinlock: %ld.%09ld", sub_ts.tv_sec, sub_ts.tv_nsec);
 }
 
 static void test_workqueue(void)
@@ -281,11 +370,17 @@ static void test_workqueue(void)
 
 	/* Test5 */
 	test_recursive_enqueue();
+
+	/* Test6 */
+	test_wq_single();
+
+	/* test7 */
+	test_spinlock();
 }
 
 static int __init test_init(void)
 {
-        init_workqueue();
+	init_workqueue();
         test_workqueue();
         fin_workqueue();
 
