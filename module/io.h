@@ -11,13 +11,7 @@
 #include "walb/bitmap.h"
 #include "walb/sector.h"
 #include "util.h"
-
-/**
- * BIO wrapper flag.
- */
-#define WALB_BIO_INIT    0
-#define WALB_BIO_END     1
-#define WALB_BIO_ERROR   2
+#include "sector_io.h"
 
 /**
  *
@@ -45,17 +39,6 @@ struct walb_submit_bio_work
         struct list_head list; /* list of walb_ddev_bio */
         spinlock_t lock; /* lock for the list */
         struct work_struct work;
-};
-
-/**
- * Bio wrapper with completion.
- */
-struct walb_bio_with_completion
-{
-        struct bio *bio;
-        struct completion wait;
-        int status;
-        struct list_head list;
 };
 
 /**
@@ -91,14 +74,6 @@ struct walb_bioclist_work
 
 /* Utility functions. */
 int walb_rq_count_bio(struct request *req);
-
-/* Sector IO function. */
-int sector_io(int rw, struct block_device *bdev,
-              u64 off, struct sector_data *sect);
-
-/* End IO callback for struct walb_bio_with_completion. */
-void walb_end_io_with_completion(struct bio *bio, int error);
-
 
 /* Submit IO functions with
    struct walb_ddev_bio and struct walb_submit_bio_work. */

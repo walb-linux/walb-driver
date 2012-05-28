@@ -117,7 +117,7 @@ static int sector_load(struct snapshot_data *snapd, u64 off)
 
         /* Read sector if need. */
         if (ctl->state == SNAPSHOT_SECTOR_CONTROL_ALLOC) {
-                if (sector_io(READ, snapd->bdev, off, ctl->sector) != 0) {
+                if (!sector_io(READ, snapd->bdev, off, ctl->sector)) {
                         LOGe("Read snapshot sector %"PRIu64" failed.\n", off);
                         goto error0;
                 }
@@ -380,7 +380,7 @@ static int snapshot_sector_read(struct snapshot_data *snapd,
         ASSERT(snapd->start_offset <= offset && offset < snapd->end_offset);
         
         /* Issue read IO. */
-        if (sector_io(READ, snapd->bdev, offset, sect) != 0) {
+        if (!sector_io(READ, snapd->bdev, offset, sect)) {
                 LOGe("Read snapshot sector %"PRIu64" failed.\n", offset);
                 goto error0;
         }
@@ -436,7 +436,7 @@ static int snapshot_sector_write(
         snap_sect->checksum = checksum((u8 *)snap_sect, sect_tmp->size);
 
         /* Issue write IO. */
-        if (sector_io(WRITE, snapd->bdev, offset, sect_tmp) != 0) {
+        if (!sector_io(WRITE, snapd->bdev, offset, sect_tmp)) {
                 LOGe("Write snapshot sector %"PRIu64" failed.\n", offset);
                 goto error1;
         }
@@ -1064,7 +1064,7 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
                 ASSERT(ctl->offset == off);
                 
                 /* Load sector. */
-                if (sector_io(READ, snapd->bdev, off, sect) != 0) {
+                if (!sector_io(READ, snapd->bdev, off, sect)) {
                         LOGe("Read snapshot sector %"PRIu64" failed.\n", off);
                         goto error1;
                 }
@@ -1081,7 +1081,7 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
                 ctl->n_free_records = get_n_free_records_in_snapshot_sector(sect);
                 
                 /* Save sector */
-                if (sector_io(WRITE, snapd->bdev, off, sect) != 0) {
+                if (!sector_io(WRITE, snapd->bdev, off, sect)) {
                         LOGe("Write snapshot sector %"PRIu64" failed.\n", off);
                         goto error1;
                 }

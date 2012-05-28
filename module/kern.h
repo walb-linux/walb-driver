@@ -175,31 +175,6 @@ struct walb_dev {
         struct snapshot_data *snapd;
 };
 
-
-/*******************************************************************************
- * Sector functions.
- *******************************************************************************/
-
-/**
- * Get super sector pointer.
- */
-static inline struct walb_super_sector*
-get_super_sector(struct sector_data *sect)
-{
-        ASSERT_SECTOR_DATA(sect);
-        return (struct walb_super_sector *)(sect->data);
-}
-
-/**
- * Get logpack header pointer.
- */
-static inline struct walb_logpack_header*
-get_logpack_header(struct sector_data *sect)
-{
-        ASSERT_SECTOR_DATA(sect);
-        return (struct walb_logpack_header *)(sect->data);
-}
-
 /*******************************************************************************
  * Prototypes defined in walb.c
  *******************************************************************************/
