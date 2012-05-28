@@ -739,9 +739,10 @@ error0:
  *
  * @return 0 in success, or -1.
  */
+DEPRECATED
 int walb_logpack_calc_checksum(struct walb_logpack_header *lhead,
-                               int physical_bs,
-                               struct request** reqp_ary, int n_req)
+			int physical_bs,
+			struct request** reqp_ary, int n_req)
 {
         int i;
         struct request *req;

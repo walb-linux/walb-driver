@@ -56,17 +56,17 @@ struct pack_list_work
 struct kmem_cache *pack_list_work_cache_ = NULL;
 
 /**
- * A pack.
+ * A write pack.
  * There are no overlapping requests in a pack.
  */
 struct pack
 {
 	struct list_head list; /* list entry. */
 	struct list_head req_ent_list; /* list head of req_entry. */
-	bool is_write; /* true if write, or read. */
 
-	/* This is for only write pack. */
+	bool is_fua; /* FUA flag. */
 	struct sector_data *logpack_header_sector;
+	struct list_head bio_ent_list; /* list head of logpack bio. */
 };
 #define KMEM_CACHE_PACK_NAME "pack_cache"
 struct kmem_cache *pack_cache_ = NULL;
@@ -129,15 +129,14 @@ static void destroy_req_entry(struct req_entry *reqe);
 
 /* bio_entry related. */
 static void bio_entry_end_io(struct bio *bio, int error);
-static struct bio_entry* create_bio_entry(
+static struct bio_entry* create_bio_entry(gfp_t gfp_mask);
+static struct bio_entry* create_bio_entry_by_clone(
 	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
 static void destroy_bio_entry(struct bio_entry *bioe);
 
 /* pack related. */
-static struct pack* create_pack(bool is_write, gfp_t gfp_mask);
-static struct pack* create_writepack(
-	gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
-static struct pack* create_readpack(gfp_t gfp_mask);
+static struct pack* create_pack(gfp_t gfp_mask);
+static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
 static void destroy_pack(struct pack *pack);
 static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe);
 
@@ -147,8 +146,8 @@ static bool writepack_add_req(
 	u64 ring_buffer_size, u64 *latest_lsidp, gfp_t gfp_mask);
 
 /* Request pack_list_work tasks. */
-static void pack_list_work_task(struct work_struct *work); /* for non-flush, concurrent. */
-static void req_flush_task(struct work_struct *work); /* for flush, sequential. */
+DEPRECATED static void pack_list_work_task(struct work_struct *work); /* for non-flush, concurrent. */
+DEPRECATED static void req_flush_task(struct work_struct *work); /* for flush, sequential. */
 
 /* Workqueue tasks. */
 static void logpack_list_submit_task(struct work_struct *work);
@@ -166,8 +165,22 @@ static void wait_for_req_entry(struct req_entry *reqe);
 static bool is_valid_prepared_pack(struct pack *pack);
 static bool is_valid_pack_list(struct list_head *listh);
 
-
-
+/* Logpack related functions. */
+static void logpack_calc_checksum(
+	struct walb_logpack_header *lhead,
+	unsigned int pbs, struct list_head *req_ent_list);
+static void logpack_submit(
+	struct walb_logpack_header *lhead, struct list_head *req_ent_list,
+	struct wrapper_blk_dev *wdev);
+static struct bio_entry* logpack_submit_lhead(
+	struct walb_logpack_header *lhead, bool is_flush, bool is_fua,
+	unsigned int pbs, struct block_device *ldev,
+	u64 ring_buffer_off, u64 ring_buffer_size);
+static bool logpack_submit_req(
+	struct request *req, u64 lsid, bool is_fua,
+	struct list_head *bio_ent_list,
+	unsigned int pbs, struct block_device *ldev,
+	u64 ring_buffer_off, u64 ring_buffer_size);
 
 
 /*******************************************************************************
@@ -333,17 +346,11 @@ static void bio_entry_end_io(struct bio *bio, int error)
 
 /**
  * Create a bio_entry.
- *
- * @bio original bio.
- * @bdev block device to forward bio.
+ * Internal bio and bi_size will be set NULL.
  */
-static struct bio_entry* create_bio_entry(
-	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask)
+static struct bio_entry* create_bio_entry(gfp_t gfp_mask)
 {
 	struct bio_entry *bioe;
-	struct bio *biotmp;
-
-	/* LOGd("create_bio_entry() begin.\n"); */
 
 	bioe = kmem_cache_alloc(bio_entry_cache_, gfp_mask);
 	if (!bioe) {
@@ -352,8 +359,31 @@ static struct bio_entry* create_bio_entry(
 	}
 	init_completion(&bioe->done);
 	bioe->error = 0;
-	bioe->bi_size = bio->bi_size;
+	bioe->bio = NULL;
+	bioe->bi_size = 0;
+	return bioe;
 
+error0:
+	LOGe("create_bio_entry() end with error.\n");
+	return NULL;
+}
+
+/**
+ * Create a bio_entry by clone.
+ *
+ * @bio original bio.
+ * @bdev block device to forward bio.
+ */
+static struct bio_entry* create_bio_entry_by_clone(
+	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask)
+{
+	struct bio_entry *bioe;
+	struct bio *biotmp;
+
+	bioe = create_bio_entry(gfp_mask);
+	if (!bioe) { goto error0; }
+	bioe->bi_size = bio->bi_size;
+	
 	/* clone bio */
 	bioe->bio = NULL;
 	biotmp = bio_clone(bio, gfp_mask);
@@ -372,7 +402,7 @@ static struct bio_entry* create_bio_entry(
 error1:
 	destroy_bio_entry(bioe);
 error0:
-	LOGe("create_bio_entry() end with error.\n");
+	LOGe("create_bio_entry_by_clone() end with error.\n");
 	return NULL;
 }
 
@@ -400,7 +430,7 @@ static void destroy_bio_entry(struct bio_entry *bioe)
 /**
  * Create a pack.
  */
-static struct pack* create_pack(bool is_write, gfp_t gfp_mask)
+static struct pack* create_pack(gfp_t gfp_mask)
 {
 	struct pack *pack;
 
@@ -413,7 +443,7 @@ static struct pack* create_pack(bool is_write, gfp_t gfp_mask)
 	}
 	INIT_LIST_HEAD(&pack->list);
 	INIT_LIST_HEAD(&pack->req_ent_list);
-	pack->is_write = is_write;
+	pack->is_fua = false;
 	
 	return pack;
 #if 0
@@ -442,7 +472,7 @@ static struct pack* create_writepack(
 	struct walb_logpack_header *lhead;
 
 	ASSERT(logpack_lsid != INVALID_LSID);
-	pack = create_pack(true, gfp_mask);
+	pack = create_pack(gfp_mask);
 	if (!pack) { goto error0; }
 	pack->logpack_header_sector = sector_alloc(pbs, gfp_mask | __GFP_ZERO);
 	if (!pack->logpack_header_sector) { goto error1; }
@@ -458,21 +488,6 @@ static struct pack* create_writepack(
 	
 error1:
 	destroy_pack(pack);
-error0:
-	return NULL;
-}
-
-/**
- * Create a readpack.
- */
-static struct pack* create_readpack(gfp_t gfp_mask)
-{
-	struct pack *pack;
-	
-	pack = create_pack(false, gfp_mask);
-	if (!pack) { goto error0; }
-	pack->logpack_header_sector = NULL;
-	return pack;
 error0:
 	return NULL;
 }
@@ -639,7 +654,7 @@ static bool create_bio_entry_list(struct req_entry *reqe, struct wrapper_blk_dev
 	/* clone all bios. */
 	__rq_for_each_bio(bio, reqe->req) {
 		/* clone bio */
-		bioe = create_bio_entry(bio, bdev, GFP_NOIO);
+		bioe = create_bio_entry_by_clone(bio, bdev, GFP_NOIO);
 		if (!bioe) {
 			LOGd("create_bio_entry() failed.\n"); 
 			goto error1;
@@ -708,11 +723,8 @@ static void wait_for_req_entry(struct req_entry *reqe)
  *   Request queue lock is not held.
  *   Other tasks may be running concurrently.
  */
-static void pack_list_work_task(struct work_struct *work)
+DEPRECATED static void pack_list_work_task(struct work_struct *work)
 {
-	/* now editing */
-
-	
 	struct pack_list_work *fwork = container_of(work, struct pack_list_work, work);
 	struct wrapper_blk_dev *wdev = fwork->wdev;
 	struct req_entry *reqe, *next;
@@ -768,11 +780,8 @@ static void pack_list_work_task(struct work_struct *work)
  *   Request queue lock is not held.
  *   This task is serialized by the singlethreaded workqueue.
  */
-static void req_flush_task(struct work_struct *work)
+DEPRECATED static void req_flush_task(struct work_struct *work)
 {
-	/* now editing */
-
-	
 	struct pack_list_work *fwork = container_of(work, struct pack_list_work, work);
 	struct request_queue *q = fwork->wdev->queue;
 	unsigned long flags;
@@ -820,16 +829,41 @@ static void logpack_list_submit_task(struct work_struct *work)
 {
 	struct pack_list_work *plwork = container_of(work, struct pack_list_work, work);
 	struct wrapper_blk_dev *wdev = plwork->wdev;
-	struct req_entry *reqe, *next;
+	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct blk_plug plug;
+	struct pack *wpack;
+	struct walb_logpack_header *lhead;
+	bool is_flush;
 
-	
+	blk_start_plug(&plug);
+	list_for_each_entry(wpack, &plwork->wpack_list, list) {
 
-	
+		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
+		lhead = get_logpack_header(wpack->logpack_header_sector);
+		logpack_calc_checksum(lhead, wdev->pbs, &wpack->req_ent_list);
 
+		is_flush = is_flush_first_req_entry(&wpack->req_ent_list));
+		logpack_submit(lhead, is_flush, wpack->is_fua, wdev->pbs,
+			pdata->ldev, pdata->ring_buffer_off, pdata->ring_buffer_size);
+	}
+	blk_finish_plug(&plug);
 
-	
-	/* now editing */
+	/* Enqueue logpack list wait task. */
+	INIT_WORK(&plwork->work, logpack_list_wait_task);
+	queue_work(wq_logpack_wait_, &plwork->work);
+}
+
+static bool is_flush_first_req_entry(struct list_head *req_ent_list)
+{
+	ASSERT(!list_empty(req_ent_list));
+	reqe = list_first_entry(req_ent_list, struct req_entry, list);
+	ASSERT(reqe);
+	ASSERT(reqe->req);
+	if (reqe->req->cmd_flags == REQ_FLUSH) {
+		return true;
+	} else {
+		return false;
+	}
 }
 
 /**
@@ -842,8 +876,14 @@ static void logpack_list_submit_task(struct work_struct *work)
  */
 static void logpack_list_wait_task(struct work_struct *work)
 {
-	/* now editing */
+	struct pack_list_work *plwork = container_of(work, struct pack_list_work, work);
+	struct wrapper_blk_dev *wdev = plwork->wdev;
 
+	/* now editing */
+	
+	/* Enqueue logpack list gc task. */
+	INIT_WORK(&plwork->work, logpack_list_gc_task);
+	queue_work(wq_normal_, &plwork->work);
 }
 
 /**
@@ -858,9 +898,13 @@ static void logpack_list_wait_task(struct work_struct *work)
  */
 static void logpack_list_gc_task(struct work_struct *work)
 {
+	struct pack_list_work *plwork = container_of(work, struct pack_list_work, work);
+	struct wrapper_blk_dev *wdev = plwork->wdev;
+	
+	
 	/* now editing */
 
-
+	/* destroy_pack_list_work(plwork); */
 }
 
 /**
@@ -976,6 +1020,288 @@ error:
 	return false;
 }
 
+/**
+ * Calc checksum of each requests and log header and set it.
+ *
+ * @lhead log pack header.
+ * @physical_bs physical sector size (allocated size as lhead).
+ * @reqp_ary requests to add.
+ * @n_req number of requests.
+ *
+ * @return 0 in success, or -1.
+ */
+static void logpack_calc_checksum(
+	struct walb_logpack_header *lhead,
+	unsigned int pbs, struct list_head *req_ent_list)
+{
+        int i;
+	struct req_entry *reqe;
+        struct request *req;
+        struct req_iterator iter;
+        struct bio_vec *bvec;
+        u64 sum;
+        int n_padding;
+
+	ASSERT(lhead);
+	ASSERT(lhead->n_records > 0);
+	ASSERT(lhead->n_records > lhead->n_padding);
+	
+        n_padding = 0;
+        i = 0;
+	list_for_each_entry(reqe, req_ent_list, list) {
+
+                if (lhead->record[i].is_padding) {
+                        n_padding ++;
+                        i ++;
+                        continue;
+                }
+		
+		ASSERT(reqe);
+		req = reqe->req;
+		ASSERT(req);
+		ASSERT(req->cmd_flags & REQ_WRITE);
+
+		if (blk_rq_sectors(req) == 0) {
+			ASSERT(req->cmd_flags & REQ_FLUSH);
+			continue;
+		}
+
+		sum = 0;
+                rq_for_each_segment(bvec, req, iter) {
+                        sum = checksum_partial
+                                (sum,
+                                 kmap(bvec->bv_page) + bvec->bv_offset,
+                                 bvec->bv_len);
+                        kunmap(bvec->bv_page);
+                }
+
+                lhead->record[i].checksum = checksum_finish(sum);
+                i ++;
+	}
+	
+        ASSERT(n_padding <= 1);
+        ASSERT(n_padding == lhead->n_padding);
+        ASSERT(i == lhead->n_records);
+        ASSERT(lhead->checksum == 0);
+        lhead->checksum = checksum((u8 *)lhead, pbs);
+        ASSERT(checksum((u8 *)lhead, pbs) == 0);
+}
+
+/**
+ * Submit bio of header block.
+ *
+ * RETURN:
+ *   bio_entry in success, or NULL.
+ */
+static struct bio_entry* logpack_submit_lhead(
+	struct walb_logpack_header *lhead, bool is_flush, bool is_fua,
+	unsigned int pbs, struct block_device *ldev,
+	u64 ring_buffer_off, u64 ring_buffer_size)
+{
+	struct bio *bio;
+	struct bio_entry *bioe;
+	struct page *page;
+	u64 off_pb, off_lb;
+	struct request *first_req;
+	int rw = WRITE;
+
+	if (is_flush) { rw |= WRITE_FLUSH; }
+	if (is_fua) { rw |= WRITE_FUA; }
+	
+	bioe = create_bio_entry(GFP_NOIO);
+	if (!bioe) { goto error0; }
+	bio = bio_alloc(GFP_NOIO, 1);
+	if (!bio) { goto error1; }
+
+	page = virt_to_page(lhead);
+	bio->bi_bdev = ldev;
+	off_pb = lhead->logpack_lsid % ring_buffer_size + ring_buffer_off;
+	
+	off_lb = addr_lb(pbs, off_pb);
+	bio->bi_sector = off_lb;
+	bio->bi_end_io = bio_entry_end_io;
+	bio->bi_private = bioe;
+	bio_add_page(bio, page, pbs, offset_in_page(lhead));
+	
+	bioe->bio = bio;
+	bioe->bi_size = bio_cur_bytes(bio);
+	ASSERT(bioe->bi_size == pbs);
+
+	LOGd("submit logpack header bio: off %llu size %u\n",
+		(u64)bio->bi_sector, bio_cur_bytes(bio));
+	submit_bio(rw, bio);
+
+	return bioe;
+
+error1:
+	destroy_bio_entry(bioe);
+error0:
+	return NULL;
+}
+
+/**
+ * Submit all logpack bio(s) for a request.
+ *
+ * @req original request.
+ * @lsid lsid of the request in the logpack.
+ * @is_fua true if logpack must be submitted with FUA flag.
+ * @bio_ent_list successfully submitted bioe(s) must be added to the tail of this.
+ * @pbs physical block size [bytes]
+ * @ldev log device.
+ * @ring_buffer_off ring buffer offset [physical block].
+ * @ring_buffer_size ring buffer size [physical block].
+ *
+ * RETURN:
+ *   true in success, false in partially failed.
+ */
+static bool logpack_submit_req(
+	struct request *req, u64 lsid, bool is_fua,
+	struct list_head *bio_ent_list,
+	unsigned int pbs, struct block_device *ldev,
+	u64 ring_buffer_off, u64 ring_buffer_size)
+{
+	unsigned int off_lb;
+	struct bio_entry *bioe;
+	struct bio *bio;
+	u64 ldev_off_pb = lsid % ring_buffer_size + ring_buffer_off;
+	
+	off_lb = 0;
+	__rq_for_each_bio(bio, req) {
+
+		bioe = logpack_submit_bio(bio, is_fua, pbs, ldev, ldev_off_pb, off_lb);
+		if (!bioe) {
+			goto error;
+		}
+		ASSERT(bioe->bi_size % LOGICAL_BLOCK_SIZE == 0);
+		off_lb += bioe->bi_size / LOGICAL_BLOCK_SIZE;
+		list_add_tail(&bioe->list, &bio_ent_list);
+	}
+	
+	return true;
+error:
+	return false;
+}
+
+/**
+ *
+ * @bio original bio to clone.
+ * @is_fua true if logpack must be submitted with FUA flag.
+ * @pbs physical block device [bytes].
+ * @ldev_offset log device offset for the request [physical block].
+ * @bio_offset offset of the bio inside the whole request [logical block].
+ */
+static struct bio_entry* lopgack_submit_bio(
+	struct bio *bio, bool is_fua, unsigned int pbs,
+	struct block_device *ldev,
+	u64 ldev_offset, unsigned int bio_offset)
+{
+	struct bio_entry *bioe;
+	struct bio *cbio;
+	u64 off_lb;
+
+	bioe = create_bio_entry(GFP_NOIO);
+	if (!bioe) { goto error0; }
+
+	cbio = bio_clone(bio, GFP_NOIO);
+	if (!cbio) { goto error1; }
+
+	cbio->bi_bdev = ldev;
+	cbio->bi_end_io = bio_entry_end_io;
+	cbio->bi_private = bioe;
+
+	cbio->bi_sector = addr_lb(pbs, ldev_offset) + bio_offset;
+	bioe->bio = cbio;
+	bioe->bi_size = cbio->bi_size;
+
+	if (is_fua) {
+		cbio->bi_rw |= WRITE_FUA;
+	}
+	submit_bio(cbio->bi_rw, cbio);
+	return bioe;
+
+error1:
+	destroy_bio_entry(bioe);
+error0:
+	return NULL;
+}
+
+/**
+ * Submit logpack entry.
+ *
+ * @req_ent_list
+ * @bio_ent_list 
+ *
+ * RETURN:
+ *     true if succeed, or false.
+ * CONTEXT:
+ *     Non-IRQ. Non-atomic.
+ */
+static void logpack_submit(
+	struct walb_logpack_header *lhead, bool is_fua, struct list_head *req_ent_list,
+	struct list_head *bio_ent_list,
+	struct wrapper_blk_dev *wdev)
+{
+	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct block_device *ldev = pdata->ldev; /* log device */
+	struct bio *bio;
+	struct bio_entry *bioe;
+	struct req_entry *reqe;
+	struct request *req;
+	u64 off_pb, off_lb;
+	bool ret;
+	struct request *first_req;
+	bool is_flush;
+	u64 req_lsid;
+	int i;
+
+	INIT_LIST_HEAD(bio_ent_list);
+	ASSERT(!list_empty(req_ent_list));
+	first_req = list_first_entry(req_ent_list, struct req_entry, list);
+	is_flush = first_req->cmd_flags & REQ_FLUSH;
+	
+	bioe = logpack_submit_lhead(lhead, is_flush, is_fua, wdev->pbs, pdata->ldev,
+				pdata->ring_buffer_off, pdata->ring_buffer_size);
+	if (!bioe) {
+		LOGe("logpack header submit failed.\n");
+		goto all_failed;
+	}
+	list_add_tail(&bioe->list, bio_ent_list);
+
+	i = 0;
+	list_for_each_entry(reqe, req_ent_list, list) {
+
+		req = reqe->req;
+		if (blk_rq_sectors(req) == 0) {
+			ASSERT(req->cmd_flags & REQ_FLUSH); /* such request must be flush. */
+			ASSERT(i == 0); /* such request must be permitted at first only. */
+			continue;
+		}
+		if (lhead->record[i].is_padding) {
+			i ++;
+		}
+		ASSERT(i < lhead->n_records);
+		req_lsid = lhead->record[i].lsid;
+
+		ret = logpack_submit_req(
+			req, req_lsid, is_fua, bio_ent_list,
+			wdev->pbs, pdata->ldev,
+			pdata->ring_buffer_off, pdata->ring_buffer_size);
+		if (!ret) {
+			LOGe("memory allocation failed during logpack submit.\n");
+			break; /* partial failed will be solved in wait_task. */
+		}
+		i ++;
+	}
+	return;
+	
+all_failed:
+	/* All requests failed. */
+	list_for_each_entry_safe(reqe, next, req_ent_list, list) {
+		list_del(&reqe->list);
+		blk_end_request_all(reqe->req);
+		destroy_req_entry(reqe);
+	}
+}
 
 /*******************************************************************************
  * Global functions definition.
