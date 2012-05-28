@@ -521,7 +521,7 @@ static void assert_wrapper_blk_dev(struct wrapper_blk_dev *wdev)
 {
         ASSERT(wdev);
         ASSERT(wdev->capacity > 0);
-        ASSERT_PBS(&wdev->pbs);
+        ASSERT_PBS(wdev->pbs);
         ASSERT(strlen(wdev->name) > 0);
         ASSERT(wdev->queue);
         ASSERT(wdev->gd);
