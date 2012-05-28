@@ -62,7 +62,8 @@ void walb_logpack_header_print(const char *level,
  *   lhead->logpack_lsid must be set correctly.
  *   lhead->sector_type must be set correctly.
  * @logpack_lsid lsid of the log pack.
- * @req request to add. must be write and its size > 0.
+ * @req request to add. must be write and its size >= 0.
+ *      size == 0 is permitted with flush requests only.
  * @pbs physical block size.
  * @ring_buffer_size ring buffer size [physical block]
  *
@@ -99,6 +100,11 @@ bool walb_logpack_header_add_req(
 
 	req_lsid = logpack_lsid + 1 + lhead->total_io_size;
 	req_lb = blk_rq_sectors(req);
+	if (req_lb == 0) {
+		/* Currently only the flush request can have size 0. */
+		ASSERT(req->cmd_flags & REQ_FLUSH);
+		return true;
+	}
 	ASSERT(0 < req_lb);
 	ASSERT(65536 > req_lb); /* can be u16. */
 	req_pb = capacity_pb(pbs, req_lb);
@@ -113,13 +119,14 @@ bool walb_logpack_header_add_req(
 			LOGd("no more request can not be added.\n");
 			goto error0;
 		}
-		
+
+		/* Fill the padding record contents. */
 		lhead->record[idx].is_exist = 1;
 		lhead->record[idx].lsid = req_lsid;
 		lhead->record[idx].lsid_local = req_lsid - logpack_lsid;
 		lhead->record[idx].is_padding = 1;
 		lhead->record[idx].offset = 0;
-		lhead->record[idx].io_size = capacity_lb(pbs, padding_pb);
+		lhead->record[idx].io_size = (u16)capacity_lb(pbs, padding_pb);
 		lhead->n_padding ++;
 		lhead->n_records ++;
 		lhead->total_io_size += padding_pb;
@@ -139,12 +146,15 @@ bool walb_logpack_header_add_req(
 		goto error0;
 	}
 
+	/* Fill the log record contents. */
 	lhead->record[idx].is_exist = 1;
 	lhead->record[idx].lsid = req_lsid;
 	lhead->record[idx].lsid_local = req_lsid - logpack_lsid;
 	lhead->record[idx].is_padding = 0;
 	lhead->record[idx].offset = (u64)blk_rq_pos(req);
 	lhead->record[idx].io_size = (u16)req_lb;
+	lhead->record[idx].n_records ++;
+	lhead->total_io_size += req_pb;
 
 	req_lsid += req_pb;
 	idx ++;
@@ -167,6 +177,7 @@ error0:
  *
  * @return physical sectors of the log pack in success, or -1.
  */
+DEPRECATED
 int walb_logpack_header_fill(struct walb_logpack_header *lhead,
                              u64 logpack_lsid,
                              struct request** reqp_ary, int n_req,

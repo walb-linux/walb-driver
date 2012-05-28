@@ -48,7 +48,6 @@ struct pdata
 					to access the sector image. */
 	u64 ring_buffer_size; /* To avoid lock lsuper0
 				 in the request_fn. */
-
 	
 	spinlock_t pending_data_lock; /* Use spin_lock() and spin_unlock(). */
 	struct list_head writepack_list; /* list head of writepack.
