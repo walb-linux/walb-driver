@@ -109,6 +109,25 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		goto error2;
 	}
 
+        /* Block size */
+        lbs = bdev_logical_block_size(ddev);
+        pbs = bdev_physical_block_size(ddev);
+        
+        if (lbs != LOGICAL_BLOCK_SIZE) {
+		LOGe("logical block size must be %u but %u.\n",
+			LOGICAL_BLOCK_SIZE, lbs);
+                goto error3;
+        }
+	ASSERT(bdev_logical_block_size(ldev) == lbs);
+	if (bdev_physical_block_size(ldev) != pbs) {
+		LOGe("physical block size is different (ldev: %u, ddev: %u).\n",
+			bdev_physical_block_size(ldev), pbs);
+		goto error3;
+	}
+	wdev->pbs = pbs;
+        blk_queue_logical_block_size(wdev->queue, lbs);
+        blk_queue_physical_block_size(wdev->queue, pbs);
+
 	/* Prepare pdata. */
 	pdata->ldev = ldev;
 	pdata->ddev = ddev;
@@ -134,21 +153,9 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         wdev->capacity = get_capacity(ddev->bd_disk);
         set_capacity(wdev->gd, wdev->capacity);
 
-        /* Block size */
-        lbs = bdev_logical_block_size(ddev);
-        pbs = bdev_physical_block_size(ddev);
-        
-        if (lbs != LOGICAL_BLOCK_SIZE) {
-		LOGe("logical block size must be %u but %u.\n",
-			LOGICAL_BLOCK_SIZE, lbs);
-                goto error4;
-        }
-	wdev->pbs = pbs;
-        blk_queue_logical_block_size(wdev->queue, lbs);
-        blk_queue_physical_block_size(wdev->queue, pbs);
-
+	/* Set limit. */
+        blk_queue_stack_limits(wdev->queue, bdev_get_queue(ldev));
         blk_queue_stack_limits(wdev->queue, bdev_get_queue(ddev));
-
 	
         return true;
 

@@ -102,7 +102,7 @@ struct req_entry_work
 
 	struct req_entry *reqe;
 };
-#deifne KMEM_CACHE_REQ_ENTRY_WORK_NAME "req_entry_work_cache"
+#define KMEM_CACHE_REQ_ENTRY_WORK_NAME "req_entry_work_cache"
 struct kmem_cache *req_entry_work_cache_ = NULL;
 
 /**
@@ -142,7 +142,7 @@ static struct req_entry* create_req_entry(struct request *req, gfp_t gfp_mask);
 static void destroy_req_entry(struct req_entry *reqe);
 
 /* req_entry_work related. */
-struct struct req_entry_work* create_req_entry_work(
+static struct req_entry_work* create_req_entry_work(
 	struct req_entry *reqe, struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
 static void destroy_req_entry_work(struct req_entry_work *reqe_work);
 
@@ -165,12 +165,6 @@ static bool writepack_add_req(
 	u64 ring_buffer_size, u64 *latest_lsidp, gfp_t gfp_mask);
 static bool is_flush_first_req_entry(struct list_head *req_ent_list);
 
-/* Request pack_list_work tasks. */
-DEPRECATED
-static void pack_list_work_task(struct work_struct *work); /* for non-flush, concurrent. */
-DEPRECATED
-static void req_flush_task(struct work_struct *work); /* for flush, sequential. */
-
 /* Workqueue tasks. */
 static void logpack_list_submit_task(struct work_struct *work);
 static void logpack_list_wait_task(struct work_struct *work);
@@ -185,7 +179,7 @@ static void wait_for_bio_entry_list(struct req_entry *reqe, bool is_end_request)
 
 /* Validator for debug. */
 static bool is_valid_prepared_pack(struct pack *pack);
-static bool is_valid_pack_list(struct list_head *listh);
+UNUSED static bool is_valid_pack_list(struct list_head *pack_list);
 
 /* Logpack related functions. */
 static void logpack_calc_checksum(
@@ -200,20 +194,23 @@ static bool logpack_submit_req(
 	struct list_head *bio_ent_list,
 	unsigned int pbs, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size);
+static struct bio_entry* logpack_submit_bio(
+	struct bio *bio, bool is_fua, unsigned int pbs,
+	struct block_device *ldev,
+	u64 ldev_offset, unsigned int bio_offset);
 static struct bio_entry* logpack_submit_flush(struct block_device *bdev, bool is_fua);
 static bool logpack_submit(
-	struct walb_logpack_header *lhead, struct list_head *req_ent_list,
-	struct wrapper_blk_dev *wdev);
+	struct walb_logpack_header *lhead, bool is_fua,
+	struct list_head *req_ent_list, struct list_head *bio_ent_list,
+	unsigned int pbs, struct block_device *ldev,
+	u64 ring_buffer_off, u64 ring_buffer_size);
+
 
 static bool logpack_wait(struct pack *wpack);
-static void enqueue_datapack_tasks(struct pack *wpack);
+static void enqueue_datapack_tasks(struct pack *wpack, struct wrapper_blk_dev *wdev);
 static void logpack_end_err(struct request_queue *q, struct pack *wpack);
 static void logpack_end_err_wo_lock(struct pack *wpack);
 
-
-/* Others */
-UNUSED
-static void req_entry_list_end_io(struct list_head *req_ent_list);
 
 
 /*******************************************************************************
@@ -359,7 +356,7 @@ static void destroy_req_entry(struct req_entry *reqe)
 /**
  * Create a req_entry_work.
  */
-struct struct req_entry_work* create_req_entry_work(
+static struct req_entry_work* create_req_entry_work(
 	struct req_entry *reqe, struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
 {
 	struct req_entry_work *reqe_work;
@@ -645,7 +642,6 @@ static bool writepack_add_req(
 	ASSERT(req);
 	ASSERT(req->cmd_flags & REQ_WRITE);
 	pack = *wpackp;
-	ASSERT(pack->is_write);
 	ASSERT(pack->logpack_header_sector);
 	
 	reqe = create_req_entry(req, gfp_mask);
@@ -705,7 +701,9 @@ error0:
  */
 static bool is_flush_first_req_entry(struct list_head *req_ent_list)
 {
+	struct req_entry *reqe;
 	ASSERT(!list_empty(req_ent_list));
+	
 	reqe = list_first_entry(req_ent_list, struct req_entry, list);
 	ASSERT(reqe);
 	ASSERT(reqe->req);
@@ -783,14 +781,13 @@ static void wait_for_bio_entry_list(struct req_entry *reqe, bool is_end_request)
 {
 	struct bio_entry *bioe, *next;
 	int remaining;
-
 	ASSERT(reqe);
         
 	remaining = blk_rq_bytes(reqe->req);
 	list_for_each_entry_safe(bioe, next, &reqe->bio_ent_list, list) {
 		list_del(&bioe->list);
 		wait_for_completion(&bioe->done);
-		if (is_end_requset) {
+		if (is_end_request) {
 			blk_end_request(reqe->req, bioe->error, bioe->bi_size);
 		}
 		remaining -= bioe->bi_size;
@@ -798,111 +795,6 @@ static void wait_for_bio_entry_list(struct req_entry *reqe, bool is_end_request)
 	}
 	ASSERT(remaining == 0);
 	ASSERT(list_empty(&reqe->bio_ent_list));
-}
-
-/**
- * Normal pack list execution task.
- *
- * (1) Clone all bios related each request in the list.
- * (2) Submit them.
- * (3) wait completion of all bios.
- * (4) notify completion to the block layer.
- * (5) free memories.
- *
- * CONTEXT:
- *   Non-IRQ. Non-atomic.
- *   Request queue lock is not held.
- *   Other tasks may be running concurrently.
- */
-DEPRECATED static void pack_list_work_task(struct work_struct *work)
-{
-	struct pack_list_work *fwork = container_of(work, struct pack_list_work, work);
-	struct wrapper_blk_dev *wdev = fwork->wdev;
-	struct req_entry *reqe, *next;
-	struct blk_plug plug;
-
-	/* LOGd("pack_list_work_task begin.\n"); */
-        
-	/* ASSERT(fwork->flush_req == NULL); */
-
-
-	
-/* 	/\* prepare and submit *\/ */
-/* 	blk_start_plug(&plug); */
-/* 	list_for_each_entry(reqe, &fwork->req_entry_list, list) { */
-/* 		if (!create_bio_entry_list(reqe, wdev)) { */
-/* 			LOGe("create_bio_entry_list failed.\n"); */
-/* 			goto error0; */
-/* 		} */
-/* 		submit_req_entry(reqe); */
-/* 	} */
-/* 	blk_finish_plug(&plug); */
-
-/* 	/\* wait completion and end requests. *\/ */
-/* 	list_for_each_entry_safe(reqe, next, &fwork->req_entry_list, list) { */
-/* 		wait_for_req_entry(reqe); */
-/* 		list_del(&reqe->list); */
-/* 		destroy_req_entry(reqe); */
-/* 	} */
-/* 	/\* destroy work struct *\/ */
-/* 	destroy_pack_list_work(fwork); */
-/* 	/\* LOGd("pack_list_work_task end.\n"); *\/ */
-/* 	return; */
-
-/* error0: */
-/* 	list_for_each_entry_safe(reqe, next, &fwork->req_entry_list, list) { */
-/* 		if (reqe->is_submitted) { */
-/* 			wait_for_req_entry(reqe); */
-/* 		} else { */
-/* 			blk_end_request_all(reqe->req, -EIO); */
-/* 		} */
-/* 		list_del(&reqe->list); */
-/* 		destroy_req_entry(reqe); */
-/* 	} */
-/* 	destroy_pack_list_work(fwork); */
-/* 	LOGd("pack_list_work_task error.\n"); */
-}
-
-/**
- * Flush request executing task.
- *
- * CONTEXT:
- *   Non-IRQ. Non-atomic.
- *   Request queue lock is not held.
- *   This task is serialized by the singlethreaded workqueue.
- */
-DEPRECATED static void req_flush_task(struct work_struct *work)
-{
-	struct pack_list_work *fwork = container_of(work, struct pack_list_work, work);
-	struct request_queue *q = fwork->wdev->queue;
-	unsigned long flags;
-        
-	LOGd("req_flush_task begin.\n");
-	/* ASSERT(fwork->flush_req); */
-
-
-	
-	/* /\* Flush previous all requests. *\/ */
-	/* pack_list_workqueue(wq_logpack_submit_); */
-	/* blk_end_request_all(fwork->flush_req, 0); */
-
-	/* /\* Restart queue if required. *\/ */
-	/* if (must_restart_queue) { */
-	/* 	spin_lock_irqsave(q->queue_lock, flags); */
-	/* 	ASSERT(blk_queue_stopped(q)); */
-	/* 	blk_start_queue(q); */
-	/* 	spin_unlock_irqrestore(q->queue_lock, flags); */
-	/* } */
-        
-	/* if (list_empty(&fwork->req_entry_list)) { */
-	/* 	destroy_pack_list_work(fwork); */
-	/* } else { */
-	/* 	/\* Enqueue the following requests *\/ */
-	/* 	fwork->flush_req = NULL; */
-	/* 	INIT_WORK(&fwork->work, pack_list_work_task); */
-	/* 	queue_work(wq_logpack_submit_, &fwork->work); */
-	/* } */
-	/* LOGd("req_flush_task end.\n"); */
 }
 
 /**
@@ -931,7 +823,7 @@ static void logpack_list_submit_task(struct work_struct *work)
 	struct blk_plug plug;
 	struct pack *wpack;
 	struct walb_logpack_header *lhead;
-	bool is_flush;
+	bool ret;
 
 	blk_start_plug(&plug);
 	list_for_each_entry(wpack, &plwork->wpack_list, list) {
@@ -940,12 +832,11 @@ static void logpack_list_submit_task(struct work_struct *work)
 		lhead = get_logpack_header(wpack->logpack_header_sector);
 		logpack_calc_checksum(lhead, wdev->pbs, &wpack->req_ent_list);
 
-		is_flush = is_flush_first_req_entry(&wpack->req_ent_list);
-		
-		ret = logpack_submit(lhead, is_flush, wpack->is_fua, wdev->pbs,
-				pdata->ldev, pdata->ring_buffer_off, pdata->ring_buffer_size);
+		ret = logpack_submit(lhead, wpack->is_fua,
+				&wpack->req_ent_list, &wpack->bio_ent_list,
+				wdev->pbs, pdata->ldev, pdata->ring_buffer_off, pdata->ring_buffer_size);
 		wpack->is_logpack_failed = !ret;
-		if (ret) { break; }
+		if (!ret) { break; }
 	}
 	blk_finish_plug(&plug);
 
@@ -963,7 +854,6 @@ static void logpack_list_submit_task(struct work_struct *work)
 static bool logpack_wait(struct pack *wpack)
 {
 	struct bio_entry *bioe, *next_bioe;
-	struct req_entry *reqe, *next_reqe;
 	bool is_failed = false;
 
 	ASSERT(wpack);
@@ -974,7 +864,7 @@ static bool logpack_wait(struct pack *wpack)
 		if (bioe->error) { is_failed = true; }
 		destroy_bio_entry(bioe);
 	}
-	ASSERT(list_empty(&plwork->bio_ent_list));
+	ASSERT(list_empty(&wpack->bio_ent_list));
 
 	return !is_failed && !wpack->is_logpack_failed;
 }
@@ -1013,7 +903,7 @@ static void enqueue_datapack_tasks(struct pack *wpack, struct wrapper_blk_dev *w
 			/* Already the corresponding logpack is permanent. */
 			blk_end_request_all(req, 0);
 
-			list_dell(&reqe->list);
+			list_del(&reqe->list);
 			destroy_req_entry(reqe);
 		} else {
 			/* check and insert to overlapping detection data. */
@@ -1056,9 +946,7 @@ static void logpack_list_wait_task(struct work_struct *work)
 {
 	struct pack_list_work *plwork = container_of(work, struct pack_list_work, work);
 	struct wrapper_blk_dev *wdev = plwork->wdev;
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	bool is_failed = false;
-	unsigned long flags;
 	struct pack *wpack;
 	bool ret;
 
@@ -1093,7 +981,6 @@ static void logpack_list_wait_task(struct work_struct *work)
 static void logpack_list_gc_task(struct work_struct *work)
 {
 	struct pack_list_work *plwork = container_of(work, struct pack_list_work, work);
-	struct wrapper_blk_dev *wdev = plwork->wdev;
 	struct pack *wpack, *next_wpack;
 	struct req_entry *reqe, *next_reqe;
 
@@ -1104,8 +991,8 @@ static void logpack_list_gc_task(struct work_struct *work)
 			wait_for_completion(&reqe->done);
 			destroy_req_entry(reqe);
 		}
-		ASSERT(list_empty(wpack->req_ent_list));
-		ASSERT(list_empty(wpack->bio_ent_list));
+		ASSERT(list_empty(&wpack->req_ent_list));
+		ASSERT(list_empty(&wpack->bio_ent_list));
 		destroy_pack(wpack);
 	}
 	ASSERT(list_empty(&plwork->wpack_list));
@@ -1213,18 +1100,15 @@ alloc_error:
  */
 static bool is_valid_prepared_pack(struct pack *pack)
 {
-	unsigned int idx = 0;
 	struct walb_logpack_header *lhead;
 	unsigned int pbs;
 	struct walb_log_record *lrec;
 	unsigned int i;
 	struct req_entry *reqe;
-	bool is_write;
 	u64 total_pb; /* total io size in physical block. */
 
 	CHECK(pack);
 	CHECK(pack->logpack_header_sector);
-	is_write = pack->is_write;
 
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	pbs = pack->logpack_header_sector->size;
@@ -1245,12 +1129,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		CHECK(!(lrec->is_padding));
 		CHECK(reqe->req);
 
-		CHECK(!(reqe->req->cmd_flags & REQ_FLUSH));
-		if (is_write) {
-			CHECK(reqe->req->cmd_flags & REQ_WRITE);
-		} else {
-			CHECK(!(reqe->req->cmd_flags & REQ_WRITE));
-		}
+		CHECK(reqe->req->cmd_flags & REQ_WRITE);
 
 		CHECK(blk_rq_pos(reqe->req) == (sector_t)lrec->offset);
 		CHECK(lhead->logpack_lsid == lrec->lsid - lrec->lsid_local);
@@ -1279,10 +1158,11 @@ error:
  * RETURN:
  *   true if valid, or false.
  */
-static bool is_valid_pack_list(struct list_head *listh)
+static bool is_valid_pack_list(struct list_head *pack_list)
 {
 	struct pack *pack;
-	list_for_each_entry(pack, listh, list) {
+	
+	list_for_each_entry(pack, pack_list, list) {
 		CHECK(is_valid_prepared_pack(pack));
 	}
 	return true;
@@ -1372,7 +1252,6 @@ static struct bio_entry* logpack_submit_lhead(
 	struct bio_entry *bioe;
 	struct page *page;
 	u64 off_pb, off_lb;
-	struct request *first_req;
 	int rw = WRITE;
 
 	if (is_flush) { rw |= WRITE_FLUSH; }
@@ -1444,7 +1323,7 @@ static bool logpack_submit_req(
 		}
 		ASSERT(bioe->bi_size % LOGICAL_BLOCK_SIZE == 0);
 		off_lb += bioe->bi_size / LOGICAL_BLOCK_SIZE;
-		list_add_tail(&bioe->list, &bio_ent_list);
+		list_add_tail(&bioe->list, bio_ent_list);
 	}
 	
 	return true;
@@ -1453,21 +1332,24 @@ error:
 }
 
 /**
+ * Create and submit a bio which is a part of logpack.
  *
  * @bio original bio to clone.
  * @is_fua true if logpack must be submitted with FUA flag.
  * @pbs physical block device [bytes].
  * @ldev_offset log device offset for the request [physical block].
  * @bio_offset offset of the bio inside the whole request [logical block].
+ *
+ * RETURN:
+ *   bio_entry in success which bio is submitted, or NULL.
  */
-static struct bio_entry* lopgack_submit_bio(
+static struct bio_entry* logpack_submit_bio(
 	struct bio *bio, bool is_fua, unsigned int pbs,
 	struct block_device *ldev,
 	u64 ldev_offset, unsigned int bio_offset)
 {
 	struct bio_entry *bioe;
 	struct bio *cbio;
-	u64 off_lb;
 
 	bioe = create_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
@@ -1520,7 +1402,7 @@ static struct bio_entry* logpack_submit_flush(struct block_device *bdev, bool is
 
 	bio->bi_end_io = bio_entry_end_io;
 	bio->bi_private = bioe;
-	bio->bdev = bdev;
+	bio->bi_bdev = bdev;
 
 	bioe->bio = bio;
 	bioe->bi_size = bio->bi_size;
@@ -1540,10 +1422,10 @@ error0:
  *
  * @lhead logpack header.
  * @is_fua FUA flag.
- * 
  * @req_ent_list request entry list.
  * @bio_ent_list bio entry list.
  *   all submitted bios will be added to the list.
+ * @wdev wrapper block device.
  *
  * RETURN:
  *     true if succeed, or false.
@@ -1551,30 +1433,26 @@ error0:
  *     Non-IRQ. Non-atomic.
  */
 static bool logpack_submit(
-	struct walb_logpack_header *lhead, bool is_fua, struct list_head *req_ent_list,
-	struct list_head *bio_ent_list,
-	struct wrapper_blk_dev *wdev)
+	struct walb_logpack_header *lhead, bool is_fua,
+	struct list_head *req_ent_list, struct list_head *bio_ent_list,
+	unsigned int pbs, struct block_device *ldev,
+	u64 ring_buffer_off, u64 ring_buffer_size)
 {
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
-	struct block_device *ldev = pdata->ldev; /* log device */
-	struct bio *bio;
 	struct bio_entry *bioe;
 	struct req_entry *reqe;
 	struct request *req;
-	u64 off_pb, off_lb;
 	bool ret;
-	struct request *first_req;
 	bool is_flush;
 	u64 req_lsid;
 	int i;
 
-	INIT_LIST_HEAD(bio_ent_list);
+	ASSERT(list_empty(bio_ent_list));
 	ASSERT(!list_empty(req_ent_list));
-	first_req = list_first_entry(req_ent_list, struct req_entry, list);
-	is_flush = first_req->cmd_flags & REQ_FLUSH;
-	
-	bioe = logpack_submit_lhead(lhead, is_flush, is_fua, wdev->pbs, pdata->ldev,
-				pdata->ring_buffer_off, pdata->ring_buffer_size);
+	is_flush = is_flush_first_req_entry(req_ent_list);
+
+	/* Submit logpack header block. */
+	bioe = logpack_submit_lhead(lhead, is_flush, is_fua, pbs, ldev,
+				ring_buffer_off, ring_buffer_size);
 	if (!bioe) {
 		LOGe("logpack header submit failed.\n");
 		goto failed;
@@ -1582,6 +1460,7 @@ static bool logpack_submit(
 	list_add_tail(&bioe->list, bio_ent_list);
 	bioe = NULL;
 
+	/* Submit logpack contents for each request. */
 	i = 0;
 	list_for_each_entry(reqe, req_ent_list, list) {
 
@@ -1589,7 +1468,7 @@ static bool logpack_submit(
 		if (blk_rq_sectors(req) == 0) {
 			ASSERT(req->cmd_flags & REQ_FLUSH); /* such request must be flush. */
 			ASSERT(i == 0); /* such request must be permitted at first only. */
-			bioe = logpack_submit_flush(pdata->ldev, is_fua);
+			bioe = logpack_submit_flush(ldev, is_fua);
 			if (!bioe) {
 				LOGe("memory allocation failed durint logpack submit.\n");
 				goto failed;
@@ -1605,8 +1484,7 @@ static bool logpack_submit(
 
 			ret = logpack_submit_req(
 				req, req_lsid, is_fua, bio_ent_list,
-				wdev->pbs, pdata->ldev,
-				pdata->ring_buffer_off, pdata->ring_buffer_size);
+				pbs, ldev, ring_buffer_off, ring_buffer_size);
 			if (!ret) {
 				LOGe("memory allocation failed during logpack submit.\n");
 				goto failed;
@@ -1635,9 +1513,9 @@ static void logpack_end_err(struct request_queue *q, struct pack *wpack)
 	unsigned long flags;
 	ASSERT(q);
 	
-	spin_lock_irqsave(&q->queue_lock, flags);
+	spin_lock_irqsave(q->queue_lock, flags);
 	logpack_end_err_wo_lock(wpack);
-	spin_unlock_irqsave(&q->queue_lock, flags);
+	spin_unlock_irqrestore(q->queue_lock, flags);
 }
 
 /**
@@ -1652,32 +1530,13 @@ static void logpack_end_err_wo_lock(struct pack *wpack)
 	ASSERT(wpack);
 
 	/* end_request for all related requests with error. */
-	list_for_all_entry_safe(reqe, next_reqe, &plwork->req_ent_list, list) {
+	list_for_each_entry_safe(reqe, next_reqe, &wpack->req_ent_list, list) {
 		list_del(&reqe->list);
 		__blk_end_request_all(reqe->req, -EIO);
 		destroy_req_entry(reqe);
 	}
-	ASSERT(list_empry(&wpack->req_ent_list));
+	ASSERT(list_empty(&wpack->req_ent_list));
 }
-
-/**
- * Currently not used.
- */
-UNUSED
-static void req_entry_list_end_io(struct list_head *req_ent_list)
-{
-	struct req_entry *reqe, *next;
-
-	ASSERT(req_ent_list);
-	
-	list_for_each_entry_safe(reqe, next, req_ent_list, list) {
-		list_del(&reqe->list);
-		blk_end_request_all(reqe->req);
-		destroy_req_entry(reqe);
-	}
-	ASSERT(list_empty(req_ent_list));
-}
-
 
 /*******************************************************************************
  * Global functions definition.
@@ -1696,6 +1555,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct request *req;
 	struct req_entry *reqe;
+	struct req_entry_work *reqe_work;
 	struct pack_list_work *plwork;
 	struct pack *wpack;
 	bool ret;
@@ -1731,8 +1591,10 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 			/* Read request */
 			reqe = create_req_entry(req, GFP_ATOMIC);
 			if (!reqe) { goto req_error; }
-			INIT_WORK(&reqe->work, read_req_task);
-			queue_work(wq_normal_, &reqe->work);
+			reqe_work = create_req_entry_work(reqe, wdev, GFP_ATOMIC);
+			if (!reqe_work) { destroy_req_entry(reqe); goto req_error; }
+			INIT_WORK(&reqe_work->work, read_req_task);
+			queue_work(wq_normal_, &reqe_work->work);
 		}
 		continue;
 	req_error:
