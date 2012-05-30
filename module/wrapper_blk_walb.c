@@ -221,10 +221,10 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
                         blk_queue_flush(q, REQ_FLUSH);
                 }
         } else {
-                LOGn("Supports REQ_FLUSH (the underlying device does not support).");
-		blk_queue_flush(q, REQ_FLUSH);
+                LOGn("Supports neither REQ_FLUSH nor REQ_FUA.");
         }
 
+#if 0
         if (blk_queue_discard(uq)) {
                 /* Accept REQ_DISCARD. */
                 LOGn("Supports REQ_DISCARD.");
@@ -237,6 +237,7 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
         } else {
                 LOGn("Not support REQ_DISCARD.");
         }
+#endif 
 }
 
 static unsigned int get_minor(unsigned int id)

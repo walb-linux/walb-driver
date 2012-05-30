@@ -633,6 +633,9 @@ static bool writepack_add_req(
 		/* logpack header capacity full so create a new pack. */
 		goto newpack;
 	}
+	if (req->cmd_flags & REQ_FUA) {
+		pack->is_fua = true;
+	}
 
 	/* The request is just added to the pack. */
 	list_add_tail(&reqe->list, &pack->req_ent_list);
@@ -649,6 +652,9 @@ newpack:
 		get_logpack_header(pack->logpack_header_sector),
 		req, pbs, ring_buffer_size);
 	ASSERT(ret);
+	if (req->cmd_flags & REQ_FUA) {
+		pack->is_fua = true;
+	}
 
 	list_add_tail(&reqe->list, &pack->req_ent_list);
 	return true;
