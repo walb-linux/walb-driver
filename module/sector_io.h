@@ -16,6 +16,7 @@
 #include "walb/super.h"
 #include "walb/log_record.h"
 #include "walb/log_device.h"
+#include "walb/block_size.h"
 
 /**
  * BIO wrapper flag.

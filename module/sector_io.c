@@ -86,12 +86,12 @@ bool sector_io(int rw, struct block_device *bdev,
 
         LOGd("sector %lu "
 		"page %p buf %p sectorsize %d offset %lu rw %d\n",
-		(unsigned long)(off * (pbs / lbs)),
+		(unsigned long)(addr * (pbs / lbs)),
 		virt_to_page(buf), buf,
 		pbs, offset_in_page(buf), rw);
 
         bio->bi_bdev = bdev;
-        bio->bi_sector = off * (pbs / lbs);
+        bio->bi_sector = addr * (pbs / lbs);
         bio->bi_end_io = walb_end_io_with_completion;
         bio->bi_private = bioc;
         bio_add_page(bio, page, pbs, offset_in_page(buf));
@@ -226,7 +226,7 @@ bool walb_write_super_sector(
         u64 off0;
         u32 csum;
         struct walb_super_sector *sect;
-	unsinged int pbs;
+	unsigned int pbs;
 
         LOGd("walb_write_super_sector begin\n");
 

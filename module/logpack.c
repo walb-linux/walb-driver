@@ -78,7 +78,7 @@ bool walb_logpack_header_add_req(
 	u64 logpack_lsid;
 	u64 req_lsid;
 	unsigned int req_lb, req_pb;
-	unsinged int padding_pb;
+	unsigned int padding_pb;
 	unsigned int max_n_rec;
 	int idx;
 	
@@ -114,7 +114,7 @@ bool walb_logpack_header_add_req(
 		   So padding is required. */
 		padding_pb = ring_buffer_size - (req_lsid % ring_buffer_size);
 
-		if ((unsinged int)lhead->total_io_size + padding_pb
+		if ((unsigned int)lhead->total_io_size + padding_pb
 			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
 			LOGd("no more request can not be added.\n");
 			goto error0;
@@ -140,7 +140,7 @@ bool walb_logpack_header_add_req(
 		}
 	}
 
-	if ((unsinged int)lhead->total_io_size + padding_pb
+	if ((unsigned int)lhead->total_io_size + req_pb
 		> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
 		LOGd("no more request can not be added.\n");
 		goto error0;
@@ -153,7 +153,7 @@ bool walb_logpack_header_add_req(
 	lhead->record[idx].is_padding = 0;
 	lhead->record[idx].offset = (u64)blk_rq_pos(req);
 	lhead->record[idx].io_size = (u16)req_lb;
-	lhead->record[idx].n_records ++;
+	lhead->n_records ++;
 	lhead->total_io_size += req_pb;
 
 	req_lsid += req_pb;
