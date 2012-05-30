@@ -155,8 +155,9 @@ static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
 	u64 ring_buffer_size, u64 *latest_lsidp,
 	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
-
 static bool is_flush_first_req_entry(struct list_head *req_ent_list);
+static void print_pack_list(struct list_head *wpack_list);
+
 
 /* Workqueue tasks. */
 static void logpack_list_submit_task(struct work_struct *work);
@@ -688,6 +689,15 @@ static bool is_flush_first_req_entry(struct list_head *req_ent_list)
 }
 
 /**
+ *
+ */
+static void print_pack_list(struct list_head *wpack_list)
+{
+	/* now editing */
+
+}
+
+/**
  * Create bio_entry list for a request.
  *
  * RETURN:
@@ -1056,6 +1066,8 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	struct req_entry *reqe;
 	u64 total_pb; /* total io size in physical block. */
 
+	LOGd("is_valid_prepared_pack begin.\n");
+	
 	CHECK(pack);
 	CHECK(pack->logpack_header_sector);
 
@@ -1093,8 +1105,10 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	}
 	CHECK(i == lhead->n_records);
 	CHECK(total_pb == lhead->total_io_size);
+	LOGd("is_valid_prepared_pack succeeded.\n");
 	return true;
 error:
+	LOGd("is_valid_prepared_pack failed.\n");
 	return false;
 }
 
@@ -1556,6 +1570,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		wpack = NULL;
 	}
 	if (!list_empty(&plwork->wpack_list)) {
+		print_pack_list(&plwork->wpack_list); /* debug */
 		/* Currently all requests are packed and lsid of all writepacks is defined. */
 		ASSERT(is_valid_pack_list(&plwork->wpack_list));
 		INIT_WORK(&plwork->work, logpack_list_submit_task);
@@ -1598,45 +1613,45 @@ bool pre_register(void)
 		KMEM_CACHE_PACK_LIST_WORK_NAME,
 		sizeof(struct pack_list_work), 0, 0, NULL);
 	if (!pack_list_work_cache_) {
-		LOGe("failed to create a kmem_cache.\n");
+		LOGe("failed to create a kmem_cache (pack_list_work).\n");
 		goto error0;
 	}
 	req_entry_cache_ = kmem_cache_create(
 		KMEM_CACHE_REQ_ENTRY_NAME,
 		sizeof(struct req_entry), 0, 0, NULL);
 	if (!req_entry_cache_) {
-		LOGe("failed to create a kmem_cache.\n");
+		LOGe("failed to create a kmem_cache (req_entry).\n");
 		goto error1;
 	}
 	bio_entry_cache_ = kmem_cache_create(
 		KMEM_CACHE_BIO_ENTRY_NAME,
 		sizeof(struct bio_entry), 0, 0, NULL);
 	if (!bio_entry_cache_) {
-		LOGe("failed to create a kmem_cache.\n");
+		LOGe("failed to create a kmem_cache (bio_entry).\n");
 		goto error2;
 	}
 	pack_cache_ = kmem_cache_create(
 		KMEM_CACHE_PACK_NAME,
 		sizeof(struct pack), 0, 0, NULL);
-	if (pack_cache_) {
-		LOGe("failed to create a kmem_cache.\n");
+	if (!pack_cache_) {
+		LOGe("failed to create a kmem_cache (pack).\n");
 		goto error3;
 	}
 	
 	/* prepare workqueues. */
 	wq_logpack_submit_ = create_singlethread_workqueue(WQ_LOGPACK_SUBMIT);
 	if (!wq_logpack_submit_) {
-		LOGe("failed to allocate a workqueue.");
+		LOGe("failed to allocate a workqueue (wq_logpack_submit_).");
 		goto error4;
 	}
 	wq_logpack_wait_ = create_singlethread_workqueue(WQ_LOGPACK_WAIT);
 	if (!wq_logpack_wait_) {
-		LOGe("failed to allocate a workqueue.");
+		LOGe("failed to allocate a workqueue (wq_logpack_wait_).");
 		goto error5;
 	}		
 	wq_normal_ = alloc_workqueue(WQ_NORMAL, WQ_MEM_RECLAIM, 0);
 	if (!wq_normal_) {
-		LOGe("failed to allocate a workqueue.");
+		LOGe("failed to allocate a workqueue (wq_normal_).");
 		goto error6;
 	}
 

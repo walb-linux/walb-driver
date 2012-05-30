@@ -112,6 +112,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         /* Block size */
         lbs = bdev_logical_block_size(ddev);
         pbs = bdev_physical_block_size(ddev);
+	LOGn("pbs: %u lbs: %u\n", pbs, lbs);
         
         if (lbs != LOGICAL_BLOCK_SIZE) {
 		LOGe("logical block size must be %u but %u.\n",
@@ -134,7 +135,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         wdev->private_data = pdata;
 
 	/* Load super block. */
-	pdata->lsuper0 = sector_alloc(GFP_KERNEL, pbs);
+	pdata->lsuper0 = sector_alloc(pbs, GFP_KERNEL);
 	if (!pdata->lsuper0) {
 		goto error3;
 	}
