@@ -79,6 +79,16 @@ struct kmem_cache *pack_cache_ = NULL;
 struct req_entry
 {
 	struct list_head list; /* list entry */
+	
+	/**
+	 * These are used for workqueue.
+	 */
+	struct work_struct work;
+	struct wrapper_blk_dev *wdev;
+
+	/**
+	 * Target request and related bio_entry list for data device.
+	 */
 	struct request *req;
 	struct list_head bio_ent_list; /* list head of bio_entry */
 
@@ -89,21 +99,6 @@ struct req_entry
 /* kmem cache for dbio. */
 #define KMEM_CACHE_REQ_ENTRY_NAME "req_entry_cache"
 struct kmem_cache *req_entry_cache_ = NULL;
-
-/**
- * Request entry work struct.
- *
- * This is used for write_req_task/read_req_task.
- */
-struct req_entry_work
-{
-	struct work_struct work;
-	struct wrapper_blk_dev *wdev;
-
-	struct req_entry *reqe;
-};
-#define KMEM_CACHE_REQ_ENTRY_WORK_NAME "req_entry_work_cache"
-struct kmem_cache *req_entry_work_cache_ = NULL;
 
 /**
  * bio as a list entry.
@@ -138,13 +133,9 @@ static struct pack_list_work* create_pack_list_work(
 static void destroy_pack_list_work(struct pack_list_work *work);
 
 /* req_entry related. */
-static struct req_entry* create_req_entry(struct request *req, gfp_t gfp_mask);
+static struct req_entry* create_req_entry(
+	struct request *req, struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
 static void destroy_req_entry(struct req_entry *reqe);
-
-/* req_entry_work related. */
-static struct req_entry_work* create_req_entry_work(
-	struct req_entry *reqe, struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
-static void destroy_req_entry_work(struct req_entry_work *reqe_work);
 
 /* bio_entry related. */
 static void bio_entry_end_io(struct bio *bio, int error);
@@ -162,7 +153,9 @@ static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe);
 /* helper function. */
 static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
-	u64 ring_buffer_size, u64 *latest_lsidp, gfp_t gfp_mask);
+	u64 ring_buffer_size, u64 *latest_lsidp,
+	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
+
 static bool is_flush_first_req_entry(struct list_head *req_ent_list);
 
 /* Workqueue tasks. */
@@ -313,7 +306,9 @@ static void destroy_pack_list_work(struct pack_list_work *work)
 /**
  * Create req_entry struct.
  */
-static struct req_entry* create_req_entry(struct request *req, gfp_t gfp_mask)
+static struct req_entry* create_req_entry(
+	struct request *req,
+	struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
 {
 	struct req_entry *reqe;
 
@@ -321,9 +316,13 @@ static struct req_entry* create_req_entry(struct request *req, gfp_t gfp_mask)
 	if (!reqe) {
 		goto error0;
 	}
+	INIT_LIST_HEAD(&reqe->list);
+
+	/* INIT_WORK(&reqe->work, NULL); */
+	reqe->wdev = wdev;
+	
 	ASSERT(req);
 	reqe->req = req;
-	INIT_LIST_HEAD(&reqe->list);
 	INIT_LIST_HEAD(&reqe->bio_ent_list);
 	init_completion(&reqe->done);
         
@@ -351,39 +350,6 @@ static void destroy_req_entry(struct req_entry *reqe)
 #endif
 		kmem_cache_free(req_entry_cache_, reqe);
 	}
-}
-
-/**
- * Create a req_entry_work.
- */
-static struct req_entry_work* create_req_entry_work(
-	struct req_entry *reqe, struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
-{
-	struct req_entry_work *reqe_work;
-	ASSERT(reqe);
-	ASSERT(wdev);
-	
-	reqe_work = kmem_cache_alloc(req_entry_work_cache_, gfp_mask);
-	if (!reqe_work) { goto error0; }
-	reqe_work->wdev = wdev;
-	reqe_work->reqe = reqe;
-	return reqe_work;
-	
-error0:
-	return NULL;
-}
-
-/**
- * Destory a req_entry_work.
- */
-static void destroy_req_entry_work(struct req_entry_work *reqe_work)
-{
-	if (!reqe_work) { return; }
-
-	if (reqe_work->reqe) {
-		destroy_req_entry(reqe_work->reqe);
-	}
-	kmem_cache_free(req_entry_work_cache_, reqe_work);
 }
 
 /**
@@ -628,7 +594,7 @@ static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe)
  */
 static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
-	u64 ring_buffer_size, u64 *latest_lsidp, gfp_t gfp_mask)
+	u64 ring_buffer_size, u64 *latest_lsidp, struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
 {
 	struct req_entry *reqe;
 	struct pack *pack;
@@ -643,8 +609,9 @@ static bool writepack_add_req(
 	ASSERT(req->cmd_flags & REQ_WRITE);
 	pack = *wpackp;
 	ASSERT(pack->logpack_header_sector);
+	ASSERT(wdev);
 	
-	reqe = create_req_entry(req, gfp_mask);
+	reqe = create_req_entry(req, wdev, gfp_mask);
 	if (!reqe) { goto error0; }
 
 	pbs = pack->logpack_header_sector->size;
@@ -875,9 +842,6 @@ static bool logpack_wait(struct pack *wpack)
  * @wpack writepack.
  * @wdev wrapper block device.
  *
- * RETURN:
- *   true in success, or false.
- *   When false, partial requests are enqueued, remainings are ended with error.
  * CONTEXT:
  *   this function call is serialized by singlethread workqueue.
  */
@@ -885,8 +849,6 @@ static void enqueue_datapack_tasks(struct pack *wpack, struct wrapper_blk_dev *w
 {
 	struct req_entry *reqe, *next_reqe;
 	struct request *req;
-	struct req_entry_work *reqe_work;
-	bool is_failed = false;
 	
 	ASSERT(wpack);
 	ASSERT(!wpack->is_logpack_failed);
@@ -910,20 +872,8 @@ static void enqueue_datapack_tasks(struct pack *wpack, struct wrapper_blk_dev *w
 			/* not yet implemented */
 
 			/* Enqueue as a write req task. */
-			if (is_failed) { goto failed; }
-			
-			reqe_work = create_req_entry_work(reqe, wdev, GFP_NOIO);
-			if (!reqe_work) {
-				is_failed = true;
-				goto failed;
-			}
-			INIT_WORK(&reqe_work->work, write_req_task);
-			queue_work(wq_normal_, &reqe_work->work);
-			continue;
-		failed:
-			blk_end_request_all(req, -EIO);
-			list_del(&reqe->list);
-			destroy_req_entry(reqe);
+			INIT_WORK(&reqe->work, write_req_task);
+			queue_work(wq_normal_, &reqe->work);
 		}
 	}
 }
@@ -1009,9 +959,8 @@ static void logpack_list_gc_task(struct work_struct *work)
  */
 static void write_req_task(struct work_struct *work)
 {
-	struct req_entry_work *reqe_work = container_of(work, struct req_entry_work, work);
-	struct req_entry *reqe = reqe_work->reqe;
-	struct wrapper_blk_dev *wdev = reqe_work->wdev;
+	struct req_entry *reqe = container_of(work, struct req_entry, work);
+	struct wrapper_blk_dev *wdev = reqe->wdev;
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct blk_plug plug;
 	bool is_end_request = true;
@@ -1037,20 +986,16 @@ static void write_req_task(struct work_struct *work)
 	/* Delete from overlapping detection data. */
 	/* not yet implemented */
 
-	/* Notify logpack_list_gc_task(). */
+	/* Notify logpack_list_gc_task().
+	   Reqe will be destroyed in logpack_list_gc_task(). */
 	complete(&reqe->done);
-
-	/* Reqe will be destroyed in logpack_list_gc_task(). */
-	reqe_work->reqe = NULL;
-	destroy_req_entry_work(reqe_work);
+	
 	return;
 	
 alloc_error:
 	ASSERT(list_empty(&reqe->bio_ent_list));
 	blk_end_request_all(reqe->req, -EIO);
 	complete(&reqe->done);
-	reqe_work->reqe = NULL;
-	destroy_req_entry_work(reqe_work);
 }
 
 /**
@@ -1062,18 +1007,17 @@ alloc_error:
  */
 static void read_req_task(struct work_struct *work)
 {
-	struct req_entry_work *reqe_work = container_of(work, struct req_entry_work, work);
-	struct req_entry *reqe = reqe_work->reqe;
-	struct wrapper_blk_dev *wdev = reqe_work->wdev;
+	struct req_entry *reqe = container_of(work, struct req_entry, work);
+	struct wrapper_blk_dev *wdev = reqe->wdev;
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct blk_plug plug;
 	bool is_end_request = true;
 
 	/* Create all related bio(s). */
 	if (!create_bio_entry_list(reqe, pdata->ddev)) {
-		goto alloc_error;
+		goto error;
 	}
-	
+		
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
 	submit_bio_entry_list(reqe);
@@ -1081,14 +1025,13 @@ static void read_req_task(struct work_struct *work)
 
 	/* Wait for completion and call end_request. */
 	wait_for_bio_entry_list(reqe, is_end_request);
+	goto fin;
 
-	destroy_req_entry_work(reqe_work);
-	return;
-	
-alloc_error:
-	ASSERT(list_empty(&reqe->bio_ent_list));
+error:
 	blk_end_request_all(reqe->req, -EIO);
-	destroy_req_entry_work(reqe_work);
+fin:
+	ASSERT(list_empty(&reqe->bio_ent_list));
+	destroy_req_entry(reqe);
 }
 
 /**
@@ -1555,7 +1498,6 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct request *req;
 	struct req_entry *reqe;
-	struct req_entry_work *reqe_work;
 	struct pack_list_work *plwork;
 	struct pack *wpack;
 	bool ret;
@@ -1585,16 +1527,14 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 			}
 			ret = writepack_add_req(&plwork->wpack_list, &wpack, req,
 						pdata->ring_buffer_size,
-						&latest_lsid, GFP_ATOMIC);
+						&latest_lsid, wdev, GFP_ATOMIC);
 			if (!ret) { goto req_error; }
 		} else {
 			/* Read request */
-			reqe = create_req_entry(req, GFP_ATOMIC);
+			reqe = create_req_entry(req, wdev, GFP_ATOMIC);
 			if (!reqe) { goto req_error; }
-			reqe_work = create_req_entry_work(reqe, wdev, GFP_ATOMIC);
-			if (!reqe_work) { destroy_req_entry(reqe); goto req_error; }
-			INIT_WORK(&reqe_work->work, read_req_task);
-			queue_work(wq_normal_, &reqe_work->work);
+			INIT_WORK(&reqe->work, read_req_task);
+			queue_work(wq_normal_, &reqe->work);
 		}
 		continue;
 	req_error:
@@ -1615,6 +1555,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		INIT_WORK(&plwork->work, logpack_list_submit_task);
 		queue_work(wq_logpack_submit_, &plwork->work);
 	} else {
+		/* No write request. */
 		destroy_pack_list_work(plwork);
 		plwork = NULL;
 	}
@@ -1661,61 +1602,52 @@ bool pre_register(void)
 		LOGe("failed to create a kmem_cache.\n");
 		goto error1;
 	}
-	req_entry_work_cache_ = kmem_cache_create(
-		KMEM_CACHE_REQ_ENTRY_WORK_NAME,
-		sizeof(struct req_entry_work), 0, 0, NULL);
-	if (!req_entry_work_cache_) {
-		LOGe("failed to create a kmem_cache.\n");
-		goto error2;
-	}
 	bio_entry_cache_ = kmem_cache_create(
 		KMEM_CACHE_BIO_ENTRY_NAME,
 		sizeof(struct bio_entry), 0, 0, NULL);
 	if (!bio_entry_cache_) {
 		LOGe("failed to create a kmem_cache.\n");
-		goto error3;
+		goto error2;
 	}
 	pack_cache_ = kmem_cache_create(
 		KMEM_CACHE_PACK_NAME,
 		sizeof(struct pack), 0, 0, NULL);
 	if (pack_cache_) {
 		LOGe("failed to create a kmem_cache.\n");
-		goto error4;
+		goto error3;
 	}
 	
 	/* prepare workqueues. */
 	wq_logpack_submit_ = create_singlethread_workqueue(WQ_LOGPACK_SUBMIT);
 	if (!wq_logpack_submit_) {
 		LOGe("failed to allocate a workqueue.");
-		goto error5;
+		goto error4;
 	}
 	wq_logpack_wait_ = create_singlethread_workqueue(WQ_LOGPACK_WAIT);
 	if (!wq_logpack_wait_) {
 		LOGe("failed to allocate a workqueue.");
-		goto error6;
+		goto error5;
 	}		
 	wq_normal_ = alloc_workqueue(WQ_NORMAL, WQ_MEM_RECLAIM, 0);
 	if (!wq_normal_) {
 		LOGe("failed to allocate a workqueue.");
-		goto error7;
+		goto error6;
 	}
 
 	return true;
 
 #if 0
-error8:
+error7:
 	destroy_workqueue(wq_normal_);
 #endif
-error7:
-	destroy_workqueue(wq_logpack_wait_);
 error6:
+	destroy_workqueue(wq_logpack_wait_);
+error5:
 	destroy_workqueue(wq_logpack_submit_);
-error5:	
+error4:	
 	kmem_cache_destroy(pack_cache_);
-error4:
+error3:
 	kmem_cache_destroy(bio_entry_cache_);
-error3:	
-	kmem_cache_destroy(req_entry_work_cache_);
 error2:
 	kmem_cache_destroy(req_entry_cache_);
 error1:
@@ -1742,8 +1674,6 @@ void post_unregister(void)
 	pack_cache_ = NULL;
 	kmem_cache_destroy(bio_entry_cache_);
 	bio_entry_cache_ = NULL;
-	kmem_cache_destroy(req_entry_work_cache_);
-	req_entry_work_cache_ = NULL;
 	kmem_cache_destroy(req_entry_cache_);
 	req_entry_cache_ = NULL;
 	kmem_cache_destroy(pack_list_work_cache_);
