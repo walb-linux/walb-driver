@@ -180,12 +180,25 @@ error:
 }
 
 /**
- * Get next lsid of the logpack header.
+ * Get next lsid of a logpack header.
+ * This does not validate the logpack header.
+ */
+static inline u64 get_next_lsid_unsafe(const struct walb_logpack_header *lhead)
+{
+	if (lhead->total_io_size == 0) {
+		return lhead->logpack_lsid;
+	} else {
+		return lhead->logpack_lsid + 1 + lhead->total_io_size;
+	}
+}
+
+/**
+ * Get next lsid of a logpack header.
  */
 static inline u64 get_next_lsid(const struct walb_logpack_header *lhead)
 {
 	ASSERT(is_valid_logpack_header(lhead));
-	return lhead->logpack_lsid + 1 + lhead->total_io_size;
+	return get_next_lsid_unsafe(lhead);
 }
 
 #endif /* WALB_LOG_RECORD_H */

@@ -64,6 +64,7 @@ struct pack
 	struct list_head list; /* list entry. */
 	struct list_head req_ent_list; /* list head of req_entry. */
 
+	bool is_zero_flush_only; /* true if req_ent_list contains only a zero-size flush. */
 	bool is_fua; /* FUA flag. */
 	struct sector_data *logpack_header_sector;
 	struct list_head bio_ent_list; /* list head of logpack bio. */
@@ -124,8 +125,12 @@ struct kmem_cache *bio_entry_cache_ = NULL;
  * Static functions prototype.
  *******************************************************************************/
 
-/* Print request flags for debug. */
-static void print_req_flags(struct request *req);
+/* Print functions for debug. */
+UNUSED static void print_req_flags(struct request *req);
+UNUSED static void print_bio_entry(struct bio_entry *bioe);
+UNUSED static void print_req_entry(struct req_entry *reqe);
+UNUSED static void print_pack(struct pack *pack);
+UNUSED static void print_pack_list(struct list_head *wpack_list);
 
 /* pack_list_work related. */
 static struct pack_list_work* create_pack_list_work(
@@ -149,6 +154,8 @@ static struct pack* create_pack(gfp_t gfp_mask);
 static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
 static void destroy_pack(struct pack *pack);
 static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe);
+static bool is_zero_flush_only(struct pack *pack);
+
 
 /* helper function. */
 static bool writepack_add_req(
@@ -156,8 +163,6 @@ static bool writepack_add_req(
 	u64 ring_buffer_size, u64 *latest_lsidp,
 	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
 static bool is_flush_first_req_entry(struct list_head *req_ent_list);
-static void print_pack_list(struct list_head *wpack_list);
-
 
 /* Workqueue tasks. */
 static void logpack_list_submit_task(struct work_struct *work);
@@ -192,7 +197,8 @@ static struct bio_entry* logpack_submit_bio(
 	struct bio *bio, bool is_fua, unsigned int pbs,
 	struct block_device *ldev,
 	u64 ldev_offset, unsigned int bio_offset);
-static struct bio_entry* logpack_submit_flush(struct block_device *bdev, bool is_fua);
+static struct bio_entry* submit_flush(struct block_device *bdev);
+static bool logpack_submit_flush(struct block_device *bdev, struct list_head *bio_ent_list);
 static bool logpack_submit(
 	struct walb_logpack_header *lhead, bool is_fua,
 	struct list_head *req_ent_list, struct list_head *bio_ent_list,
@@ -253,6 +259,87 @@ static void print_req_flags(struct request *req)
 		((req->cmd_flags & REQ_IO_STAT) ?            " REQ_IO_STAT" : ""),
 		((req->cmd_flags & REQ_MIXED_MERGE) ?        " REQ_MIXED_MERGE" : ""),
 		((req->cmd_flags & REQ_SECURE) ?             " REQ_SECURE" : ""));
+}
+
+/**
+ * Print a bio_entry.
+ */
+UNUSED
+static void print_bio_entry(struct bio_entry *bioe)
+{
+	ASSERT(bioe);
+	/* now editing */
+}
+
+/**
+ * Print a req_entry.
+ */
+UNUSED
+static void print_req_entry(struct req_entry *reqe)
+{
+	ASSERT(reqe);
+	/* now editing */
+}
+
+/**
+ * Print a pack data for debug.
+ */
+UNUSED
+static void print_pack(struct pack *pack)
+{
+	struct walb_logpack_header *lhead;
+	struct req_entry *reqe;
+	struct bio_entry *bioe;
+	unsigned int i;
+	ASSERT(pack);
+
+	LOGd("print_pack %p begin\n", pack);
+	
+	i = 0;
+	list_for_each_entry(reqe, &pack->req_ent_list, list) {
+		i ++;
+		print_req_entry(reqe);
+	}
+	LOGd("number of req_entry in req_ent_list: %u.\n", i);
+
+	i = 0;
+	list_for_each_entry(bioe, &pack->bio_ent_list, list) {
+		i ++;
+		print_bio_entry(bioe);
+	}
+	LOGd("number of bio_entry in bio_ent_list: %u.\n", i);
+
+	/* logpack header */
+	if (pack->logpack_header_sector) {
+		lhead = get_logpack_header(pack->logpack_header_sector);
+		walb_logpack_header_print(KERN_DEBUG, lhead);
+	} else {
+		LOGd("logpack_header_sector is NULL.\n");
+	}
+
+	LOGd("is_fua: %u\nis_logpack_failed: %u\n",
+		pack->is_fua, pack->is_logpack_failed);
+
+	LOGd("print_pack %p end\n", pack);
+}
+
+/**
+ * Print a list of pack data for debug.
+ */
+UNUSED
+static void print_pack_list(struct list_head *wpack_list)
+{
+	struct pack *pack;
+	unsigned int i = 0;
+	ASSERT(wpack_list);
+	
+	LOGd("print_pack_list %p begin.\n", wpack_list);
+	list_for_each_entry(pack, wpack_list, list) {
+		LOGd("%u: ", i);
+		print_pack(pack);
+		i ++;
+	}
+	LOGd("print_pack_list %p end.\n", wpack_list);
 }
 
 /**
@@ -471,6 +558,8 @@ static struct pack* create_pack(gfp_t gfp_mask)
 	}
 	INIT_LIST_HEAD(&pack->list);
 	INIT_LIST_HEAD(&pack->req_ent_list);
+	INIT_LIST_HEAD(&pack->bio_ent_list);
+	pack->is_zero_flush_only = false;
 	pack->is_fua = false;
 	pack->is_logpack_failed = false;
 	
@@ -564,34 +653,50 @@ static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe)
 }
 
 /**
- * Add a request entry to a pack.
+ * Check the pack contains zero-size flush only.
  *
- * @pack pack to added.
- * @reqe req_entry to add.
- *
- * If an overlapping request exists, add nothing and return false.
- * Else, add the request and return true.
+ * RETURN:
+ *   true if pack contains only one request and it is zero-size flush, or false.
  */
-/* DEPRECATED */
-/* static bool pack_add_reqe(struct pack *pack, struct req_entry *reqe) */
-/* { */
-/* 	struct req_entry *tmp_reqe; */
+static bool is_zero_flush_only(struct pack *pack)
+{
+	struct walb_logpack_header *lhead;
+	struct req_entry *reqe;
+	unsigned int i;
+	ASSERT(pack);
+	ASSERT(pack->logpack_header_sector);
 	
-/* 	ASSERT(pack); */
-/* 	ASSERT(reqe); */
-/* 	ASSERT(pack->is_write == (reqe->req->cmd_flags & REQ_WRITE != 0)); */
+	lhead = get_logpack_header(pack->logpack_header_sector);
+	ASSERT(lhead);
 
-/* 	/\* Search overlapping requests. *\/ */
-/* 	if (is_overlap_pack_reqe(pack, reqe)) { */
-/* 		return false; */
-/* 	} else { */
-/* 		list_add_tail(&reqe->list, &pack->req_ent_list); */
-/* 		return true; */
-/* 	} */
-/* } */
+	i = 0;
+	list_for_each_entry(reqe, &pack->req_ent_list, list) {
+
+		ASSERT(reqe->req);
+		if (!((reqe->req->cmd_flags & REQ_FLUSH) && blk_rq_sectors(reqe->req) == 0)) {
+			return false;
+		}
+		i ++;
+	}
+	return i == 1;
+}
 
 /**
  * Add a request to a writepack.
+ *
+ * @wpack_list wpack list.
+ * @wpackp pointer to a wpack pointer. *wpackp can be NULL.
+ * @req request to add.
+ * @ring_buffer_size ring buffer size [physical block]
+ * @latest_lsidp pointer to the latest_lsid value.
+ *   *latest_lsidp must be always (*wpackp)->logpack_lsid.
+ * @wdev wrapper block device.
+ * @gfp_mask memory allocation mask.
+ *
+ * RETURN:
+ *   true if successfuly added, or false (due to memory allocation failure).
+ * CONTEXT:
+ *   atomic, serialized.
  */
 static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
@@ -601,67 +706,78 @@ static bool writepack_add_req(
 	struct pack *pack;
 	bool ret;
 	unsigned int pbs;
-	struct walb_logpack_header *lhead;
+	struct walb_logpack_header *lhead = NULL;
 
+	LOGd("begin\n");
+	
 	ASSERT(wpack_list);
 	ASSERT(wpackp);
-	ASSERT(*wpackp);
 	ASSERT(req);
 	ASSERT(req->cmd_flags & REQ_WRITE);
-	pack = *wpackp;
-	ASSERT(pack->logpack_header_sector);
 	ASSERT(wdev);
+	pbs = wdev->pbs;
+	ASSERT_PBS(pbs);
+	
+	pack = *wpackp;
 	
 	reqe = create_req_entry(req, wdev, gfp_mask);
 	if (!reqe) { goto error0; }
 
-	pbs = pack->logpack_header_sector->size;
-	ASSERT_PBS(pbs);
+	if (!pack) {
+		goto newpack;
+	}
+
+	ASSERT(pack);
+	ASSERT(pack->logpack_header_sector);
+	ASSERT(pbs == pack->logpack_header_sector->size);
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ASSERT(*latest_lsidp == lhead->logpack_lsid);
-
-	if (req->cmd_flags & REQ_FLUSH) {
-		/* Flush request must be the first of the pack. */
-		goto newpack;
+	
+	if (lhead->n_records > 0) {
+		if ((req->cmd_flags & REQ_FLUSH) || is_overlap_pack_reqe(pack, reqe)) {
+			/* Flush request must be the first of the pack. */
+			/* overlap found so create a new pack. */
+			goto newpack;
+		}
 	}
-	if (is_overlap_pack_reqe(pack, reqe)) {
-		/* overlap found so create a new pack. */
-		goto newpack;
-	}
-	if (!walb_logpack_header_add_req(
-			get_logpack_header(pack->logpack_header_sector),
-			req, pbs, ring_buffer_size)) {
+	if (!walb_logpack_header_add_req(lhead, req, pbs, ring_buffer_size)) {
 		/* logpack header capacity full so create a new pack. */
 		goto newpack;
 	}
+
+fin:
 	if (req->cmd_flags & REQ_FUA) {
 		pack->is_fua = true;
 	}
-
 	/* The request is just added to the pack. */
 	list_add_tail(&reqe->list, &pack->req_ent_list);
+	LOGd("normal end\n");
 	return true;
 
 newpack:
-	list_add_tail(&pack->list, wpack_list);
-	*latest_lsidp = get_next_lsid(lhead);
+	if (lhead) {
+		ASSERT(pack);
+		print_pack(pack); /* debug */
+		if (lhead->n_records == 0) {
+			ASSERT(is_zero_flush_only(pack));
+			pack->is_zero_flush_only = true;
+		}
+		ASSERT(is_valid_prepared_pack(pack));
+		list_add_tail(&pack->list, wpack_list);
+		*latest_lsidp = get_next_lsid_unsafe(lhead);
+	}
 	pack = create_writepack(gfp_mask, pbs, *latest_lsidp);
 	if (!pack) { goto error1; }
 	*wpackp = pack;
-
-	ret = walb_logpack_header_add_req(
-		get_logpack_header(pack->logpack_header_sector),
-		req, pbs, ring_buffer_size);
+	lhead = get_logpack_header(pack->logpack_header_sector);
+	ret = walb_logpack_header_add_req(lhead, req, pbs, ring_buffer_size);
 	ASSERT(ret);
-	if (req->cmd_flags & REQ_FUA) {
-		pack->is_fua = true;
-	}
-
-	list_add_tail(&reqe->list, &pack->req_ent_list);
-	return true;
+	goto fin;
+	
 error1:
 	destroy_req_entry(reqe);
 error0:
+	LOGd("failure end\n");
 	return false;
 }
 
@@ -686,15 +802,6 @@ static bool is_flush_first_req_entry(struct list_head *req_ent_list)
 	} else {
 		return false;
 	}
-}
-
-/**
- *
- */
-static void print_pack_list(struct list_head *wpack_list)
-{
-	/* now editing */
-
 }
 
 /**
@@ -813,11 +920,18 @@ static void logpack_list_submit_task(struct work_struct *work)
 
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		lhead = get_logpack_header(wpack->logpack_header_sector);
-		logpack_calc_checksum(lhead, wdev->pbs, &wpack->req_ent_list);
-
-		ret = logpack_submit(lhead, wpack->is_fua,
+		
+		if (wpack->is_zero_flush_only) {
+			ASSERT(lhead->n_records == 0);
+			ret = logpack_submit_flush(pdata->ldev, &wpack->bio_ent_list);
+		} else {
+			ASSERT(lhead->n_records > 0);
+			logpack_calc_checksum(lhead, wdev->pbs, &wpack->req_ent_list);
+			ret = logpack_submit(
+				lhead, wpack->is_fua,
 				&wpack->req_ent_list, &wpack->bio_ent_list,
 				wdev->pbs, pdata->ldev, pdata->ring_buffer_off, pdata->ring_buffer_size);
+		}
 		wpack->is_logpack_failed = !ret;
 		if (!ret) { break; }
 	}
@@ -1083,6 +1197,12 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	total_pb = 0;
 	list_for_each_entry(reqe, &pack->req_ent_list, list) {
 
+		CHECK(reqe->req);
+		if (blk_rq_sectors(reqe->req) == 0) {
+			CHECK(reqe->req->cmd_flags & REQ_FLUSH);
+			continue;
+		}
+		
 		CHECK(i < lhead->n_records);
 		lrec = &lhead->record[i];
 		CHECK(lrec);
@@ -1098,13 +1218,16 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		total_pb += capacity_pb(pbs, lrec->io_size);
 		
 		i ++;
-		if (lhead->record[i].is_padding) {
+		if (i < lhead->n_records && lhead->record[i].is_padding) {
 			total_pb += capacity_pb(pbs, lrec->io_size);
 			i ++;
 		}
 	}
 	CHECK(i == lhead->n_records);
 	CHECK(total_pb == lhead->total_io_size);
+	if (lhead->n_records == 0) {
+		CHECK(pack->is_zero_flush_only);
+	}
 	LOGd("is_valid_prepared_pack succeeded.\n");
 	return true;
 error:
@@ -1344,18 +1467,16 @@ error0:
  * Submit a flush request.
  *
  * @bdev block device.
- * @is_fua FUA flag.
  *
  * RETURN:
  *   created bioe containing submitted bio in success, or NULL.
  * CONTEXT:
  *   non-atomic.
  */
-static struct bio_entry* logpack_submit_flush(struct block_device *bdev, bool is_fua)
+static struct bio_entry* submit_flush(struct block_device *bdev)
 {
 	struct bio_entry *bioe;
 	struct bio *bio;
-	int rw = (is_fua ? WRITE_FLUSH_FUA : WRITE_FLUSH);
 
 	bioe = create_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
@@ -1371,7 +1492,7 @@ static struct bio_entry* logpack_submit_flush(struct block_device *bdev, bool is
 	bioe->bi_size = bio->bi_size;
 	ASSERT(bioe->bi_size == 0);
 	
-	submit_bio(rw, bio);
+	submit_bio(WRITE_FLUSH, bio);
 
 	return bioe;
 error1:
@@ -1379,6 +1500,25 @@ error1:
 error0:
 	return NULL;
 }
+
+/**
+ * Submit flush for logpack.
+ */
+static bool logpack_submit_flush(struct block_device *bdev, struct list_head *bio_ent_list)
+{
+	struct bio_entry *bioe;
+	ASSERT(bdev);
+	ASSERT(bio_ent_list);
+
+	bioe = submit_flush(bdev);
+	if (!bioe) { goto error0; }
+	list_add_tail(&bioe->list, bio_ent_list);
+	return true;
+	
+error0:
+	return false;
+}
+
 
 /**
  * Submit logpack entry.
@@ -1431,12 +1571,11 @@ static bool logpack_submit(
 		if (blk_rq_sectors(req) == 0) {
 			ASSERT(req->cmd_flags & REQ_FLUSH); /* such request must be flush. */
 			ASSERT(i == 0); /* such request must be permitted at first only. */
-			bioe = logpack_submit_flush(ldev, is_fua);
-			if (!bioe) {
-				LOGe("memory allocation failed durint logpack submit.\n");
+			ret = logpack_submit_flush(ldev, bio_ent_list);
+			if (!ret) {
+				LOGe("memory allocation failed during logpack submit.\n");
 				goto failed;
 			}
-			list_add_tail(&bioe->list, bio_ent_list);
 		} else {
 			if (lhead->record[i].is_padding) {
 				i ++;
@@ -1519,7 +1658,8 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	struct request *req;
 	struct req_entry *reqe;
 	struct pack_list_work *plwork;
-	struct pack *wpack;
+	struct pack *wpack = NULL;
+	struct walb_logpack_header *lhead;
 	bool ret;
 	u64 latest_lsid, latest_lsid_old;
 	
@@ -1532,19 +1672,21 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	/* Initialize pack_list_work. */
 	plwork = create_pack_list_work(wdev, GFP_ATOMIC);
 	if (!plwork) { goto error0; }
-	/* Create the first writepack. */
-	wpack = create_writepack(GFP_ATOMIC, wdev->pbs, latest_lsid);
-	if (!wpack) { goto error1; }
 
+	LOGd("position 1.\n");
+	
 	/* Fetch requests and create pack list. */
 	while ((req = blk_fetch_request(q)) != NULL) {
 
+		LOGd("process a request.\n");
+		
 		/* print_req_flags(req); */
 		if (req->cmd_flags & REQ_WRITE) {
 			/* REQ_FLUSH must be here. */
 			if (req->cmd_flags & REQ_FLUSH) {
 				LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
 			}
+			LOGd("call writepack_add_req\n"); /* debug */
 			ret = writepack_add_req(&plwork->wpack_list, &wpack, req,
 						pdata->ring_buffer_size,
 						&latest_lsid, wdev, GFP_ATOMIC);
@@ -1560,42 +1702,53 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	req_error:
 		__blk_end_request_all(req, -EIO);
 	}
-	ASSERT(get_next_lsid(get_logpack_header(wpack->logpack_header_sector)) == latest_lsid);
-	
-	/* Enqueue logpack submit work if need. */
-	if (!list_empty(&wpack->req_ent_list)) {
+	LOGd("latest_lsid: %"PRIu64"\n", latest_lsid);
+	if (wpack) {
+		lhead = get_logpack_header(wpack->logpack_header_sector);
+		ASSERT(lhead);
+		/* Check whether zero-flush-only or not. */
+		if (lhead->n_records == 0) {
+			ASSERT(is_zero_flush_only(wpack));
+			wpack->is_zero_flush_only = true;
+		}
+		ASSERT(is_valid_prepared_pack(wpack));
+		/* Update the latest lsid. */
+		latest_lsid = get_next_lsid_unsafe(lhead);
+		print_pack(wpack); /* debug */
+		LOGd("calculated latest_lsid: %"PRIu64"\n", latest_lsid);
+
+		/* Add the last writepack to the list. */
+		ASSERT(!list_empty(&wpack->req_ent_list));
 		list_add_tail(&wpack->list, &plwork->wpack_list);
-	} else {
-		destroy_pack(wpack);
-		wpack = NULL;
 	}
-	if (!list_empty(&plwork->wpack_list)) {
-		print_pack_list(&plwork->wpack_list); /* debug */
-		/* Currently all requests are packed and lsid of all writepacks is defined. */
-		ASSERT(is_valid_pack_list(&plwork->wpack_list));
-		INIT_WORK(&plwork->work, logpack_list_submit_task);
-		queue_work(wq_logpack_submit_, &plwork->work);
-	} else {
+	
+	if (list_empty(&plwork->wpack_list)) {
 		/* No write request. */
 		destroy_pack_list_work(plwork);
 		plwork = NULL;
+	} else {
+		/* Currently all requests are packed and lsid of all writepacks is defined. */
+		if (is_valid_pack_list(&plwork->wpack_list)) {
+			LOGe("is_valid_pack_list failed.\n"); /* debug */
+		}
+		ASSERT(is_valid_pack_list(&plwork->wpack_list));
+		INIT_WORK(&plwork->work, logpack_list_submit_task);
+		queue_work(wq_logpack_submit_, &plwork->work);
+
+		/* Store latest_lsid */
+		ASSERT(latest_lsid >= latest_lsid_old);
+		spin_lock(&pdata->lsid_lock);
+		ASSERT(pdata->latest_lsid == latest_lsid_old);
+		pdata->latest_lsid = latest_lsid;
+		spin_unlock(&pdata->lsid_lock);
 	}
-	
-	/* Store latest_lsid */
-	ASSERT(latest_lsid >= latest_lsid_old);
-	spin_lock(&pdata->lsid_lock);
-	ASSERT(pdata->latest_lsid == latest_lsid_old);
-	pdata->latest_lsid = latest_lsid;
-	spin_unlock(&pdata->lsid_lock);
 	
 	/* LOGd("wrapper_blk_req_request_fn: end.\n"); */
 	return;
 #if 0
-error2:
-	destroy_pack(wpack);
-#endif
 error1:
 	destroy_pack_list_work(plwork);
+#endif
 error0:
 	while ((req = blk_fetch_request(q)) != NULL) {
 		__blk_end_request_all(req, -EIO);
