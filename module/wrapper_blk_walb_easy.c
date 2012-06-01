@@ -923,6 +923,7 @@ static void logpack_list_submit_task(struct work_struct *work)
 		
 		if (wpack->is_zero_flush_only) {
 			ASSERT(lhead->n_records == 0);
+			LOGd("is_zero_flush_only\n"); /* debug */
 			ret = logpack_submit_flush(pdata->ldev, &wpack->bio_ent_list);
 		} else {
 			ASSERT(lhead->n_records > 0);
@@ -1035,6 +1036,8 @@ static void logpack_list_wait_task(struct work_struct *work)
 		ret = logpack_wait(wpack);
 		if (!ret) { is_failed = true; }
 		if (is_failed) { goto failed; }
+		
+		/* Now the logpack is completed. */
 
 		/* Enqueue all related requests for data device. */
 		enqueue_datapack_tasks(wpack, wdev);
@@ -1232,6 +1235,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	return true;
 error:
 	LOGd("is_valid_prepared_pack failed.\n");
+	print_pack(pack); /* debug */
 	return false;
 }
 
@@ -1728,7 +1732,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		plwork = NULL;
 	} else {
 		/* Currently all requests are packed and lsid of all writepacks is defined. */
-		if (is_valid_pack_list(&plwork->wpack_list)) {
+		if (!is_valid_pack_list(&plwork->wpack_list)) {
 			LOGe("is_valid_pack_list failed.\n"); /* debug */
 		}
 		ASSERT(is_valid_pack_list(&plwork->wpack_list));
