@@ -13,6 +13,7 @@
 #include <linux/spinlock.h>
 #include "walb/sector.h"
 #include "wrapper_blk.h"
+#include "treemap.h"
 
 /* Make requrest for wrapper_blk_walb_* modules. */
 void wrapper_blk_req_request_fn(struct request_queue *q);
@@ -57,6 +58,12 @@ struct pdata
 
 	/* If bit 0 is on, all write must failed. */
 	unsigned long flags;
+
+#ifdef WALB_OVERLAPPING_DETECTION
+	spinlock_t overlapping_data_lock; /* Use spin_lock() and spin_unlock(). */
+	multimap_t *overlapping_data; /* key: blk_rq_sectors(req),
+					 val: pointer to req_entry. */
+#endif
 };
 
 /*******************************************************************************

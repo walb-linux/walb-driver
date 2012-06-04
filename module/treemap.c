@@ -484,10 +484,11 @@ error0:
  */
 void map_destroy(map_t *tmap)
 {
-        ASSERT_TREEMAP(tmap);
-        
-        map_empty(tmap);
-        kfree(tmap);
+	if (tmap) {
+		ASSERT_TREEMAP(tmap);
+		map_empty(tmap);
+		kfree(tmap);
+	}
 }
 
 /**
@@ -1001,7 +1002,7 @@ invalid:
  */
 void map_cursor_destroy(map_cursor_t *cursor)
 {
-        kfree(cursor);
+	kfree(cursor);
 }
 
 /**
@@ -1164,10 +1165,11 @@ multimap_t* multimap_create(gfp_t gfp_mask)
  */
 void multimap_destroy(multimap_t *tmap)
 {
-        ASSERT_TREEMAP(tmap);
-        
-        multimap_empty(tmap);
-        kfree(tmap);
+	if (tmap) {
+		ASSERT_TREEMAP(tmap);
+		multimap_empty(tmap);
+		kfree(tmap);
+	}
 }
 
 /**
@@ -1178,7 +1180,7 @@ void multimap_destroy(multimap_t *tmap)
  *
  * @return 0 in success,
  *         -ENOMEM if no memory.
- *         -EEXIST if key already exists.
+ *         -EEXIST if key-value pair already exists.
  *         -EINVAL if value is invalid.
  */
 int multimap_add(multimap_t *tmap, u64 key, unsigned long val, gfp_t gfp_mask)

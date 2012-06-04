@@ -15,6 +15,7 @@
 #include "wrapper_blk_walb.h"
 #include "sector_io.h"
 #include "logpack.h"
+#include "treemap.h"
 #include "walb/walb.h"
 #include "walb/block_size.h"
 
@@ -77,6 +78,11 @@ struct req_entry
 	/* Notification from write_req_task to gc_task.
 	   read_req_task does not use this. */
 	struct completion done;
+
+#ifdef WALB_OVERLAPPING_DETECTION
+	struct completion overlapping_done;
+	int n_overlapping; /* initial value is -1. */
+#endif
 };
 /* kmem cache for dbio. */
 #define KMEM_CACHE_REQ_ENTRY_NAME "req_entry_cache"
@@ -210,6 +216,14 @@ static bool logpack_submit(
 static int wait_for_bio_entry_list(struct list_head *bio_ent_list);
 static void wait_logpack_and_enqueue_datapack_tasks(
 	struct pack *wpack, struct wrapper_blk_dev *wdev);
+
+/* Overlapping data functions. */
+#ifdef WALB_OVERLAPPING_DETECTION
+static bool overlapping_check_and_insert(
+	multimap_t *overlapping_data, struct req_entry *reqe);
+static void overlapping_del_and_notify(
+	multimap_t *overlapping_data, struct req_entry *reqe);
+#endif
 
 /*******************************************************************************
  * Static functions definition.
@@ -415,6 +429,10 @@ static struct req_entry* create_req_entry(
 	INIT_LIST_HEAD(&reqe->bio_ent_list);
 	init_completion(&reqe->done);
         
+#ifdef WALB_OVERLAPPING_DETECTION
+	init_completion(&reqe->overlapping_done);
+	reqe->n_overlapping = -1;
+#endif
 	return reqe;
 error0:
 	return NULL;
@@ -1022,9 +1040,12 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 			blk_end_request_all(req, 0);
 			destroy_req_entry(reqe);
 		} else {
+#ifdef WALB_OVERLAPPING_DETECTION
 			/* check and insert to overlapping detection data. */
-			/* not yet implemented */
-
+			spin_lock(&pdata->overlapping_data_lock);
+			overlapping_check_and_insert(pdata->overlapping_data, reqe);
+			spin_unlock(&pdata->overlapping_data_lock);
+#endif
 			/* Enqueue as a write req task. */
 			INIT_WORK(&reqe->work, write_req_task);
 			queue_work(wq_normal_, &reqe->work);
@@ -1124,8 +1145,10 @@ static void write_req_task(struct work_struct *work)
 	ASSERT(list_empty(&reqe->bio_ent_list));
 	
 	/* Wait for previous overlapping writes. */
-	/* not yet implemented */
-
+#ifdef WALB_OVERLAPPING_DETECTION
+	wait_for_completion(&reqe->overlapping_done);
+#endif
+	
 	/* Create all related bio(s). */
 	if (!create_bio_entry_list(reqe, pdata->ddev)) {
 		goto alloc_error;
@@ -1140,7 +1163,11 @@ static void write_req_task(struct work_struct *work)
 	wait_for_req_entry(reqe, is_end_request);
 
 	/* Delete from overlapping detection data. */
-	/* not yet implemented */
+#ifdef WALB_OVERLAPPING_DETECTION
+	spin_lock(&pdata->overlapping_data_lock);
+	overlapping_del_and_notify(pdata->overlapping_data, reqe);
+	spin_unlock(&pdata->overlapping_data_lock);
+#endif
 
 	/* Notify logpack_list_gc_task().
 	   Reqe will be destroyed in logpack_list_gc_task(). */
@@ -1634,6 +1661,40 @@ static bool logpack_submit(
 failed:
 	return false;
 }
+
+/**
+ * Overlapping check and insert.
+ *
+ * CONTEXT:
+ *   overlapping_data lock must be held.
+ * RETURN:
+ *   true in success, or false (memory allocation failure).
+ */
+#ifdef WALB_OVERLAPPING_DETECTION
+static bool overlapping_check_and_insert(
+	multimap_t *overlapping_data, struct req_entry *reqe)
+{
+	/* now editing */
+
+	complete(&reqe->overlapping_done);
+	return true;
+}
+#endif
+
+/**
+ * Delete a req_entry from the overlapping data,
+ * and notify waiting overlapping requests.
+ *
+ * CONTEXT:
+ *   overlapping_data lock must be held.
+ */
+#ifdef WALB_OVERLAPPING_DETECTION
+static void overlapping_del_and_notify(
+	multimap_t *overlapping_data, struct req_entry *reqe)
+{
+	/* now editing */
+}
+#endif
 
 /*******************************************************************************
  * Global functions definition.
