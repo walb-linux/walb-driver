@@ -46,13 +46,17 @@ struct pdata
 	spinlock_t lsuper0_lock; /* Use spin_lock() and spin_unlock(). */
 	struct sector_data *lsuper0; /* lsuper0_lock must be held
 					to access the sector image. */
-	u64 ring_buffer_size; /* To avoid lock lsuper0
-				 in the request_fn. */
 
+	/* To avoid lock lsuper0 during request processing. */
+	u64 ring_buffer_off; 
+	u64 ring_buffer_size;
 	
 	spinlock_t pending_data_lock; /* Use spin_lock() and spin_unlock(). */
 	struct list_head writepack_list; /* list head of writepack.
 					    pending_data_lock must be held. */
+
+	/* If bit 0 is on, all write must failed. */
+	unsigned long flags;
 };
 
 /*******************************************************************************
@@ -82,6 +86,28 @@ static inline bool is_overlap_req(struct request *req0, struct request *req1)
 		blk_rq_pos(req1) + blk_rq_sectors(req1) > blk_rq_pos(req0));
 }
 
+/**
+ * Check read-only mode.
+ */
+static inline int is_read_only_mode(struct pdata *pdata)
+{
+	return test_bit(0, &pdata->flags);
+}
 
+/**
+ * Set read-only mode.
+ */
+static inline void set_read_only_mode(struct pdata *pdata)
+{
+	set_bit(0, &pdata->flags);
+}
+
+/**
+ * Clear read-only mode.
+ */
+static inline void clear_read_only_mode(struct pdata *pdata)
+{
+	clear_bit(0, &pdata->flags);
+}
 
 #endif /* WALB_WRAPPER_BLK_WALB_H_KERNEL */

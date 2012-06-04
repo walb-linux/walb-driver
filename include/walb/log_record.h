@@ -167,9 +167,14 @@ static inline int is_valid_logpack_header(
 {
 
         CHECK(lhead);
-        CHECK(lhead->n_records > 0);
-        CHECK(lhead->total_io_size > 0);
-        CHECK(lhead->sector_type == SECTOR_TYPE_LOGPACK);
+	CHECK(lhead->sector_type == SECTOR_TYPE_LOGPACK);
+	if (lhead->n_records == 0) {
+		CHECK(lhead->total_io_size == 0);
+		CHECK(lhead->n_padding == 0);
+	} else {	
+		CHECK(lhead->total_io_size > 0);
+		CHECK(lhead->n_padding < lhead->n_records);
+	}
         return 1;
 error:
         LOGe("log pack header is invalid "
@@ -180,12 +185,25 @@ error:
 }
 
 /**
- * Get next lsid of the logpack header.
+ * Get next lsid of a logpack header.
+ * This does not validate the logpack header.
+ */
+static inline u64 get_next_lsid_unsafe(const struct walb_logpack_header *lhead)
+{
+	if (lhead->total_io_size == 0) {
+		return lhead->logpack_lsid;
+	} else {
+		return lhead->logpack_lsid + 1 + lhead->total_io_size;
+	}
+}
+
+/**
+ * Get next lsid of a logpack header.
  */
 static inline u64 get_next_lsid(const struct walb_logpack_header *lhead)
 {
 	ASSERT(is_valid_logpack_header(lhead));
-	return lhead->logpack_lsid + 1 + lhead->total_io_size;
+	return get_next_lsid_unsafe(lhead);
 }
 
 #endif /* WALB_LOG_RECORD_H */

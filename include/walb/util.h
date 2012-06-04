@@ -11,8 +11,18 @@
 /**
  * Check macro for is_valid_* functions.
  */
-#define CHECK(cond) { if (!(cond)) goto error; }
-
+#define CHECK(cond) do {				\
+		if (!(cond)) {				\
+			LOGd("CHECK failed.\n");	\
+			goto error;			\
+		}					\
+	} while (0)
+#define CHECK_MSG(cond, msg) do {		\
+		if (!(cond)) {			\
+			LOGd("%s", msg);	\
+			goto error;		\
+		}				\
+	} while (0)
 
 /**
  * Sprint byte array.

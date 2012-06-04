@@ -109,13 +109,33 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		goto error2;
 	}
 
+        /* Block size */
+        lbs = bdev_logical_block_size(ddev);
+        pbs = bdev_physical_block_size(ddev);
+	LOGn("pbs: %u lbs: %u\n", pbs, lbs);
+        
+        if (lbs != LOGICAL_BLOCK_SIZE) {
+		LOGe("logical block size must be %u but %u.\n",
+			LOGICAL_BLOCK_SIZE, lbs);
+                goto error3;
+        }
+	ASSERT(bdev_logical_block_size(ldev) == lbs);
+	if (bdev_physical_block_size(ldev) != pbs) {
+		LOGe("physical block size is different (ldev: %u, ddev: %u).\n",
+			bdev_physical_block_size(ldev), pbs);
+		goto error3;
+	}
+	wdev->pbs = pbs;
+        blk_queue_logical_block_size(wdev->queue, lbs);
+        blk_queue_physical_block_size(wdev->queue, pbs);
+
 	/* Prepare pdata. */
 	pdata->ldev = ldev;
 	pdata->ddev = ddev;
         wdev->private_data = pdata;
 
 	/* Load super block. */
-	pdata->lsuper0 = sector_alloc(GFP_KERNEL, pbs);
+	pdata->lsuper0 = sector_alloc(pbs, GFP_KERNEL);
 	if (!pdata->lsuper0) {
 		goto error3;
 	}
@@ -128,26 +148,16 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->oldest_lsid = ssect->oldest_lsid;
 	pdata->latest_lsid = pdata->written_lsid; /* redo must be done. */
 	pdata->ring_buffer_size = ssect->ring_buffer_size;
+	pdata->ring_buffer_off = get_ring_buffer_offset_2(ssect);
+	pdata->flags = 0;
 	
         /* capacity */
         wdev->capacity = get_capacity(ddev->bd_disk);
         set_capacity(wdev->gd, wdev->capacity);
 
-        /* Block size */
-        lbs = bdev_logical_block_size(ddev);
-        pbs = bdev_physical_block_size(ddev);
-        
-        if (lbs != LOGICAL_BLOCK_SIZE) {
-		LOGe("logical block size must be %u but %u.\n",
-			LOGICAL_BLOCK_SIZE, lbs);
-                goto error4;
-        }
-	wdev->pbs = pbs;
-        blk_queue_logical_block_size(wdev->queue, lbs);
-        blk_queue_physical_block_size(wdev->queue, pbs);
-
+	/* Set limit. */
+        blk_queue_stack_limits(wdev->queue, bdev_get_queue(ldev));
         blk_queue_stack_limits(wdev->queue, bdev_get_queue(ddev));
-
 	
         return true;
 
@@ -213,10 +223,10 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
                         blk_queue_flush(q, REQ_FLUSH);
                 }
         } else {
-                LOGn("Supports REQ_FLUSH (the underlying device does not support).");
-		blk_queue_flush(q, REQ_FLUSH);
+                LOGn("Supports neither REQ_FLUSH nor REQ_FUA.");
         }
 
+#if 0
         if (blk_queue_discard(uq)) {
                 /* Accept REQ_DISCARD. */
                 LOGn("Supports REQ_DISCARD.");
@@ -229,6 +239,7 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
         } else {
                 LOGn("Not support REQ_DISCARD.");
         }
+#endif 
 }
 
 static unsigned int get_minor(unsigned int id)
