@@ -56,25 +56,6 @@ struct pack_list_work
 struct kmem_cache *pack_list_work_cache_ = NULL;
 
 /**
- * A write pack.
- * There are no overlapping requests in a pack.
- */
-struct pack
-{
-	struct list_head list; /* list entry. */
-	struct list_head req_ent_list; /* list head of req_entry. */
-
-	bool is_zero_flush_only; /* true if req_ent_list contains only a zero-size flush. */
-	bool is_fua; /* FUA flag. */
-	struct sector_data *logpack_header_sector;
-	struct list_head bio_ent_list; /* list head of logpack bio. */
-
-	bool is_logpack_failed; /* true if submittion failed. */
-};
-#define KMEM_CACHE_PACK_NAME "pack_cache"
-struct kmem_cache *pack_cache_ = NULL;
-
-/**
  * Request entry struct.
  */
 struct req_entry
@@ -117,6 +98,26 @@ struct bio_entry
 #define KMEM_CACHE_BIO_ENTRY_NAME "bio_entry_cache"
 struct kmem_cache *bio_entry_cache_ = NULL;
 
+/**
+ * A write pack.
+ * There are no overlapping requests in a pack.
+ */
+struct pack
+{
+	struct list_head list; /* list entry. */
+	struct list_head req_ent_list; /* list head of req_entry. */
+
+	bool is_zero_flush_only; /* true if req_ent_list contains only a zero-size flush. */
+	bool is_fua; /* FUA flag. */
+	struct sector_data *logpack_header_sector;
+	struct list_head bio_ent_list; /* list head for zero_flush bio
+					  or logpack header bio. */
+
+	bool is_logpack_failed; /* true if submittion failed. */
+};
+#define KMEM_CACHE_PACK_NAME "pack_cache"
+struct kmem_cache *pack_cache_ = NULL;
+
 /*******************************************************************************
  * Macros definition.
  *******************************************************************************/
@@ -127,10 +128,10 @@ struct kmem_cache *bio_entry_cache_ = NULL;
 
 /* Print functions for debug. */
 UNUSED static void print_req_flags(struct request *req);
-UNUSED static void print_bio_entry(struct bio_entry *bioe);
-UNUSED static void print_req_entry(struct req_entry *reqe);
-UNUSED static void print_pack(struct pack *pack);
-UNUSED static void print_pack_list(struct list_head *wpack_list);
+UNUSED static void print_bio_entry(const char *level, struct bio_entry *bioe);
+UNUSED static void print_req_entry(const char *level, struct req_entry *reqe);
+UNUSED static void print_pack(const char *level, struct pack *pack);
+UNUSED static void print_pack_list(const char *level, struct list_head *wpack_list);
 
 /* pack_list_work related. */
 static struct pack_list_work* create_pack_list_work(
@@ -145,6 +146,7 @@ static void destroy_req_entry(struct req_entry *reqe);
 /* bio_entry related. */
 static void bio_entry_end_io(struct bio *bio, int error);
 static struct bio_entry* create_bio_entry(gfp_t gfp_mask);
+static void init_bio_entry(struct bio_entry *bioe);
 static struct bio_entry* create_bio_entry_by_clone(
 	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
 static void destroy_bio_entry(struct bio_entry *bioe);
@@ -154,7 +156,7 @@ static struct pack* create_pack(gfp_t gfp_mask);
 static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
 static void destroy_pack(struct pack *pack);
 static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe);
-static bool is_zero_flush_only(struct pack *pack);
+UNUSED static bool is_zero_flush_only(struct pack *pack);
 
 
 /* helper function. */
@@ -174,7 +176,7 @@ static void read_req_task(struct work_struct *work);
 /* Helper functions for bio_entry list. */
 static bool create_bio_entry_list(struct req_entry *reqe, struct block_device *bdev);
 static void submit_bio_entry_list(struct req_entry *reqe);
-static void wait_for_bio_entry_list(struct req_entry *reqe, bool is_end_request);
+static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request);
 
 /* Validator for debug. */
 static bool is_valid_prepared_pack(struct pack *pack);
@@ -205,13 +207,9 @@ static bool logpack_submit(
 	unsigned int pbs, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size);
 
-
-static bool logpack_wait(struct pack *wpack);
-static void enqueue_datapack_tasks(struct pack *wpack, struct wrapper_blk_dev *wdev);
-static void logpack_end_err(struct request_queue *q, struct pack *wpack);
-static void logpack_end_err_wo_lock(struct pack *wpack);
-
-
+static int wait_for_bio_entry_list(struct list_head *bio_ent_list);
+static void wait_logpack_and_enqueue_datapack_tasks(
+	struct pack *wpack, struct wrapper_blk_dev *wdev);
 
 /*******************************************************************************
  * Static functions definition.
@@ -265,7 +263,7 @@ static void print_req_flags(struct request *req)
  * Print a bio_entry.
  */
 UNUSED
-static void print_bio_entry(struct bio_entry *bioe)
+static void print_bio_entry(const char *level, struct bio_entry *bioe)
 {
 	ASSERT(bioe);
 	/* now editing */
@@ -275,7 +273,7 @@ static void print_bio_entry(struct bio_entry *bioe)
  * Print a req_entry.
  */
 UNUSED
-static void print_req_entry(struct req_entry *reqe)
+static void print_req_entry(const char *level, struct req_entry *reqe)
 {
 	ASSERT(reqe);
 	/* now editing */
@@ -285,61 +283,64 @@ static void print_req_entry(struct req_entry *reqe)
  * Print a pack data for debug.
  */
 UNUSED
-static void print_pack(struct pack *pack)
+static void print_pack(const char *level, struct pack *pack)
 {
 	struct walb_logpack_header *lhead;
 	struct req_entry *reqe;
 	struct bio_entry *bioe;
 	unsigned int i;
+	ASSERT(level);
 	ASSERT(pack);
 
-	LOGd("print_pack %p begin\n", pack);
+	printk("%s""print_pack %p begin\n", level, pack);
 	
 	i = 0;
 	list_for_each_entry(reqe, &pack->req_ent_list, list) {
 		i ++;
-		print_req_entry(reqe);
+		print_req_entry(level, reqe);
 	}
-	LOGd("number of req_entry in req_ent_list: %u.\n", i);
+	printk("%s""number of req_entry in req_ent_list: %u.\n", level, i);
 
 	i = 0;
 	list_for_each_entry(bioe, &pack->bio_ent_list, list) {
 		i ++;
-		print_bio_entry(bioe);
+		print_bio_entry(level, bioe);
 	}
-	LOGd("number of bio_entry in bio_ent_list: %u.\n", i);
+	printk("%s""number of bio_entry in bio_ent_list: %u.\n", level, i);
 
 	/* logpack header */
 	if (pack->logpack_header_sector) {
 		lhead = get_logpack_header(pack->logpack_header_sector);
-		walb_logpack_header_print(KERN_DEBUG, lhead);
+		walb_logpack_header_print(level, lhead);
 	} else {
-		LOGd("logpack_header_sector is NULL.\n");
+		printk("%s""logpack_header_sector is NULL.\n", level);
 	}
 
-	LOGd("is_fua: %u\nis_logpack_failed: %u\n",
+	printk("%s""is_fua: %u\nis_logpack_failed: %u\n",
+		level,
 		pack->is_fua, pack->is_logpack_failed);
 
-	LOGd("print_pack %p end\n", pack);
+	printk("%s""print_pack %p end\n", level, pack);
 }
 
 /**
  * Print a list of pack data for debug.
  */
 UNUSED
-static void print_pack_list(struct list_head *wpack_list)
+static void print_pack_list(const char *level, struct list_head *wpack_list)
 {
 	struct pack *pack;
 	unsigned int i = 0;
+	ASSERT(level);
 	ASSERT(wpack_list);
 	
-	LOGd("print_pack_list %p begin.\n", wpack_list);
+	printk("%s""print_pack_list %p begin.\n", level, wpack_list);
 	list_for_each_entry(pack, wpack_list, list) {
 		LOGd("%u: ", i);
-		print_pack(pack);
+		print_pack(level, pack);
 		i ++;
 	}
-	LOGd("print_pack_list %p end.\n", wpack_list);
+	printk("%s""print_pack_list %p end.\n", level, wpack_list);
 }
 
 /**
@@ -460,6 +461,19 @@ static void bio_entry_end_io(struct bio *bio, int error)
 }
 
 /**
+ * Initialize a bio_entry.
+ */
+static void init_bio_entry(struct bio_entry *bioe)
+{
+	ASSERT(bioe);
+	
+	init_completion(&bioe->done);
+	bioe->error = 0;
+	bioe->bio = NULL;
+	bioe->bi_size = 0;
+}
+
+/**
  * Create a bio_entry.
  * Internal bio and bi_size will be set NULL.
  */
@@ -472,10 +486,7 @@ static struct bio_entry* create_bio_entry(gfp_t gfp_mask)
 		LOGd("kmem_cache_alloc() failed.");
 		goto error0;
 	}
-	init_completion(&bioe->done);
-	bioe->error = 0;
-	bioe->bio = NULL;
-	bioe->bi_size = 0;
+	init_bio_entry(bioe);
 	return bioe;
 
 error0:
@@ -658,6 +669,7 @@ static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe)
  * RETURN:
  *   true if pack contains only one request and it is zero-size flush, or false.
  */
+UNUSED
 static bool is_zero_flush_only(struct pack *pack)
 {
 	struct walb_logpack_header *lhead;
@@ -757,7 +769,6 @@ fin:
 newpack:
 	if (lhead) {
 		ASSERT(pack);
-		print_pack(pack); /* debug */
 		if (lhead->n_records == 0) {
 			ASSERT(is_zero_flush_only(pack));
 			pack->is_zero_flush_only = true;
@@ -867,7 +878,7 @@ static void submit_bio_entry_list(struct req_entry *reqe)
  * CONTEXT:
  *   non-irq. non-atomic.
  */
-static void wait_for_bio_entry_list(struct req_entry *reqe, bool is_end_request)
+static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request)
 {
 	struct bio_entry *bioe, *next;
 	int remaining;
@@ -875,12 +886,12 @@ static void wait_for_bio_entry_list(struct req_entry *reqe, bool is_end_request)
         
 	remaining = blk_rq_bytes(reqe->req);
 	list_for_each_entry_safe(bioe, next, &reqe->bio_ent_list, list) {
-		list_del(&bioe->list);
 		wait_for_completion(&bioe->done);
 		if (is_end_request) {
 			blk_end_request(reqe->req, bioe->error, bioe->bi_size);
 		}
 		remaining -= bioe->bi_size;
+		list_del(&bioe->list);
 		destroy_bio_entry(bioe);
 	}
 	ASSERT(remaining == 0);
@@ -944,59 +955,71 @@ static void logpack_list_submit_task(struct work_struct *work)
 }
 
 /**
- * Wait for completion of all bio(s) related to the logpack.
+ * Wait for all bio(s) completion in a bio_entry list.
+ * Each bio_entry will be deleted.
+ *
+ * @bio_ent_list list head of bio_entry.
  *
  * RETURN:
- *   true if all bio(s) succeeded, or false.
+ *   error of the last failed bio (0 means success).
  */
-static bool logpack_wait(struct pack *wpack)
+static int wait_for_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe, *next_bioe;
-	bool is_failed = false;
-
-	ASSERT(wpack);
-
-	list_for_each_entry_safe(bioe, next_bioe, &wpack->bio_ent_list, list) {
+	int bio_error = 0;
+	ASSERT(bio_ent_list);
+	
+	list_for_each_entry_safe(bioe, next_bioe, bio_ent_list, list) {
 		list_del(&bioe->list);
 		wait_for_completion(&bioe->done);
-		if (bioe->error) { is_failed = true; }
+		if (bioe->error) { bio_error = bioe->error; }
 		destroy_bio_entry(bioe);
 	}
-	ASSERT(list_empty(&wpack->bio_ent_list));
-
-	return !is_failed && !wpack->is_logpack_failed;
+	ASSERT(list_empty(bio_ent_list));
+	return bio_error;
 }
 
 /**
- * Enqueue all requests in a writepack for data device IO.
+ * Wait for completion of all bio(s) and enqueue datapack tasks.
  *
- * @wpack writepack.
- * @wdev wrapper block device.
+ * Request success -> enqueue datapack.
+ * Request failure-> all subsequent requests must fail.
  *
- * CONTEXT:
- *   this function call is serialized by singlethread workqueue.
+ * If any write failed, wdev will be read-only mode.
  */
-static void enqueue_datapack_tasks(struct pack *wpack, struct wrapper_blk_dev *wdev)
+static void wait_logpack_and_enqueue_datapack_tasks(
+	struct pack *wpack, struct wrapper_blk_dev *wdev)
 {
+	int bio_error;
 	struct req_entry *reqe, *next_reqe;
 	struct request *req;
-	
+	bool is_failed = false;
+	struct pdata *pdata;
 	ASSERT(wpack);
-	ASSERT(!wpack->is_logpack_failed);
-	ASSERT(list_empty(&wpack->bio_ent_list));
 	ASSERT(wdev);
 
+	/* Check read only mode. */
+	pdata = pdata_get_from_wdev(wdev);
+	if (is_read_only_mode(pdata)) { is_failed = true; }
+	
+	/* Wait for logpack header bio or zero_flush pack bio. */
+	bio_error = wait_for_bio_entry_list(&wpack->bio_ent_list);
+	if (bio_error) { is_failed = true; }
+	
 	list_for_each_entry_safe(reqe, next_reqe, &wpack->req_ent_list, list) {
 
 		req = reqe->req;
 		ASSERT(req);
+		
+		bio_error = wait_for_bio_entry_list(&reqe->bio_ent_list);
+		if (is_failed || bio_error) { goto failed; }
+		
 		if (blk_rq_sectors(req) == 0) {
 
 			ASSERT(req->cmd_flags & REQ_FLUSH);
 			/* Already the corresponding logpack is permanent. */
-			blk_end_request_all(req, 0);
-
 			list_del(&reqe->list);
+			blk_end_request_all(req, 0);
 			destroy_req_entry(reqe);
 		} else {
 			/* check and insert to overlapping detection data. */
@@ -1006,6 +1029,18 @@ static void enqueue_datapack_tasks(struct pack *wpack, struct wrapper_blk_dev *w
 			INIT_WORK(&reqe->work, write_req_task);
 			queue_work(wq_normal_, &reqe->work);
 		}
+		continue;
+	failed:
+		is_failed = true;
+		blk_end_request_all(req, -EIO);
+		list_del(&reqe->list);
+		destroy_req_entry(reqe);
+	}
+	/* Now &wpack->bio_ent_list is empty and
+	   reqe->bio_ent_list of all reqe in &wpack->req_ent_list are also empty. */
+
+	if (is_failed) {
+		set_read_only_mode(pdata);
 	}
 }
 
@@ -1027,23 +1062,11 @@ static void logpack_list_wait_task(struct work_struct *work)
 {
 	struct pack_list_work *plwork = container_of(work, struct pack_list_work, work);
 	struct wrapper_blk_dev *wdev = plwork->wdev;
-	bool is_failed = false;
 	struct pack *wpack;
-	bool ret;
 
 	list_for_each_entry(wpack, &plwork->wpack_list, list) {
-
-		ret = logpack_wait(wpack);
-		if (!ret) { is_failed = true; }
-		if (is_failed) { goto failed; }
 		
-		/* Now the logpack is completed. */
-
-		/* Enqueue all related requests for data device. */
-		enqueue_datapack_tasks(wpack, wdev);
-		continue;
-	failed:
-		logpack_end_err(wdev->queue, wpack);
+		wait_logpack_and_enqueue_datapack_tasks(wpack, wdev);
 	}
 	
 	/* Enqueue logpack list gc task. */
@@ -1114,7 +1137,7 @@ static void write_req_task(struct work_struct *work)
 	blk_finish_plug(&plug);
 
 	/* Wait for completion and call end_request. */
-	wait_for_bio_entry_list(reqe, is_end_request);
+	wait_for_req_entry(reqe, is_end_request);
 
 	/* Delete from overlapping detection data. */
 	/* not yet implemented */
@@ -1157,7 +1180,7 @@ static void read_req_task(struct work_struct *work)
 	blk_finish_plug(&plug);
 
 	/* Wait for completion and call end_request. */
-	wait_for_bio_entry_list(reqe, is_end_request);
+	wait_for_req_entry(reqe, is_end_request);
 	goto fin;
 
 error:
@@ -1182,6 +1205,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	unsigned int i;
 	struct req_entry *reqe;
 	u64 total_pb; /* total io size in physical block. */
+	unsigned int n_padding = 0;
 
 	LOGd("is_valid_prepared_pack begin.\n");
 	
@@ -1205,14 +1229,27 @@ static bool is_valid_prepared_pack(struct pack *pack)
 			CHECK(reqe->req->cmd_flags & REQ_FLUSH);
 			continue;
 		}
-		
+
 		CHECK(i < lhead->n_records);
 		lrec = &lhead->record[i];
 		CHECK(lrec);
 		CHECK(lrec->is_exist);
-		CHECK(!(lrec->is_padding));
-		CHECK(reqe->req);
+		
+		if (lrec->is_padding) {
+			LOGn("padding found.\n"); /* debug */
+			total_pb += capacity_pb(pbs, lrec->io_size);
+			n_padding ++;
+			i ++;
 
+			/* The padding record is not the last. */
+			CHECK(i < lhead->n_records);
+			lrec = &lhead->record[i];
+			CHECK(lrec);
+			CHECK(lrec->is_exist);
+		}
+
+		/* Normal record. */
+		CHECK(reqe->req);
 		CHECK(reqe->req->cmd_flags & REQ_WRITE);
 
 		CHECK(blk_rq_pos(reqe->req) == (sector_t)lrec->offset);
@@ -1221,13 +1258,10 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		total_pb += capacity_pb(pbs, lrec->io_size);
 		
 		i ++;
-		if (i < lhead->n_records && lhead->record[i].is_padding) {
-			total_pb += capacity_pb(pbs, lrec->io_size);
-			i ++;
-		}
 	}
 	CHECK(i == lhead->n_records);
 	CHECK(total_pb == lhead->total_io_size);
+	CHECK(n_padding == lhead->n_padding);
 	if (lhead->n_records == 0) {
 		CHECK(pack->is_zero_flush_only);
 	}
@@ -1235,7 +1269,6 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	return true;
 error:
 	LOGd("is_valid_prepared_pack failed.\n");
-	print_pack(pack); /* debug */
 	return false;
 }
 
@@ -1293,7 +1326,7 @@ static void logpack_calc_checksum(
                 if (lhead->record[i].is_padding) {
                         n_padding ++;
                         i ++;
-                        continue;
+			/* A padding record is not the last in the logpack header. */
                 }
 		
 		ASSERT(reqe);
@@ -1531,7 +1564,7 @@ error0:
  * @is_fua FUA flag.
  * @req_ent_list request entry list.
  * @bio_ent_list bio entry list.
- *   all submitted bios will be added to the list.
+ *   submitted bios for logpack header will be added to the list.
  * @wdev wrapper block device.
  *
  * RETURN:
@@ -1575,11 +1608,9 @@ static bool logpack_submit(
 		if (blk_rq_sectors(req) == 0) {
 			ASSERT(req->cmd_flags & REQ_FLUSH); /* such request must be flush. */
 			ASSERT(i == 0); /* such request must be permitted at first only. */
-			ret = logpack_submit_flush(ldev, bio_ent_list);
-			if (!ret) {
-				LOGe("memory allocation failed during logpack submit.\n");
-				goto failed;
-			}
+			ASSERT(is_flush); /* logpack header bio must have REQ_FLUSH. */
+			/* You do not need to submit it
+			   because logpack header bio already has REQ_FLUSH. */
 		} else {
 			if (lhead->record[i].is_padding) {
 				i ++;
@@ -1589,7 +1620,7 @@ static bool logpack_submit(
 			req_lsid = lhead->record[i].lsid;
 
 			ret = logpack_submit_req(
-				req, req_lsid, is_fua, bio_ent_list,
+				req, req_lsid, is_fua, &reqe->bio_ent_list,
 				pbs, ldev, ring_buffer_off, ring_buffer_size);
 			if (!ret) {
 				LOGe("memory allocation failed during logpack submit.\n");
@@ -1602,46 +1633,6 @@ static bool logpack_submit(
 
 failed:
 	return false;
-}
-
-/**
- * Call end_request for all requests related to a logpack.
- *
- * @q queue (for lock).
- * @wpack target write pack.
- *
- * CONTEXT:
- *   non-atomic.
- *   queue lock is not held.
- */
-static void logpack_end_err(struct request_queue *q, struct pack *wpack)
-{
-	unsigned long flags;
-	ASSERT(q);
-	
-	spin_lock_irqsave(q->queue_lock, flags);
-	logpack_end_err_wo_lock(wpack);
-	spin_unlock_irqrestore(q->queue_lock, flags);
-}
-
-/**
- * Call end request for all requests related to a logpck.
- *
- * CONTEXT:
- *   queue lock is held.
- */
-static void logpack_end_err_wo_lock(struct pack *wpack)
-{
-	struct req_entry *reqe, *next_reqe;
-	ASSERT(wpack);
-
-	/* end_request for all related requests with error. */
-	list_for_each_entry_safe(reqe, next_reqe, &wpack->req_ent_list, list) {
-		list_del(&reqe->list);
-		__blk_end_request_all(reqe->req, -EIO);
-		destroy_req_entry(reqe);
-	}
-	ASSERT(list_empty(&wpack->req_ent_list));
 }
 
 /*******************************************************************************
@@ -1686,6 +1677,9 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		
 		/* print_req_flags(req); */
 		if (req->cmd_flags & REQ_WRITE) {
+
+			if (is_read_only_mode(pdata)) { goto req_error; }
+			
 			/* REQ_FLUSH must be here. */
 			if (req->cmd_flags & REQ_FLUSH) {
 				LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
@@ -1718,7 +1712,6 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		ASSERT(is_valid_prepared_pack(wpack));
 		/* Update the latest lsid. */
 		latest_lsid = get_next_lsid_unsafe(lhead);
-		print_pack(wpack); /* debug */
 		LOGd("calculated latest_lsid: %"PRIu64"\n", latest_lsid);
 
 		/* Add the last writepack to the list. */
@@ -1732,9 +1725,6 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		plwork = NULL;
 	} else {
 		/* Currently all requests are packed and lsid of all writepacks is defined. */
-		if (!is_valid_pack_list(&plwork->wpack_list)) {
-			LOGe("is_valid_pack_list failed.\n"); /* debug */
-		}
 		ASSERT(is_valid_pack_list(&plwork->wpack_list));
 		INIT_WORK(&plwork->work, logpack_list_submit_task);
 		queue_work(wq_logpack_submit_, &plwork->work);

@@ -149,6 +149,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->latest_lsid = pdata->written_lsid; /* redo must be done. */
 	pdata->ring_buffer_size = ssect->ring_buffer_size;
 	pdata->ring_buffer_off = get_ring_buffer_offset_2(ssect);
+	pdata->flags = 0;
 	
         /* capacity */
         wdev->capacity = get_capacity(ddev->bd_disk);

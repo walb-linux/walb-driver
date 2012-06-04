@@ -170,8 +170,10 @@ static inline int is_valid_logpack_header(
 	CHECK(lhead->sector_type == SECTOR_TYPE_LOGPACK);
 	if (lhead->n_records == 0) {
 		CHECK(lhead->total_io_size == 0);
+		CHECK(lhead->n_padding == 0);
 	} else {	
 		CHECK(lhead->total_io_size > 0);
+		CHECK(lhead->n_padding < lhead->n_records);
 	}
         return 1;
 error:
