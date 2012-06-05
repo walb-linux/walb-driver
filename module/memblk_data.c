@@ -13,6 +13,11 @@
 #include "util.h" /* for debug */
 #include "walb/util.h" /* for debug */
 
+/*
+ * You must call mdata_init() at first,
+ * and mdata_exit() before exit.
+ */
+
 /*******************************************************************************
  * Static variables prototype.
  *******************************************************************************/
@@ -495,5 +500,20 @@ error:
         return false;
 }
 
+/**
+ * Initialize.
+ */
+bool mdata_init(void)
+{
+	return treemap_init();
+}
+
+/**
+ * Finalize.
+ */
+void mdata_exit(void)
+{
+	treemap_exit();
+}
 
 /* end of file */

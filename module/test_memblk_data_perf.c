@@ -178,7 +178,8 @@ static int __init test_init(void)
 {
         int i, j;
         LOGe("BUILD_DATE %s\n", BUILD_DATE);
-        
+
+	mdata_init();
         create_test_data(1048576);
         for (j = 0; j < 5; j ++) {
                 for (i = 1; i <= 8; i ++) {
@@ -192,6 +193,7 @@ static int __init test_init(void)
                 }
         }
         destroy_test_data();
+	mdata_exit();
         
         return -1;
 }

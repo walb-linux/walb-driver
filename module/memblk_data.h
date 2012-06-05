@@ -92,4 +92,9 @@ bool test_memblk_data(u64 capacity, const u32 block_size);
 UNUSED
 bool test_memblk_data_simple(u64 capacity, const u32 block_size);
 
+/** Init/exit. */
+bool mdata_init(void);
+void mdata_exit(void);
+
+
 #endif /* WALB_MEMBLK_DATA_H_KERNEL */

@@ -13,6 +13,11 @@
 static int __init test_treemap_init(void)
 {
         printk(KERN_INFO "test_treemap_init begin\n");
+
+	if (!treemap_init()) {
+		printk(KERN_ERR "treemap_init() failed.\n");
+		goto error;
+	}
         
         /* Treemap test for debug. */
         if (map_test()) {
@@ -31,8 +36,10 @@ static int __init test_treemap_init(void)
                 printk(KERN_ERR "multimap_cursor_test() failed.\n");
                 goto error;
         }
+	
+	treemap_exit();
         printk(KERN_INFO "test_treemap_init end\n");
-
+	
 error:
         return -1;
 }

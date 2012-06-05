@@ -14,6 +14,27 @@
 #include "util.h" /* for debug */
 
 /**
+ * This is used for debug.
+ *
+ * You must call treemap_init() before using functions, and
+ * call treemap_exit() before module exit.
+ *
+ * Should we make this atomic value?
+ */
+static unsigned int init_called_ = 0;
+
+/**
+ * kmem_cache struct data.
+ */
+#define KMEM_CACHE_TREE_NODE "treemap_cache_tree_node"
+#define KMEM_CACHE_TREE_CELL_HEAD "treemap_cache_tree_cell_head"
+#define KMEM_CACHE_TREE_CELL "treemap_cache_tree_cell"
+
+static struct kmem_cache *tree_node_cache_ = NULL;
+static struct kmem_cache *tree_cell_head_cache_ = NULL;
+static struct kmem_cache *tree_cell_cache_ = NULL;
+
+/**
  * Assertions.
  */
 #define ASSERT_TREEMAP(tmap) ASSERT((tmap) != NULL)
@@ -31,7 +52,8 @@
  * Prototypes of static functions.
  */
 static struct tree_node* map_lookup_node(const struct map *tmap, u64 key);
-static struct tree_node* map_lookup_node_detail(const struct map *tmap, u64 key, int search_flag);
+static struct tree_node* map_lookup_node_detail(
+	const struct map *tmap, u64 key, int search_flag);
 
 static struct tree_node* map_first(const struct map *tmap);
 static struct tree_node* map_last(const struct map *tmap);
@@ -47,15 +69,25 @@ static int hlist_len(const struct hlist_head *head);
 static struct hlist_node* hlist_prev(const struct hlist_head *head,
                                      const struct hlist_node *node);
 
-static int multimap_add_newkey(struct multimap *tmap,
-                               u64 key, struct tree_cell *newcell, gfp_t gfp_mask);
+static int multimap_add_newkey(
+	struct multimap *tmap, u64 key, struct tree_cell *newcell, gfp_t gfp_mask);
 static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *newcell);
 
-struct tree_cell* get_tree_cell_begin(struct tree_cell_head *head);
-struct tree_cell* get_tree_cell_end(struct tree_cell_head *head);
-struct tree_cell* get_tree_cell_next(struct tree_cell *cell);
-struct tree_cell* get_tree_cell_prev(struct tree_cell_head *head,
-                                     struct tree_cell *cell);
+static struct tree_cell* get_tree_cell_begin(struct tree_cell_head *head);
+static struct tree_cell* get_tree_cell_end(struct tree_cell_head *head);
+static struct tree_cell* get_tree_cell_next(struct tree_cell *cell);
+static struct tree_cell* get_tree_cell_prev(
+	struct tree_cell_head *head, struct tree_cell *cell);
+
+/**
+ * Macros.
+ */
+#define tree_node_alloc(gfp_mask) kmem_cache_alloc(tree_node_cache_, gfp_mask)
+#define tree_node_free(tnode) kmem_cache_free(tree_node_cache_, tnode);
+#define tree_cell_head_alloc(gfp_mask) kmem_cache_alloc(tree_cell_head_cache_, gfp_mask)
+#define tree_cell_head_free(chead) kmem_cache_free(tree_cell_head_cache_, chead)
+#define tree_cell_alloc(gfp_mask) kmem_cache_alloc(tree_cell_cache_, gfp_mask)
+#define tree_cell_free(cell) kmem_cache_free(tree_cell_cache_, cell)
 
 /*******************************************************************************
  * Static functions.
@@ -327,9 +359,10 @@ multimap_add_newkey(struct multimap *tmap, u64 key,
 {
         int ret;
         struct tree_cell_head *newhead;
-
+	
         /* Allocate and initialize new tree cell head. */
-        newhead = kmalloc(sizeof(struct tree_cell_head), gfp_mask);
+	ASSERT(init_called_);
+	newhead = tree_cell_head_alloc(gfp_mask);
         if (newhead == NULL) {
                 LOGe("memory allocation failed.\n");
                 goto nomem;
@@ -342,7 +375,7 @@ multimap_add_newkey(struct multimap *tmap, u64 key,
         /* Add to the map. */
         ret = map_add((struct map *)tmap, key, (unsigned long)newhead, gfp_mask);
         if (ret != 0) {
-                kfree(newhead);
+		tree_cell_head_free(newhead);
                 LOGe("map_add failed.\n");
                 ASSERT(ret != -EINVAL);
         }
@@ -391,7 +424,7 @@ static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *n
  *
  * @return tree cell in success, or NULL.
  */
-struct tree_cell* get_tree_cell_begin(struct tree_cell_head *head)
+static struct tree_cell* get_tree_cell_begin(struct tree_cell_head *head)
 {
         if (head == NULL || head->head.first == NULL) { return NULL; }
         return hlist_entry(head->head.first, struct tree_cell, list);
@@ -402,7 +435,7 @@ struct tree_cell* get_tree_cell_begin(struct tree_cell_head *head)
  *
  * @return tree cell in success, or NULL.
  */
-struct tree_cell* get_tree_cell_end(struct tree_cell_head *head)
+static struct tree_cell* get_tree_cell_end(struct tree_cell_head *head)
 {
         struct hlist_node *node;
 
@@ -422,7 +455,7 @@ struct tree_cell* get_tree_cell_end(struct tree_cell_head *head)
  *
  * @return next tree cell in success, or NULL.
  */
-struct tree_cell* get_tree_cell_next(struct tree_cell *cell)
+static struct tree_cell* get_tree_cell_next(struct tree_cell *cell)
 {
         if (cell == NULL || cell->list.next == NULL) {
                 return NULL;
@@ -435,7 +468,7 @@ struct tree_cell* get_tree_cell_next(struct tree_cell *cell)
  *
  * @return previous tree cell in success, or NULL.
  */
-struct tree_cell* get_tree_cell_prev(struct tree_cell_head *head, struct tree_cell *cell)
+static struct tree_cell* get_tree_cell_prev(struct tree_cell_head *head, struct tree_cell *cell)
 {
         struct hlist_node *prev;
         
@@ -451,7 +484,7 @@ not_found:
 }
 
 /*******************************************************************************
- * Treemap_* functions.
+ * Public functions.
  *******************************************************************************/
 
 /**
@@ -460,15 +493,13 @@ not_found:
 struct map* map_create(gfp_t gfp_mask)
 {
         struct map *tmap;
+	
         tmap = kmalloc(sizeof(struct map), gfp_mask);
         if (tmap == NULL) {
                 LOGe("map_create: memory allocation failed.\n");
                 goto error0;
         }
-
-        tmap->root.rb_node = NULL;
-        
-        ASSERT_TREEMAP(tmap);
+	map_init(tmap);
         return tmap;
 
 #if 0
@@ -477,6 +508,16 @@ error1:
 #endif
 error0:
         return NULL;
+}
+
+/**
+ * Initialize map structure.
+ */
+void map_init(struct map* tmap)
+{
+	ASSERT(tmap);
+        tmap->root.rb_node = NULL;
+        ASSERT_TREEMAP(tmap);
 }
 
 /**
@@ -528,9 +569,10 @@ int map_add(struct map *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
         }
 
         /* Generate new node. */
-        newnode = kmalloc(sizeof(struct tree_node), gfp_mask);
+	ASSERT(init_called_);
+	newnode = tree_node_alloc(gfp_mask);
         if (newnode == NULL) {
-                LOGe("kmalloc failed.\n");
+                LOGe("allocation failed.\n");
                 goto nomem;
         }
         newnode->key = key;
@@ -559,6 +601,7 @@ unsigned long map_lookup(const struct map *tmap, u64 key)
 {
         struct tree_node *t;
 
+	ASSERT(init_called_);
         ASSERT_TREEMAP(tmap);
         
         t = map_lookup_node(tmap, key);
@@ -588,7 +631,7 @@ unsigned long map_del(struct map *tmap, u64 key)
                 ASSERT(key == t->key);
                 val = t->val;
                 rb_erase(&t->node, &tmap->root);
-                kfree(t);
+		tree_node_free(t);
         }
         
         return val;
@@ -610,7 +653,7 @@ void map_empty(struct map *tmap)
         while (node) {
                 rb_erase(node, &tmap->root);
                 t = container_of(node, struct tree_node, node);
-                kfree(t);
+		tree_node_free(t);
                 
                 node = next;
                 if (node != NULL) { next = rb_next(node); }
@@ -1155,9 +1198,33 @@ error:
  */
 struct multimap* multimap_create(gfp_t gfp_mask)
 {
+        struct multimap *tmap;
         ASSERT(sizeof(struct hlist_head) == sizeof(unsigned long));
-        
-        return (struct multimap *)map_create(gfp_mask);
+	
+        tmap = kmalloc(sizeof(struct multimap), gfp_mask);
+        if (tmap == NULL) {
+                LOGe("multimap_create: memory allocation failed.\n");
+                goto error0;
+        }
+	multimap_init(tmap);
+        return tmap;
+
+#if 0
+error1:
+        kfree(tmap);
+#endif
+error0:
+        return NULL;
+}
+
+/**
+ * Initialize multimap structure.
+ */
+void multimap_init(struct multimap *tmap)
+{
+	ASSERT(tmap);
+        tmap->root.rb_node = NULL;
+        ASSERT_TREEMAP(tmap);
 }
 
 /**
@@ -1196,9 +1263,10 @@ int multimap_add(struct multimap *tmap, u64 key, unsigned long val, gfp_t gfp_ma
         }
 
         /* Prepare new cell. */
-        newcell = kmalloc(sizeof(struct tree_cell), gfp_mask);
+	ASSERT(init_called_);
+        newcell = tree_cell_alloc(gfp_mask);
         if (newcell == NULL) {
-                LOGe("kmalloc failed.\n");
+                LOGe("memory allocation failed.\n");
                 goto nomem;
         }
         newcell->val = val;
@@ -1221,7 +1289,7 @@ int multimap_add(struct multimap *tmap, u64 key, unsigned long val, gfp_t gfp_ma
                 if (ret) { LOGd("multimap_add_oldkey() failed.\n"); }
         }
 
-        if (ret) { kfree(newcell); }
+        if (ret) { tree_cell_free(newcell); }
         return ret;
 
 inval:
@@ -1322,7 +1390,7 @@ unsigned long multimap_del(struct multimap *tmap, u64 key, unsigned long val)
                         found ++;
                         hlist_del(&cell->list);
                         retval = cell->val;
-                        kfree(cell);
+			tree_cell_free(cell);
                 }
         }
         ASSERT(found == 0 || found == 1);
@@ -1331,7 +1399,7 @@ unsigned long multimap_del(struct multimap *tmap, u64 key, unsigned long val)
                 ASSERT(found == 1);
                 ret = map_del((struct map *)tmap, key);
                 ASSERT(ret != TREEMAP_INVALID_VAL);
-                kfree(chead);
+		tree_cell_head_free(chead);
         }
         return retval;
 }
@@ -1360,11 +1428,11 @@ int multimap_del_key(struct multimap *tmap, u64 key)
                 ASSERT_TREECELL(cell);
                 found ++;
                 hlist_del(&cell->list);
-                kfree(cell);
+		tree_cell_free(cell);
         }
         ASSERT(found > 0);
         ASSERT(hlist_empty(&chead->head));
-        kfree(chead);
+	tree_cell_head_free(chead);
 
         return found;
 }
@@ -1393,10 +1461,10 @@ void multimap_empty(struct multimap *tmap)
 
                         ASSERT_TREECELL(cell);
                         hlist_del(&cell->list);
-                        kfree(cell);
+			tree_cell_free(cell);
                 }
-                kfree(chead);
-                kfree(t);
+		tree_cell_head_free(chead);
+		tree_node_free(t);
 
                 node = next;
                 if (node != NULL) { next = rb_next(node); }
@@ -2017,9 +2085,41 @@ error:
 /**
  * Initialize kmem_cache struct data.
  */
-void treemap_init(void)
+bool treemap_init(void)
 {
-	/* now editing */
+	if (init_called_) {
+		init_called_ ++;
+		return true;
+	}
+	
+	tree_node_cache_ = kmem_cache_create(
+		KMEM_CACHE_TREE_NODE,
+		sizeof(struct tree_node), 0, 0, NULL);
+	if (!tree_node_cache_) { goto error0; }
+
+	tree_cell_head_cache_ = kmem_cache_create(
+		KMEM_CACHE_TREE_CELL_HEAD,
+		sizeof(struct tree_cell_head), 0, 0, NULL);
+	if (!tree_cell_head_cache_) { goto error1; }
+		
+	tree_cell_cache_ = kmem_cache_create(
+		KMEM_CACHE_TREE_CELL,
+		sizeof(struct tree_cell), 0, 0, NULL);
+	if (!tree_cell_cache_) { goto error2; }
+
+	init_called_ ++;
+	
+	return true;
+#if 0
+error3:
+	kmem_cache_destroy(tree_cell_cache_);
+#endif
+error2:
+	kmem_cache_destroy(tree_cell_head_cache_);
+error1:
+	kmem_cache_destroy(tree_node_cache_);
+error0:
+	return false;
 }
 
 /**
@@ -2027,8 +2127,18 @@ void treemap_init(void)
  */
 void treemap_exit(void)
 {
-	/* now editing */
-}
+	if (init_called_) {
+		init_called_ --;
+	} else {
+		LOGn("treemap_init() is not called yet.\n");
+		return;
+	}
 
+	if (!init_called_) {
+		kmem_cache_destroy(tree_cell_cache_);
+		kmem_cache_destroy(tree_cell_head_cache_);
+		kmem_cache_destroy(tree_node_cache_);
+	}
+}
 
 MODULE_LICENSE("Dual BSD/GPL");

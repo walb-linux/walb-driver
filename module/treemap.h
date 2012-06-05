@@ -121,6 +121,7 @@ struct multimap_cursor
  *      Do not use TREEMAP_INVALID_VAL.
  */
 struct map* map_create(gfp_t gfp_mask);
+void map_init(struct map *tmap);
 void map_destroy(struct map *map);
 
 int map_add(struct map *map, u64 key, unsigned long val, gfp_t gfp_mask);
@@ -161,6 +162,7 @@ int map_cursor_test(void); /* For unit test. */
  * val: pointer to tree_cell_head.
  */
 struct multimap* multimap_create(gfp_t gfp_mask);
+void multimap_init(struct multimap *tmap);
 void multimap_destroy(struct multimap *map);
 
 int multimap_add(struct multimap *map, u64 key, unsigned long val, gfp_t gfp_mask);
@@ -196,7 +198,7 @@ u64 multimap_cursor_key(const struct multimap_cursor *cursor);
 int multimap_cursor_test(void); /* For unit test. */
 
 /* Init/exit functions. */
-void treemap_init(void);
+bool treemap_init(void);
 void treemap_exit(void);
 
 
