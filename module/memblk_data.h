@@ -19,7 +19,7 @@
  */
 struct memblk_data
 {
-        map_t *index;
+        struct map *index;
 
         u32 block_size; /* 512 to 4096 */
         u64 capacity; /* capacity [block_size] */
@@ -91,5 +91,10 @@ UNUSED
 bool test_memblk_data(u64 capacity, const u32 block_size);
 UNUSED
 bool test_memblk_data_simple(u64 capacity, const u32 block_size);
+
+/** Init/exit. */
+bool mdata_init(void);
+void mdata_exit(void);
+
 
 #endif /* WALB_MEMBLK_DATA_H_KERNEL */

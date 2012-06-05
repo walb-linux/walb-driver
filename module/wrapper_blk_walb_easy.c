@@ -15,6 +15,7 @@
 #include "wrapper_blk_walb.h"
 #include "sector_io.h"
 #include "logpack.h"
+#include "treemap.h"
 #include "walb/walb.h"
 #include "walb/block_size.h"
 
@@ -77,6 +78,14 @@ struct req_entry
 	/* Notification from write_req_task to gc_task.
 	   read_req_task does not use this. */
 	struct completion done;
+
+#ifdef WALB_OVERLAPPING_DETECTION
+	struct completion overlapping_done;
+	int n_overlapping; /* initial value is -1. */
+
+	u64 req_addr; /* request address [logical block] */
+	unsigned int req_size; /* request size [logical block] */
+#endif
 };
 /* kmem cache for dbio. */
 #define KMEM_CACHE_REQ_ENTRY_NAME "req_entry_cache"
@@ -210,6 +219,15 @@ static bool logpack_submit(
 static int wait_for_bio_entry_list(struct list_head *bio_ent_list);
 static void wait_logpack_and_enqueue_datapack_tasks(
 	struct pack *wpack, struct wrapper_blk_dev *wdev);
+
+/* Overlapping data functions. */
+#ifdef WALB_OVERLAPPING_DETECTION
+static bool overlapping_check_and_insert(
+	struct multimap *overlapping_data, struct req_entry *reqe);
+static void overlapping_del_and_notify(
+	struct multimap *overlapping_data, struct req_entry *reqe);
+static bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1);
+#endif
 
 /*******************************************************************************
  * Static functions definition.
@@ -415,6 +433,12 @@ static struct req_entry* create_req_entry(
 	INIT_LIST_HEAD(&reqe->bio_ent_list);
 	init_completion(&reqe->done);
         
+#ifdef WALB_OVERLAPPING_DETECTION
+	init_completion(&reqe->overlapping_done);
+	reqe->n_overlapping = -1;
+	reqe->req_addr = blk_rq_pos(req);
+	reqe->req_size = blk_rq_sectors(req);
+#endif
 	return reqe;
 error0:
 	return NULL;
@@ -995,6 +1019,10 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 	struct request *req;
 	bool is_failed = false;
 	struct pdata *pdata;
+#ifdef WALB_OVERLAPPING_DETECTION
+	bool is_overlapping_insert_succeeded;
+#endif
+
 	ASSERT(wpack);
 	ASSERT(wdev);
 
@@ -1022,9 +1050,14 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 			blk_end_request_all(req, 0);
 			destroy_req_entry(reqe);
 		} else {
+#ifdef WALB_OVERLAPPING_DETECTION
 			/* check and insert to overlapping detection data. */
-			/* not yet implemented */
-
+			spin_lock(&pdata->overlapping_data_lock);
+			is_overlapping_insert_succeeded =
+				overlapping_check_and_insert(pdata->overlapping_data, reqe);
+			spin_unlock(&pdata->overlapping_data_lock);
+			if (!is_overlapping_insert_succeeded) { goto failed; }
+#endif
 			/* Enqueue as a write req task. */
 			INIT_WORK(&reqe->work, write_req_task);
 			queue_work(wq_normal_, &reqe->work);
@@ -1124,8 +1157,12 @@ static void write_req_task(struct work_struct *work)
 	ASSERT(list_empty(&reqe->bio_ent_list));
 	
 	/* Wait for previous overlapping writes. */
-	/* not yet implemented */
-
+#ifdef WALB_OVERLAPPING_DETECTION
+	if (reqe->n_overlapping > 0) {
+		wait_for_completion(&reqe->overlapping_done);
+	}
+#endif
+	
 	/* Create all related bio(s). */
 	if (!create_bio_entry_list(reqe, pdata->ddev)) {
 		goto alloc_error;
@@ -1140,7 +1177,11 @@ static void write_req_task(struct work_struct *work)
 	wait_for_req_entry(reqe, is_end_request);
 
 	/* Delete from overlapping detection data. */
-	/* not yet implemented */
+#ifdef WALB_OVERLAPPING_DETECTION
+	spin_lock(&pdata->overlapping_data_lock);
+	overlapping_del_and_notify(pdata->overlapping_data, reqe);
+	spin_unlock(&pdata->overlapping_data_lock);
+#endif
 
 	/* Notify logpack_list_gc_task().
 	   Reqe will be destroyed in logpack_list_gc_task(). */
@@ -1635,6 +1676,143 @@ failed:
 	return false;
 }
 
+/**
+ * Overlapping check and insert.
+ *
+ * CONTEXT:
+ *   overlapping_data lock must be held.
+ * RETURN:
+ *   true in success, or false (memory allocation failure).
+ */
+#ifdef WALB_OVERLAPPING_DETECTION
+static bool overlapping_check_and_insert(
+	struct multimap *overlapping_data, struct req_entry *reqe)
+{
+	struct multimap_cursor cur;
+	u64 max_io_size;
+	int ret;
+	struct req_entry *reqe_tmp;
+
+	ASSERT(overlapping_data);
+	ASSERT(reqe);
+	
+	max_io_size = queue_max_sectors(reqe->wdev->queue);
+
+	multimap_cursor_init(overlapping_data, &cur);
+	reqe->n_overlapping = 0;
+	
+	/* Search the smallest candidate. */
+	if (!multimap_cursor_search(&cur, reqe->req_addr - max_io_size, MAP_SEARCH_GT, 0)) {
+		goto fin;
+	}
+
+	/* Count overlapping requests previously. */
+	while (multimap_cursor_key(&cur) < reqe->req_addr + reqe->req_size) {
+
+		ASSERT(multimap_cursor_is_valid(&cur));
+		
+		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
+		ASSERT(reqe_tmp);
+		if (is_overlap_req_entry(reqe, reqe_tmp)) {
+			reqe->n_overlapping ++;
+		}
+		if (!multimap_cursor_next(&cur)) {
+			break;
+		}
+	}
+
+	/* debug */
+	if (reqe->n_overlapping > 1) {
+		LOGe("n_overlapping %u\n", reqe->n_overlapping);
+	}
+
+fin:
+	ret = multimap_add(overlapping_data, reqe->req_addr, (unsigned long)reqe, GFP_ATOMIC);
+	ASSERT(ret != EEXIST);
+	ASSERT(ret != EINVAL);
+	if (ret) {
+		ASSERT(ret == ENOMEM);
+		LOGe("overlapping_check_and_insert failed.\n");
+		return false;
+	}
+	if (reqe->n_overlapping == 0) {
+		complete(&reqe->overlapping_done);
+	}
+	return true;
+}
+#endif
+
+/**
+ * Delete a req_entry from the overlapping data,
+ * and notify waiting overlapping requests.
+ *
+ * CONTEXT:
+ *   overlapping_data lock must be held.
+ */
+#ifdef WALB_OVERLAPPING_DETECTION
+static void overlapping_del_and_notify(
+	struct multimap *overlapping_data, struct req_entry *reqe)
+{
+	struct multimap_cursor cur;
+	u64 max_io_size;
+	struct req_entry *reqe_tmp;
+
+	ASSERT(overlapping_data);
+	ASSERT(reqe);
+	ASSERT(reqe->n_overlapping == 0);
+	
+	max_io_size = queue_max_sectors(reqe->wdev->queue);
+
+	/* Delete from the overlapping data. */
+	reqe_tmp = (struct req_entry *)multimap_del(
+		overlapping_data, reqe->req_addr, (unsigned long)reqe);
+#if 0
+	LOGd("reqe_tmp %p reqe %p\n", reqe_tmp, reqe); /* debug */
+#endif
+	ASSERT(reqe_tmp == reqe);
+	
+	/* Search the smallest candidate. */
+	multimap_cursor_init(overlapping_data, &cur);
+	if (!multimap_cursor_search(&cur, reqe->req_addr - max_io_size, MAP_SEARCH_GT, 0)) {
+		return;
+	}
+	/* Decrement count of overlapping requests afterward and notify if need. */
+	while (multimap_cursor_key(&cur) < reqe->req_addr + reqe->req_size) {
+
+		ASSERT(multimap_cursor_is_valid(&cur));
+		
+		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
+		ASSERT(reqe_tmp);
+		if (is_overlap_req_entry(reqe, reqe_tmp)) {
+			ASSERT(reqe_tmp->n_overlapping > 0);
+			reqe_tmp->n_overlapping --;
+			if (reqe_tmp->n_overlapping == 0) {
+				/* There is no overlapping request before it. */
+				complete(&reqe_tmp->overlapping_done);
+			}
+		}
+		if (!multimap_cursor_next(&cur)) {
+			break;
+		}
+	}
+}
+#endif
+
+/**
+ * Check two request entrys is overlapping.
+ */
+#ifdef WALB_OVERLAPPING_DETECTION
+static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1)
+{
+	ASSERT(reqe0);
+	ASSERT(reqe1);
+	ASSERT(reqe0 != reqe1);
+
+	return (reqe0->req_addr + reqe0->req_size > reqe1->req_addr &&
+		reqe1->req_addr + reqe1->req_size > reqe0->req_addr);
+}
+#endif
+
 /*******************************************************************************
  * Global functions definition.
  *******************************************************************************/
@@ -1658,6 +1836,8 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	bool ret;
 	u64 latest_lsid, latest_lsid_old;
 	
+	LOGd_("wrapper_blk_req_request_fn: begin.\n");
+	
 	/* Load latest_lsid */
 	spin_lock(&pdata->lsid_lock);
 	latest_lsid = pdata->latest_lsid;
@@ -1668,13 +1848,9 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	plwork = create_pack_list_work(wdev, GFP_ATOMIC);
 	if (!plwork) { goto error0; }
 
-	LOGd("position 1.\n");
-	
 	/* Fetch requests and create pack list. */
 	while ((req = blk_fetch_request(q)) != NULL) {
 
-		LOGd("process a request.\n");
-		
 		/* print_req_flags(req); */
 		if (req->cmd_flags & REQ_WRITE) {
 
@@ -1684,7 +1860,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 			if (req->cmd_flags & REQ_FLUSH) {
 				LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
 			}
-			LOGd("call writepack_add_req\n"); /* debug */
+			LOGd_("call writepack_add_req\n"); /* debug */
 			ret = writepack_add_req(&plwork->wpack_list, &wpack, req,
 						pdata->ring_buffer_size,
 						&latest_lsid, wdev, GFP_ATOMIC);
@@ -1700,7 +1876,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	req_error:
 		__blk_end_request_all(req, -EIO);
 	}
-	LOGd("latest_lsid: %"PRIu64"\n", latest_lsid);
+	LOGd_("latest_lsid: %"PRIu64"\n", latest_lsid);
 	if (wpack) {
 		lhead = get_logpack_header(wpack->logpack_header_sector);
 		ASSERT(lhead);
@@ -1712,7 +1888,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		ASSERT(is_valid_prepared_pack(wpack));
 		/* Update the latest lsid. */
 		latest_lsid = get_next_lsid_unsafe(lhead);
-		LOGd("calculated latest_lsid: %"PRIu64"\n", latest_lsid);
+		LOGd_("calculated latest_lsid: %"PRIu64"\n", latest_lsid);
 
 		/* Add the last writepack to the list. */
 		ASSERT(!list_empty(&wpack->req_ent_list));
@@ -1737,7 +1913,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		spin_unlock(&pdata->lsid_lock);
 	}
 	
-	/* LOGd("wrapper_blk_req_request_fn: end.\n"); */
+	LOGd_("wrapper_blk_req_request_fn: end.\n");
 	return;
 #if 0
 error1:
@@ -1747,7 +1923,7 @@ error0:
 	while ((req = blk_fetch_request(q)) != NULL) {
 		__blk_end_request_all(req, -EIO);
 	}
-	/* LOGe("wrapper_blk_req_request_fn: error.\n"); */
+	LOGd_("wrapper_blk_req_request_fn: error.\n");
 }
 
 /* Called before register. */
@@ -1802,12 +1978,19 @@ bool pre_register(void)
 		goto error6;
 	}
 
+	if (!treemap_init()) {
+		goto error7;
+	}
+	
+
 	return true;
 
 #if 0
+error8:
+	treemap_exit();
+#endif
 error7:
 	destroy_workqueue(wq_normal_);
-#endif
 error6:
 	destroy_workqueue(wq_logpack_wait_);
 error5:
@@ -1829,6 +2012,8 @@ void post_unregister(void)
 {
 	LOGd("post_unregister called.");
 
+	treemap_exit();
+	
 	/* finalize workqueue data. */
 	destroy_workqueue(wq_normal_);
 	wq_normal_ = NULL;

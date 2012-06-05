@@ -505,11 +505,17 @@ bool pre_register(void)
                 goto error2;
         }
 
+	if (!mdata_init()) {
+		goto error3;
+	}
+	
         return true;
 #if 0
+error4:
+	mdata_exit();
+#endif
 error3:
         destroy_workqueue(wq_flush_);
-#endif
 error2:
         destroy_workqueue(wq_io_);
 error1:
@@ -523,6 +529,7 @@ error0:
  */
 void post_unregister(void)
 {
+	mdata_exit();
         destroy_workqueue(wq_flush_);
         destroy_workqueue(wq_io_);
         kmem_cache_destroy(bio_work_cache_);

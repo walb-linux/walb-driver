@@ -1,11 +1,16 @@
 # Comment/uncomment the following line to disable/enable debugging
 #DEBUG = 1
+#OVERLAP_DETECT = 1
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DEBUG),1)
   DEBFLAGS = -O -g -DDEBUG -DWALB_DEBUG # "-O" is needed to expand inlines
 else
   DEBFLAGS = -O2
+endif
+
+ifeq ($(OVERLAP_DETECT),1)
+  DEBFLAGS += -DWALB_OVERLAPPING_DETECTION
 endif
 
 EXTRA_CFLAGS += $(DEBFLAGS)
@@ -48,7 +53,7 @@ wrapper-blk-mod-objs := wrapper_blk.o
 WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o
 wrapper-blk-simple-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
 wrapper_blk_simple_plug.o
-WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o logpack.o sector_io.o
+WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o logpack.o sector_io.o treemap.o
 wrapper-blk-walb-easy-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
 wrapper_blk_walb_easy.o
 
@@ -62,6 +67,7 @@ wrapper_blk_walb_easy.o
 #memblk-simple-mod.o
 
 obj-m := \
+test-treemap-mod.o \
 test-memblk-data-mod.o \
 test-memblk-data-perf-mod.o \
 test-kthread-mod.o \

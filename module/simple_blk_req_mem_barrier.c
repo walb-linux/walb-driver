@@ -544,8 +544,6 @@ void customize_sdev(struct simple_blk_dev *sdev)
  */
 bool pre_register(void)
 {
-	might_sleep();
-	
         req_list_work_cache_ = kmem_cache_create(
 		REQ_LIST_WORK_CACHE_NAME, sizeof(struct req_list_work), 0, 0, NULL);
         if (!req_list_work_cache_) {
@@ -571,12 +569,19 @@ bool pre_register(void)
 		LOGe("create flush queue failed.\n");
 		goto error3;
 	}
+
+	if (!mdata_init()) {
+		goto error4;
+	}
+	
         return true;
 	
 #if 0
+error5:
+	mdata_exit();
+#endif
 error4:
         destroy_workqueue(wq_flush_);
-#endif
 error3:
         destroy_workqueue(wq_io_);
 error2:
@@ -592,8 +597,7 @@ error0:
  */
 void post_unregister(void)
 {
-	might_sleep();
-	
+	mdata_exit();
         destroy_workqueue(wq_flush_);
         destroy_workqueue(wq_io_);
         kmem_cache_destroy(req_entry_cache_);

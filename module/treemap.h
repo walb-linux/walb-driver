@@ -39,8 +39,8 @@ struct tree_node {
  * Map and multimap data structure.
  * Data type is different but the contents are the same.
  */
-typedef struct { struct rb_root root; } map_t;
-typedef struct { struct rb_root root; } multimap_t;
+struct map { struct rb_root root; };
+struct multimap { struct rb_root root; };
 
 /**
  * Tree cell head for multimap.
@@ -90,27 +90,27 @@ enum {
 /**
  * Map cursor structure.
  */
-typedef struct
+struct map_cursor
 {
-        map_t *map;
+        struct map *map;
         int state;
         struct tree_node *prev;
         struct tree_node *curr;
         struct tree_node *next;
         
-} map_cursor_t;
+};
 
 /**
  * Multimap cursor structure.
  */
-typedef struct
+struct multimap_cursor
 {
-        map_cursor_t curt;
+        struct map_cursor curt;
 
         struct tree_cell_head *head;
         struct tree_cell *cell;
         
-} multimap_cursor_t;
+};
 
 
 /**
@@ -120,36 +120,37 @@ typedef struct
  * val: unsigned long value that can be a pointer.
  *      Do not use TREEMAP_INVALID_VAL.
  */
-map_t* map_create(gfp_t gfp_mask);
-void map_destroy(map_t *map);
+struct map* map_create(gfp_t gfp_mask);
+void map_init(struct map *tmap);
+void map_destroy(struct map *map);
 
-int map_add(map_t *map, u64 key, unsigned long val, gfp_t gfp_mask);
-unsigned long map_lookup(const map_t *map, u64 key);
-unsigned long map_del(map_t *map, u64 key);
-void map_empty(map_t *map);
+int map_add(struct map *map, u64 key, unsigned long val, gfp_t gfp_mask);
+unsigned long map_lookup(const struct map *map, u64 key);
+unsigned long map_del(struct map *map, u64 key);
+void map_empty(struct map *map);
 
-int map_is_empty(const map_t *map);
-int map_n_items(const map_t *map);
+int map_is_empty(const struct map *map);
+int map_n_items(const struct map *map);
 
 int map_test(void); /* For unit test. */
 
 /**
  * Prototypes for map cursor operations.
  */
-map_cursor_t* map_cursor_create(map_t *map, gfp_t gfp_mask);
-void map_cursor_init(map_t *map, map_cursor_t *cursor);
-int map_cursor_search(map_cursor_t *cursor, u64 key, int search_flag);
-int map_cursor_next(map_cursor_t *cursor);
-int map_cursor_prev(map_cursor_t *cursor);
-int map_cursor_begin(map_cursor_t *cursor);
-int map_cursor_end(map_cursor_t *cursor);
-int map_cursor_is_begin(map_cursor_t *cursor);
-int map_cursor_is_end(map_cursor_t *cursor);
-int map_cursor_is_valid(map_cursor_t *cursor);
-unsigned long map_cursor_val(const map_cursor_t *cursor);
-/* int map_cursor_update(map_cursor_t *cursor); */
-/* int map_cursor_delete(map_cursor_t *cursor); */
-void map_cursor_destroy(map_cursor_t *cursor);
+struct map_cursor* map_cursor_create(struct map *map, gfp_t gfp_mask);
+void map_cursor_init(struct map *map, struct map_cursor *cursor);
+int map_cursor_search(struct map_cursor *cursor, u64 key, int search_flag);
+int map_cursor_next(struct map_cursor *cursor);
+int map_cursor_prev(struct map_cursor *cursor);
+int map_cursor_begin(struct map_cursor *cursor);
+int map_cursor_end(struct map_cursor *cursor);
+int map_cursor_is_begin(struct map_cursor *cursor);
+int map_cursor_is_end(struct map_cursor *cursor);
+int map_cursor_is_valid(struct map_cursor *cursor);
+unsigned long map_cursor_val(const struct map_cursor *cursor);
+/* int map_cursor_update(struct map_cursor *cursor); */
+/* int map_cursor_delete(struct map_cursor *cursor); */
+void map_cursor_destroy(struct map_cursor *cursor);
 
 int map_cursor_test(void); /* For unit test. */
 
@@ -160,19 +161,20 @@ int map_cursor_test(void); /* For unit test. */
  * key: u64 value.
  * val: pointer to tree_cell_head.
  */
-multimap_t* multimap_create(gfp_t gfp_mask);
-void multimap_destroy(multimap_t *map);
+struct multimap* multimap_create(gfp_t gfp_mask);
+void multimap_init(struct multimap *tmap);
+void multimap_destroy(struct multimap *map);
 
-int multimap_add(multimap_t *map, u64 key, unsigned long val, gfp_t gfp_mask);
-struct tree_cell_head* multimap_lookup(const multimap_t *map, u64 key);
-unsigned long multimap_lookup_any(const multimap_t *map, u64 key);
-int multimap_lookup_n(const multimap_t *map, u64 key);
-unsigned long multimap_del(multimap_t *map, u64 key, unsigned long val);
-int multimap_del_key(multimap_t *map, u64 key);
-void multimap_empty(multimap_t *map);
+int multimap_add(struct multimap *map, u64 key, unsigned long val, gfp_t gfp_mask);
+struct tree_cell_head* multimap_lookup(const struct multimap *map, u64 key);
+unsigned long multimap_lookup_any(const struct multimap *map, u64 key);
+int multimap_lookup_n(const struct multimap *map, u64 key);
+unsigned long multimap_del(struct multimap *map, u64 key, unsigned long val);
+int multimap_del_key(struct multimap *map, u64 key);
+void multimap_empty(struct multimap *map);
 
-int multimap_is_empty(const multimap_t *map);
-int multimap_n_items(const multimap_t *map);
+int multimap_is_empty(const struct multimap *map);
+int multimap_n_items(const struct multimap *map);
 
 int multimap_test(void); /* For unit test. */
 
@@ -180,20 +182,24 @@ int multimap_test(void); /* For unit test. */
 /**
  * Prototypes for multimap cursor operations.
  */
-void multimap_cursor_init(multimap_t *map, multimap_cursor_t *cursor);
-int multimap_cursor_search(multimap_cursor_t *cursor, u64 key,
+void multimap_cursor_init(struct multimap *map, struct multimap_cursor *cursor);
+int multimap_cursor_search(struct multimap_cursor *cursor, u64 key,
                            int search_flag, int is_end);
-int multimap_cursor_next(multimap_cursor_t *cursor);
-int multimap_cursor_prev(multimap_cursor_t *cursor);
-int multimap_cursor_begin(multimap_cursor_t *cursor);
-int multimap_cursor_end(multimap_cursor_t *cursor);
-int multimap_cursor_is_begin(multimap_cursor_t *cursor);
-int multimap_cursor_is_end(multimap_cursor_t *cursor);
-int multimap_cursor_is_valid(multimap_cursor_t *cursor);
-unsigned long multimap_cursor_val(const multimap_cursor_t *cursor);
-u64 multimap_cursor_key(const multimap_cursor_t *cursor);
+int multimap_cursor_next(struct multimap_cursor *cursor);
+int multimap_cursor_prev(struct multimap_cursor *cursor);
+int multimap_cursor_begin(struct multimap_cursor *cursor);
+int multimap_cursor_end(struct multimap_cursor *cursor);
+int multimap_cursor_is_begin(struct multimap_cursor *cursor);
+int multimap_cursor_is_end(struct multimap_cursor *cursor);
+int multimap_cursor_is_valid(struct multimap_cursor *cursor);
+unsigned long multimap_cursor_val(const struct multimap_cursor *cursor);
+u64 multimap_cursor_key(const struct multimap_cursor *cursor);
 
 int multimap_cursor_test(void); /* For unit test. */
+
+/* Init/exit functions. */
+bool treemap_init(void);
+void treemap_exit(void);
 
 
 #endif /* _TREEMAP_H_KERNEL */

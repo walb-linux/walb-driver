@@ -28,13 +28,15 @@ static int __init test_init(void)
         /*         test_memblk_data_simple(128, 2048); */
         /*         test_memblk_data_simple(128, 4096); */
         /* } */
-        
+
+	mdata_init();
         for (i = 0; i < loop; i ++) {
                 test_memblk_data(128, 512);
                 test_memblk_data(128, 1024);
                 test_memblk_data(128, 2048);
                 test_memblk_data(128, 4096);
         }
+	mdata_exit();
         return -1;
 }
 

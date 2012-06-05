@@ -159,7 +159,7 @@ void customize_sdev(struct simple_blk_dev *sdev)
  */
 bool pre_register(void)
 {
-        return true;
+	return mdata_init();
 }
 
 /**
@@ -167,6 +167,7 @@ bool pre_register(void)
  */
 void post_unregister(void)
 {
+	mdata_exit();
 }
 
 /* end of file. */
