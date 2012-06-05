@@ -68,10 +68,13 @@
 #define PRINTV_D(fmt, args...) PRINT_D(                                 \
                 "DEBUG(%s:%d:%s) " fmt, SRC_FILE, __LINE__, __func__, ##args)
 #endif /* __KERNEL__ */
+#define PRINT_D_(fmt, args...)
+#define PRINTV_D_(fmt, args...)
 
 /**
  * Simple logger.
  */
+#define LOGd_ PRINTV_D_
 #define LOGd PRINTV_D
 #define LOGi PRINTV_I
 #define LOGn PRINTV_N
