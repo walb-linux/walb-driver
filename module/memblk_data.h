@@ -19,7 +19,7 @@
  */
 struct memblk_data
 {
-        map_t *index;
+        struct map *index;
 
         u32 block_size; /* 512 to 4096 */
         u64 capacity; /* capacity [block_size] */

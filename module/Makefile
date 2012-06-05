@@ -67,6 +67,7 @@ wrapper_blk_walb_easy.o
 #memblk-simple-mod.o
 
 obj-m := \
+test-treemap-mod.o \
 test-memblk-data-mod.o \
 test-memblk-data-perf-mod.o \
 test-kthread-mod.o \
