@@ -82,7 +82,8 @@ struct req_entry
 #ifdef WALB_OVERLAPPING_DETECTION
 	struct completion overlapping_done;
 	int n_overlapping; /* initial value is -1. */
-
+#endif
+#if defined(WALB_OVERLAPPING_DETECTION) || defined(WALB_FAST_ALGORITHM)
 	u64 req_addr; /* request address [logical block] */
 	unsigned int req_size; /* request size [logical block] */
 #endif
@@ -102,6 +103,9 @@ struct bio_entry
 	unsigned int bi_size; /* keep bi_size at initialization,
 				 because bio->bi_size will be 0 after endio. */
 	int error; /* bio error status. */
+#ifdef WALB_FAST_ALGORITHM
+	bool is_copied; /* true if read is done by copy from pending data. */
+#endif
 };
 /* kmem cache for dbio. */
 #define KMEM_CACHE_BIO_ENTRY_NAME "bio_entry_cache"
@@ -182,10 +186,17 @@ static void logpack_list_gc_task(struct work_struct *work);
 static void write_req_task(struct work_struct *work);
 static void read_req_task(struct work_struct *work);
 
+static void read_req_task_easy(struct work_struct *work);
+static void read_req_task_fast(struct work_struct *work);
+
 /* Helper functions for bio_entry list. */
 static bool create_bio_entry_list(struct req_entry *reqe, struct block_device *bdev);
-static void submit_bio_entry_list(struct req_entry *reqe);
-static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request);
+static void submit_bio_entry_list(struct list_head *bio_ent_list);
+static void destroy_bio_entry_list(struct list_head *bio_ent_list);
+static void get_all_bio_entry_list(struct list_head *bio_ent_list);
+static void put_all_bio_entry_list(struct list_head *bio_ent_list);
+static void wait_for_req_entry(
+	struct req_entry *reqe, bool is_end_request, bool is_delete);
 
 /* Validator for debug. */
 static bool is_valid_prepared_pack(struct pack *pack);
@@ -226,8 +237,25 @@ static bool overlapping_check_and_insert(
 	struct multimap *overlapping_data, struct req_entry *reqe);
 static void overlapping_delete_and_notify(
 	struct multimap *overlapping_data, struct req_entry *reqe);
-static bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1);
 #endif
+
+/* Pending data functions. */
+#ifdef WALB_FAST_ALGORITHM
+static bool pending_insert(
+	struct multimap *pending_data, struct req_entry *reqe);
+static void pending_delete(
+	struct multimap *pending_data, struct req_entry *reqe);
+static void pending_check_and_copy(
+	struct multimap *pending_data, struct req_entry *reqe);
+#endif
+
+/* For overlapping data and pending data. */
+#if defined(WALB_OVERLAPPING_DETECTION) || defined(WALB_FAST_ALGORITHM)
+static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1);
+#endif
+
+
+
 
 /*******************************************************************************
  * Static functions definition.
@@ -436,6 +464,8 @@ static struct req_entry* create_req_entry(
 #ifdef WALB_OVERLAPPING_DETECTION
 	init_completion(&reqe->overlapping_done);
 	reqe->n_overlapping = -1;
+#endif
+#if defined(WALB_OVERLAPPING_DETECTION) || defined(WALB_FAST_ALGORITHM)
 	reqe->req_addr = blk_rq_pos(req);
 	reqe->req_size = blk_rq_sectors(req);
 #endif
@@ -495,6 +525,10 @@ static void init_bio_entry(struct bio_entry *bioe)
 	bioe->error = 0;
 	bioe->bio = NULL;
 	bioe->bi_size = 0;
+
+#ifdef WALB_FAST_ALGORITHM
+	bioe->is_copied = false;
+#endif
 }
 
 /**
@@ -879,16 +913,68 @@ error1:
 /**
  * Submit all bio_entry(s) in a req_entry.
  *
- * @reqe target req_entry.
+ * @bio_ent_list list head of bio_entry.
  *
  * CONTEXT:
  *   non-irq. non-atomic.
  */
-static void submit_bio_entry_list(struct req_entry *reqe)
+static void submit_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
-	list_for_each_entry(bioe, &reqe->bio_ent_list, list) {
+
+	ASSERT(bio_ent_list);
+	list_for_each_entry(bioe, bio_ent_list, list) {
+#ifdef WALB_FAST_ALGORITHM
+		if (bioe->is_copied) {
+			bio_entry_end_io(bioe->bio);
+		} else {
+			generic_make_request(bioe->bio);
+		}
+#else
 		generic_make_request(bioe->bio);
+#endif
+	}
+}
+
+/**
+ * Destroy all bio_entry in a list.
+ */
+static void destroy_bio_entry_list(struct list_head *bio_ent_list)
+{
+	struct bio_entry *bioe, *next;
+	
+	ASSERT(bio_ent_list);
+	list_for_each_entry_safe(bioe, next, bio_ent_list, list) {
+		list_del(&bioe->list);
+		destroy_bio_entry(bioe);
+	}
+}
+
+/**
+ * Call bio_get() for all bio in a bio_entry list.
+ */
+static void get_all_bio_entry_list(struct list_head *bio_ent_list)
+{
+	struct bio_entry *bioe;
+	
+	ASSERT(bio_ent_list);
+	list_for_each_entry(bioe, bio_ent_list, list) {
+		ASSERT(bioe->bio);
+		bio_get(bioe->bio);
+	}
+}
+
+/**
+ * Call bio_put() for all bio in a bio_entry list.
+ */
+static void put_all_bio_entry_list(struct list_head *bio_ent_list)
+{
+	struct bio_entry *bioe;
+	
+	ASSERT(bio_ent_list);
+	list_for_each_entry(bioe, bio_ent_list, list) {
+		ASSERT(bioe->bio);
+		bio_put(bioe->bio);
 	}
 }
 
@@ -898,11 +984,12 @@ static void submit_bio_entry_list(struct req_entry *reqe)
  *
  * @reqe target req_entry.
  * @is_end_request true if end request call is required, or false.
-
+ * @is_delete true if bio_entry deletion is required, or false.
+ *
  * CONTEXT:
  *   non-irq. non-atomic.
  */
-static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request)
+static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool is_delete)
 {
 	struct bio_entry *bioe, *next;
 	int remaining;
@@ -915,11 +1002,15 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request)
 			blk_end_request(reqe->req, bioe->error, bioe->bi_size);
 		}
 		remaining -= bioe->bi_size;
-		list_del(&bioe->list);
-		destroy_bio_entry(bioe);
+		if (is_delete) {
+			list_del(&bioe->list);
+			destroy_bio_entry(bioe);
+		}
 	}
 	ASSERT(remaining == 0);
-	ASSERT(list_empty(&reqe->bio_ent_list));
+	if (is_delete) {
+		ASSERT(list_empty(&reqe->bio_ent_list));
+	}
 }
 
 /**
@@ -1022,6 +1113,9 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 #ifdef WALB_OVERLAPPING_DETECTION
 	bool is_overlapping_insert_succeeded;
 #endif
+#ifdef WALB_FAST_ALGORITHM
+	bool is_pending_insert_succeeded;
+#endif
 
 	ASSERT(wpack);
 	ASSERT(wdev);
@@ -1040,7 +1134,7 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 		ASSERT(req);
 		
 		bio_error = wait_for_bio_entry_list(&reqe->bio_ent_list);
-		if (is_failed || bio_error) { goto failed; }
+		if (is_failed || bio_error) { goto failed0; }
 		
 		if (blk_rq_sectors(req) == 0) {
 
@@ -1050,30 +1144,46 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 			blk_end_request_all(req, 0);
 			destroy_req_entry(reqe);
 		} else {
+			/* Create all related bio(s). */
+			if (!create_bio_entry_list(reqe, pdata->ddev)) { goto failed0; }
+#ifdef WALB_FAST_ALGORITHM
+			
+			spin_lock(&pdata->pending_data_lock);
+			is_pending_insert_succeeded =
+				pending_insert(pdata->pending_data, reqe);
+			spin_unlock(&pdata->pending_data_lock);
+			if (!is_pending_insert_succeeded) { goto failed1; }
+			blk_end_request_all(req, 0);
+#endif
 #ifdef WALB_OVERLAPPING_DETECTION
 			/* check and insert to overlapping detection data. */
 			spin_lock(&pdata->overlapping_data_lock);
 			is_overlapping_insert_succeeded =
 				overlapping_check_and_insert(pdata->overlapping_data, reqe);
 			spin_unlock(&pdata->overlapping_data_lock);
-			if (!is_overlapping_insert_succeeded) { goto failed; }
+			if (!is_overlapping_insert_succeeded) {
+#ifdef WALB_FAST_ALGORITHM
+				spin_lock(&pdata->pending_data_lock);
+				pending_delete(pdata->pending_data, reqe);
+				spin_unlock(&pdata->pending_data_lock);
+#endif
+				goto failed1;
+			}
 #endif
 			/* Enqueue as a write req task. */
 			INIT_WORK(&reqe->work, write_req_task);
 			queue_work(wq_normal_, &reqe->work);
 		}
 		continue;
-	failed:
+
+	failed1:
+		destroy_bio_entry_list(&reqe->bio_entry_list);
+	failed0:
 		is_failed = true;
+		set_read_only_mode(pdata);
 		blk_end_request_all(req, -EIO);
 		list_del(&reqe->list);
 		destroy_req_entry(reqe);
-	}
-	/* Now &wpack->bio_ent_list is empty and
-	   reqe->bio_ent_list of all reqe in &wpack->req_ent_list are also empty. */
-
-	if (is_failed) {
-		set_read_only_mode(pdata);
 	}
 }
 
@@ -1141,6 +1251,15 @@ static void logpack_list_gc_task(struct work_struct *work)
 /**
  * Execute a write request.
  *
+ * (1) create (already done)
+ * (2) wait for overlapping write requests done
+ *     (only when WALB_OVERLAPPING_DETECTION)
+ * (3) submit
+ * (4) wait for completion
+ * (5) notify waiting overlapping write requests
+ *     (only when WALB_OVERLAPPING_DETECTION)
+ * (6) notify gc_task.
+ *
  * CONTEXT:
  *   Workqueue task.
  *   Works will be executed in parallel.
@@ -1148,33 +1267,41 @@ static void logpack_list_gc_task(struct work_struct *work)
  */
 static void write_req_task(struct work_struct *work)
 {
+#ifdef WALB_FAST_ALGORITHM
+	write_req_task_fast(work);
+#else
+	write_req_task_easy(work);
+#endif
+}
+
+/**
+ * Execute a write request (Fast algortihm version).
+ */
+static void write_req_task_fast(struct work_struct *work)
+{
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
 	struct wrapper_blk_dev *wdev = reqe->wdev;
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct blk_plug plug;
-	bool is_end_request = true;
+	const bool is_end_request = false;
+	const bool is_delete = false;
 
-	ASSERT(list_empty(&reqe->bio_ent_list));
-	
 	/* Wait for previous overlapping writes. */
 #ifdef WALB_OVERLAPPING_DETECTION
 	if (reqe->n_overlapping > 0) {
 		wait_for_completion(&reqe->overlapping_done);
 	}
 #endif
-	
-	/* Create all related bio(s). */
-	if (!create_bio_entry_list(reqe, pdata->ddev)) {
-		goto alloc_error;
-	}
+	/* Get all bio(s) due to different timing of bio end_io and put. */
+	get_all_bio_entry_list(&reqe->bio_ent_list);
 	
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
-	submit_bio_entry_list(reqe);
+	submit_bio_entry_list(&reqe->bio_ent_list);
 	blk_finish_plug(&plug);
 
 	/* Wait for completion and call end_request. */
-	wait_for_req_entry(reqe, is_end_request);
+	wait_for_req_entry(reqe, is_end_request, is_delete);
 
 	/* Delete from overlapping detection data. */
 #ifdef WALB_OVERLAPPING_DETECTION
@@ -1183,20 +1310,71 @@ static void write_req_task(struct work_struct *work)
 	spin_unlock(&pdata->overlapping_data_lock);
 #endif
 
+	/* Delete from pending data. */
+	spin_lock(&pdata->pending_data_lock);
+	pending_delete(pdata->pending_data, reqe);
+	spin_unlock(&pdata->pending_data_lock);
+
+	/* Free resources. */
+	put_all_bio_entry_list(&reqe->bio_ent_list);
+	destroy_bio_entry_list(&reqe->bio_ent_list);
+	
+	ASSERT(list_empty(&reqe->bio_ent_list));
+	
 	/* Notify logpack_list_gc_task().
 	   Reqe will be destroyed in logpack_list_gc_task(). */
 	complete(&reqe->done);
+}
+
+/**
+ * Execute a write request (Easy algortihm version).
+ */
+static void write_req_task_easy(struct work_struct *work)
+{
+	struct req_entry *reqe = container_of(work, struct req_entry, work);
+	struct wrapper_blk_dev *wdev = reqe->wdev;
+	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct blk_plug plug;
+	const bool is_end_request = true;
+	const bool is_delete = true;
+
+	/* Wait for previous overlapping writes. */
+#ifdef WALB_OVERLAPPING_DETECTION
+	if (reqe->n_overlapping > 0) {
+		wait_for_completion(&reqe->overlapping_done);
+	}
+#endif
 	
-	return;
-	
-alloc_error:
+	/* Submit all related bio(s). */
+	blk_start_plug(&plug);
+	submit_bio_entry_list(&reqe->bio_ent_list);
+	blk_finish_plug(&plug);
+
+	/* Wait for completion and call end_request. */
+	wait_for_req_entry(reqe, is_end_request, is_delete);
+
+	/* Delete from overlapping detection data. */
+#ifdef WALB_OVERLAPPING_DETECTION
+	spin_lock(&pdata->overlapping_data_lock);
+	overlapping_delete_and_notify(pdata->overlapping_data, reqe);
+	spin_unlock(&pdata->overlapping_data_lock);
+#endif
+
 	ASSERT(list_empty(&reqe->bio_ent_list));
-	blk_end_request_all(reqe->req, -EIO);
+	
+	/* Notify logpack_list_gc_task().
+	   Reqe will be destroyed in logpack_list_gc_task(). */
 	complete(&reqe->done);
 }
 
 /**
  * Execute a read request.
+ *
+ * (1) create
+ * (2) submit
+ * (3) wait for completion
+ * (4) end request
+ * (5) free the related resources
  *
  * CONTEXT:
  *   Workqueue task.
@@ -1204,11 +1382,66 @@ alloc_error:
  */
 static void read_req_task(struct work_struct *work)
 {
+#ifdef WALB_FAST_ALGORITHM
+	read_req_task_fast(work);
+#else
+	read_req_task_easy(work);
+#endif
+}
+
+/**
+ * Execute a read request (Fast algortihm version).
+ */
+static void read_req_task_fast(struct work_struct *work)
+{
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
 	struct wrapper_blk_dev *wdev = reqe->wdev;
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct blk_plug plug;
-	bool is_end_request = true;
+	const bool is_end_request = true;
+	const bool is_delete = true;
+
+	/* now editing */
+	
+	/* Create all related bio(s). */
+	if (!create_bio_entry_list(reqe, pdata->ddev)) {
+		goto error;
+	}
+
+	/* Check pending data and copy data from executing write requests. */
+#if WALB_FAST_ALGORITHM
+	spin_lock(&pdata->pending_data_lock);
+	pending_check_and_copy(pdata->pending_data, reqe);
+	spin_unlock(&pdata->pending_data_lock);
+#endif
+		
+	/* Submit all related bio(s). */
+	blk_start_plug(&plug);
+	submit_bio_entry_list(&reqe->bio_ent_list);
+	blk_finish_plug(&plug);
+
+	/* Wait for completion and call end_request. */
+	wait_for_req_entry(reqe, is_end_request, is_delete);
+	goto fin;
+
+error:
+	blk_end_request_all(reqe->req, -EIO);
+fin:
+	ASSERT(list_empty(&reqe->bio_ent_list));
+	destroy_req_entry(reqe);
+}
+
+/**
+ * Execute a read request (Easy algortihm version).
+ */
+static void read_req_task_easy(struct work_struct *work)
+{
+	struct req_entry *reqe = container_of(work, struct req_entry, work);
+	struct wrapper_blk_dev *wdev = reqe->wdev;
+	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct blk_plug plug;
+	const bool is_end_request = true;
+	const bool is_delete = true;
 
 	/* Create all related bio(s). */
 	if (!create_bio_entry_list(reqe, pdata->ddev)) {
@@ -1217,11 +1450,11 @@ static void read_req_task(struct work_struct *work)
 		
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
-	submit_bio_entry_list(reqe);
+	submit_bio_entry_list(&reqe->bio_ent_list);
 	blk_finish_plug(&plug);
 
 	/* Wait for completion and call end_request. */
-	wait_for_req_entry(reqe, is_end_request);
+	wait_for_req_entry(reqe, is_end_request, is_delete);
 	goto fin;
 
 error:
@@ -1799,9 +2032,79 @@ static void overlapping_delete_and_notify(
 #endif
 
 /**
+ * Insert a req_entry from a pending data.
+ *
+ * CONTEXT:
+ *   pending_data lock must be held.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static bool pending_insert(
+	struct multimap *pending_data, struct req_entry *reqe)
+{
+	int ret;
+
+	ASSERT(pending_data);
+	ASSERT(reqe);
+	ASSERT(reqe->req);
+	ASSERT(reqe->req->cmd_flags & REQ_WRITE);
+
+	/* Insert the entry. */
+	ret = multimap_add(pending_data, blk_rq_pos(reqe->req),
+			(unsigned long)reqe, GFP_ATOMIC);
+	ASSERT(ret != EEXIST);
+	ASSERT(ret != EINVAL);
+	if (ret) {
+		ASSERT(ret == ENOMEM);
+		LOGe("pending_insert failed.\n");
+		return false;
+	}
+	return true;
+}
+#endif
+
+/**
+ * Delete a req_entry from a pending data.
+ *
+ * CONTEXT:
+ *   pending_data lock must be held.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static void pending_delete(
+	struct multimap *pending_data, struct req_entry *reqe)
+{
+	struct req_entry *reqe_tmp;
+
+	ASSERT(pending_data);
+	ASSERT(reqe);
+	
+	/* Delete the entry. */
+	reqe_tmp = (struct req_entry *)multimap_del(
+		pending_data, reqe->req_addr, (unsigned long)reqe);
+#if 0
+	LOGd("reqe_tmp %p reqe %p\n", reqe_tmp, reqe); /* debug */
+#endif
+	ASSERT(reqe_tmp == reqe);
+}
+#endif
+
+/**
+ * 
+ *
+ * CONTEXT:
+ *   pending_data lock must be held.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static void pending_check_and_copy(
+	struct multimap *pending_data, struct req_entry *reqe)
+{
+	/* now editing */
+}
+#endif
+
+/**
  * Check two request entrys is overlapping.
  */
-#ifdef WALB_OVERLAPPING_DETECTION
+#if defined(WALB_OVERLAPPING_DETECTION) || defined(WALB_FAST_ALGORITHM)
 static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1)
 {
 	ASSERT(reqe0);

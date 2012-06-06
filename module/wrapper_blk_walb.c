@@ -89,15 +89,21 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->ddev = NULL;
 	spin_lock_init(&pdata->lsid_lock);
 	spin_lock_init(&pdata->lsuper0_lock);
-	spin_lock_init(&pdata->pending_data_lock);
-	INIT_LIST_HEAD(&pdata->writepack_list);
 
 #ifdef WALB_OVERLAPPING_DETECTION
 	spin_lock_init(&pdata->overlapping_data_lock);
 	pdata->overlapping_data = multimap_create(GFP_KERNEL);
 	if (!pdata->overlapping_data) {
-		LOGe("multimap creattino failed.\n");
+		LOGe("multimap creation failed.\n");
 		goto error01;
+	}
+#endif
+#ifdef WALB_FAST_ALGORITHM
+	spin_lock_init(&pdata->pending_data_lock);
+	pdata->pending_data = multimap_create(GFP_KERNEL);
+	if (!pdata->pending_data) {
+		LOGe("multimap creation failed.\n");
+		goto error02;
 	}
 #endif
 	
@@ -178,6 +184,10 @@ error3:
 error2:
         blkdev_put(ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 error1:
+#ifdef WALB_FAST_ALGORITHM
+error02:
+	multimap_destroy(pdata->pending_data);
+#endif
 #ifdef WALB_OVERLAPPING_DETECTION
 error01:
 	multimap_destroy(pdata->overlapping_data);
@@ -213,6 +223,9 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
         blkdev_put(pdata->ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 
 	sector_free(pdata->lsuper0);
+#ifdef WALB_FAST_ALGORITHM
+	multimap_destroy(pdata->pending_data);
+#endif
 #ifdef WALB_OVERLAPPING_DETECTION
 	multimap_destroy(pdata->overlapping_data);
 #endif
