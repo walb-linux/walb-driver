@@ -224,7 +224,7 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 #ifdef WALB_OVERLAPPING_DETECTION
 static bool overlapping_check_and_insert(
 	struct multimap *overlapping_data, struct req_entry *reqe);
-static void overlapping_del_and_notify(
+static void overlapping_delete_and_notify(
 	struct multimap *overlapping_data, struct req_entry *reqe);
 static bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1);
 #endif
@@ -1179,7 +1179,7 @@ static void write_req_task(struct work_struct *work)
 	/* Delete from overlapping detection data. */
 #ifdef WALB_OVERLAPPING_DETECTION
 	spin_lock(&pdata->overlapping_data_lock);
-	overlapping_del_and_notify(pdata->overlapping_data, reqe);
+	overlapping_delete_and_notify(pdata->overlapping_data, reqe);
 	spin_unlock(&pdata->overlapping_data_lock);
 #endif
 
@@ -1750,7 +1750,7 @@ fin:
  *   overlapping_data lock must be held.
  */
 #ifdef WALB_OVERLAPPING_DETECTION
-static void overlapping_del_and_notify(
+static void overlapping_delete_and_notify(
 	struct multimap *overlapping_data, struct req_entry *reqe)
 {
 	struct multimap_cursor cur;
