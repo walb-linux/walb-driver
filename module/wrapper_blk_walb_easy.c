@@ -186,15 +186,21 @@ static void logpack_list_gc_task(struct work_struct *work);
 static void write_req_task(struct work_struct *work);
 static void read_req_task(struct work_struct *work);
 
-static void read_req_task_easy(struct work_struct *work);
+/* Helper functions for tasks. */
+#ifdef WALB_FAST_ALGORITHM
 static void read_req_task_fast(struct work_struct *work);
+static void write_req_task_fast(struct work_struct *work);
+#else
+static void read_req_task_easy(struct work_struct *work);
+static void write_req_task_easy(struct work_struct *work);
+#endif
 
 /* Helper functions for bio_entry list. */
 static bool create_bio_entry_list(struct req_entry *reqe, struct block_device *bdev);
 static void submit_bio_entry_list(struct list_head *bio_ent_list);
-static void destroy_bio_entry_list(struct list_head *bio_ent_list);
-static void get_all_bio_entry_list(struct list_head *bio_ent_list);
-static void put_all_bio_entry_list(struct list_head *bio_ent_list);
+UNUSED static void destroy_bio_entry_list(struct list_head *bio_ent_list);
+UNUSED static void get_bio_entry_list(struct list_head *bio_ent_list);
+UNUSED static void put_bio_entry_list(struct list_head *bio_ent_list);
 static void wait_for_req_entry(
 	struct req_entry *reqe, bool is_end_request, bool is_delete);
 
@@ -926,7 +932,7 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 	list_for_each_entry(bioe, bio_ent_list, list) {
 #ifdef WALB_FAST_ALGORITHM
 		if (bioe->is_copied) {
-			bio_entry_end_io(bioe->bio);
+			bio_entry_end_io(bioe->bio, 0);
 		} else {
 			generic_make_request(bioe->bio);
 		}
@@ -939,6 +945,7 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 /**
  * Destroy all bio_entry in a list.
  */
+UNUSED
 static void destroy_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe, *next;
@@ -953,7 +960,8 @@ static void destroy_bio_entry_list(struct list_head *bio_ent_list)
 /**
  * Call bio_get() for all bio in a bio_entry list.
  */
-static void get_all_bio_entry_list(struct list_head *bio_ent_list)
+UNUSED
+static void get_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
 	
@@ -967,7 +975,8 @@ static void get_all_bio_entry_list(struct list_head *bio_ent_list)
 /**
  * Call bio_put() for all bio in a bio_entry list.
  */
-static void put_all_bio_entry_list(struct list_head *bio_ent_list)
+UNUSED
+static void put_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
 	
@@ -1175,9 +1184,10 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 			queue_work(wq_normal_, &reqe->work);
 		}
 		continue;
-
+#if defined(WALB_FAST_ALGORITHM) || defined(WALB_OVERLAPPING_DETECTION)
 	failed1:
-		destroy_bio_entry_list(&reqe->bio_entry_list);
+		destroy_bio_entry_list(&reqe->bio_ent_list);
+#endif
 	failed0:
 		is_failed = true;
 		set_read_only_mode(pdata);
@@ -1277,6 +1287,7 @@ static void write_req_task(struct work_struct *work)
 /**
  * Execute a write request (Fast algortihm version).
  */
+#ifdef WALB_FAST_ALGORITHM
 static void write_req_task_fast(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
@@ -1293,7 +1304,7 @@ static void write_req_task_fast(struct work_struct *work)
 	}
 #endif
 	/* Get all bio(s) due to different timing of bio end_io and put. */
-	get_all_bio_entry_list(&reqe->bio_ent_list);
+	get_bio_entry_list(&reqe->bio_ent_list);
 	
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
@@ -1316,7 +1327,7 @@ static void write_req_task_fast(struct work_struct *work)
 	spin_unlock(&pdata->pending_data_lock);
 
 	/* Free resources. */
-	put_all_bio_entry_list(&reqe->bio_ent_list);
+	put_bio_entry_list(&reqe->bio_ent_list);
 	destroy_bio_entry_list(&reqe->bio_ent_list);
 	
 	ASSERT(list_empty(&reqe->bio_ent_list));
@@ -1325,7 +1336,7 @@ static void write_req_task_fast(struct work_struct *work)
 	   Reqe will be destroyed in logpack_list_gc_task(). */
 	complete(&reqe->done);
 }
-
+#else /* WALB_FAST_ALGORITHM */
 /**
  * Execute a write request (Easy algortihm version).
  */
@@ -1333,7 +1344,7 @@ static void write_req_task_easy(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
 	struct wrapper_blk_dev *wdev = reqe->wdev;
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	UNUSED struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
@@ -1366,6 +1377,7 @@ static void write_req_task_easy(struct work_struct *work)
 	   Reqe will be destroyed in logpack_list_gc_task(). */
 	complete(&reqe->done);
 }
+#endif /* WALB_FAST_ALGORITHM */
 
 /**
  * Execute a read request.
@@ -1392,6 +1404,7 @@ static void read_req_task(struct work_struct *work)
 /**
  * Execute a read request (Fast algortihm version).
  */
+#ifdef WALB_FAST_ALGORITHM
 static void read_req_task_fast(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
@@ -1430,7 +1443,7 @@ fin:
 	ASSERT(list_empty(&reqe->bio_ent_list));
 	destroy_req_entry(reqe);
 }
-
+#else /* WALB_FAST_ALGORITHM */
 /**
  * Execute a read request (Easy algortihm version).
  */
@@ -1463,6 +1476,7 @@ fin:
 	ASSERT(list_empty(&reqe->bio_ent_list));
 	destroy_req_entry(reqe);
 }
+#endif /* WALB_FAST_ALGORITHM */
 
 /**
  * Check whether pack is valid.
