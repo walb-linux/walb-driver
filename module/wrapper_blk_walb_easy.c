@@ -1156,7 +1156,6 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 			/* Create all related bio(s). */
 			if (!create_bio_entry_list(reqe, pdata->ddev)) { goto failed0; }
 #ifdef WALB_FAST_ALGORITHM
-			
 			spin_lock(&pdata->pending_data_lock);
 			is_pending_insert_succeeded =
 				pending_insert(pdata->pending_data, reqe);
@@ -1422,11 +1421,9 @@ static void read_req_task_fast(struct work_struct *work)
 	}
 
 	/* Check pending data and copy data from executing write requests. */
-#if WALB_FAST_ALGORITHM
 	spin_lock(&pdata->pending_data_lock);
 	pending_check_and_copy(pdata->pending_data, reqe);
 	spin_unlock(&pdata->pending_data_lock);
-#endif
 		
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
@@ -1679,6 +1676,7 @@ static struct bio_entry* logpack_submit_lhead(
 	
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_sector = off_lb;
+	bio->bi_rw = rw;
 	bio->bi_end_io = bio_entry_end_io;
 	bio->bi_private = bioe;
 	bio_add_page(bio, page, pbs, offset_in_page(lhead));
@@ -1689,7 +1687,7 @@ static struct bio_entry* logpack_submit_lhead(
 
 	LOGd("submit logpack header bio: off %llu size %u\n",
 		(u64)bio->bi_sector, bio_cur_bytes(bio));
-	submit_bio(rw, bio);
+	generic_make_request(bio);
 
 	return bioe;
 
@@ -1969,8 +1967,8 @@ static bool overlapping_check_and_insert(
 	}
 
 	/* debug */
-	if (reqe->n_overlapping > 1) {
-		LOGe("n_overlapping %u\n", reqe->n_overlapping);
+	if (reqe->n_overlapping > 0) {
+		LOGn("n_overlapping %u\n", reqe->n_overlapping);
 	}
 
 fin:
@@ -2298,8 +2296,18 @@ bool pre_register(void)
 	if (!treemap_init()) {
 		goto error7;
 	}
-	
 
+#ifdef WALB_OVERLAPPING_DETECTION
+	LOGn("WalB Overlapping Detection supported.\n");
+#else
+	LOGn("WalB Overlapping Detection not supported.\n");
+#endif
+#ifdef WALB_FAST_ALGORITHM
+	LOGn("WalB Fast Algorithm.\n");
+#else
+	LOGn("WalB Easy Algorithm.\n");
+#endif
+	
 	return true;
 
 #if 0
