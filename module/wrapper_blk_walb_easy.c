@@ -784,7 +784,7 @@ static bool writepack_add_req(
 	unsigned int pbs;
 	struct walb_logpack_header *lhead = NULL;
 
-	LOGd("begin\n");
+	LOGd_("begin\n");
 	
 	ASSERT(wpack_list);
 	ASSERT(wpackp);
@@ -827,7 +827,7 @@ fin:
 	}
 	/* The request is just added to the pack. */
 	list_add_tail(&reqe->list, &pack->req_ent_list);
-	LOGd("normal end\n");
+	LOGd_("normal end\n");
 	return true;
 
 newpack:
@@ -852,7 +852,7 @@ newpack:
 error1:
 	destroy_req_entry(reqe);
 error0:
-	LOGd("failure end\n");
+	LOGd_("failure end\n");
 	return false;
 }
 
@@ -1492,7 +1492,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	u64 total_pb; /* total io size in physical block. */
 	unsigned int n_padding = 0;
 
-	LOGd("is_valid_prepared_pack begin.\n");
+	LOGd_("is_valid_prepared_pack begin.\n");
 	
 	CHECK(pack);
 	CHECK(pack->logpack_header_sector);
@@ -1521,7 +1521,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		CHECK(lrec->is_exist);
 		
 		if (lrec->is_padding) {
-			LOGn("padding found.\n"); /* debug */
+			LOGd_("padding found.\n"); /* debug */
 			total_pb += capacity_pb(pbs, lrec->io_size);
 			n_padding ++;
 			i ++;
@@ -1550,10 +1550,10 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	if (lhead->n_records == 0) {
 		CHECK(pack->is_zero_flush_only);
 	}
-	LOGd("is_valid_prepared_pack succeeded.\n");
+	LOGd_("is_valid_prepared_pack succeeded.\n");
 	return true;
 error:
-	LOGd("is_valid_prepared_pack failed.\n");
+	LOGd_("is_valid_prepared_pack failed.\n");
 	return false;
 }
 
