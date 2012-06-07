@@ -33,6 +33,7 @@ test-size-list-mod-objs := test_size_list.o size_list.o
 test-kmem-cache-mod-objs := test_kmem_cache.o
 test-workqueue-mod-objs := test_workqueue.o
 test-kthread-mod-objs := test_kthread.o
+test-deadlock-mod-objs := test_deadlock.o
 test-serialized-task-mod-objs := test_serialized_task.o
 #wrapblk-mod-objs := wrapblk.o
 #memblk-none-mod-objs := memblk.o treemap.o memblk_io_none.o
@@ -75,6 +76,7 @@ test-treemap-mod.o \
 test-memblk-data-mod.o \
 test-memblk-data-perf-mod.o \
 test-kthread-mod.o \
+test-deadlock-mod.o \
 test-sg-util-mod.o \
 test-size-list-mod.o \
 test-kmem-cache-mod.o \
