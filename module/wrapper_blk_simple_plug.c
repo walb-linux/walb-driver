@@ -601,7 +601,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		}
 
 		if (req->cmd_flags & REQ_FLUSH) {
-			LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
+			LOGd_("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
 
 			list_add_tail(&work->list, &listh);
 			work = create_req_list_work(req, wdev, GFP_ATOMIC);

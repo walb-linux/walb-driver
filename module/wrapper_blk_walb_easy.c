@@ -16,6 +16,7 @@
 #include "sector_io.h"
 #include "logpack.h"
 #include "treemap.h"
+#include "bio_entry.h"
 #include "walb/walb.h"
 #include "walb/block_size.h"
 
@@ -92,25 +93,6 @@ struct req_entry
 struct kmem_cache *req_entry_cache_ = NULL;
 
 /**
- * bio as a list entry.
- */
-struct bio_entry
-{
-	struct list_head list; /* list entry */
-	struct bio *bio; /* must be NULL if bio->bi_cnt is 0 (and deallocated). */
-	struct completion done;
-	unsigned int bi_size; /* keep bi_size at initialization,
-				 because bio->bi_size will be 0 after endio. */
-	int error; /* bio error status. */
-#ifdef WALB_FAST_ALGORITHM
-	bool is_copied; /* true if read is done by copy from pending data. */
-#endif
-};
-/* kmem cache for dbio. */
-#define KMEM_CACHE_BIO_ENTRY_NAME "bio_entry_cache"
-struct kmem_cache *bio_entry_cache_ = NULL;
-
-/**
  * A write pack.
  * There are no overlapping requests in a pack.
  */
@@ -140,7 +122,6 @@ struct kmem_cache *pack_cache_ = NULL;
 
 /* Print functions for debug. */
 UNUSED static void print_req_flags(struct request *req);
-UNUSED static void print_bio_entry(const char *level, struct bio_entry *bioe);
 UNUSED static void print_req_entry(const char *level, struct req_entry *reqe);
 UNUSED static void print_pack(const char *level, struct pack *pack);
 UNUSED static void print_pack_list(const char *level, struct list_head *wpack_list);
@@ -157,11 +138,8 @@ static void destroy_req_entry(struct req_entry *reqe);
 
 /* bio_entry related. */
 static void bio_entry_end_io(struct bio *bio, int error);
-static struct bio_entry* create_bio_entry(gfp_t gfp_mask);
-static void init_bio_entry(struct bio_entry *bioe);
 static struct bio_entry* create_bio_entry_by_clone(
 	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
-static void destroy_bio_entry(struct bio_entry *bioe);
 
 /* pack related. */
 static struct pack* create_pack(gfp_t gfp_mask);
@@ -197,11 +175,13 @@ static void write_req_task_easy(struct work_struct *work);
 /* Helper functions for bio_entry list. */
 static bool create_bio_entry_list(struct req_entry *reqe, struct block_device *bdev);
 static void submit_bio_entry_list(struct list_head *bio_ent_list);
-UNUSED static void destroy_bio_entry_list(struct list_head *bio_ent_list);
-UNUSED static void get_bio_entry_list(struct list_head *bio_ent_list);
-UNUSED static void put_bio_entry_list(struct list_head *bio_ent_list);
 static void wait_for_req_entry(
 	struct req_entry *reqe, bool is_end_request, bool is_delete);
+UNUSED void get_overlapping_pos_and_sectors(
+	struct req_entry *reqe0,  struct req_entry *reqe1,
+	u64 *ol_req_pos_p, unsigned int *ol_req_sectors_p);
+UNUSED static bool data_copy_req_entry(
+	struct req_entry *dst_reqe,  struct req_entry *src_reqe);
 
 /* Validator for debug. */
 static bool is_valid_prepared_pack(struct pack *pack);
@@ -250,7 +230,7 @@ static bool pending_insert(
 	struct multimap *pending_data, struct req_entry *reqe);
 static void pending_delete(
 	struct multimap *pending_data, struct req_entry *reqe);
-static void pending_check_and_copy(
+static bool pending_check_and_copy(
 	struct multimap *pending_data, struct req_entry *reqe);
 #endif
 
@@ -308,16 +288,6 @@ static void print_req_flags(struct request *req)
 		((req->cmd_flags & REQ_IO_STAT) ?            " REQ_IO_STAT" : ""),
 		((req->cmd_flags & REQ_MIXED_MERGE) ?        " REQ_MIXED_MERGE" : ""),
 		((req->cmd_flags & REQ_SECURE) ?             " REQ_SECURE" : ""));
-}
-
-/**
- * Print a bio_entry.
- */
-UNUSED
-static void print_bio_entry(const char *level, struct bio_entry *bioe)
-{
-	ASSERT(bioe);
-	/* now editing */
 }
 
 /**
@@ -531,44 +501,6 @@ static void bio_entry_end_io(struct bio *bio, int error)
 }
 
 /**
- * Initialize a bio_entry.
- */
-static void init_bio_entry(struct bio_entry *bioe)
-{
-	ASSERT(bioe);
-	
-	init_completion(&bioe->done);
-	bioe->error = 0;
-	bioe->bio = NULL;
-	bioe->bi_size = 0;
-
-#ifdef WALB_FAST_ALGORITHM
-	bioe->is_copied = false;
-#endif
-}
-
-/**
- * Create a bio_entry.
- * Internal bio and bi_size will be set NULL.
- */
-static struct bio_entry* create_bio_entry(gfp_t gfp_mask)
-{
-	struct bio_entry *bioe;
-
-	bioe = kmem_cache_alloc(bio_entry_cache_, gfp_mask);
-	if (!bioe) {
-		LOGd("kmem_cache_alloc() failed.");
-		goto error0;
-	}
-	init_bio_entry(bioe);
-	return bioe;
-
-error0:
-	LOGe("create_bio_entry() end with error.\n");
-	return NULL;
-}
-
-/**
  * Create a bio_entry by clone.
  *
  * @bio original bio.
@@ -604,27 +536,6 @@ error1:
 error0:
 	LOGe("create_bio_entry_by_clone() end with error.\n");
 	return NULL;
-}
-
-/**
- * Destroy a bio_entry.
- */
-static void destroy_bio_entry(struct bio_entry *bioe)
-{
-	LOGd_("destroy_bio_entry() begin.\n");
-        
-	if (!bioe) {
-		return;
-	}
-
-	if (bioe->bio) {
-		LOGd("bio_put %p\n", bioe->bio);
-		bio_put(bioe->bio);
-		bioe->bio = NULL;
-	}
-	kmem_cache_free(bio_entry_cache_, bioe);
-
-	LOGd_("destroy_bio_entry() end.\n");
 }
 
 /**
@@ -899,7 +810,7 @@ static bool is_flush_first_req_entry(struct list_head *req_ent_list)
  */
 static bool create_bio_entry_list(struct req_entry *reqe, struct block_device *bdev)
 {
-	struct bio_entry *bioe, *next;
+	struct bio_entry *bioe;
 	struct bio *bio;
         
 	ASSERT(reqe);
@@ -918,10 +829,7 @@ static bool create_bio_entry_list(struct req_entry *reqe, struct block_device *b
 	}
 	return true;
 error1:
-	list_for_each_entry_safe(bioe, next, &reqe->bio_ent_list, list) {
-		list_del(&bioe->list);
-		destroy_bio_entry(bioe);
-	}
+	destroy_bio_entry_list(&reqe->bio_ent_list);
 	ASSERT(list_empty(&reqe->bio_ent_list));
 	return false;
 }
@@ -949,54 +857,6 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 #else
 		generic_make_request(bioe->bio);
 #endif
-	}
-}
-
-/**
- * Destroy all bio_entry in a list.
- */
-UNUSED
-static void destroy_bio_entry_list(struct list_head *bio_ent_list)
-{
-	struct bio_entry *bioe, *next;
-	
-	ASSERT(bio_ent_list);
-	list_for_each_entry_safe(bioe, next, bio_ent_list, list) {
-		list_del(&bioe->list);
-		destroy_bio_entry(bioe);
-	}
-}
-
-/**
- * Call bio_get() for all bio in a bio_entry list.
- */
-UNUSED
-static void get_bio_entry_list(struct list_head *bio_ent_list)
-{
-	struct bio_entry *bioe;
-	
-	ASSERT(bio_ent_list);
-	list_for_each_entry(bioe, bio_ent_list, list) {
-		ASSERT(bioe->bio);
-		bio_get(bioe->bio);
-	}
-}
-
-/**
- * Call bio_put() for all bio in a bio_entry list.
- */
-UNUSED
-static void put_bio_entry_list(struct list_head *bio_ent_list)
-{
-	struct bio_entry *bioe;
-	int bi_cnt;
-	
-	ASSERT(bio_ent_list);
-	list_for_each_entry(bioe, bio_ent_list, list) {
-		ASSERT(bioe->bio);
-		bi_cnt = atomic_read(&bioe->bio->bi_cnt);
-		bio_put(bioe->bio);
-		if (bi_cnt == 1) { bioe->bio = NULL; }
 	}
 }
 
@@ -1034,6 +894,86 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 	if (is_delete) {
 		ASSERT(list_empty(&reqe->bio_ent_list));
 	}
+}
+
+/**
+ * Get overlapping position and sectors of two requests.
+ *
+ * @reqe0 a request entry.
+ * @reqe1 another request entry.
+ * @ol_req_pos_p pointer to store result position.
+ * @ol_req_sectors_p pointer to store result sectors.
+ */
+UNUSED void get_overlapping_pos_and_sectors(
+	struct req_entry *reqe0,  struct req_entry *reqe1,
+	u64 *ol_req_pos_p, unsigned int *ol_req_sectors_p)
+{
+	u64 pos;
+	unsigned int sectors;
+	u64 dst_req_pos_end;
+	u64 src_req_pos_end;
+
+	/* Get overlapping position and sectors. */
+
+	/* Bigger one as the begin position. */
+	if (reqe0->req_pos < reqe1->req_pos) {
+		pos = reqe1->req_pos;
+	} else {
+		pos = reqe0->req_pos;
+	}
+	/* Smaller one as the end position. */
+	dst_req_pos_end = reqe0->req_pos + reqe0->req_sectors;
+	src_req_pos_end = reqe1->req_pos + reqe1->req_sectors;
+	if (dst_req_pos_end < src_req_pos_end) {
+		sectors = dst_req_pos_end - pos;
+	} else {
+		sectors = src_req_pos_end - pos;
+	}
+
+	ASSERT(reqe0->req_sectors >= sectors);
+	ASSERT(reqe1->req_sectors >= sectors);
+
+	/* Set results. */
+	*ol_req_pos_p = pos;
+	*ol_req_sectors_p = sectors;
+}
+
+/**
+ * Copy data from a source req_entry to a destination req_entry.
+ *
+ * @dst_reqe destination. You can split inside bio(s).
+ * @src_reqe source. You must not modify this.
+ *
+ * bioe->is_copied will be true when it uses data of the source.
+ * bio and bioe in the destination
+ * will be splitted due to overlapping border.
+ *
+ * RETURN:
+ *   true if copy has done successfully,
+ *   or false (due to memory allocation failure).
+ */
+UNUSED static bool data_copy_req_entry(
+	struct req_entry *dst_reqe,  struct req_entry *src_reqe)
+{
+	/* u64 ol_req_pos; */
+	/* unsigned int ol_req_sectors; */
+	/* unsigned int dst_off, src_off; */
+	/* unsigned int scanned = 0; */
+
+	/* get_overlapping_pos_and_sectors( */
+	/* 	dst_reqe, src_reqe, &ol_req_pos, &ol_req_sectors); */
+	
+	/* dst_off = (unsigned int)(ol_req_pos - dst_reqe->req_pos); */
+	/* src_off = (unsigned int)(ol_req_pos - src_reqe->req_pos); */
+
+	/* while (scanned < ol_req_sectors) { */
+
+
+	/* 	/\* now editing *\/ */
+		
+	/* } */
+
+	return true;
 }
 
 /**
@@ -1429,16 +1369,21 @@ static void read_req_task_fast(struct work_struct *work)
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
+	bool ret;
 
 	/* Create all related bio(s). */
 	if (!create_bio_entry_list(reqe, pdata->ddev)) {
-		goto error;
+		goto error0;
 	}
 
 	/* Check pending data and copy data from executing write requests. */
 	spin_lock(&pdata->pending_data_lock);
-	pending_check_and_copy(pdata->pending_data, reqe);
+	/* ret = pending_check_and_copy(pdata->pending_data, reqe); */
+	ret = true;
 	spin_unlock(&pdata->pending_data_lock);
+	if (!ret) {
+		goto error1;
+	}
 		
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
@@ -1449,7 +1394,9 @@ static void read_req_task_fast(struct work_struct *work)
 	wait_for_req_entry(reqe, is_end_request, is_delete);
 	goto fin;
 
-error:
+error1:
+	destroy_bio_entry_list(&reqe->bio_ent_list);
+error0:
 	blk_end_request_all(reqe->req, -EIO);
 fin:
 	ASSERT(list_empty(&reqe->bio_ent_list));
@@ -1956,6 +1903,7 @@ static bool overlapping_check_and_insert(
 
 	ASSERT(overlapping_data);
 	ASSERT(reqe);
+	ASSERT(reqe->req_sectors > 0);
 	
 	max_io_size = queue_max_sectors(reqe->wdev->queue);
 
@@ -2073,6 +2021,7 @@ static bool pending_insert(
 	ASSERT(reqe);
 	ASSERT(reqe->req);
 	ASSERT(reqe->req->cmd_flags & REQ_WRITE);
+	ASSERT(reqe->req_sectors > 0);
 
 	/* Insert the entry. */
 	ret = multimap_add(pending_data, blk_rq_pos(reqe->req),
@@ -2114,18 +2063,48 @@ static void pending_delete(
 /**
  * Check overlapping writes and copy from them.
  *
+ * RETURN:
+ *   true in success, or false due to data copy failed.
+ *
  * CONTEXT:
  *   pending_data lock must be held.
  */
 #ifdef WALB_FAST_ALGORITHM
-static void pending_check_and_copy(
+static bool pending_check_and_copy(
 	struct multimap *pending_data, struct req_entry *reqe)
 {
+	struct multimap_cursor cur;
+	u64 max_io_size;
+	struct req_entry *reqe_tmp;
 
-
-
+	ASSERT(pending_data);
+	ASSERT(reqe);
 	
-	/* now editing */
+	max_io_size = queue_max_sectors(reqe->wdev->queue);
+	
+	/* Search the smallest candidate. */
+	multimap_cursor_init(pending_data, &cur);
+	if (!multimap_cursor_search(&cur, reqe->req_pos - max_io_size, MAP_SEARCH_GT, 0)) {
+		/* No overlapping requests. */
+		return true;
+	}
+	/* Copy data from pending and overlapping write requests. */
+	while (multimap_cursor_key(&cur) < reqe->req_pos + reqe->req_sectors) {
+
+		ASSERT(multimap_cursor_is_valid(&cur));
+		
+		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
+		ASSERT(reqe_tmp);
+		if (is_overlap_req_entry(reqe, reqe_tmp)) {
+			if (!data_copy_req_entry(reqe, reqe_tmp)) {
+				return false;
+			}
+		}
+		if (!multimap_cursor_next(&cur)) {
+			break;
+		}
+	}
+	return true;
 }
 #endif
 
@@ -2277,18 +2256,14 @@ bool pre_register(void)
 		LOGe("failed to create a kmem_cache (req_entry).\n");
 		goto error1;
 	}
-	bio_entry_cache_ = kmem_cache_create(
-		KMEM_CACHE_BIO_ENTRY_NAME,
-		sizeof(struct bio_entry), 0, 0, NULL);
-	if (!bio_entry_cache_) {
-		LOGe("failed to create a kmem_cache (bio_entry).\n");
-		goto error2;
-	}
 	pack_cache_ = kmem_cache_create(
 		KMEM_CACHE_PACK_NAME,
 		sizeof(struct pack), 0, 0, NULL);
 	if (!pack_cache_) {
 		LOGe("failed to create a kmem_cache (pack).\n");
+		goto error2;
+	}
+	if (!bio_entry_init()) {
 		goto error3;
 	}
 	
@@ -2336,10 +2311,10 @@ error6:
 	destroy_workqueue(wq_logpack_wait_);
 error5:
 	destroy_workqueue(wq_logpack_submit_);
-error4:	
-	kmem_cache_destroy(pack_cache_);
+error4:
+	bio_entry_exit();
 error3:
-	kmem_cache_destroy(bio_entry_cache_);
+	kmem_cache_destroy(pack_cache_);
 error2:
 	kmem_cache_destroy(req_entry_cache_);
 error1:
@@ -2363,11 +2338,11 @@ void post_unregister(void)
 	destroy_workqueue(wq_logpack_submit_);
 	wq_logpack_submit_ = NULL;
 
+	bio_entry_exit();
+	
 	/* Destory kmem_cache data. */
 	kmem_cache_destroy(pack_cache_);
 	pack_cache_ = NULL;
-	kmem_cache_destroy(bio_entry_cache_);
-	bio_entry_cache_ = NULL;
 	kmem_cache_destroy(req_entry_cache_);
 	req_entry_cache_ = NULL;
 	kmem_cache_destroy(pack_list_work_cache_);
