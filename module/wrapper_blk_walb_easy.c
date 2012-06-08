@@ -83,10 +83,9 @@ struct req_entry
 	struct completion overlapping_done;
 	int n_overlapping; /* initial value is -1. */
 #endif
-#if defined(WALB_OVERLAPPING_DETECTION) || defined(WALB_FAST_ALGORITHM)
-	u64 req_addr; /* request address [logical block] */
-	unsigned int req_size; /* request size [logical block] */
-#endif
+
+	u64 req_pos; /* request address [logical block] */
+	unsigned int req_sectors; /* request size [logical block] */
 };
 /* kmem cache for dbio. */
 #define KMEM_CACHE_REQ_ENTRY_NAME "req_entry_cache"
@@ -98,7 +97,7 @@ struct kmem_cache *req_entry_cache_ = NULL;
 struct bio_entry
 {
 	struct list_head list; /* list entry */
-	struct bio *bio;
+	struct bio *bio; /* must be NULL if bio->bi_cnt is 0 (and deallocated). */
 	struct completion done;
 	unsigned int bi_size; /* keep bi_size at initialization,
 				 because bio->bi_size will be 0 after endio. */
@@ -471,10 +470,8 @@ static struct req_entry* create_req_entry(
 	init_completion(&reqe->overlapping_done);
 	reqe->n_overlapping = -1;
 #endif
-#if defined(WALB_OVERLAPPING_DETECTION) || defined(WALB_FAST_ALGORITHM)
-	reqe->req_addr = blk_rq_pos(req);
-	reqe->req_size = blk_rq_sectors(req);
-#endif
+	reqe->req_pos = blk_rq_pos(req);
+	reqe->req_sectors = blk_rq_sectors(req);
 	return reqe;
 error0:
 	return NULL;
@@ -508,14 +505,27 @@ static void bio_entry_end_io(struct bio *bio, int error)
 {
 	struct bio_entry *bioe = bio->bi_private;
 	UNUSED int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
+	int bi_cnt;
 	ASSERT(bioe);
 	ASSERT(bioe->bio == bio);
 	ASSERT(uptodate);
         
 	/* LOGd("bio_entry_end_io() begin.\n"); */
 	bioe->error = error;
+	bi_cnt = atomic_read(&bio->bi_cnt);
+#ifdef WALB_FAST_ALGORITHM
+	if (bio->bi_rw & WRITE) {
+		ASSERT(bi_cnt == 2 || bi_cnt == 1);
+	} else {
+		ASSERT(bi_cnt == 1);
+	}
+#else
+	ASSERT(bi_cnt == 1);
+#endif
+	if (bi_cnt == 1) {
+		bioe->bio = NULL;
+	}
 	bio_put(bio);
-	bioe->bio = NULL;
 	complete(&bioe->done);
 	/* LOGd("bio_entry_end_io() end.\n"); */
 }
@@ -601,7 +611,7 @@ error0:
  */
 static void destroy_bio_entry(struct bio_entry *bioe)
 {
-	/* LOGd("destroy_bio_entry() begin.\n"); */
+	LOGd_("destroy_bio_entry() begin.\n");
         
 	if (!bioe) {
 		return;
@@ -614,7 +624,7 @@ static void destroy_bio_entry(struct bio_entry *bioe)
 	}
 	kmem_cache_free(bio_entry_cache_, bioe);
 
-	/* LOGd("destroy_bio_entry() end.\n"); */
+	LOGd_("destroy_bio_entry() end.\n");
 }
 
 /**
@@ -979,11 +989,14 @@ UNUSED
 static void put_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
+	int bi_cnt;
 	
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 		ASSERT(bioe->bio);
+		bi_cnt = atomic_read(&bioe->bio->bi_cnt);
 		bio_put(bioe->bio);
+		if (bi_cnt == 1) { bioe->bio = NULL; }
 	}
 }
 
@@ -992,6 +1005,7 @@ static void put_bio_entry_list(struct list_head *bio_ent_list)
  * and end request if required.
  *
  * @reqe target req_entry.
+ *   Do not assume reqe->req is available when is_end_request is false.
  * @is_end_request true if end request call is required, or false.
  * @is_delete true if bio_entry deletion is required, or false.
  *
@@ -1004,7 +1018,7 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 	int remaining;
 	ASSERT(reqe);
         
-	remaining = blk_rq_bytes(reqe->req);
+	remaining = reqe->req_sectors * LOGICAL_BLOCK_SIZE;
 	list_for_each_entry_safe(bioe, next, &reqe->bio_ent_list, list) {
 		wait_for_completion(&bioe->done);
 		if (is_end_request) {
@@ -1161,7 +1175,10 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 				pending_insert(pdata->pending_data, reqe);
 			spin_unlock(&pdata->pending_data_lock);
 			if (!is_pending_insert_succeeded) { goto failed1; }
-			blk_end_request_all(req, 0);
+
+			/* call end_request where with fast algorithm
+			   while easy algorithm call it after data device IO. */
+			blk_end_request_all(req, 0); 
 #endif
 #ifdef WALB_OVERLAPPING_DETECTION
 			/* check and insert to overlapping detection data. */
@@ -1413,8 +1430,6 @@ static void read_req_task_fast(struct work_struct *work)
 	const bool is_end_request = true;
 	const bool is_delete = true;
 
-	/* now editing */
-	
 	/* Create all related bio(s). */
 	if (!create_bio_entry_list(reqe, pdata->ddev)) {
 		goto error;
@@ -1777,7 +1792,7 @@ static struct bio_entry* logpack_submit_bio(
 	if (is_fua) {
 		cbio->bi_rw |= WRITE_FUA;
 	}
-	submit_bio(cbio->bi_rw, cbio);
+	generic_make_request(cbio);
 	return bioe;
 
 error1:
@@ -1810,12 +1825,13 @@ static struct bio_entry* submit_flush(struct block_device *bdev)
 	bio->bi_end_io = bio_entry_end_io;
 	bio->bi_private = bioe;
 	bio->bi_bdev = bdev;
+	bio->bi_rw = WRITE_FLUSH;
 
 	bioe->bio = bio;
 	bioe->bi_size = bio->bi_size;
 	ASSERT(bioe->bi_size == 0);
 	
-	submit_bio(WRITE_FLUSH, bio);
+	generic_make_request(bio);
 
 	return bioe;
 error1:
@@ -1947,12 +1963,12 @@ static bool overlapping_check_and_insert(
 	reqe->n_overlapping = 0;
 	
 	/* Search the smallest candidate. */
-	if (!multimap_cursor_search(&cur, reqe->req_addr - max_io_size, MAP_SEARCH_GT, 0)) {
+	if (!multimap_cursor_search(&cur, reqe->req_pos - max_io_size, MAP_SEARCH_GT, 0)) {
 		goto fin;
 	}
 
 	/* Count overlapping requests previously. */
-	while (multimap_cursor_key(&cur) < reqe->req_addr + reqe->req_size) {
+	while (multimap_cursor_key(&cur) < reqe->req_pos + reqe->req_sectors) {
 
 		ASSERT(multimap_cursor_is_valid(&cur));
 		
@@ -1972,7 +1988,7 @@ static bool overlapping_check_and_insert(
 	}
 
 fin:
-	ret = multimap_add(overlapping_data, reqe->req_addr, (unsigned long)reqe, GFP_ATOMIC);
+	ret = multimap_add(overlapping_data, reqe->req_pos, (unsigned long)reqe, GFP_ATOMIC);
 	ASSERT(ret != EEXIST);
 	ASSERT(ret != EINVAL);
 	if (ret) {
@@ -2010,19 +2026,17 @@ static void overlapping_delete_and_notify(
 
 	/* Delete from the overlapping data. */
 	reqe_tmp = (struct req_entry *)multimap_del(
-		overlapping_data, reqe->req_addr, (unsigned long)reqe);
-#if 0
-	LOGd("reqe_tmp %p reqe %p\n", reqe_tmp, reqe); /* debug */
-#endif
+		overlapping_data, reqe->req_pos, (unsigned long)reqe);
+	LOGd_("reqe_tmp %p reqe %p\n", reqe_tmp, reqe); /* debug */
 	ASSERT(reqe_tmp == reqe);
 	
 	/* Search the smallest candidate. */
 	multimap_cursor_init(overlapping_data, &cur);
-	if (!multimap_cursor_search(&cur, reqe->req_addr - max_io_size, MAP_SEARCH_GT, 0)) {
+	if (!multimap_cursor_search(&cur, reqe->req_pos - max_io_size, MAP_SEARCH_GT, 0)) {
 		return;
 	}
 	/* Decrement count of overlapping requests afterward and notify if need. */
-	while (multimap_cursor_key(&cur) < reqe->req_addr + reqe->req_size) {
+	while (multimap_cursor_key(&cur) < reqe->req_pos + reqe->req_sectors) {
 
 		ASSERT(multimap_cursor_is_valid(&cur));
 		
@@ -2091,16 +2105,14 @@ static void pending_delete(
 	
 	/* Delete the entry. */
 	reqe_tmp = (struct req_entry *)multimap_del(
-		pending_data, reqe->req_addr, (unsigned long)reqe);
-#if 0
-	LOGd("reqe_tmp %p reqe %p\n", reqe_tmp, reqe); /* debug */
-#endif
+		pending_data, reqe->req_pos, (unsigned long)reqe);
+	LOGd_("reqe_tmp %p reqe %p\n", reqe_tmp, reqe);
 	ASSERT(reqe_tmp == reqe);
 }
 #endif
 
 /**
- * 
+ * Check overlapping writes and copy from them.
  *
  * CONTEXT:
  *   pending_data lock must be held.
@@ -2109,6 +2121,10 @@ static void pending_delete(
 static void pending_check_and_copy(
 	struct multimap *pending_data, struct req_entry *reqe)
 {
+
+
+
+	
 	/* now editing */
 }
 #endif
@@ -2123,8 +2139,8 @@ static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entr
 	ASSERT(reqe1);
 	ASSERT(reqe0 != reqe1);
 
-	return (reqe0->req_addr + reqe0->req_size > reqe1->req_addr &&
-		reqe1->req_addr + reqe1->req_size > reqe0->req_addr);
+	return (reqe0->req_pos + reqe0->req_sectors > reqe1->req_pos &&
+		reqe1->req_pos + reqe1->req_sectors > reqe0->req_pos);
 }
 #endif
 
@@ -2161,7 +2177,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 
 	/* Initialize pack_list_work. */
 	plwork = create_pack_list_work(wdev, GFP_ATOMIC);
-	if (!plwork) { goto error0; }
+  	if (!plwork) { goto error0; }
 
 	/* Fetch requests and create pack list. */
 	while ((req = blk_fetch_request(q)) != NULL) {
