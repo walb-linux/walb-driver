@@ -9,6 +9,9 @@
 #include "bio_entry.h"
 #include "walb/common.h"
 
+/*******************************************************************************
+ * Static data.
+ *******************************************************************************/
 
 /* kmem cache for bio_entry. */
 #define KMEM_CACHE_BIO_ENTRY_NAME "bio_entry_cache"
@@ -17,6 +20,134 @@ static struct kmem_cache *bio_entry_cache_ = NULL;
 /* shared coutner of the cache. */
 static unsigned int shared_cnt_ = 0;
 
+
+/**
+ * Bio cursor data.
+ */
+struct bio_cursor
+{
+	struct bio *bio; /* target bio */
+	struct bio_vec *io_vec; /* current io_vec. */
+	unsigned int off; /* offset inside bio. */
+	unsigned int off_in; /* offset inside io_vec. */
+};
+
+/*******************************************************************************
+ * Static functions prototype.
+ *******************************************************************************/
+
+static void bio_cursor_init(struct bio_cursor *cur);
+static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len);
+static void bio_cursor_copy_data(
+	struct bio_cursor *dst, struct bio_cursor *src, unsigned int len);
+
+/*******************************************************************************
+ * Macros definition.
+ *******************************************************************************/
+
+#define ASSERT_BIO_ENTRY_CURSOR(cur) ASSERT(bio_entry_cursor_is_valid(cur))
+
+/*******************************************************************************
+ * Static functions definition.
+ *******************************************************************************/
+
+/**
+ * Check whether bio_cursor data is valid or not.
+ *
+ * RETURN:
+ *   true if valid, or false.
+ */
+static bool bio_cursor_is_valid(struct bio_sursor *cur)
+{
+	unsigned int size_tmp;
+	struct bio_entry *bioe, *bioe_tmp;
+	
+	CHECK(cur);
+	CHECK(cur->bio);
+
+	if (cur->bio->bi_size == 0) {
+		CHECK(cur->io_vec == NULL);
+		CHECK(cur->off == 0);
+		CHECK(cur->off_in == 0);
+		goto fin;
+	}
+	
+	
+	if (list_empty(cur->bio_ent_list)) {
+		/* Empty */
+		CHECK(!cur->bioe);
+		CHECK(cur->off == 0);
+		CHECK(cur->off_in == 0);
+		goto fin;
+	}
+
+	if (!cur->bioe) {
+		/* End */
+		CHECK(cur->off_in == 0);
+		CHECK(cur->off > 0);
+		goto fin;
+	}
+
+	ASSERT(cur->bioe);
+	CHECK(cur->off_in < cur->bioe->bi_size);
+	bioe_tmp = NULL;
+	size_tmp = 0;
+	list_for_each_entry(bioe, cur->bio_ent_list, list) {
+		CHECK(bioe->bio);
+		if (bioe == cur->bioe) {
+			bioe_tmp = bioe;
+		}
+		/* Currently zero-size bio is not supported. */
+		CHECK(bioe->bi_size > 0);
+		size_tmp += bioe->bi_size;
+	}
+	CHECK(size_tmp > 0);
+	CHECK(size_tmp % LOGICAL_BLOCK_SIZE == 0);
+	CHECK(size_tmp / LOGICAL_BLOCK_SIZE + cur->off_in == cur->off);
+	CHECK(cur->bioe == bioe_tmp);
+	
+fin:
+	return true;
+error:
+	return false;
+
+
+	
+}
+
+/**
+ * 
+ */
+static void bio_cursor_init(struct bio_cursor *cur)
+{
+	ASSERT(bio_cursor_is_valid(cur));
+
+
+	
+	
+	/* now editing */
+}
+
+/**
+ * 
+ */
+static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len)
+{
+	/* now editing */
+}
+
+/**
+ * 
+ */
+static void bio_cursor_copy_data(
+	struct bio_cursor *dst, struct bio_cursor *src, unsigned int len)
+{
+	/* now editing */
+}
+
+/*******************************************************************************
+ * Global functions definition.
+ *******************************************************************************/
 
 /**
  * Print a bio_entry.
@@ -30,14 +161,19 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 /**
  * Initialize a bio_entry.
  */
-void init_bio_entry(struct bio_entry *bioe)
+void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 {
 	ASSERT(bioe);
 	
 	init_completion(&bioe->done);
 	bioe->error = 0;
-	bioe->bio = NULL;
-	bioe->bi_size = 0;
+	if (bio) {
+		bioe->bio = bio;
+		bioe->bi_size = bio->bi_size;
+	} else {
+		bioe->bio = NULL;
+		bioe->bi_size = 0;
+	}
 
 #ifdef WALB_FAST_ALGORITHM
 	bioe->is_copied = false;
@@ -48,7 +184,7 @@ void init_bio_entry(struct bio_entry *bioe)
  * Create a bio_entry.
  * Internal bio and bi_size will be set NULL.
  */
-struct bio_entry* create_bio_entry(gfp_t gfp_mask)
+struct bio_entry* alloc_bio_entry(gfp_t gfp_mask)
 {
 	struct bio_entry *bioe;
 
@@ -57,7 +193,6 @@ struct bio_entry* create_bio_entry(gfp_t gfp_mask)
 		LOGd("kmem_cache_alloc() failed.");
 		goto error0;
 	}
-	init_bio_entry(bioe);
 	return bioe;
 
 error0:
@@ -131,10 +266,45 @@ void destroy_bio_entry_list(struct list_head *bio_ent_list)
 	}
 }
 
-
-
 #if 0
 /* now editing from here. */
+
+/**
+ * Split a bio_entry data.
+ *
+ * @bioe1 target bio entry.
+ * @first_sectors number of sectors of first splitted bio [sectors].
+ *
+ * RETURN:
+ *   splitted bio entry in success,
+ *   or NULL due to memory allocation failure.
+ */
+static struct bio_entry* bio_entry_split(
+	struct bio_entry *bioe1, unsigned int first_sectors)
+{
+	struct bio_entry *bioe2;
+	struct bio_pair *bp;
+
+	ASSERT(bioe);
+	ASSERT(bioe->bio);
+	ASSERT(first_sectors > 0);
+	
+	bioe2 = alloc_bio_entry(GFP_NOIO);
+	if (!bioe2) { goto error0; }
+	
+	bp = bio_split(bioe->bio, first_sectors);
+	if (!bp) { goto error1; }
+
+	init_bio_entry(bioe1, &bp->bio1);
+	init_bio_entry(bioe2, &bp->bio2);
+	bio_pair_release(bp);
+
+	return bioe2;
+error1:
+	destroy_bio_entry(bioe2);
+error0:
+	return NULL;
+}
 
 /**
  * Initialize bio_entry_cursor data.
@@ -157,17 +327,21 @@ static void bio_entry_cursor_init(
 		cur->off_in = 0;
 	} else {
 		cur->bioe = list_first_entry(bio_ent_list, struct bio_entry, list);
-		cur->offset = 0;
+		cur->off = 0;
+		cur->off_in = 0;
 	}
-
-	/* now editing */
+	ASSERT(bio_entry_cursor_is_valid(cur));
 }
 
-#define ASSERT_BIO_ENTRY_CURSOR(cur) ASSERT(is_valid_bio_entry_cursor(cur))
-
-static bool is_valid_bio_entry_cursor(struct bio_entry_cursor *cur)
+/**
+ * Check whether bio_entry_cursor data is valid or not.
+ *
+ * RETURN:
+ *   true if valid, or false.
+ */
+static bool bio_entry_cursor_is_valid(struct bio_entry_cursor *cur)
 {
-	unsigned int size = 0;
+	unsigned int size_tmp;
 	struct bio_entry *bioe, *bioe_tmp;
 	
 	CHECK(cur);
@@ -176,38 +350,34 @@ static bool is_valid_bio_entry_cursor(struct bio_entry_cursor *cur)
 	if (list_empty(cur->bio_ent_list)) {
 		/* Empty */
 		CHECK(!cur->bioe);
-		CHECK(cur->offset == 0);
+		CHECK(cur->off == 0);
+		CHECK(cur->off_in == 0);
 		goto fin;
 	}
 
 	if (!cur->bioe) {
 		/* End */
-		CHECK(cur->offset == 0);
+		CHECK(cur->off_in == 0);
+		CHECK(cur->off > 0);
 		goto fin;
 	}
 
+	ASSERT(cur->bioe);
+	CHECK(cur->off_in < cur->bioe->bi_size);
 	bioe_tmp = NULL;
+	size_tmp = 0;
 	list_for_each_entry(bioe, cur->bio_ent_list, list) {
 		CHECK(bioe->bio);
 		if (bioe == cur->bioe) {
 			bioe_tmp = bioe;
 		}
 		/* Currently zero-size bio is not supported. */
-		CHECK(bioe->bio_bi_size > 0);
-		
-		size += bioe->bio->bi_size;
+		CHECK(bioe->bi_size > 0);
+		size_tmp += bioe->bi_size;
 	}
-	CHECK(size > 0);
-	CHECK(size % LOGICAL_BLOCK_SIZE == 0);
-	if (cur->bioe) {
-
-	} else {
-		/* Last */
-		
-		/* now editing */
-	}
-	
-	CHECK(bioe_tmp);
+	CHECK(size_tmp > 0);
+	CHECK(size_tmp % LOGICAL_BLOCK_SIZE == 0);
+	CHECK(size_tmp / LOGICAL_BLOCK_SIZE + cur->off_in == cur->off);
 	CHECK(cur->bioe == bioe_tmp);
 	
 fin:
@@ -216,29 +386,47 @@ error:
 	return false;
 }
 
-
-static void bio_entry_cursor_is_begin(struct bio_entry_cursor *cur)
+/**
+ * Check the cursor is now bio boundary.
+ */
+static bool bio_entry_cursor_is_boundary(struct bio_entry_cursor *cur)
 {
-	ASSERT(cur);
-	
-	/* now editing */
-
+	ASSERT(bio_entry_cursor_is_valid(cur));
+	return cur->off_in == 0;
 }
 
-static void bio_entry_cursor_is_end(struct bio_entry_cursor *cur)
+/**
+ * Check the cursor indicates the begin.
+ */
+static bool bio_entry_cursor_is_begin(struct bio_entry_cursor *cur)
 {
-	ASSERT(cur);
-	
-	
-	/* now editing */
-	
+	ASSERT(bio_entry_cursor_is_valid(cur));
+	if (list_empty(cur->bio_ent_list)) {
+		return true;
+	} else {
+		return cur->off == 0;
+	}
+}
+
+/**
+ * Check the cursor indicates the end.
+ */
+static bool bio_entry_cursor_is_end(struct bio_entry_cursor *cur)
+{
+	ASSERT(bio_entry_cursor_is_valid(cur));
+
+	if (list_empty(cur->bio_ent_list)) {
+		return true;
+	} else {
+		return cur->bioe == NULL;
+	}
 }
 
 /**
  * Proceed a bio_entry cursor.
  *
  * @cur bio_entry cursor.
- * @sectors proceeding size [sectors].
+ * @sectors proceeding size [logical blocks].
  *
  * RETURN:
  *   true in success, or false due to overrun.
@@ -246,15 +434,185 @@ static void bio_entry_cursor_is_end(struct bio_entry_cursor *cur)
 static bool bio_entry_cursor_proceed(struct bio_entry_cursor *cur,
 				unsigned int sectors)
 {
-	ASSERT_BIO_ENTRY_CURSOR(cur);
-	/* now editing */
+	unsigned int proceed;
+	unsigned int size;
+	unsigned int proceed_in;
 	
+	ASSERT(bio_entry_cursor_is_valid(cur));
+
+	proceed = 0;
+	while (proceed < sectors && !bio_entry_cursor_is_end(cur)) {
+		size = bio_entry_cursor_size_to_boundary(cur);
+		if (proceed + size <= sectors) {
+			proceed += size;
+			bio_entry_cursor_proceed_to_boundary(cur);
+		} else {
+			proceed_in = sectors - proceed;
+			cur->off_in += proceed_in;
+			cur->off += proceed_in;
+			proceed += proceed_in;
+			ASSERT(proceed == sectors);
+		}
+	}
+	return proceed == sectors;
 }
 
+/**
+ * Get copiable size at once of the bio_entry cursor.
+ *
+ * RETURN:
+ *   copiable size at once [logical blocks].
+ *   0 means that the cursor has reached the end.
+ */
+static unsigned int bio_entry_cursor_size_to_boundary(
+	struct bio_entry_cursor *cur)
+{
+	ASSERT(bio_entry_cursor_is_valid(cur));
+	return bioe->bio->bi_size / LOGICAL_BLOCK_SIZE - cur->off_in;
+}
+
+/**
+ * Proceed to the next bio boundary.
+ */
+static void bio_entry_cursor_proceed_to_boundary(
+	struct bio_entry_cursor *cur)
+{
+	ASSERT(bio_entry_cursor_is_valid(cur));
+
+	cur->off += bio_entry_cursor_size_to_boundary(cur);
+	cur->off_in = 0;
+	if (list_is_last(&cur->bioe->list, cur->bio_ent_list)) {
+		/* reached the end. */
+		cur->bioe = NULL;
+	} else {
+		cur->bioe = list_entry(cur->bioe->list.next,
+				struct bio_entry, list);
+	}
+}
+
+/**
+ * Try to copy data from a bio_entry cursor to a bio_entry cursor.
+ * Both cursors will proceed as copied size.
+ *
+ * Do not call bio_entry_cursor_split() inside this.
+ *
+ * @dst_cur destination cursor.
+ * @src_cur source cursor.
+ * @sectors number of sectors to try to copy [sectors].
+ *
+ * RETURN:
+ *   number of copied sectors [sectors].
+ */
+static unsigned int bio_entry_cursor_try_copy_and_proceed(
+	struct bio_entry_cursor *dst_cur,
+	struct bio_entry_cursor *src_cur,
+	unsigned int sectors)
+{
+	unsigned int copied_sectors, tmp1, tmp2;
+
+	/* Decide size to copy. */
+	tmp1 = bio_entry_cursor_size_to_boundary(dst_cur);
+	tmp2 = bio_entry_cursor_size_to_boundary(src_cur);
+	copied_sectors = min(min(sectors, tmp1), tmp2);
+	ASSERT(dst_cur->bioe);
+	ASSERT(src_cur->bioe);
+
+	/* Copy data. */
+	data_copy_bio(
+		dst_cur->bioe->bio, dst_cur->off_in,
+		src_cur->bioe->bio, src_cur->off_in,
+		copied_sectors);
+
+	/* Proceed both cursors. */
+	bio_entry_cursor_proceed(dst_cur, copied_sectors);
+	bio_entry_cursor_proceed(src_cur, copied_sectors);
+}
+
+/**
+ * Mark copied bio_entry list at a range.
+ *
+ * @bio_ent_list bio_entry list.
+ * @off offset from the begin [sectors].
+ * @sectors number of sectors [sectors].
+ *
+ * RETURN:
+ *   true in success.
+ *   false in failure due to memory allocation failure for splitting.
+ */
+bool bio_entry_list_mark_copied(
+	struct list_head *bio_ent_list, unsigned int off, unsigned int sectors)
+{
+	struct bio_entry_cursor curt, *cur;
+	unsigned int tmp_size;
+
+	cur = &curt;
+	
+	ASSERT(bio_ent_list);
+	ASSERT(!list_empty(bio_ent_list));
+	ASSERT(sectors > 0);
+
+	/* Split if required. */
+	bio_entry_cursor_init(cur, bio_ent_list);
+	bio_entry_cursor_proceed(cur, off);
+	ASSERT(cur->off == off);
+	if (!bio_entry_cursor_split(cur)) {  /* left edge. */
+		goto error;
+	}
+	bio_entry_cursor_proceed(cur, sectors);
+	if (!bio_entry_cursor_split(cur)) { /* right edge. */
+		goto error;
+	} 
+	
+	/* Mark copied. */
+	bio_entry_cursor_init(cur, bio_ent_list);
+	bio_entry_cursor_proceed(cur, off);
+	while (cur->off < off + sectors) {
+
+		ASSERT(bio_entry_cursor_is_boundary(cur));
+		ASSERT(cur->bioe);
+		cur->bioe->is_copied = true;
+		bio_entry_cursor_proceed_to_boundary(cur);
+	}
+	ASSERT(cur->off == off + sectors);
+	
+	return true;
+error:
+	return false;
+}
+
+/**
+ * Try to bio split at a cursor position.
+ *
+ * @cur target bio_entry cursor.
+ *
+ * RETURN:
+ *   true when split is successfully done or no need to split.
+ *   false due to memory allocation failure. 
+ */
 static bool bio_entry_cursor_split(struct bio_entry_cursor *cur)
 {
+	struct bio_pair *bp;
+	struct bio_entry *bioe1, *bioe2;
+	
+	ASSERT(bio_entry_cursor_is_valid(cur));
 
-	/* now editing */
+	if (bio_entry_cursor_is_boundary(cur)) {
+		/* no need to split */
+		return true;
+	}
+
+	ASSERT(cur->off_in > 0);
+	bioe1 = cur->bioe;
+	bioe2 = bio_entry_split(bioe1, cur->off);
+	if (!bioe2) { goto error; }
+
+	list_insert(&bioe1->list, &bioe2->list);
+	cur->bioe = bioe2;
+	cur->off_in = 0;
+	return true;
+
+error:
+	return false;	
 }
 
 /**
@@ -264,13 +622,36 @@ static bool bio_entry_cursor_split(struct bio_entry_cursor *cur)
  * @dst_off destination offset [sectors].
  * @src_bio source.
  * @src_off source offset [sectors].
- * @len copy length [sectors].
+ * @sectors copy size [sectors].
  */
 static void data_copy_bio(
 	struct bio *dst_bio, unsigned int dst_off,
 	struct bio *src_bio, unsigned int src_off,
-	unsigne dint len)
+	unsigned int sectors)
 {
+	unsigned long flag;
+	char *data;
+	
+	ASSERT(dst_bio);
+	ASSERT(dst_off + sectors <= dst_bio->bi_size);
+	ASSERT(src_bio);
+	ASSERT(src_off + sectors <= src_bio->bi_size);
+
+	ASSERT(dst_bio->bi_size > 0);
+	ASSERT(src_bio->bi_size > 0);
+	ASSERT(dst_bio->bi_size % LOGICAL_BLOCK_SIZE == 0);
+	ASSERT(src_bio->bi_size % LOGICAL_BLOCK_SIZE == 0);
+
+	ASSERT(sectors > 0);
+
+
+	bio_for_each_segment
+
+	
+	
+
+	
+	
 	/* now editing */
 }
 

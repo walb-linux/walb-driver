@@ -512,12 +512,10 @@ static struct bio_entry* create_bio_entry_by_clone(
 	struct bio_entry *bioe;
 	struct bio *biotmp;
 
-	bioe = create_bio_entry(gfp_mask);
+	bioe = alloc_bio_entry(gfp_mask);
 	if (!bioe) { goto error0; }
-	bioe->bi_size = bio->bi_size;
 	
 	/* clone bio */
-	bioe->bio = NULL;
 	biotmp = bio_clone(bio, gfp_mask);
 	if (!biotmp) {
 		LOGe("bio_clone() failed.");
@@ -526,7 +524,8 @@ static struct bio_entry* create_bio_entry_by_clone(
 	biotmp->bi_bdev = bdev;
 	biotmp->bi_end_io = bio_entry_end_io;
 	biotmp->bi_private = bioe;
-	bioe->bio = biotmp;
+
+	init_bio_entry(bioe, biotmp);
         
 	/* LOGd("create_bio_entry() end.\n"); */
 	return bioe;
@@ -901,19 +900,15 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
  *
  * @reqe0 a request entry.
  * @reqe1 another request entry.
- * @ol_req_pos_p pointer to store result position.
- * @ol_req_sectors_p pointer to store result sectors.
+ * @ol_req_pos_p pointer to store result position [sectors].
+ * @ol_req_sectors_p pointer to store result sectors [sectors].
  */
 UNUSED void get_overlapping_pos_and_sectors(
 	struct req_entry *reqe0,  struct req_entry *reqe1,
 	u64 *ol_req_pos_p, unsigned int *ol_req_sectors_p)
 {
-	u64 pos;
+	u64 pos, pos_end0, pos_end1;
 	unsigned int sectors;
-	u64 dst_req_pos_end;
-	u64 src_req_pos_end;
-
-	/* Get overlapping position and sectors. */
 
 	/* Bigger one as the begin position. */
 	if (reqe0->req_pos < reqe1->req_pos) {
@@ -921,15 +916,17 @@ UNUSED void get_overlapping_pos_and_sectors(
 	} else {
 		pos = reqe0->req_pos;
 	}
+	ASSERT(reqe0->req_pos <= pos);
+	ASSERT(reqe1->req_pos <= pos);
+	
 	/* Smaller one as the end position. */
-	dst_req_pos_end = reqe0->req_pos + reqe0->req_sectors;
-	src_req_pos_end = reqe1->req_pos + reqe1->req_sectors;
-	if (dst_req_pos_end < src_req_pos_end) {
-		sectors = dst_req_pos_end - pos;
+	pos_end0 = reqe0->req_pos + reqe0->req_sectors;
+	pos_end1 = reqe1->req_pos + reqe1->req_sectors;
+	if (pos_end0 < pos_end1) {
+		sectors = pos_end0 - pos;
 	} else {
-		sectors = src_req_pos_end - pos;
+		sectors = pos_end1 - pos;
 	}
-
 	ASSERT(reqe0->req_sectors >= sectors);
 	ASSERT(reqe1->req_sectors >= sectors);
 
@@ -955,25 +952,49 @@ UNUSED void get_overlapping_pos_and_sectors(
 UNUSED static bool data_copy_req_entry(
 	struct req_entry *dst_reqe,  struct req_entry *src_reqe)
 {
-	/* u64 ol_req_pos; */
-	/* unsigned int ol_req_sectors; */
-	/* unsigned int dst_off, src_off; */
-	/* unsigned int scanned = 0; */
+	u64 ol_req_pos;
+	unsigned int ol_req_sectors;
+	unsigned int dst_off, src_off;
+	unsigned int copied;
+	int tmp_copied;
+	struct bio_entry_cursor dst_cur, src_cur;
 
-	/* get_overlapping_pos_and_sectors( */
-	/* 	dst_reqe, src_reqe, &ol_req_pos, &ol_req_sectors); */
-	
-	/* dst_off = (unsigned int)(ol_req_pos - dst_reqe->req_pos); */
-	/* src_off = (unsigned int)(ol_req_pos - src_reqe->req_pos); */
+	ASSERT(dst_reqe);
+	ASSERT(src_reqe);
 
-	/* while (scanned < ol_req_sectors) { */
+	/* Get overlapping area. */
+	get_overlapping_pos_and_sectors(
+		dst_reqe, src_reqe, &ol_req_pos, &ol_req_sectors);
+	ASSERT(ol_req_sectors > 0);
 
+	/* Initialize cursors. */
+	bio_entry_cursor_init(&dst_cur, &dst_reqe->bio_ent_list);
+	bio_entry_cursor_init(&src_cur, &src_reqe->bio_ent_list);
+	dst_off = (unsigned int)(ol_req_pos - dst_reqe->req_pos);
+	src_off = (unsigned int)(ol_req_pos - src_reqe->req_pos);
+	bio_entry_cursor_proceed(&dst_cur, dst_off);
+	bio_entry_cursor_proceed(&src_cur, src_off);
 
-	/* 	/\* now editing *\/ */
+	/* Copy data in the range. */
+	copied = 0;
+	while (copied < ol_req_sectors) {
 		
-	/* } */
+		tmp_copied = bio_entry_cursor_try_copy_and_proceed(
+			&dst_cur, &src_cur, ol_req_sectors - copied);
+		ASSERT(tmp_copied > 0);
+		copied += tmp_copied;
+	}
+	ASSERT(copied == ol_req_sectors);
 
+	/* Set copied flag. */
+	if (!bio_entry_list_mark_copied(
+			&dst_reqe->bio_ent_list, dst_off, ol_req_sectors)) {
+		goto error;
+	}
+			
 	return true;
+error:
+	return false;
 }
 
 /**
@@ -1627,7 +1648,7 @@ static struct bio_entry* logpack_submit_lhead(
 	if (is_flush) { rw |= WRITE_FLUSH; }
 	if (is_fua) { rw |= WRITE_FUA; }
 	
-	bioe = create_bio_entry(GFP_NOIO);
+	bioe = alloc_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
 	bio = bio_alloc(GFP_NOIO, 1);
 	if (!bio) { goto error1; }
@@ -1642,9 +1663,8 @@ static struct bio_entry* logpack_submit_lhead(
 	bio->bi_end_io = bio_entry_end_io;
 	bio->bi_private = bioe;
 	bio_add_page(bio, page, pbs, offset_in_page(lhead));
-	
-	bioe->bio = bio;
-	bioe->bi_size = bio_cur_bytes(bio);
+
+	init_bio_entry(bioe, bio);
 	ASSERT(bioe->bi_size == pbs);
 
 	LOGd("submit logpack header bio: off %llu size %u\n",
@@ -1722,7 +1742,7 @@ static struct bio_entry* logpack_submit_bio(
 	struct bio_entry *bioe;
 	struct bio *cbio;
 
-	bioe = create_bio_entry(GFP_NOIO);
+	bioe = alloc_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
 
 	cbio = bio_clone(bio, GFP_NOIO);
@@ -1731,10 +1751,9 @@ static struct bio_entry* logpack_submit_bio(
 	cbio->bi_bdev = ldev;
 	cbio->bi_end_io = bio_entry_end_io;
 	cbio->bi_private = bioe;
-
 	cbio->bi_sector = addr_lb(pbs, ldev_offset) + bio_offset;
-	bioe->bio = cbio;
-	bioe->bi_size = cbio->bi_size;
+
+	init_bio_entry(bioe, cbio);
 
 	if (is_fua) {
 		cbio->bi_rw |= WRITE_FUA;
@@ -1763,7 +1782,7 @@ static struct bio_entry* submit_flush(struct block_device *bdev)
 	struct bio_entry *bioe;
 	struct bio *bio;
 
-	bioe = create_bio_entry(GFP_NOIO);
+	bioe = alloc_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
 	
 	bio = bio_alloc(GFP_NOIO, 0);
@@ -1774,8 +1793,7 @@ static struct bio_entry* submit_flush(struct block_device *bdev)
 	bio->bi_bdev = bdev;
 	bio->bi_rw = WRITE_FLUSH;
 
-	bioe->bio = bio;
-	bioe->bi_size = bio->bi_size;
+	init_bio_entry(bioe, bio);
 	ASSERT(bioe->bi_size == 0);
 	
 	generic_make_request(bio);
