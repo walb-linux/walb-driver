@@ -180,8 +180,10 @@ static void wait_for_req_entry(
 UNUSED void get_overlapping_pos_and_sectors(
 	struct req_entry *reqe0,  struct req_entry *reqe1,
 	u64 *ol_req_pos_p, unsigned int *ol_req_sectors_p);
-UNUSED static bool data_copy_req_entry(
+#ifdef WALB_FAST_ALGORITHM
+static bool data_copy_req_entry(
 	struct req_entry *dst_reqe,  struct req_entry *src_reqe);
+#endif
 
 /* Validator for debug. */
 static bool is_valid_prepared_pack(struct pack *pack);
@@ -949,7 +951,8 @@ UNUSED void get_overlapping_pos_and_sectors(
  *   true if copy has done successfully,
  *   or false (due to memory allocation failure).
  */
-UNUSED static bool data_copy_req_entry(
+#ifdef WALB_FAST_ALGORITHM
+static bool data_copy_req_entry(
 	struct req_entry *dst_reqe,  struct req_entry *src_reqe)
 {
 	u64 ol_req_pos;
@@ -996,6 +999,7 @@ UNUSED static bool data_copy_req_entry(
 error:
 	return false;
 }
+#endif
 
 /**
  * Submit all logpacks related to a call of request_fn.
@@ -1399,8 +1403,7 @@ static void read_req_task_fast(struct work_struct *work)
 
 	/* Check pending data and copy data from executing write requests. */
 	spin_lock(&pdata->pending_data_lock);
-	/* ret = pending_check_and_copy(pdata->pending_data, reqe); */
-	ret = true;
+	ret = pending_check_and_copy(pdata->pending_data, reqe);
 	spin_unlock(&pdata->pending_data_lock);
 	if (!ret) {
 		goto error1;
@@ -2088,7 +2091,7 @@ static void pending_delete(
  *   pending_data lock must be held.
  */
 #ifdef WALB_FAST_ALGORITHM
-static bool pending_check_and_copy(
+UNUSED static bool pending_check_and_copy(
 	struct multimap *pending_data, struct req_entry *reqe)
 {
 	struct multimap_cursor cur;
