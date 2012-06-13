@@ -193,6 +193,7 @@ error01:
 	multimap_destroy(pdata->overlapping_data);
 #endif
 	kfree(pdata);
+	wdev->private_data = NULL;
 error0:
         return false;
 }
@@ -206,6 +207,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
         LOGd("destoroy_private_data called.");
 	
 	pdata = wdev->private_data;
+	if (!pdata) { return; }
 	ASSERT(pdata);
 
 	/* sync super block.

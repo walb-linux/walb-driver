@@ -338,6 +338,7 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 	ASSERT(dst_buf);
 	ASSERT(src_buf);
 
+	LOGd_("copied %u\n", copied);
 	memcpy(dst_buf, src_buf, copied);
 
 	bio_cursor_unmap(src_buf, &src_flags);
@@ -480,6 +481,8 @@ static bool bio_entry_cursor_split(struct bio_entry_cursor *cur)
 	bioe2 = bio_entry_split(bioe1, cur->off);
 	if (!bioe2) { goto error; }
 
+	LOGn("bio split occurred.\n"); /* debug */
+	
 	list_insert_after(&bioe1->list, &bioe2->list);
 	cur->bioe = bioe2;
 	cur->off_in = 0;

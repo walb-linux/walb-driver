@@ -965,10 +965,15 @@ static bool data_copy_req_entry(
 	ASSERT(dst_reqe);
 	ASSERT(src_reqe);
 
+	LOGd_("begin dst %p src %p.\n", dst_reqe, src_reqe); /* debug */
+	
 	/* Get overlapping area. */
 	get_overlapping_pos_and_sectors(
 		dst_reqe, src_reqe, &ol_req_pos, &ol_req_sectors);
 	ASSERT(ol_req_sectors > 0);
+
+	LOGd_("ol_req_pos: %"PRIu64" ol_req_sectors: %u\n",
+		ol_req_pos, ol_req_sectors); /* debug */
 
 	/* Initialize cursors. */
 	bio_entry_cursor_init(&dst_cur, &dst_reqe->bio_ent_list);
@@ -995,8 +1000,10 @@ static bool data_copy_req_entry(
 		goto error;
 	}
 			
+	LOGd_("end dst %p src %p.\n", dst_reqe, src_reqe);
 	return true;
 error:
+	LOGe("data_copy_req_entry failed.\n");
 	return false;
 }
 #endif
@@ -1143,7 +1150,7 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 
 			/* call end_request where with fast algorithm
 			   while easy algorithm call it after data device IO. */
-			blk_end_request_all(req, 0); 
+			blk_end_request_all(req, 0);
 #endif
 #ifdef WALB_OVERLAPPING_DETECTION
 			/* check and insert to overlapping detection data. */
@@ -1403,7 +1410,11 @@ static void read_req_task_fast(struct work_struct *work)
 
 	/* Check pending data and copy data from executing write requests. */
 	spin_lock(&pdata->pending_data_lock);
+#if 1 /* debug */
 	ret = pending_check_and_copy(pdata->pending_data, reqe);
+#else
+	ret = true;
+#endif
 	spin_unlock(&pdata->pending_data_lock);
 	if (!ret) {
 		goto error1;
@@ -1670,7 +1681,7 @@ static struct bio_entry* logpack_submit_lhead(
 	init_bio_entry(bioe, bio);
 	ASSERT(bioe->bi_size == pbs);
 
-	LOGd("submit logpack header bio: off %llu size %u\n",
+	LOGd_("submit logpack header bio: off %llu size %u\n",
 		(u64)bio->bi_sector, bio_cur_bytes(bio));
 	generic_make_request(bio);
 
@@ -1918,21 +1929,27 @@ static bool overlapping_check_and_insert(
 	struct multimap *overlapping_data, struct req_entry *reqe)
 {
 	struct multimap_cursor cur;
-	u64 max_io_size;
+	u64 max_io_size, start_pos;
 	int ret;
 	struct req_entry *reqe_tmp;
 
 	ASSERT(overlapping_data);
 	ASSERT(reqe);
 	ASSERT(reqe->req_sectors > 0);
-	
+
+	/* Decide search start position. */
 	max_io_size = queue_max_sectors(reqe->wdev->queue);
+	if (reqe->req_pos > max_io_size) {
+		start_pos = reqe->req_pos - max_io_size;
+	} else {
+		start_pos = 0;
+	}
 
 	multimap_cursor_init(overlapping_data, &cur);
 	reqe->n_overlapping = 0;
 	
 	/* Search the smallest candidate. */
-	if (!multimap_cursor_search(&cur, reqe->req_pos - max_io_size, MAP_SEARCH_GT, 0)) {
+	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
 		goto fin;
 	}
 
@@ -1984,7 +2001,7 @@ static void overlapping_delete_and_notify(
 	struct multimap *overlapping_data, struct req_entry *reqe)
 {
 	struct multimap_cursor cur;
-	u64 max_io_size;
+	u64 max_io_size, start_pos;
 	struct req_entry *reqe_tmp;
 
 	ASSERT(overlapping_data);
@@ -1992,6 +2009,11 @@ static void overlapping_delete_and_notify(
 	ASSERT(reqe->n_overlapping == 0);
 	
 	max_io_size = queue_max_sectors(reqe->wdev->queue);
+	if (reqe->req_pos > max_io_size) {
+		start_pos = reqe->req_pos - max_io_size;
+	} else {
+		start_pos = 0;
+	}
 
 	/* Delete from the overlapping data. */
 	reqe_tmp = (struct req_entry *)multimap_del(
@@ -2001,7 +2023,7 @@ static void overlapping_delete_and_notify(
 	
 	/* Search the smallest candidate. */
 	multimap_cursor_init(overlapping_data, &cur);
-	if (!multimap_cursor_search(&cur, reqe->req_pos - max_io_size, MAP_SEARCH_GT, 0)) {
+	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
 		return;
 	}
 	/* Decrement count of overlapping requests afterward and notify if need. */
@@ -2095,17 +2117,23 @@ UNUSED static bool pending_check_and_copy(
 	struct multimap *pending_data, struct req_entry *reqe)
 {
 	struct multimap_cursor cur;
-	u64 max_io_size;
+	u64 max_io_size, start_pos;
 	struct req_entry *reqe_tmp;
 
 	ASSERT(pending_data);
 	ASSERT(reqe);
-	
+
+	/* Decide search start position. */
 	max_io_size = queue_max_sectors(reqe->wdev->queue);
+	if (reqe->req_pos > max_io_size) {
+		start_pos = reqe->req_pos - max_io_size;
+	} else {
+		start_pos = 0;
+	}
 	
 	/* Search the smallest candidate. */
 	multimap_cursor_init(pending_data, &cur);
-	if (!multimap_cursor_search(&cur, reqe->req_pos - max_io_size, MAP_SEARCH_GT, 0)) {
+	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
 		/* No overlapping requests. */
 		return true;
 	}

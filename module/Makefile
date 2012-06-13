@@ -98,9 +98,11 @@ else
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD       := $(shell pwd)
 
-default: build_date.h buildmodule
+default:
+	$(MAKE) clean
+	$(MAKE) buildmodule
 
-buildmodule:
+buildmodule: build_date.h
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
 clean: clean_build_date
@@ -110,14 +112,10 @@ depend .depend dep:
 	$(CC) $(CFLAGS) -M *.c > .depend
 
 build_date.h: build_date.h.template
-	cat build_date.h.template | sed "s/XXXXX/`env LC_ALL=C date`/" > $@
+	cat $< | sed "s/XXXXX/`env LC_ALL=C date`/" > $@
 
 clean_build_date:
 	rm -f build_date.h
-
-wrapper_blk.o: wrapper_blk.c wrapper_blk.h 
-wrapper_blk_simple.o: wrapper_blk_simple.c wrapper_blk.h
-wrapper_blk_walb.o: wrapper_blk_walb.c wrapper_blk.h
 
 endif
 
