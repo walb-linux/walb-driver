@@ -13,6 +13,10 @@ ifeq ($(OVERLAP_DETECT),1)
   DEBFLAGS += -DWALB_OVERLAPPING_DETECTION
 endif
 
+ifeq ($(FAST_ALG),1)
+  DEBFLAGS += -DWALB_FAST_ALGORITHM
+endif
+
 EXTRA_CFLAGS += $(DEBFLAGS)
 EXTRA_CFLAGS += -I$(obj)/../include
 
@@ -29,6 +33,7 @@ test-size-list-mod-objs := test_size_list.o size_list.o
 test-kmem-cache-mod-objs := test_kmem_cache.o
 test-workqueue-mod-objs := test_workqueue.o
 test-kthread-mod-objs := test_kthread.o
+test-deadlock-mod-objs := test_deadlock.o
 test-serialized-task-mod-objs := test_serialized_task.o
 #wrapblk-mod-objs := wrapblk.o
 #memblk-none-mod-objs := memblk.o treemap.o memblk_io_none.o
@@ -53,7 +58,8 @@ wrapper-blk-mod-objs := wrapper_blk.o
 WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o
 wrapper-blk-simple-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
 wrapper_blk_simple_plug.o
-WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o logpack.o sector_io.o treemap.o
+WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o \
+sector_io.o bio_entry.o logpack.o treemap.o
 wrapper-blk-walb-easy-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
 wrapper_blk_walb_easy.o
 
@@ -71,6 +77,7 @@ test-treemap-mod.o \
 test-memblk-data-mod.o \
 test-memblk-data-perf-mod.o \
 test-kthread-mod.o \
+test-deadlock-mod.o \
 test-sg-util-mod.o \
 test-size-list-mod.o \
 test-kmem-cache-mod.o \
@@ -91,9 +98,11 @@ else
 KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD       := $(shell pwd)
 
-default: build_date.h buildmodule
+default:
+	$(MAKE) clean
+	$(MAKE) buildmodule
 
-buildmodule:
+buildmodule: build_date.h
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
 clean: clean_build_date
@@ -103,14 +112,10 @@ depend .depend dep:
 	$(CC) $(CFLAGS) -M *.c > .depend
 
 build_date.h: build_date.h.template
-	cat build_date.h.template | sed "s/XXXXX/`env LC_ALL=C date`/" > $@
+	cat $< | sed "s/XXXXX/`env LC_ALL=C date`/" > $@
 
 clean_build_date:
 	rm -f build_date.h
-
-wrapper_blk.o: wrapper_blk.c wrapper_blk.h 
-wrapper_blk_simple.o: wrapper_blk_simple.c wrapper_blk.h
-wrapper_blk_walb.o: wrapper_blk_walb.c wrapper_blk.h
 
 endif
 

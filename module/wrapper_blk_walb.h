@@ -52,17 +52,27 @@ struct pdata
 	u64 ring_buffer_off; 
 	u64 ring_buffer_size;
 	
-	spinlock_t pending_data_lock; /* Use spin_lock() and spin_unlock(). */
-	struct list_head writepack_list; /* list head of writepack.
-					    pending_data_lock must be held. */
-
 	/* If bit 0 is on, all write must failed. */
 	unsigned long flags;
 
 #ifdef WALB_OVERLAPPING_DETECTION
+	/**
+	 * All req_entry data may not keep reqe->bio_ent_list.
+	 * You must keep address and size information in another way.
+	 */
 	spinlock_t overlapping_data_lock; /* Use spin_lock() and spin_unlock(). */
-	struct multimap *overlapping_data; /* key: blk_rq_sectors(req),
-					 val: pointer to req_entry. */
+	struct multimap *overlapping_data; /* key: blk_rq_pos(req),
+					      val: pointer to req_entry. */
+#endif
+	
+#ifdef WALB_FAST_ALGORITHM
+	/**
+	 * All req_entry data must keep
+	 * reqe->bio_ent_list while they are stored in the pending_data.
+	 */
+	spinlock_t pending_data_lock; /* Use spin_lock() and spin_unlock(). */
+	struct multimap *pending_data; /* key: blk_rq_pos(req),
+					  val: pointer to req_entry. */
 #endif
 };
 
@@ -78,7 +88,6 @@ static inline struct pdata* pdata_get_from_wdev(struct wrapper_blk_dev *wdev)
 {
 	return (struct pdata *)wdev->private_data;
 }
-
 
 /**
  * Check two requests are overlapping.
