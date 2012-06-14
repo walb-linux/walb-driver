@@ -135,6 +135,8 @@ static void destroy_pack_list_work(struct pack_list_work *work);
 static struct req_entry* create_req_entry(
 	struct request *req, struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
 static void destroy_req_entry(struct req_entry *reqe);
+UNUSED static void req_entry_get(struct req_entry *reqe);
+UNUSED static void req_entry_put(struct req_entry *reqe);
 
 /* bio_entry related. */
 static void bio_entry_end_io(struct bio *bio, int error);
@@ -467,6 +469,36 @@ static void destroy_req_entry(struct req_entry *reqe)
 		INIT_LIST_HEAD(&reqe->bio_ent_list);
 #endif
 		kmem_cache_free(req_entry_cache_, reqe);
+	}
+}
+
+/**
+ * Call bio_get() for all bio(s) inside a request.
+ */
+UNUSED static void req_entry_get(struct req_entry *reqe)
+{
+	struct bio *bio;
+
+	ASSERT(reqe);
+	ASSERT(reqe->req);
+
+	__rq_for_each_bio(bio, reqe->req) {
+		bio_get(bio);
+	}
+}
+
+/**
+ * Call bio_put() for all bio(s) inside a request.
+ */
+UNUSED static void req_entry_put(struct req_entry *reqe)
+{
+	struct bio *bio;
+
+	ASSERT(reqe);
+	ASSERT(reqe->req);
+
+	__rq_for_each_bio(bio, reqe->req) {
+		bio_put(bio);
 	}
 }
 
@@ -1148,6 +1180,10 @@ static void wait_logpack_and_enqueue_datapack_tasks(
 			spin_unlock(&pdata->pending_data_lock);
 			if (!is_pending_insert_succeeded) { goto failed1; }
 
+			/* Get all bio(s) due to different timing of bio end_io and put. */
+			/* req_entry_get(reqe); */
+			get_bio_entry_list(&reqe->bio_ent_list);
+			
 			/* call end_request where with fast algorithm
 			   while easy algorithm call it after data device IO. */
 			blk_end_request_all(req, 0);
@@ -1291,9 +1327,7 @@ static void write_req_task_fast(struct work_struct *work)
 		wait_for_completion(&reqe->overlapping_done);
 	}
 #endif
-	/* Get all bio(s) due to different timing of bio end_io and put. */
-	get_bio_entry_list(&reqe->bio_ent_list);
-	
+
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
 	submit_bio_entry_list(&reqe->bio_ent_list);
@@ -1315,6 +1349,7 @@ static void write_req_task_fast(struct work_struct *work)
 	spin_unlock(&pdata->pending_data_lock);
 
 	/* Free resources. */
+	/* req_entry_put(reqe); */
 	put_bio_entry_list(&reqe->bio_ent_list);
 	destroy_bio_entry_list(&reqe->bio_ent_list);
 	

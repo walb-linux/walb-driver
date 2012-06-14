@@ -238,16 +238,17 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 /* Customize wdev after register before start. */
 static void customize_wdev(struct wrapper_blk_dev *wdev)
 {
-        struct request_queue *q, *uq;
+        struct request_queue *q, *lq, *dq;
 	struct pdata *pdata;
         ASSERT(wdev);
         q = wdev->queue;
 	pdata = wdev->private_data;
 
-        uq = bdev_get_queue(pdata->ddev);
+	lq = bdev_get_queue(pdata->ldev);
+        dq = bdev_get_queue(pdata->ddev);
         /* Accept REQ_FLUSH and REQ_FUA. */
-        if (uq->flush_flags & REQ_FLUSH) {
-                if (uq->flush_flags & REQ_FUA) {
+        if (lq->flush_flags & REQ_FLUSH && dq->flush_flags & REQ_FLUSH) {
+                if (lq->flush_flags & REQ_FUA && dq->flush_flags & REQ_FUA) {
                         LOGn("Supports REQ_FLUSH | REQ_FUA.");
                         blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
                 } else {
@@ -259,7 +260,7 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
         }
 
 #if 0
-        if (blk_queue_discard(uq)) {
+        if (blk_queue_discard(dq)) {
                 /* Accept REQ_DISCARD. */
                 LOGn("Supports REQ_DISCARD.");
                 q->limits.discard_granularity = PAGE_SIZE;
