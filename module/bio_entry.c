@@ -386,11 +386,9 @@ static struct bio_entry* bio_entry_split(
 	ASSERT(bioe1->bio);
 	ASSERT(first_sectors > 0);
 	
-	bioe2 = alloc_bio_entry(GFP_ATOMIC);
+	bioe2 = alloc_bio_entry(GFP_NOIO);
 	if (!bioe2) { goto error0; }
 
-	/* Currently this will fail because the context is atomic.
-	   We need to create atomic version of bio_split. */
 	bp = bio_split(bioe1->bio, first_sectors);
 	if (!bp) { goto error1; }
 
