@@ -34,6 +34,10 @@ int start_minor_ = 0;
 /* Physical block size. */
 int physical_block_size_ = 4096;
 
+/* Pending data limit size [MB]. */
+int max_pending_mb_ = 64;
+int min_pending_mb_ = 64 * 7 / 8;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -42,6 +46,8 @@ module_param_named(log_device_str, log_device_str_, charp, S_IRUGO);
 module_param_named(data_device_str, data_device_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
+module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
+module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -105,6 +111,13 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		LOGe("multimap creation failed.\n");
 		goto error02;
 	}
+	pdata->pending_sectors = 0;
+	pdata->max_pending_sectors = max_pending_mb_
+		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
+	pdata->min_pending_sectors = min_pending_mb_
+		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
+	LOGn("max pending sectors: %u\n", pdata->max_pending_sectors);
+	pdata->is_queue_stopped = false;
 #endif
 	
         /* open underlying log device. */

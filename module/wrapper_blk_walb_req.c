@@ -194,6 +194,8 @@ static void pending_delete(
 	struct multimap *pending_data, struct req_entry *reqe);
 static bool pending_check_and_copy(
 	struct multimap *pending_data, struct req_entry *reqe);
+static inline bool should_stop_queue(struct pdata *pdata, struct req_entry *reqe);
+static inline bool should_start_queue(struct pdata *pdata, struct req_entry *reqe);
 #endif
 
 /* For overlapping data and pending data. */
@@ -904,6 +906,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 	bool is_overlapping_insert_succeeded;
 #endif
 	bool is_pending_insert_succeeded;
+	bool is_stop_queue = false;
+	unsigned long flags;
 
 	ASSERT(wpack);
 	ASSERT(wdev);
@@ -935,10 +939,21 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			/* Create all related bio(s). */
 			if (!create_bio_entry_list(reqe, pdata->ddev)) { goto failed0; }
 			spin_lock(&pdata->pending_data_lock);
+			LOGd_("pending_sectors %u\n", pdata->pending_sectors);
+			is_stop_queue = should_stop_queue(pdata, reqe);
+			pdata->pending_sectors += reqe->req_sectors;
 			is_pending_insert_succeeded =
 				pending_insert(pdata->pending_data, reqe);
 			spin_unlock(&pdata->pending_data_lock);
 			if (!is_pending_insert_succeeded) { goto failed1; }
+
+			/* Check pending data size. */
+			if (is_stop_queue) {
+				LOGn("stop queue.\n");
+				spin_lock_irqsave(&wdev->lock, flags);
+				blk_stop_queue(wdev->queue);
+				spin_unlock_irqrestore(&wdev->lock, flags);
+			}
 
 			/* Get all bio(s) due to different timing of bio end_io and put. */
 			get_bio_entry_list(&reqe->bio_ent_list);
@@ -955,7 +970,13 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			if (!is_overlapping_insert_succeeded) {
 				spin_lock(&pdata->pending_data_lock);
 				pending_delete(pdata->pending_data, reqe);
+				pdata->pending_sectors -= reqe->req_sectors;
 				spin_unlock(&pdata->pending_data_lock);
+				if (is_stop_queue) {
+					spin_lock_irqsave(&wdev->lock, flags);
+					blk_start_queue(wdev->queue);
+					spin_unlock_irqrestore(&wdev->lock, flags);
+				}
 				goto failed1;
 			}
 #endif
@@ -1129,6 +1150,8 @@ static void logpack_list_gc_task(struct work_struct *work)
  */
 static void write_req_task(struct work_struct *work)
 {
+	might_sleep();
+	
 #ifdef WALB_FAST_ALGORITHM
 	write_req_task_fast(work);
 #else
@@ -1148,6 +1171,8 @@ static void write_req_task_fast(struct work_struct *work)
 	struct blk_plug plug;
 	const bool is_end_request = false;
 	const bool is_delete = false;
+	bool is_start_queue = false;
+	unsigned long flags;
 
 	/* Wait for previous overlapping writes. */
 #ifdef WALB_OVERLAPPING_DETECTION
@@ -1173,8 +1198,18 @@ static void write_req_task_fast(struct work_struct *work)
 
 	/* Delete from pending data. */
 	spin_lock(&pdata->pending_data_lock);
+	is_start_queue = should_start_queue(pdata, reqe);
+	pdata->pending_sectors -= reqe->req_sectors;
 	pending_delete(pdata->pending_data, reqe);
 	spin_unlock(&pdata->pending_data_lock);
+
+	/* Check queue restart is required. */
+	if (is_start_queue) {
+		LOGn("restart queue.\n");
+		spin_lock_irqsave(&wdev->lock, flags);
+		blk_start_queue(wdev->queue);
+		spin_unlock_irqrestore(&wdev->lock, flags);
+	}
 
 	/* Free resources. */
 	put_bio_entry_list(&reqe->bio_ent_list);
@@ -1244,6 +1279,8 @@ static void write_req_task_easy(struct work_struct *work)
  */
 static void read_req_task(struct work_struct *work)
 {
+	might_sleep();
+	
 #ifdef WALB_FAST_ALGORITHM
 	read_req_task_fast(work);
 #else
@@ -1272,11 +1309,7 @@ static void read_req_task_fast(struct work_struct *work)
 
 	/* Check pending data and copy data from executing write requests. */
 	spin_lock(&pdata->pending_data_lock);
-#if 1 /* debug */
 	ret = pending_check_and_copy(pdata->pending_data, reqe);
-#else
-	ret = true;
-#endif
 	spin_unlock(&pdata->pending_data_lock);
 	if (!ret) {
 		goto error1;
@@ -1829,11 +1862,12 @@ static bool overlapping_check_and_insert(
 			break;
 		}
 	}
-
+#if 0
 	/* debug */
 	if (reqe->n_overlapping > 0) {
 		LOGn("n_overlapping %u\n", reqe->n_overlapping);
 	}
+#endif
 
 fin:
 	ret = multimap_add(overlapping_data, reqe->req_pos, (unsigned long)reqe, GFP_ATOMIC);
@@ -2016,6 +2050,57 @@ UNUSED static bool pending_check_and_copy(
 		}
 	}
 	return true;
+}
+#endif
+
+/**
+ * Check whether walb should stop the queue
+ * due to too much pending data.
+ *
+ * CONTEXT:
+ *   pending_data_lock must be held.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static inline bool should_stop_queue(struct pdata *pdata, struct req_entry *reqe)
+{
+	bool ret;
+	
+	ASSERT(pdata);
+	ASSERT(reqe);
+
+	if (!pdata->is_queue_stopped &&
+		pdata->pending_sectors + reqe->req_sectors > pdata->max_pending_sectors) {
+		pdata->is_queue_stopped = true;
+		return true;
+	} else {
+		return false;
+	}
+}
+#endif
+
+/**
+ * Check whether walb should restart the queue
+ * because pending data is not too much now.
+ *
+ * CONTEXT:
+ *   pending_data_lock must be held.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static inline bool should_start_queue(struct pdata *pdata, struct req_entry *reqe)
+{
+	bool ret;
+	
+	ASSERT(pdata);
+	ASSERT(reqe);
+	ASSERT(pdata->pending_sectors >= reqe->req_sectors);
+
+	if (pdata->is_queue_stopped &&
+		pdata->pending_sectors - reqe->req_sectors < pdata->min_pending_sectors) {
+		pdata->is_queue_stopped = false;
+		return true;
+	} else {
+		return false;
+	}
 }
 #endif
 
