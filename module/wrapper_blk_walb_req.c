@@ -105,7 +105,7 @@ static struct bio_entry* create_bio_entry_by_clone(
 static struct pack* create_pack(gfp_t gfp_mask);
 static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
 static void destroy_pack(struct pack *pack);
-static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe);
+UNUSED static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe);
 UNUSED static bool is_zero_flush_only(struct pack *pack);
 
 /* helper function. */
@@ -528,6 +528,7 @@ static void destroy_pack(struct pack *pack)
 /**
  * Check a request in a pack and a request is overlapping.
  */
+UNUSED
 static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe)
 {
 	struct req_entry *tmp_reqe;
@@ -627,7 +628,13 @@ static bool writepack_add_req(
 	ASSERT(*latest_lsidp == lhead->logpack_lsid);
 	
 	if (lhead->n_records > 0) {
+#if 0
+		/* Now we need not overlapping check in a pack
+		   because atomicity is kept by unit of request. */
 		if ((req->cmd_flags & REQ_FLUSH) || is_overlap_pack_reqe(pack, reqe)) {
+#else
+		if (req->cmd_flags & REQ_FLUSH) {
+#endif
 			/* Flush request must be the first of the pack. */
 			/* overlap found so create a new pack. */
 			goto newpack;
@@ -2063,8 +2070,6 @@ UNUSED static bool pending_check_and_copy(
 #ifdef WALB_FAST_ALGORITHM
 static inline bool should_stop_queue(struct pdata *pdata, struct req_entry *reqe)
 {
-	bool ret;
-	
 	ASSERT(pdata);
 	ASSERT(reqe);
 
@@ -2088,8 +2093,6 @@ static inline bool should_stop_queue(struct pdata *pdata, struct req_entry *reqe
 #ifdef WALB_FAST_ALGORITHM
 static inline bool should_start_queue(struct pdata *pdata, struct req_entry *reqe)
 {
-	bool ret;
-	
 	ASSERT(pdata);
 	ASSERT(reqe);
 	ASSERT(pdata->pending_sectors >= reqe->req_sectors);
