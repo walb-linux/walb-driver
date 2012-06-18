@@ -59,7 +59,7 @@ WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o
 wrapper-blk-simple-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
 wrapper_blk_simple_plug.o
 WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o \
-sector_io.o bio_entry.o logpack.o treemap.o
+sector_io.o bio_entry.o req_entry.o logpack.o treemap.o
 wrapper-blk-walb-easy-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
 wrapper_blk_walb_easy.o
 

@@ -23,6 +23,9 @@ static struct kmem_cache *bio_entry_cache_ = NULL;
 /* shared coutner of the cache. */
 static unsigned int shared_cnt_ = 0;
 
+/*******************************************************************************
+ * Struct data.
+ *******************************************************************************/
 
 /**
  * Bio cursor data.
@@ -982,6 +985,9 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 }
 #endif
 
+/**
+ * Initilaize bio_entry cache.
+ */
 bool bio_entry_init(void)
 {
 	LOGd("bio_entry_init begin\n");
@@ -1005,6 +1011,9 @@ error:
 	return false;
 }
 
+/**
+ * Finalize bio_entry cache.
+ */
 void bio_entry_exit(void)
 {
 	if (shared_cnt_) {
