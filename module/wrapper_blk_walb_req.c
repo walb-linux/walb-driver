@@ -1,5 +1,5 @@
 /**
- * wrapper_blk_walb_easy.c - WalB block device with Easy Algorithm for test.
+ * wrapper_blk_walb_req.c - WalB block device with request base for test.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
