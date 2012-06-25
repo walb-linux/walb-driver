@@ -1,6 +1,7 @@
 # Comment/uncomment the following line to disable/enable debugging
 #DEBUG = 1
-#OVERLAP_DETECT = 1
+OVERLAP_DETECT = 1
+FAST_ALG = 1
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DEBUG),1)
