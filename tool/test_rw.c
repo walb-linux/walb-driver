@@ -10,9 +10,13 @@
 #include "random.h"
 #include "util.h"
 
-/* #define BLOCK_SIZE 4096 */
+#if 1
 #define BLOCK_SIZE 512
-#define DEV_SIZE (1024 * 1024 * 1024 / BLOCK_SIZE) /* num of blocks */
+#elif 1
+#define BLOCK_SIZE 4096
+#else
+#define BLOCK_SIZE 32768
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -41,7 +45,7 @@ int main(int argc, char* argv[])
         }
 
         int num = atoi(nblocks_str);
-        int i, j;
+        int i;
         for (i = 0; i < num; i ++) {
                 memset_random(block0, BLOCK_SIZE);
 		memset(block1, 0, BLOCK_SIZE);
@@ -53,7 +57,7 @@ int main(int argc, char* argv[])
                 printf("%d %s\n", i, (c == 0 ? "OK" : "NG"));
 #if 0
 		if (c) {
-			for (j = 0; j < BLOCK_SIZE; j ++) {
+			for (int j = 0; j < BLOCK_SIZE; j ++) {
 				printf("%d", block0[j] == block1[j]);
 				if (j % 64 == 64 - 1) {
 					printf("\n");

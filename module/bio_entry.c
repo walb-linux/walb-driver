@@ -23,6 +23,9 @@ static struct kmem_cache *bio_entry_cache_ = NULL;
 /* shared coutner of the cache. */
 static unsigned int shared_cnt_ = 0;
 
+/*******************************************************************************
+ * Struct data.
+ *******************************************************************************/
 
 /**
  * Bio cursor data.
@@ -32,7 +35,10 @@ static unsigned int shared_cnt_ = 0;
  */
 struct bio_cursor
 {
-	struct bio *bio; /* target bio. */
+	struct bio_entry *bioe; /* Target bio entry.
+				   You must use bioe->bi_size
+				   instead of bioe->bio->bi_size,
+				   because it will be 0 in the end_request(). */
 	unsigned int idx; /* bio io_vec index. */
 	unsigned int off; /* offset inside bio [bytes]. */
 	unsigned int off_in; /* offset inside io_vec [bytes]. */
@@ -47,8 +53,8 @@ static inline void list_insert_after(struct list_head *list, struct list_head *n
 
 /* For bio_cursor */
 #ifdef WALB_FAST_ALGORITHM
-static bool bio_cursor_is_valid(struct bio_cursor *cur);
-static void bio_cursor_init(struct bio_cursor *cur, struct bio *bio);
+UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur);
+static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe);
 static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len);
 static bool bio_cursor_is_end(struct bio_cursor *cur);
 UNUSED static bool bio_cursor_is_boundary(struct bio_cursor *cur);
@@ -61,6 +67,9 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 /* For bio_entry_cursor */
 static struct bio_entry* bio_entry_split(
 	struct bio_entry *bioe1, unsigned int first_sectors);
+static struct bio_entry* bio_entry_next(
+	struct bio_entry *bioe,
+	struct list_head *bio_ent_list);
 
 static bool bio_entry_cursor_is_end(struct bio_entry_cursor *cur);
 static bool bio_entry_cursor_is_boundary(struct bio_entry_cursor *cur);
@@ -71,9 +80,13 @@ static void bio_entry_cursor_proceed_to_boundary(
 static bool bio_entry_cursor_split(struct bio_entry_cursor *cur);
 
 static void bio_data_copy(
-	struct bio *dst, unsigned int dst_off,
-	struct bio *src, unsigned int src_off,
+	struct bio_entry *dst, unsigned int dst_off,
+	struct bio_entry *src, unsigned int src_off,
 	unsigned int sectors);
+
+static struct bio_entry* bio_entry_list_get_first_nonzero(
+	struct list_head *bio_ent_list);
+
 #endif /* WALB_FAST_ALGORITHM */
 
 
@@ -114,16 +127,16 @@ static inline void list_insert_after(struct list_head *pos, struct list_head *ne
  *   true if valid, or false.
  */
 #ifdef WALB_FAST_ALGORITHM
-static bool bio_cursor_is_valid(struct bio_cursor *cur)
+UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur)
 {
 	struct bio_vec *bvec;
 	int i;
 	unsigned int off;
 	
 	CHECK(cur);
-	CHECK(cur->bio);
+	CHECK(cur->bioe);
 
-	if (cur->bio->bi_size == 0) {
+	if (cur->bioe->bi_size == 0) {
 		/* zero bio. */
 		CHECK(cur->idx == 0);
 		CHECK(cur->off == 0);
@@ -131,19 +144,20 @@ static bool bio_cursor_is_valid(struct bio_cursor *cur)
 		goto fin;
 	}
 
-	CHECK(cur->idx >= cur->bio->bi_idx);
-	CHECK(cur->idx <= cur->bio->bi_vcnt);
+	CHECK(cur->bioe->bio);
+	CHECK(cur->idx >= cur->bioe->bio->bi_idx);
+	CHECK(cur->idx <= cur->bioe->bio->bi_vcnt);
 
-	if (cur->idx == cur->bio->bi_vcnt) {
+	if (cur->idx == cur->bioe->bio->bi_vcnt) {
 		/* cursur indicates the end. */
-		CHECK(cur->off == cur->bio->bi_size);
+		CHECK(cur->off == cur->bioe->bi_size);
 		CHECK(cur->off_in == 0);
 		goto fin;
 	}
 
 	bvec = NULL;
 	off = 0;
-	bio_for_each_segment(bvec, cur->bio, i) {
+	bio_for_each_segment(bvec, cur->bioe->bio, i) {
 		if (i == cur->idx) { break; }
 		off += bvec->bv_len;
 	}
@@ -160,17 +174,17 @@ error:
  * Initialize bio_cursor data.
  */
 #ifdef WALB_FAST_ALGORITHM
-static void bio_cursor_init(struct bio_cursor *cur, struct bio *bio)
+static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe)
 {
 	ASSERT(cur);
-	ASSERT(bio);
+	ASSERT(bioe);
 
-	cur->bio = bio;
-	if (bio->bi_size == 0) {
+	cur->bioe = bioe;
+	if (bioe->bi_size == 0) {
 		/* zero bio */
 		cur->idx = 0;
 	} else {
-		cur->idx = bio->bi_idx;
+		cur->idx = bioe->bio->bi_idx;
 	}
 	cur->off = 0;
 	cur->off_in = 0;
@@ -201,7 +215,7 @@ static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len)
 			cur->off += len;
 			cur->off_in += len;
 			len = 0;
-			ASSERT(cur->off_in < bio_iovec_idx(cur->bio, cur->idx)->bv_len);
+			ASSERT(cur->off_in < bio_iovec_idx(cur->bioe->bio, cur->idx)->bv_len);
 		} else {
 			bio_cursor_proceed_to_boundary(cur);
 			len -= tmp;
@@ -220,11 +234,11 @@ static bool bio_cursor_is_end(struct bio_cursor *cur)
 {
 	ASSERT(bio_cursor_is_valid(cur));
 	
-	if (cur->bio->bi_size == 0) {
+	if (cur->bioe->bi_size == 0) {
 		/* zero bio always indicates the end. */
 		return true;
 	} else {
-		return cur->off == cur->bio->bi_size;
+		return cur->off == cur->bioe->bi_size;
 	}
 }
 #endif
@@ -252,7 +266,7 @@ static unsigned int bio_cursor_size_to_boundary(struct bio_cursor *cur)
 	if (bio_cursor_is_end(cur)) {
 		return 0;
 	} else {
-		bv_len = bio_iovec_idx(cur->bio, cur->idx)->bv_len;
+		bv_len = bio_iovec_idx(cur->bioe->bio, cur->idx)->bv_len;
 		ASSERT(bv_len > cur->off_in);
 		return bv_len - cur->off_in;
 	}
@@ -291,7 +305,7 @@ static char* bio_cursor_map(struct bio_cursor *cur, unsigned long *flags)
 	ASSERT(flags);
 
 	addr = (unsigned long)bvec_kmap_irq(
-		bio_iovec_idx(cur->bio, cur->idx), flags);
+		bio_iovec_idx(cur->bioe->bio, cur->idx), flags);
 	ASSERT(addr != 0);
 	addr += cur->off_in;
 	return (char *)addr;
@@ -374,7 +388,7 @@ static struct bio_entry* bio_entry_split(
 	
 	bioe2 = alloc_bio_entry(GFP_NOIO);
 	if (!bioe2) { goto error0; }
-	
+
 	bp = bio_split(bioe1->bio, first_sectors);
 	if (!bp) { goto error1; }
 
@@ -387,6 +401,27 @@ error1:
 	destroy_bio_entry(bioe2);
 error0:
 	return NULL;
+}
+#endif
+
+/**
+ * Get next bio_entry.
+ *
+ * RETURN:
+ *   pointer to the next bio_entry if found, or NULL (reached the end).
+ */
+#ifdef WALB_FAST_ALGORITHM
+static struct bio_entry* bio_entry_next(
+	struct bio_entry *bioe,
+	struct list_head *bio_ent_list)
+{
+	ASSERT(bioe);
+	ASSERT(bio_ent_list);
+	if (list_is_last(&bioe->list, bio_ent_list)) {
+		/* reached the end. */
+		return NULL;
+	}
+	return list_entry(bioe->list.next, struct bio_entry, list);
 }
 #endif
 
@@ -430,7 +465,7 @@ static unsigned int bio_entry_cursor_size_to_boundary(
 	struct bio_entry_cursor *cur)
 {
 	ASSERT(bio_entry_cursor_is_valid(cur));
-	return cur->bioe->bio->bi_size / LOGICAL_BLOCK_SIZE - cur->off_in;
+	return cur->bioe->bi_size / LOGICAL_BLOCK_SIZE - cur->off_in;
 }
 #endif
 
@@ -445,13 +480,9 @@ static void bio_entry_cursor_proceed_to_boundary(
 
 	cur->off += bio_entry_cursor_size_to_boundary(cur);
 	cur->off_in = 0;
-	if (list_is_last(&cur->bioe->list, cur->bio_ent_list)) {
-		/* reached the end. */
-		cur->bioe = NULL;
-	} else {
-		cur->bioe = list_entry(cur->bioe->list.next,
-				struct bio_entry, list);
-	}
+	do {
+		cur->bioe = bio_entry_next(cur->bioe, cur->bio_ent_list);
+	} while (cur->bioe != NULL && cur->bioe->bi_size == 0);
 }
 #endif
 
@@ -504,17 +535,17 @@ error:
  */
 #ifdef WALB_FAST_ALGORITHM
 static void bio_data_copy(
-	struct bio *dst, unsigned int dst_off,
-	struct bio *src, unsigned int src_off,
+	struct bio_entry *dst, unsigned int dst_off,
+	struct bio_entry *src, unsigned int src_off,
 	unsigned int sectors)
 {
 	struct bio_cursor dst_cur, src_cur;
 	unsigned int size, copied;
 	
 	ASSERT(dst);
-	ASSERT(dst_off + sectors <= dst->bi_size);
+	ASSERT(dst_off + sectors <= dst->bi_size / LOGICAL_BLOCK_SIZE);
 	ASSERT(src);
-	ASSERT(src_off + sectors <= src->bi_size);
+	ASSERT(src_off + sectors <= src->bi_size / LOGICAL_BLOCK_SIZE);
 
 	ASSERT(dst->bi_size > 0);
 	ASSERT(src->bi_size > 0);
@@ -537,6 +568,30 @@ static void bio_data_copy(
 }
 #endif
 
+/**
+ * Get the first non-zero bio_entry in a bio_entry list.
+ *
+ * RETURN:
+ *   non-zero bio_entry if found, or NULL.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static struct bio_entry* bio_entry_list_get_first_nonzero(struct list_head *bio_ent_list)
+{
+	struct bio_entry* bioe;
+
+	if (!bio_ent_list || list_empty(bio_ent_list)) {
+		return NULL;
+	}
+
+	bioe = list_first_entry(bio_ent_list, struct bio_entry, list);
+	while (bioe != NULL && bioe->bi_size == 0) {
+		bioe = bio_entry_next(bioe, bio_ent_list);
+	}
+	ASSERT(bioe == NULL || bioe->bi_size > 0);
+	return bioe;
+}
+#endif
+
 /*******************************************************************************
  * Global functions definition.
  *******************************************************************************/
@@ -547,7 +602,13 @@ static void bio_data_copy(
 void print_bio_entry(const char *level, struct bio_entry *bioe)
 {
 	ASSERT(bioe);
-	/* now editing */
+	if (bioe->bio) {
+		printk("%s""bioe pos %"PRIu64" size %u\n",
+			level, (u64)bioe->bio->bi_sector, bioe->bi_size);
+	} else {
+		printk("%s""bioe size %u\n",
+			level, bioe->bi_size);
+	}
 }
 
 /**
@@ -614,31 +675,43 @@ void destroy_bio_entry(struct bio_entry *bioe)
 }
 
 /**
- * Call bio_get() for all bio in a bio_entry list.
+ * Call bio_get() for all bio and get_page()
+ * for all their bio_vec's pages in a bio_entry list.
  */
 void get_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
+	struct bio_vec *bvec;
+	int i;
 	
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 		ASSERT(bioe->bio);
 		bio_get(bioe->bio);
+		bio_for_each_segment(bvec, bioe->bio, i) {
+			get_page(bvec->bv_page);
+		}
 	}
 }
 
 /**
- * Call bio_put() for all bio in a bio_entry list.
+ * Call bio_put() for all bio and put_page()
+ * for all their bio_vec's pages in a bio_entry list.
  */
 void put_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
 	int bi_cnt;
+	struct bio_vec *bvec;
+	int i;
 	
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 		ASSERT(bioe->bio);
 		bi_cnt = atomic_read(&bioe->bio->bi_cnt);
+		bio_for_each_segment(bvec, bioe->bio, i) {
+			put_page(bvec->bv_page);
+		}
 		bio_put(bioe->bio);
 		if (bi_cnt == 1) { bioe->bio = NULL; }
 	}
@@ -720,7 +793,7 @@ error:
 #ifdef WALB_FAST_ALGORITHM
 bool bio_entry_cursor_is_valid(struct bio_entry_cursor *cur)
 {
-	unsigned int off;
+	unsigned int off_bytes;
 	struct bio_entry *bioe;
 	
 	CHECK(cur);
@@ -737,23 +810,20 @@ bool bio_entry_cursor_is_valid(struct bio_entry_cursor *cur)
 	if (!cur->bioe) {
 		/* End */
 		CHECK(cur->off_in == 0);
-		CHECK(cur->off > 0);
 		goto fin;
 	}
 
 	ASSERT(cur->bioe);
-	CHECK(cur->off_in < cur->bioe->bi_size);
+	CHECK(cur->bioe->bi_size > 0);
+	CHECK(cur->off_in < cur->bioe->bi_size / LOGICAL_BLOCK_SIZE);
 	bioe = NULL;
-	off = 0;
+	off_bytes = 0;
 	list_for_each_entry(bioe, cur->bio_ent_list, list) {
-		CHECK(bioe->bio);
-		/* Currently zero-size bio is not supported. */
-		CHECK(bioe->bi_size > 0);
 		if (bioe == cur->bioe) { break; }
-		off += bioe->bi_size;
+		off_bytes += bioe->bi_size;
 	}
-	CHECK(off % LOGICAL_BLOCK_SIZE == 0);
-	CHECK(off / LOGICAL_BLOCK_SIZE + cur->off_in == cur->off);
+	CHECK(off_bytes % LOGICAL_BLOCK_SIZE == 0);
+	CHECK(off_bytes / LOGICAL_BLOCK_SIZE + cur->off_in == cur->off);
 	CHECK(cur->bioe == bioe);
 	
 fin:
@@ -778,15 +848,10 @@ void bio_entry_cursor_init(
 	ASSERT(bio_ent_list);
 
 	cur->bio_ent_list = bio_ent_list;
-	if (list_empty(bio_ent_list)) {
-		cur->bioe = NULL;
-		cur->off = 0;
-		cur->off_in = 0;
-	} else {
-		cur->bioe = list_first_entry(bio_ent_list, struct bio_entry, list);
-		cur->off = 0;
-		cur->off_in = 0;
-	}
+	cur->bioe = bio_entry_list_get_first_nonzero(bio_ent_list);
+	cur->off = 0;
+	cur->off_in = 0;
+	
 	ASSERT(bio_entry_cursor_is_valid(cur));
 }
 #endif
@@ -848,6 +913,10 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 	unsigned int sectors)
 {
 	unsigned int copied_sectors, tmp1, tmp2;
+#if 0
+	struct bio_vec *bvec;
+	int i;
+#endif
 
 	/* Decide size to copy. */
 	tmp1 = bio_entry_cursor_size_to_boundary(dst);
@@ -855,12 +924,57 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 	copied_sectors = min(min(sectors, tmp1), tmp2);
 	ASSERT(dst->bioe);
 	ASSERT(src->bioe);
+
+#if 0
+	/* Debug */
+	if (copied_sectors == 0) {
+		LOGn("copied_sectors 0 sectors %u tmp1 %u tmp2 %u\n",
+			sectors, tmp1, tmp2);
+		print_bio_entry(KERN_DEBUG, dst->bioe);
+		print_bio_entry(KERN_DEBUG, src->bioe);
+	}
+#endif
 	ASSERT(copied_sectors > 0);
 
+	/* Debug */
+	LOGd_("bio_data_copy: dst %u %u %u %u src %u %u %u %u copied_sectors %u\n",
+		dst->bioe->bio->bi_size,
+		dst->bioe->bi_size,
+		dst->off_in,
+		atomic_read(&dst->bioe->bio->bi_cnt),
+		src->bioe->bio->bi_size,
+		src->bioe->bi_size,
+		src->off_in,
+		atomic_read(&src->bioe->bio->bi_cnt),
+		copied_sectors);
+
+	ASSERT(dst->bioe->bio);
+	ASSERT(src->bioe->bio);
+	ASSERT(dst->bioe->bio->bi_size == dst->bioe->bi_size);
+#if 0
+	/* Debug */
+	if (src->bioe->bio->bi_size != src->bioe->bi_size) {
+		LOGn("src bio invalid: bio %u bioe %u vcnt %u\n",
+			src->bioe->bio->bi_size,
+			src->bioe->bi_size,
+			atomic_read(&src->bioe->bio->bi_cnt));
+
+		LOGn("bi_idx %u bi_vcnt %u bi_io_vec %p\n",
+			src->bioe->bio->bi_idx,
+			src->bioe->bio->bi_vcnt,
+			src->bioe->bio->bi_io_vec);
+
+		bio_for_each_segment(bvec, src->bioe->bio, i) {
+			LOGn("bvec %d off %u len %u\n",
+				i, bvec->bv_offset, bvec->bv_len);
+		}
+	}
+#endif
+	
 	/* Copy data. */
 	bio_data_copy(
-		dst->bioe->bio, dst->off_in,
-		src->bioe->bio, src->off_in,
+		dst->bioe, dst->off_in,
+		src->bioe, src->off_in,
 		copied_sectors);
 
 	/* Proceed both cursors. */
@@ -871,6 +985,9 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 }
 #endif
 
+/**
+ * Initilaize bio_entry cache.
+ */
 bool bio_entry_init(void)
 {
 	LOGd("bio_entry_init begin\n");
@@ -894,6 +1011,9 @@ error:
 	return false;
 }
 
+/**
+ * Finalize bio_entry cache.
+ */
 void bio_entry_exit(void)
 {
 	if (shared_cnt_) {

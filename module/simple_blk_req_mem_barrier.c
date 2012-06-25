@@ -103,7 +103,7 @@ static void enqueue_all_req_list_work(
 static void sleep_if_required(void)
 {
         if (unlikely(sleep_ms_ > 0)) {
-                msleep_interruptible(sleep_ms_);
+                msleep(sleep_ms_);
         }
 }
 
@@ -359,7 +359,6 @@ static void mdata_exec_req(struct memblk_data *mdata, struct request *req)
         is_write = req->cmd_flags & REQ_WRITE;
 
         rq_for_each_segment(bvec, req, iter) {
-                buf = bvec_kmap_irq(bvec, &flags);
 #if 0
                 LOGd("bvec->bv_len: %u mdata->block_size %u\n",
                      bvec->bv_len, mdata->block_size);
@@ -367,12 +366,12 @@ static void mdata_exec_req(struct memblk_data *mdata, struct request *req)
                 ASSERT(bvec->bv_len % mdata->block_size == 0);
                 n_blk = bvec->bv_len / mdata->block_size;
 
+                buf = bvec_kmap_irq(bvec, &flags);
                 if (is_write) {
                         mdata_write_blocks(mdata, block_id, n_blk, buf);
                 } else {
                         mdata_read_blocks(mdata, block_id, n_blk, buf);
                 }
-                
                 block_id += n_blk;
                 flush_kernel_dcache_page(bvec->bv_page);
                 bvec_kunmap_irq(buf, &flags);

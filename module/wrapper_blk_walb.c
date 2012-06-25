@@ -12,6 +12,7 @@
 #include <linux/list.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
+#include <linux/mutex.h>
 
 #include "walb/walb.h"
 #include "walb/block_size.h"
@@ -34,6 +35,10 @@ int start_minor_ = 0;
 /* Physical block size. */
 int physical_block_size_ = 4096;
 
+/* Pending data limit size [MB]. */
+int max_pending_mb_ = 64;
+int min_pending_mb_ = 64 * 7 / 8;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -42,6 +47,8 @@ module_param_named(log_device_str, log_device_str_, charp, S_IRUGO);
 module_param_named(data_device_str, data_device_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
+module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
+module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -91,7 +98,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	spin_lock_init(&pdata->lsuper0_lock);
 
 #ifdef WALB_OVERLAPPING_DETECTION
-	spin_lock_init(&pdata->overlapping_data_lock);
+	mutex_init(&pdata->overlapping_data_mutex);
 	pdata->overlapping_data = multimap_create(GFP_KERNEL);
 	if (!pdata->overlapping_data) {
 		LOGe("multimap creation failed.\n");
@@ -99,12 +106,19 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	}
 #endif
 #ifdef WALB_FAST_ALGORITHM
-	spin_lock_init(&pdata->pending_data_lock);
+	mutex_init(&pdata->pending_data_mutex);
 	pdata->pending_data = multimap_create(GFP_KERNEL);
 	if (!pdata->pending_data) {
 		LOGe("multimap creation failed.\n");
 		goto error02;
 	}
+	pdata->pending_sectors = 0;
+	pdata->max_pending_sectors = max_pending_mb_
+		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
+	pdata->min_pending_sectors = min_pending_mb_
+		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
+	LOGn("max pending sectors: %u\n", pdata->max_pending_sectors);
+	pdata->is_queue_stopped = false;
 #endif
 	
         /* open underlying log device. */
@@ -238,16 +252,17 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 /* Customize wdev after register before start. */
 static void customize_wdev(struct wrapper_blk_dev *wdev)
 {
-        struct request_queue *q, *uq;
+        struct request_queue *q, *lq, *dq;
 	struct pdata *pdata;
         ASSERT(wdev);
         q = wdev->queue;
 	pdata = wdev->private_data;
 
-        uq = bdev_get_queue(pdata->ddev);
+	lq = bdev_get_queue(pdata->ldev);
+        dq = bdev_get_queue(pdata->ddev);
         /* Accept REQ_FLUSH and REQ_FUA. */
-        if (uq->flush_flags & REQ_FLUSH) {
-                if (uq->flush_flags & REQ_FUA) {
+        if (lq->flush_flags & REQ_FLUSH && dq->flush_flags & REQ_FLUSH) {
+                if (lq->flush_flags & REQ_FUA && dq->flush_flags & REQ_FUA) {
                         LOGn("Supports REQ_FLUSH | REQ_FUA.");
                         blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
                 } else {
@@ -259,7 +274,7 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
         }
 
 #if 0
-        if (blk_queue_discard(uq)) {
+        if (blk_queue_discard(dq)) {
                 /* Accept REQ_DISCARD. */
                 LOGn("Supports REQ_DISCARD.");
                 q->limits.discard_granularity = PAGE_SIZE;

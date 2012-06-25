@@ -11,15 +11,15 @@
 /**
  * Check macro for is_valid_* functions.
  */
-#define CHECK(cond) do {				\
-		if (!(cond)) {				\
-			LOGd("CHECK failed.\n");	\
-			goto error;			\
-		}					\
+#define CHECK(cond) do {						\
+		if (!(cond)) {						\
+			LOGe("CHECK failed at line %d.\n", __LINE__);	\
+			goto error;					\
+		}							\
 	} while (0)
 #define CHECK_MSG(cond, msg) do {		\
 		if (!(cond)) {			\
-			LOGd("%s", msg);	\
+			LOGe("%s", msg);	\
 			goto error;		\
 		}				\
 	} while (0)

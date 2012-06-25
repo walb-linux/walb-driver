@@ -1,6 +1,7 @@
 # Comment/uncomment the following line to disable/enable debugging
 #DEBUG = 1
-#OVERLAP_DETECT = 1
+OVERLAP_DETECT = 1
+FAST_ALG = 1
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DEBUG),1)
@@ -59,9 +60,9 @@ WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o
 wrapper-blk-simple-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
 wrapper_blk_simple_plug.o
 WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o \
-sector_io.o bio_entry.o logpack.o treemap.o
-wrapper-blk-walb-easy-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
-wrapper_blk_walb_easy.o
+sector_io.o bio_entry.o req_entry.o logpack.o treemap.o
+wrapper-blk-walb-req-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
+wrapper_blk_walb_req.o
 
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
@@ -91,7 +92,7 @@ simple-blk-req-none-mod.o \
 simple-blk-req-mem-barrier-mod.o \
 wrapper-blk-mod.o \
 wrapper-blk-simple-plug-mod.o \
-wrapper-blk-walb-easy-mod.o \
+wrapper-blk-walb-req-mod.o \
 
 else
 
