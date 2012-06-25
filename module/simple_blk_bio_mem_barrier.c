@@ -127,9 +127,10 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
         sector_t sector;
         u64 block_id;
         struct bio_vec *bvec;
-        u8 *buffer_bio;
+        u8 *buf;
         unsigned int is_write;
         unsigned int n_blk;
+	unsigned long flags;
 
         ASSERT(bio);
 
@@ -161,18 +162,19 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
         is_write = bio->bi_rw & REQ_WRITE;
         
         bio_for_each_segment(bvec, bio, i) {
-                buffer_bio = (u8 *)__bio_kmap_atomic(bio, i, KM_USER0);
-                ASSERT(bio_cur_bytes(bio) % mdata->block_size == 0);
 
-                n_blk = bio_cur_bytes(bio) / mdata->block_size;
+                ASSERT(bvec->bv_len % mdata->block_size == 0);
+                n_blk = bvec->bv_len / mdata->block_size;
+
+                buf = (u8 *)bvec_kmap_irq(bvec, &flags);
                 if (is_write) {
-                        mdata_write_blocks(mdata, block_id, n_blk, buffer_bio);
+                        mdata_write_blocks(mdata, block_id, n_blk, buf);
                 } else {
-                        mdata_read_blocks(mdata, block_id, n_blk, buffer_bio);
+                        mdata_read_blocks(mdata, block_id, n_blk, buf);
                 }
                 block_id += n_blk;
                 flush_kernel_dcache_page(bvec->bv_page);
-               __bio_kunmap_atomic(bio, KM_USER0);
+		bvec_kunmap_irq(buf, &flags);
         }
 }
 
