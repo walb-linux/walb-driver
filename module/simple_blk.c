@@ -142,6 +142,7 @@ EXPORT_SYMBOL_GPL(sdev_unregister);
 bool sdev_start(unsigned int minor)
 {
         struct simple_blk_dev *sdev;
+	unsigned long flags;
         
         sdev = get_from_devices(minor);
         if (!sdev) {
@@ -150,13 +151,16 @@ bool sdev_start(unsigned int minor)
         }
         ASSERT_SIMPLE_BLK_DEV(sdev);
                 
+	spin_lock_irqsave(&sdev->lock, flags);
         if (sdev->is_started) {
                 LOGe("Device with minor %u already started.\n", minor);
+		spin_unlock_irqrestore(&sdev->lock, flags);
                 goto error0;
         } else {
                 add_disk(sdev->gd);
                 sdev->is_started = true;
                 LOGi("Start device with minor %u.\n", minor);
+		spin_unlock_irqrestore(&sdev->lock, flags);
         }
         return true;
 error0:
@@ -171,6 +175,7 @@ EXPORT_SYMBOL_GPL(sdev_start);
 bool sdev_stop(unsigned int minor)
 {
         struct simple_blk_dev *sdev;
+	unsigned long flags;
         
         sdev = get_from_devices(minor);
         if (!sdev) {
@@ -181,7 +186,7 @@ bool sdev_stop(unsigned int minor)
         ASSERT_SIMPLE_BLK_DEV(sdev);
         
         if (sdev->gd) {
-                spin_lock(&sdev->lock);
+                spin_lock_irqsave(&sdev->lock, flags);
                 if (sdev->is_started) {
                         sdev->is_started = false;
                         del_gendisk(sdev->gd);
@@ -190,9 +195,10 @@ bool sdev_stop(unsigned int minor)
                         LOGi("Stop device with minor %u.\n", minor);
                 } else {
                         LOGe("Device wit minor %u is already stopped.\n", minor);
+			spin_unlock_irqrestore(&sdev->lock, flags);
                         goto error0;
                 }
-                spin_unlock(&sdev->lock);
+		spin_unlock_irqrestore(&sdev->lock, flags);
         }
         return true;
 error0:
