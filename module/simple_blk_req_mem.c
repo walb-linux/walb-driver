@@ -215,8 +215,6 @@ static void normal_io_task(struct work_struct *work)
         struct memblk_data *mdata = get_mdata_from_sdev(rlwork->sdev);
 	struct req_entry *reqe, *next;
 	
-	ASSERT(!rlwork->flush_req);
-
 	list_for_each_entry_safe(reqe, next, &rlwork->req_ent_list, list) {
 
 		ASSERT(reqe->req);
