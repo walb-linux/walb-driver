@@ -489,8 +489,8 @@ void pre_unregister(void)
  */
 void post_unregister(void)
 {
-	mdata_exit();
         destroy_workqueue(wq_io_);
+	mdata_exit();
         kmem_cache_destroy(req_entry_cache_);
         kmem_cache_destroy(req_list_work_cache_);
 }
