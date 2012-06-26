@@ -2319,6 +2319,15 @@ error0:
 	return false;
 }
 
+/* Called before unregister. */
+void pre_unregister(void)
+{
+	/* Wait for all remaining tasks. */
+	flush_workqueue(wq_logpack_submit_);
+	flush_workqueue(wq_logpack_wait_);
+	flush_workqueue(wq_normal_);
+}
+
 /* Called after unregister. */
 void post_unregister(void)
 {
@@ -2334,9 +2343,8 @@ void post_unregister(void)
 	destroy_workqueue(wq_logpack_submit_);
 	wq_logpack_submit_ = NULL;
 
-	bio_entry_exit();
-	
 	/* Destory kmem_cache data. */
+	bio_entry_exit();
 	kmem_cache_destroy(pack_cache_);
 	pack_cache_ = NULL;
 	req_entry_exit();

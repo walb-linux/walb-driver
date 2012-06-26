@@ -52,7 +52,7 @@ struct simple_blk_dev
         };
         
         struct gendisk *gd; /* disk */
-        bool is_started; /* If started, true, or false. */
+        unsigned long is_started; /* If started, bit 0 is on, or off. */
         
         void *private_data; /* You can use this for any purpose. */
 };

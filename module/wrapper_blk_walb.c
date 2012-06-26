@@ -395,6 +395,7 @@ error0:
 static void wrapper_blk_exit(void)
 {
         stop_dev();
+	pre_unregister();
         unregister_dev();
         post_unregister();
 }

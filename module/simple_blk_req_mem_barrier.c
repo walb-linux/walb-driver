@@ -592,6 +592,15 @@ error0:
 }
 
 /**
+ * Flush all remaining tasks.
+ */
+void pre_unregister(void)
+{
+	flush_workqueue(wq_flush_);
+	flush_workqueue(wq_io_);
+}
+
+/**
  * Finalize kmem_cache.
  */
 void post_unregister(void)

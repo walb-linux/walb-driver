@@ -142,7 +142,6 @@ EXPORT_SYMBOL_GPL(wdev_unregister);
 bool wdev_start(unsigned int minor)
 {
         struct wrapper_blk_dev *wdev;
-	unsigned long flags;
         
         wdev = get_from_devices(minor);
         if (!wdev) {
@@ -151,17 +150,13 @@ bool wdev_start(unsigned int minor)
         }
         ASSERT_WRAPPER_BLK_DEV(wdev);
                 
-	spin_lock_irqsave(&wdev->lock, flags);
-        if (wdev->is_started) {
+	if (test_and_set_bit(0, &wdev->is_started)) {
                 LOGe("Device with minor %u already started.\n", minor);
-		spin_unlock_irqrestore(&wdev->lock, flags);
                 goto error0;
-        } else {
+	} else {
                 add_disk(wdev->gd);
-                wdev->is_started = true;
                 LOGi("Start device with minor %u.\n", minor);
-		spin_unlock_irqrestore(&wdev->lock, flags);
-        }
+	}
         return true;
 error0:
         return false;
@@ -175,7 +170,6 @@ EXPORT_SYMBOL_GPL(wdev_start);
 bool wdev_stop(unsigned int minor)
 {
         struct wrapper_blk_dev *wdev;
-	unsigned long flags;
         
         wdev = get_from_devices(minor);
         if (!wdev) {
@@ -185,18 +179,13 @@ bool wdev_stop(unsigned int minor)
 
         ASSERT_WRAPPER_BLK_DEV(wdev);
         
-        if (wdev->gd) {
-                spin_lock_irqsave(&wdev->lock, flags);
-                if (wdev->is_started) {
-                        wdev->is_started = false;
-                        del_gendisk(wdev->gd);
-                        LOGi("Stop device with minor %u.\n", minor);
-                } else {
-                        LOGe("Device wit minor %u is already stopped.\n", minor);
-			spin_unlock_irqrestore(&wdev->lock, flags);
-                        goto error0;
-                }
-                spin_unlock_irqrestore(&wdev->lock, flags);
+	if (test_and_clear_bit(0, &wdev->is_started)) {
+		ASSERT(wdev->gd);
+		del_gendisk(wdev->gd);
+		LOGi("Stop device with minor %u.\n", minor);
+	} else {
+		LOGe("Device wit minor %u is already stopped.\n", minor);
+		goto error0;
         }
         return true;
 error0:

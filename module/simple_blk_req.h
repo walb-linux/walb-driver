@@ -20,6 +20,8 @@ void simple_blk_req_request_fn(struct request_queue *q);
 
 /* Called before register. */
 bool pre_register(void);
+/* Called before unregister. */
+void pre_unregister(void);
 /* Called after unregister. */
 void post_unregister(void);
 
