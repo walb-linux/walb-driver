@@ -78,6 +78,9 @@ static void assert_simple_blk_dev(struct simple_blk_dev *sdev);
 
 /* For exit. */
 static void stop_and_unregister_all_devices(void);
+static void stop_and_unregister_all_devices_atomic_task(
+	struct work_struct *work);
+static void stop_and_unregister_all_devices_atomic(void);
 
 /*******************************************************************************
  * Static variables definition.
@@ -571,14 +574,45 @@ static void stop_and_unregister_all_devices(void)
 {
         int i;
         struct simple_blk_dev *sdev;
-        
+	
         for (i = 0; i < MAX_N_DEVICES; i ++) {
                 sdev = get_from_devices(i);
                 if (sdev) {
                         sdev_stop(i);
                         sdev_unregister(i);
                 }
-        }
+	}
+}
+
+struct fin_work
+{
+	struct work_struct work;
+	unsigned long done;
+};
+
+/**
+ * Finalization Task.
+ */
+static void stop_and_unregister_all_devices_atomic_task(
+	struct work_struct *work)
+{
+	struct fin_work *fwork = container_of(work, struct fin_work, work);
+	stop_and_unregister_all_devices();
+	set_bit(0, &fwork->done);
+}
+
+/**
+ * Finalize all devices.
+ */
+static void stop_and_unregister_all_devices_atomic(void)
+{
+	struct fin_work fwork;
+
+	INIT_WORK(&fwork.work, stop_and_unregister_all_devices_atomic_task);
+	fwork.done = 0;
+	schedule_work(&fwork.work);
+
+	while (test_bit(0, &fwork.done)); /* busy loop */
 }
 
 /*******************************************************************************
@@ -615,7 +649,7 @@ static void simple_blk_exit(void)
         ASSERT(!in_interrupt());
         LOGd("in_atomic: %u.\n", in_atomic());
         
-        stop_and_unregister_all_devices();
+        stop_and_unregister_all_devices_atomic();
         unregister_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
 
         LOGi("Simple-blk module exit.\n");

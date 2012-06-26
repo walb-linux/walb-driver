@@ -136,7 +136,6 @@ error:
         return false;
 }
 
-
 static void stop_alldevs(void)
 {
         unsigned int i;
@@ -146,6 +145,39 @@ static void stop_alldevs(void)
                 sdev_stop(get_minor(i));
         }
 }
+
+/**
+ * Work struct for finalizer.
+ */
+struct fin_work
+{
+	struct work_struct work;
+	unsigned long done;
+};
+
+/**
+ * Finalization Task.
+ */
+static void stop_alldevs_task(struct work_struct *work)
+{
+	struct fin_work *fwork = container_of(work, struct fin_work, work);
+	stop_alldevs();
+	set_bit(0, &fwork->done);
+}
+
+/**
+ * Finalizer in atomic context.
+ */
+static void stop_alldevs_atomic(void)
+{
+	struct fin_work fwork;
+	INIT_WORK(&fwork.work, stop_alldevs_task);
+	fwork.done = 0;
+	schedule_work(&fwork.work);
+
+	while (!test_bit(0, &fwork.done)); /* busy loop wait. */
+}
+
 
 static void set_workqueue_type(void)
 {
@@ -208,7 +240,7 @@ error0:
 
 static void simple_blk_exit(void)
 {
-        stop_alldevs();
+        stop_alldevs_atomic();
         unregister_alldevs();
         post_unregister();
 }
