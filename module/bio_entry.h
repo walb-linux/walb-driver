@@ -25,6 +25,8 @@ struct bio_entry
 	int error; /* bio error status. */
 #ifdef WALB_FAST_ALGORITHM
 	bool is_copied; /* true if read is done by copy from pending data. */
+	bool is_own_pages; /* true when pages are managed by itself.
+			      destroy_bio_entry() must free the page. */
 #endif
 };
 
@@ -52,6 +54,9 @@ void put_bio_entry_list(struct list_head *bio_ent_list);
 void destroy_bio_entry_list(struct list_head *bio_ent_list);
 
 #ifdef WALB_FAST_ALGORITHM
+struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask);
+void init_copied_bio_entry(
+	struct bio_entry *bioe, struct bio *bio_with_copy);
 bool bio_entry_list_mark_copied(
 	struct list_head *bio_ent_list,
 	unsigned int off, unsigned int sectors);
