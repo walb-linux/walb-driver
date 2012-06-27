@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
 		memset(block[1], 0, BLOCK_SIZE);
 		
                 write_sector(fd, block[0], BLOCK_SIZE, i);
-#if 0
+#if 1
 		memset_random(block[0], BLOCK_SIZE);
 #endif
                 read_sector(fd, block[1], BLOCK_SIZE, i);
