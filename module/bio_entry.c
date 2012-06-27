@@ -67,6 +67,7 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 /* For bio_entry_cursor */
 static void get_bio_split_position(struct bio *bio, unsigned int first_sectors,
 				unsigned int *mid_idx_p, unsigned int *mid_off_p);
+static void copied_bio_put(struct bio *bio);
 static struct bio* bio_split2(
 	struct bio *bio, unsigned int first_sectors, gfp_t gfp_mask);
 static struct bio_entry* bio_entry_split(
@@ -97,12 +98,6 @@ static struct bio_entry* bio_entry_list_get_first_nonzero(
 /*******************************************************************************
  * Macros definition.
  *******************************************************************************/
-
-/**
- * Unmapping a bio_cursor.
- * You must call this after calling bio_cursor_map().
- */
-#define bio_cursor_unmap(buffer, flags) bvec_kunmap_irq(buffer, flags)
 
 /*******************************************************************************
  * Static functions definition.
@@ -317,6 +312,17 @@ static char* bio_cursor_map(struct bio_cursor *cur, unsigned long *flags)
 #endif
 
 /**
+ * Unmapping a bio_cursor.
+ * You must call this after calling bio_cursor_map().
+ */
+#ifdef WALB_FAST_ALGORITHM
+static void bio_cursor_unmap(char *buffer, unsigned long *flags)
+{
+	bvec_kunmap_irq(buffer, flags);
+}
+#endif
+
+/**
  * Copy data from a bio_cursor to a bio_cursor.
  *
  * @dst Destination cursor.
@@ -406,6 +412,90 @@ static void get_bio_split_position(struct bio *bio, unsigned int first_sectors,
 	*mid_idx_p = mid_idx;
 }
 
+#endif
+
+#ifdef WALB_FAST_ALGORITHM
+/**
+ * Free its all pages and call bio_put().
+ */
+static void copied_bio_put(struct bio *bio)
+{
+	struct bio_vec *bvec;
+	int i;
+	ASSERT(bio);
+	
+	bio_for_each_segment(bvec, bio, i) {
+		__free_page(bvec->bv_page);
+		bvec->bv_page = NULL;
+	}
+	ASSERT(atomic_read(&bio->bi_cnt) == 1);
+	bio_put(bio);
+}
+#endif
+
+#ifdef WALB_FAST_ALGORITHM
+/**
+ * Clone bio with data copy.
+ */
+struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
+{
+	struct bio *clone;
+	struct bio_vec *bvec, *bvec_orig;
+	int i;
+	char *dst_buf, *src_buf;
+	unsigned long flags;
+	
+	ASSERT(bio);
+	ASSERT(bio_rw(bio) == WRITE);
+
+	/* We can use bio_alloc and copy all related data instead. */
+	clone = bio_clone(bio, gfp_mask);
+	if (!clone) {
+		goto error0;
+	}
+	clone->bi_flags &= ~(1 << BIO_CLONED);
+	bio_for_each_segment(bvec, clone, i) {
+		if (bvec->bv_page) {
+			bvec->bv_page = NULL;
+		}
+	}
+	
+	if (bio->bi_size == 0) {
+		goto fin;
+	}
+	/* Allocate pages and copy original data. */
+	bio_for_each_segment(bvec, clone, i) {
+		ASSERT(!bvec->bv_page);
+		bvec->bv_page = alloc_page(gfp_mask);
+		if (!bvec->bv_page) {
+			goto error1;
+		}
+
+		bvec_orig = bio_iovec_idx(bio, i);
+		ASSERT(bvec_orig->bv_len == bvec->bv_len);
+		ASSERT(bvec_orig->bv_offset == bvec->bv_offset);
+		ASSERT(bvec_orig->bv_page != bvec->bv_page);
+
+		/* copy IO data. */
+		dst_buf = (char *)kmap_atomic(bvec->bv_page, KM_BIO_DST_IRQ)
+			+ bvec->bv_offset;
+		src_buf = bvec_kmap_irq(bvec_orig, &flags);
+		memcpy(dst_buf, src_buf, bvec->bv_len);
+		bvec_kunmap_irq(src_buf, &flags);
+		kunmap_atomic(dst_buf, KM_BIO_DST_IRQ);
+	}
+fin:	
+	return clone;
+error1:
+	bio_for_each_segment(bvec, clone, i) {
+		if (bvec->bv_page) {
+			__free_page(bvec->bv_page);
+		}
+	}
+	bio_put(clone);
+error0:
+	return NULL;
+}
 #endif
 
 #ifdef WALB_FAST_ALGORITHM
@@ -750,6 +840,7 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 
 #ifdef WALB_FAST_ALGORITHM
 	bioe->is_copied = false;
+	bioe->is_own_pages = false;
 #endif
 }
 
@@ -783,10 +874,17 @@ void destroy_bio_entry(struct bio_entry *bioe)
 	if (!bioe) {
 		return;
 	}
-
 	if (bioe->bio) {
-		LOGd("bio_put %p\n", bioe->bio);
+		LOGd_("bio_put %p\n", bioe->bio);
+#ifdef WALB_FAST_ALGORITHM
+		if (bioe->is_own_pages) {
+			copied_bio_put(bioe->bio);
+		} else {
+			bio_put(bioe->bio);
+		}
+#else
 		bio_put(bioe->bio);
+#endif
 		bioe->bio = NULL;
 	}
 	kmem_cache_free(bio_entry_cache_, bioe);
@@ -850,6 +948,22 @@ void destroy_bio_entry_list(struct list_head *bio_ent_list)
 		destroy_bio_entry(bioe);
 	}
 }
+
+/**
+ * Initialize a bio_entry with a bio with copy.
+ */
+#ifdef WALB_FAST_ALGORITHM
+void init_copied_bio_entry(
+	struct bio_entry *bioe, struct bio *bio_with_copy)
+{
+	ASSERT(bioe);
+	ASSERT(bio_with_copy);
+
+	init_bio_entry(bioe, bio_with_copy);
+	bioe->is_own_pages = true;
+	bio_get(bio_with_copy);
+}
+#endif
 
 /**
  * Mark copied bio_entry list at a range.

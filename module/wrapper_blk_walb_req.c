@@ -101,6 +101,10 @@ static void destroy_pack_list_work(struct pack_list_work *work);
 static void bio_entry_end_io(struct bio *bio, int error);
 static struct bio_entry* create_bio_entry_by_clone(
 	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
+#ifdef WALB_FAST_ALGORITHM
+static struct bio_entry* create_bio_entry_by_clone_copy(
+	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
+#endif
 
 /* pack related. */
 static struct pack* create_pack(gfp_t gfp_mask);
@@ -134,6 +138,10 @@ static void write_req_task_easy(struct work_struct *work);
 
 /* Helper functions for bio_entry list. */
 static bool create_bio_entry_list(struct req_entry *reqe, struct block_device *bdev);
+#ifdef WALB_FAST_ALGORITHM
+static bool create_bio_entry_list_copy(
+	struct req_entry *reqe, struct block_device *bdev);
+#endif
 static void submit_bio_entry_list(struct list_head *bio_ent_list);
 static void wait_for_req_entry(
 	struct req_entry *reqe, bool is_end_request, bool is_delete);
@@ -436,6 +444,39 @@ error0:
 }
 
 /**
+ * Create a bio_entry by clone with copy.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static struct bio_entry* create_bio_entry_by_clone_copy(
+	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask)
+{
+	struct bio_entry *bioe;
+	struct bio *biotmp;
+	
+	bioe = alloc_bio_entry(gfp_mask);
+	if (!bioe) { goto error0; }
+
+	biotmp = bio_clone_copy(bio, gfp_mask);
+	if (!biotmp) {
+		LOGe("bio_clone_copy() failed.\n");
+		goto error1;
+	}
+	biotmp->bi_bdev = bdev;
+	biotmp->bi_end_io = bio_entry_end_io;
+	biotmp->bi_private = bioe;
+
+	init_copied_bio_entry(bioe, biotmp);
+	
+	return bioe;
+error1:
+	destroy_bio_entry(bioe);
+error0:
+	LOGe("create_bio_entry_by_clone_copy() end with error.\n");
+	return NULL;
+}
+#endif
+
+/**
  * Create a pack.
  */
 static struct pack* create_pack(gfp_t gfp_mask)
@@ -706,6 +747,7 @@ static bool is_flush_first_req_entry(struct list_head *req_ent_list)
 
 /**
  * Create bio_entry list for a request.
+ * This does not copy IO data, bio stubs only.
  *
  * RETURN:
  *     true if succeed, or false.
@@ -737,6 +779,42 @@ error1:
 	ASSERT(list_empty(&reqe->bio_ent_list));
 	return false;
 }
+
+/**
+ * Create bio_entry list for a request by copying its IO data.
+ *
+ * RETURN:
+ *     true if succeed, or false.
+ * CONTEXT:
+ *     Non-IRQ, Non-Atomic.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static bool create_bio_entry_list_copy(
+	struct req_entry *reqe, struct block_device *bdev)
+{
+	struct bio_entry *bioe;
+	struct bio *bio;
+	ASSERT(reqe);
+	ASSERT(reqe->req);
+	ASSERT(list_empty(&reqe->bio_ent_list));
+	ASSERT(reqe->req->cmd_flags & REQ_WRITE);
+	
+	__rq_for_each_bio(bio, reqe->req) {
+
+		bioe = create_bio_entry_by_clone_copy(bio, bdev, GFP_NOIO);
+		if (!bioe) {
+			LOGd("create_bio_entry_list_copy() failed.\n");
+			goto error0;
+		}
+		list_add_tail(&bioe->list, &reqe->bio_ent_list);
+	}
+	return true;
+error0:
+	destroy_bio_entry_list(&reqe->bio_ent_list);
+	ASSERT(list_empty(&reqe->bio_ent_list));
+	return false;
+}
+#endif
 
 /**
  * Submit all bio_entry(s) in a req_entry.
@@ -944,8 +1022,12 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			blk_end_request_all(req, 0);
 			destroy_req_entry(reqe);
 		} else {
-			/* Create all related bio(s). */
-			if (!create_bio_entry_list(reqe, pdata->ddev)) { goto failed0; }
+			/* Create all related bio(s) by copying IO data. */
+			if (!create_bio_entry_list_copy(reqe, pdata->ddev)) {
+				goto failed0;
+			}
+
+			/* Try to insert pending data. */
 			mutex_lock(&pdata->pending_data_mutex);
 			LOGd_("pending_sectors %u\n", pdata->pending_sectors);
 			is_stop_queue = should_stop_queue(pdata, reqe);
@@ -955,7 +1037,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			mutex_unlock(&pdata->pending_data_mutex);
 			if (!is_pending_insert_succeeded) { goto failed1; }
 
-			/* Check pending data size. */
+			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
 				LOGn("stop queue.\n");
 				spin_lock_irqsave(&wdev->lock, flags);
@@ -963,9 +1045,6 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 				spin_unlock_irqrestore(&wdev->lock, flags);
 			}
 
-			/* Get all bio(s) due to different timing of bio end_io and put. */
-			get_bio_entry_list(&reqe->bio_ent_list);
-			
 			/* call end_request where with fast algorithm
 			   while easy algorithm call it after data device IO. */
 			blk_end_request_all(req, 0);
@@ -1004,8 +1083,6 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 		list_del(&reqe->list);
 		destroy_req_entry(reqe);
 	}
-	
-	/* now editing */
 }
 #else /* WALB_FAST_ALGORITHM */
 static void wait_logpack_and_enqueue_datapack_tasks_easy(
@@ -1220,7 +1297,6 @@ static void write_req_task_fast(struct work_struct *work)
 	}
 
 	/* Free resources. */
-	put_bio_entry_list(&reqe->bio_ent_list);
 	destroy_bio_entry_list(&reqe->bio_ent_list);
 	
 	ASSERT(list_empty(&reqe->bio_ent_list));
