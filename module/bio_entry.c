@@ -65,6 +65,10 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 	struct bio_cursor *dst, struct bio_cursor *src, unsigned int len);
 
 /* For bio_entry_cursor */
+static void get_bio_split_position(struct bio *bio, unsigned int first_sectors,
+				unsigned int *mid_idx_p, unsigned int *mid_off_p);
+static struct bio* bio_split2(
+	struct bio *bio, unsigned int first_sectors, gfp_t gfp_mask);
 static struct bio_entry* bio_entry_split(
 	struct bio_entry *bioe1, unsigned int first_sectors);
 static struct bio_entry* bio_entry_next(
@@ -365,6 +369,107 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 }
 #endif
 
+#ifdef WALB_FAST_ALGORITHM
+/**
+ * Get split position of a bio.
+ *
+ * @bio target bio.
+ * @first_sectors split position [logical block].
+ * @mid_idx_p pointer to the index of the first io_vec index of the bottom half.
+ * @mid_off_p pointer to the offset in the splitted io_vec [logical block].
+ */
+static void get_bio_split_position(struct bio *bio, unsigned int first_sectors,
+				unsigned int *mid_idx_p, unsigned int *mid_off_p)
+{
+	struct bio_vec *bvec;
+	unsigned int sectors, bvec_sectors;
+	unsigned int mid_idx = 0;
+	unsigned int mid_off = 0;
+
+	ASSERT(bio);
+	ASSERT(bio->bi_size > 0);
+	
+	sectors = 0;
+	bio_for_each_segment(bvec, bio, mid_idx) {
+
+		ASSERT(bvec->bv_len % LOGICAL_BLOCK_SIZE == 0);
+		bvec_sectors = bvec->bv_len / LOGICAL_BLOCK_SIZE;
+
+		if (sectors + bvec_sectors <= first_sectors) {
+			sectors += bvec_sectors;
+		} else {
+			mid_off = first_sectors - sectors;
+			break;
+		}
+	}
+	*mid_off_p = mid_off;
+	*mid_idx_p = mid_idx;
+}
+
+#endif
+
+#ifdef WALB_FAST_ALGORITHM
+/**
+ * Split a bio with multiple io_vec(s).
+ */
+static struct bio* bio_split2(
+	struct bio *bio, unsigned int first_sectors, gfp_t gfp_mask)
+{
+	struct bio *clone;
+	unsigned int mid_idx, mid_off;
+	struct bio_vec *bvec, *bvec2;
+#ifdef WALB_DEBUG
+	unsigned int idx;
+	unsigned int size;
+#endif
+	
+	clone = bio_clone(bio, gfp_mask);
+	if (!clone) { goto error0; }
+	clone->bi_end_io = bio->bi_end_io;
+
+	ASSERT(bio->bi_vcnt - bio->bi_idx > 0);
+	ASSERT(clone->bi_vcnt - clone->bi_idx > 0);
+
+	get_bio_split_position(bio, first_sectors, &mid_idx, &mid_off);
+
+	clone->bi_idx = mid_idx;
+	if (mid_off == 0) {
+		bio->bi_vcnt = mid_idx;
+	} else {
+		bio->bi_vcnt = mid_idx + 1;
+
+		/* Last bvec of the top half. */
+		bvec = bio_iovec_idx(bio, mid_idx);
+		bvec->bv_len = mid_off * LOGICAL_BLOCK_SIZE;
+
+		/* First bvec of the bottom half. */
+		bvec2 = bio_iovec_idx(clone, mid_idx);
+		bvec2->bv_offset += mid_off * LOGICAL_BLOCK_SIZE;
+		bvec2->bv_len -= mid_off * LOGICAL_BLOCK_SIZE;
+	}
+	bio->bi_size = first_sectors * LOGICAL_BLOCK_SIZE;
+	clone->bi_sector += first_sectors;
+	clone->bi_size -= first_sectors * LOGICAL_BLOCK_SIZE;
+
+#ifdef WALB_DEBUG
+	size = 0;
+	bio_for_each_segment(bvec, bio, idx) {
+		size += bvec->bv_len;
+	}
+	ASSERT(size == bio->bi_size);
+
+	size = 0;
+	bio_for_each_segment(bvec, clone, idx) {
+		size += bvec->bv_len;
+	}
+	ASSERT(size == clone->bi_size);
+#endif
+	return clone;
+error0:
+	return NULL;
+}
+#endif
+
 /**
  * Split a bio_entry data.
  *
@@ -380,22 +485,20 @@ static struct bio_entry* bio_entry_split(
 	struct bio_entry *bioe1, unsigned int first_sectors)
 {
 	struct bio_entry *bioe2;
-	struct bio_pair *bp;
+	struct bio *bio2;
 
 	ASSERT(bioe1);
 	ASSERT(bioe1->bio);
 	ASSERT(first_sectors > 0);
-	
+
 	bioe2 = alloc_bio_entry(GFP_NOIO);
 	if (!bioe2) { goto error0; }
 
-	bp = bio_split(bioe1->bio, first_sectors);
-	if (!bp) { goto error1; }
-
-	init_bio_entry(bioe1, &bp->bio1);
-	init_bio_entry(bioe2, &bp->bio2);
-	bio_pair_release(bp);
-
+	bio2 = bio_split2(bioe1->bio, first_sectors, GFP_NOIO);
+	if (!bio2) { goto error1; }
+	init_bio_entry(bioe1, bioe1->bio);
+	init_bio_entry(bioe2, bio2);
+	
 	return bioe2;
 error1:
 	destroy_bio_entry(bioe2);
@@ -507,12 +610,21 @@ static bool bio_entry_cursor_split(struct bio_entry_cursor *cur)
 		return true;
 	}
 
+#ifdef WALB_DEBUG
+	print_bio_entry(KERN_DEBUG, cur->bioe);
+	LOGd("split offset %u\n", cur->off);
+#endif
+
 	ASSERT(cur->off_in > 0);
 	bioe1 = cur->bioe;
-	bioe2 = bio_entry_split(bioe1, cur->off);
+	bioe2 = bio_entry_split(bioe1, cur->off_in);
 	if (!bioe2) { goto error; }
 
-	LOGn("bio split occurred.\n"); /* debug */
+#ifdef WALB_DEBUG
+	print_bio_entry(KERN_DEBUG, bioe1);
+	print_bio_entry(KERN_DEBUG, bioe2);
+	LOGd("bio split occurred.\n");
+#endif
 	
 	list_insert_after(&bioe1->list, &bioe2->list);
 	cur->bioe = bioe2;
@@ -601,10 +713,17 @@ static struct bio_entry* bio_entry_list_get_first_nonzero(struct list_head *bio_
  */
 void print_bio_entry(const char *level, struct bio_entry *bioe)
 {
+	struct bio_vec *bvec;
+	int i;
+	
 	ASSERT(bioe);
 	if (bioe->bio) {
 		printk("%s""bioe pos %"PRIu64" size %u\n",
 			level, (u64)bioe->bio->bi_sector, bioe->bi_size);
+		bio_for_each_segment(bvec, bioe->bio, i) {
+			printk("%s""segment %d off %u len %u\n",
+				level, i, bvec->bv_offset, bvec->bv_len);
+		}
 	} else {
 		printk("%s""bioe size %u\n",
 			level, bioe->bi_size);
@@ -623,6 +742,7 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 	if (bio) {
 		bioe->bio = bio;
 		bioe->bi_size = bio->bi_size;
+		bio->bi_private = bioe;
 	} else {
 		bioe->bio = NULL;
 		bioe->bi_size = 0;
@@ -761,10 +881,13 @@ bool bio_entry_list_mark_copied(
 	if (!bio_entry_cursor_split(cur)) {  /* left edge. */
 		goto error;
 	}
+	ASSERT(cur->off == off);
 	bio_entry_cursor_proceed(cur, sectors);
+	ASSERT(cur->off == off + sectors);
 	if (!bio_entry_cursor_split(cur)) { /* right edge. */
 		goto error;
-	} 
+	}
+	ASSERT(cur->off == off + sectors);
 	
 	/* Mark copied. */
 	bio_entry_cursor_init(cur, bio_ent_list);

@@ -215,6 +215,7 @@ static void simple_blk_exit(void)
         LOGd("in_atomic: %u.\n", in_atomic());
         
         stop_alldevs();
+	pre_unregister();
         unregister_alldevs();
         post_unregister();
 }

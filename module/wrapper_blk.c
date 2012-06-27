@@ -150,14 +150,13 @@ bool wdev_start(unsigned int minor)
         }
         ASSERT_WRAPPER_BLK_DEV(wdev);
                 
-        if (wdev->is_started) {
+	if (test_and_set_bit(0, &wdev->is_started)) {
                 LOGe("Device with minor %u already started.\n", minor);
                 goto error0;
-        } else {
+	} else {
                 add_disk(wdev->gd);
-                wdev->is_started = true;
                 LOGi("Start device with minor %u.\n", minor);
-        }
+	}
         return true;
 error0:
         return false;
@@ -180,17 +179,13 @@ bool wdev_stop(unsigned int minor)
 
         ASSERT_WRAPPER_BLK_DEV(wdev);
         
-        if (wdev->gd) {
-                spin_lock(&wdev->lock);
-                if (wdev->is_started) {
-                        wdev->is_started = false;
-                        del_gendisk(wdev->gd);
-                        LOGi("Stop device with minor %u.\n", minor);
-                } else {
-                        LOGe("Device wit minor %u is already stopped.\n", minor);
-                        goto error0;
-                }
-                spin_unlock(&wdev->lock);
+	if (test_and_clear_bit(0, &wdev->is_started)) {
+		ASSERT(wdev->gd);
+		del_gendisk(wdev->gd);
+		LOGi("Stop device with minor %u.\n", minor);
+	} else {
+		LOGe("Device wit minor %u is already stopped.\n", minor);
+		goto error0;
         }
         return true;
 error0:

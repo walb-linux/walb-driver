@@ -1,6 +1,6 @@
 /**
- * simple_blk_req_mem_barrier.c -
- * request_fn which do memory read/write with barriers.
+ * simple_blk_req_mem.c -
+ * request_fn which do memory read/write.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -31,21 +31,13 @@ extern int sleep_ms_;
  *******************************************************************************/
 
 /**
- * Reuqest list work struc.t
- *
- * if flush_req is NULL, req_entry_list can be executed in parallel.
- * else, run flush_req, then enqueue req_entry_list.
+ * Reuqest list work struct.
  */
 struct req_list_work
 {
         struct work_struct work;
         struct simple_blk_dev *sdev;
-	struct list_head list; /* list entry */
-
-        struct request *flush_req; /* might be NULL. */
-	bool is_restart_queue; /* If false, the task must restart after flush. */
-	
-	struct list_head req_entry_list; /* head of req_entry list. */
+	struct list_head req_ent_list; /* head of req_entry list. */
 };
 
 /**
@@ -66,9 +58,6 @@ struct kmem_cache *req_entry_cache_ = NULL;
 #define WQ_IO_NAME "simple_blk_req_mem_barrier_io"
 struct workqueue_struct *wq_io_ = NULL;
 
-#define WQ_FLUSH_NAME "simple_blk_req_mem_barrier_flush"
-struct workqueue_struct *wq_flush_ = NULL;
-
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
@@ -84,17 +73,13 @@ static struct memblk_data* get_mdata_from_sdev(struct simple_blk_dev *sdev);
 UNUSED static struct memblk_data* get_mdata_from_queue(struct request_queue *q);
 
 static struct req_list_work* create_req_list_work(
-        struct request *flush_req, struct simple_blk_dev *sdev, gfp_t gfp_mask);
+        struct simple_blk_dev *sdev, gfp_t gfp_mask);
 static void destroy_req_list_work(struct req_list_work *work);
 
 static struct req_entry* create_req_entry(struct request *req, gfp_t gfp_mask);
 static void destroy_req_entry(struct req_entry *work);
 
 static void normal_io_task(struct work_struct *work);
-static void flush_task(struct work_struct *work);
-
-static void enqueue_all_req_list_work(
-	struct list_head *rlwork_list, struct request_queue *q);
 
 /*******************************************************************************
  * Static functions definition.
@@ -157,7 +142,6 @@ static struct memblk_data* get_mdata_from_queue(struct request_queue *q)
 /**
  * Create a req_list_work.
  *
- * @flush_req flush request. can be NULL.
  * @sdev simplb block device data.
  * @gfp_mask gfp mask for memory allocation.
  *
@@ -167,7 +151,7 @@ static struct memblk_data* get_mdata_from_queue(struct request_queue *q)
  *     Depends on @gfp_mask.
  */
 static struct req_list_work* create_req_list_work(
-        struct request *flush_req, struct simple_blk_dev *sdev, gfp_t gfp_mask)
+        struct simple_blk_dev *sdev, gfp_t gfp_mask)
 {
 	struct req_list_work *rlwork;
 
@@ -178,10 +162,7 @@ static struct req_list_work* create_req_list_work(
                 goto error0;
         }
 	rlwork->sdev = sdev;
-	INIT_LIST_HEAD(&rlwork->list);
-	rlwork->flush_req = flush_req;
-	rlwork->is_restart_queue = false;
-	INIT_LIST_HEAD(&rlwork->req_entry_list);
+	INIT_LIST_HEAD(&rlwork->req_ent_list);
 	
 	return rlwork;
 error0:
@@ -234,9 +215,7 @@ static void normal_io_task(struct work_struct *work)
         struct memblk_data *mdata = get_mdata_from_sdev(rlwork->sdev);
 	struct req_entry *reqe, *next;
 	
-	ASSERT(!rlwork->flush_req);
-
-	list_for_each_entry_safe(reqe, next, &rlwork->req_entry_list, list) {
+	list_for_each_entry_safe(reqe, next, &rlwork->req_ent_list, list) {
 
 		ASSERT(reqe->req);
 		ASSERT(!(reqe->req->cmd_flags & REQ_FLUSH));
@@ -244,53 +223,8 @@ static void normal_io_task(struct work_struct *work)
 		list_del(&reqe->list);
 		destroy_req_entry(reqe);
 	}
-	ASSERT(list_empty(&rlwork->req_entry_list));
+	ASSERT(list_empty(&rlwork->req_ent_list));
 	destroy_req_list_work(rlwork);
-}
-
-/**
- * Flush pending IO requests and enqueue the followings.
- *
- * CONTEXT:
- *     Non-irq. Non-atomic.
- *     Executed in line.
- */
-static void flush_task(struct work_struct *work)
-{
-        struct req_list_work *rlwork =
-		container_of(work, struct req_list_work, work);
-        struct simple_blk_dev *sdev = rlwork->sdev;
-	struct request_queue *q = sdev->queue;
-        struct memblk_data *mdata = get_mdata_from_sdev(sdev);
-        struct request *flush_req = rlwork->flush_req;
-	unsigned long flags;
-
-	/* LOGd("begin.\n"); */
-	ASSERT(flush_req);
-
-	flush_workqueue(wq_io_);
-	mdata_exec_req(mdata, flush_req);
-	
-#if 0
-        LOGd("REQ %u: %"PRIu64" (%u).\n", req_work->id, blk_rq_pos(req), blk_rq_bytes(req));
-#endif
-	
-	if (rlwork->is_restart_queue) {
-		spin_lock_irqsave(q->queue_lock, flags);
-		ASSERT(blk_queue_stopped(q));
-		blk_start_queue(q);
-		spin_unlock_irqrestore(q->queue_lock, flags);
-	}
-
-	if (list_empty(&rlwork->req_entry_list)) {
-		destroy_req_list_work(rlwork);
-	} else {
-		/* Enqueue the following request. */
-		rlwork->flush_req = NULL;
-		INIT_WORK(&rlwork->work, normal_io_task);
-		queue_work(wq_io_, &rlwork->work);
-	}
-	/* LOGd("end.\n"); */
 }
 
 /**
@@ -380,33 +314,6 @@ static void mdata_exec_req(struct memblk_data *mdata, struct request *req)
 	blk_end_request_all(req, 0);
 }
 
-/**
- * Enqueue all flush_work in a list.
- *
- * CONTEXT:
- *     in_interrupt(): false. is_atomic(): true.
- *     queue lock is held.
- */
-static void enqueue_all_req_list_work(
-	struct list_head *rlwork_list, struct request_queue *q)
-{
-	struct req_list_work *work;
-	
-	list_for_each_entry(work, rlwork_list, list) {
-		if (work->flush_req) {
-			if (list_is_last(&work->list, rlwork_list)) {
-				work->is_restart_queue = true;
-				blk_stop_queue(q);
-			}
-			INIT_WORK(&work->work, flush_task);
-			queue_work(wq_flush_, &work->work);
-		} else {
-			INIT_WORK(&work->work, normal_io_task);
-			queue_work(wq_io_, &work->work);
-		}
-	}
-}
-
 /*******************************************************************************
  * Global functions definition.
  *******************************************************************************/
@@ -420,47 +327,29 @@ void simple_blk_req_request_fn(struct request_queue *q)
         struct request *req;
         struct req_list_work *rlwork;
 	struct req_entry *reqe;
-	struct list_head rlwork_list;
-	bool is_error_occurred = false;
 
-	INIT_LIST_HEAD(&rlwork_list);
+        LOGd_("in_interrupt(): %lu in_atomic(): %u\n", in_interrupt(), in_atomic());
 
-        /* LOGd("in_interrupt(): %lu in_atomic(): %u\n", in_interrupt(), in_atomic()); */
-
-	rlwork = create_req_list_work(NULL, sdev, GFP_ATOMIC);
+	rlwork = create_req_list_work(sdev, GFP_ATOMIC);
 	if (!rlwork) {
 		goto error0;
 	}
         while ((req = blk_fetch_request(q)) != NULL) {
-                /* LOGd("REQ: %"PRIu64" (%u)\n", (u64)blk_rq_pos(req), blk_rq_bytes(req)); */
+                LOGd_("REQ: %"PRIu64" (%u)\n", (u64)blk_rq_pos(req), blk_rq_bytes(req));
 
-		if (is_error_occurred) {
-			__blk_end_request_all(req, 0);
+		ASSERT(!(req->cmd_flags & REQ_FLUSH));
+		reqe = create_req_entry(req, GFP_ATOMIC);
+		if (!reqe) {
+			__blk_end_request_all(req, -EIO);
 			continue;
 		}
-		
-                if (req->cmd_flags & REQ_FLUSH) {
-
-			list_add_tail(&rlwork->list, &rlwork_list);
-			rlwork = create_req_list_work(req, sdev, GFP_ATOMIC);
-			if (!rlwork) {
-				__blk_end_request_all(req, 0);
-				is_error_occurred = true;
-				continue;
-			}
-                } else {
-			reqe = create_req_entry(req, GFP_ATOMIC);
-			if (!reqe) {
-				__blk_end_request_all(req, -EIO);
-				continue;
-			}
-			list_add_tail(&reqe->list, &rlwork->req_entry_list);
-                }
+		list_add_tail(&reqe->list, &rlwork->req_ent_list);
         }
-	list_add_tail(&rlwork->list, &rlwork_list);
-	enqueue_all_req_list_work(&rlwork_list, q);
+	ASSERT(!list_empty(&rlwork->req_ent_list));
+	INIT_WORK(&rlwork->work, normal_io_task);
+	queue_work(wq_io_, &rlwork->work);
 
-        /* LOGd("end.\n"); */
+        LOGd_("end.\n");
 	return;
 
 error0:
@@ -526,16 +415,20 @@ void customize_sdev(struct simple_blk_dev *sdev)
         q = sdev->queue;
         
         /* Accept REQ_DISCARD. */
+#if 0
         q->limits.discard_granularity = PAGE_SIZE;
         q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
 	q->limits.max_discard_sectors = UINT_MAX;
 	q->limits.discard_zeroes_data = 1;
 	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
 	/* queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q); */
+#endif
 
         /* Accept REQ_FLUSH and REQ_FUA. */
+#if 0
         /* blk_queue_flush(q, REQ_FLUSH | REQ_FUA); */
         blk_queue_flush(q, REQ_FLUSH);
+#endif
 }
 
 /**
@@ -563,24 +456,16 @@ bool pre_register(void)
                 goto error2;
         }
 
-	wq_flush_ = create_singlethread_workqueue(WQ_FLUSH_NAME);
-	if (!wq_flush_) {
-		LOGe("create flush queue failed.\n");
-		goto error3;
-	}
-
 	if (!mdata_init()) {
-		goto error4;
+		goto error3;
 	}
 	
         return true;
 	
 #if 0
-error5:
+error4:
 	mdata_exit();
 #endif
-error4:
-        destroy_workqueue(wq_flush_);
 error3:
         destroy_workqueue(wq_io_);
 error2:
@@ -596,7 +481,6 @@ error0:
  */
 void pre_unregister(void)
 {
-	flush_workqueue(wq_flush_);
 	flush_workqueue(wq_io_);
 }
 
@@ -605,9 +489,8 @@ void pre_unregister(void)
  */
 void post_unregister(void)
 {
-	mdata_exit();
-        destroy_workqueue(wq_flush_);
         destroy_workqueue(wq_io_);
+	mdata_exit();
         kmem_cache_destroy(req_entry_cache_);
         kmem_cache_destroy(req_list_work_cache_);
 }

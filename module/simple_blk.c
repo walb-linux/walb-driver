@@ -149,13 +149,12 @@ bool sdev_start(unsigned int minor)
                 goto error0;
         }
         ASSERT_SIMPLE_BLK_DEV(sdev);
-                
-        if (sdev->is_started) {
+
+	if (test_and_set_bit(0, &sdev->is_started)) {
                 LOGe("Device with minor %u already started.\n", minor);
                 goto error0;
         } else {
                 add_disk(sdev->gd);
-                sdev->is_started = true;
                 LOGi("Start device with minor %u.\n", minor);
         }
         return true;
@@ -180,20 +179,14 @@ bool sdev_stop(unsigned int minor)
 
         ASSERT_SIMPLE_BLK_DEV(sdev);
         
-        if (sdev->gd) {
-                spin_lock(&sdev->lock);
-                if (sdev->is_started) {
-                        sdev->is_started = false;
-                        del_gendisk(sdev->gd);
-                        put_disk(sdev->gd);
-                        sdev->gd = NULL;
-                        LOGi("Stop device with minor %u.\n", minor);
-                } else {
-                        LOGe("Device wit minor %u is already stopped.\n", minor);
-                        goto error0;
-                }
-                spin_unlock(&sdev->lock);
-        }
+	if (test_and_clear_bit(0, &sdev->is_started)) {
+		ASSERT(sdev->gd);
+		del_gendisk(sdev->gd);
+		LOGi("Stop device with minor %u.\n", minor);
+	} else {
+		LOGe("Device wit minor %u is already stopped.\n", minor);
+		goto error0;
+	}
         return true;
 error0:
         return false;
@@ -389,7 +382,7 @@ static struct simple_blk_dev* alloc_and_partial_init_sdev(
         /* use_make_request_fn is not initialized here. */
         /* make_request_fn and request_fn_proc is not initialized here. */
         sdev->gd = NULL;
-        sdev->is_started = false;
+        sdev->is_started = 0;
         sdev->private_data = NULL;
 
         return sdev;

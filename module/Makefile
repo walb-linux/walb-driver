@@ -48,6 +48,8 @@ simple-blk-bio-mem-mod-objs := \
 $(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem.o 
 simple-blk-bio-mem-barrier-mod-objs := \
 $(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem_barrier.o
+simple-blk-req-mem-mod-objs := \
+$(SIMPLE_BLK_REQ_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_req_mem.o
 simple-blk-req-mem-barrier-mod-objs := \
 $(SIMPLE_BLK_REQ_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_req_mem_barrier.o
 simple-blk-req-none-mod-objs := \
@@ -89,6 +91,7 @@ simple-blk-bio-none-mod.o \
 simple-blk-bio-mem-mod.o \
 simple-blk-bio-mem-barrier-mod.o \
 simple-blk-req-none-mod.o \
+simple-blk-req-mem-mod.o \
 simple-blk-req-mem-barrier-mod.o \
 wrapper-blk-mod.o \
 wrapper-blk-simple-plug-mod.o \
