@@ -28,15 +28,13 @@
 struct workqueue_struct *wq_single_;
 struct workqueue_struct *wq_normal_;
 
-
 struct test_work
 {
 	struct work_struct work;
 	struct completion done;
 	struct test_work *next;
+	unsigned int cpuid; /* id of the cpu that enqueues the task. */
 };
-
-
 
 typedef void (test_work_task_fn)(struct work_struct *work);
 typedef struct test_work * (create_test_work_fn)(gfp_t gfp_mask);
@@ -67,12 +65,14 @@ static void fin_workqueue(void);
 static void test_work_task_single(struct work_struct *work)
 {
 	struct test_work *w = container_of(work, struct test_work, work);
+	LOGd_("enqueue %u dequeue %u\n", w->cpuid, raw_smp_processor_id());
 	destroy_test_work(w);
 }
 
 static void test_work_task_normal(struct work_struct *work)
 {
 	struct test_work *w = container_of(work, struct test_work, work);
+	LOGd_("enqueue %u dequeue %u\n", w->cpuid, raw_smp_processor_id());
 	wait_for_completion(&w->done);
 	if (w->next) {
 		complete(&w->next->done);
@@ -99,7 +99,7 @@ static void benchmark_normal(unsigned int n_tasks)
 			prev->next = w;
 			queue_work(wq_normal_, &prev->work);
 		} else {
-			/* Kick first task. */
+			/* Kick the first task. */
 			complete(&w->done);
 		}
 		prev = w;
@@ -124,7 +124,6 @@ static void benchmark_single(unsigned int n_tasks)
 
 	getnstimeofday(&bgn_ts);
 	for (i = 0; i < n_tasks; i ++) {
-
 		w = create_test_work_single(GFP_KERNEL);
 		ASSERT(w);
 		INIT_WORK(&w->work, test_work_task_single);
@@ -164,6 +163,7 @@ static struct test_work* create_test_work_normal(gfp_t gfp_mask)
 	ASSERT(w);
 	init_completion(&w->done);
 	w->next = NULL;
+	w->cpuid = raw_smp_processor_id();
 	return w;
 }
 
@@ -172,6 +172,7 @@ static struct test_work* create_test_work_single(gfp_t gfp_mask)
 	struct test_work *w = kmalloc(sizeof(struct test_work), gfp_mask);
 	ASSERT(w);
 	init_completion(&w->done);
+	w->cpuid = raw_smp_processor_id();
 	return w;
 }
 
@@ -202,6 +203,7 @@ static void fin_workqueue(void)
 static int __init test_init(void)
 {
 	unsigned int n_tasks = 1000000;
+	/* unsigned int n_tasks = 20; */
 	
         init_workqueue();
 	benchmark_single(n_tasks);
