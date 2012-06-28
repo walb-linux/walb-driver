@@ -27,37 +27,31 @@
  *******************************************************************************/
 
 /**
- * Logpack submitter and waiter queue.
- * These should be prepared per walb device.
- * These must be critical path.
+ * Workqueue for logpack submit/wait/gc task.
+ * This should be shared by all walb devices.
  */
-#define WQ_LOGPACK_SUBMIT "wq_logpack_submit"
-struct workqueue_struct *wq_logpack_submit_ = NULL;
-#define WQ_LOGPACK_WAIT "wq_logpack_wait"
-struct workqueue_struct *wq_logpack_wait_ = NULL;
+#define WQ_LOGPACK "wq_logpack"
+struct workqueue_struct *wq_logpack_ = NULL;
 
 /**
- * Queue for various task
+ * Workqueue for various task including IO on data devices.
  * This should be shared by all walb devices.
  */
 #define WQ_NORMAL "wq_normal"
 struct workqueue_struct *wq_normal_ = NULL;
 
 /**
- * Logpack list work.
- *
- * if flush_req is NULL, packs in the list can be executed in parallel,
- * else, run flush_req first, then enqueue packs in the list.
+ * Writepack work.
  */
-struct pack_list_work
+struct pack_work
 {
 	struct work_struct work;
 	struct wrapper_blk_dev *wdev;
-	struct list_head wpack_list; /* list head of writepack. */
+	struct list_head wpack_list; /* used for gc task only. */
 };
-/* kmem_cache for logpack_list_work. */
-#define KMEM_CACHE_PACK_LIST_WORK_NAME "pack_list_work_cache"
-struct kmem_cache *pack_list_work_cache_ = NULL;
+/* kmem_cache for logpack_work. */
+#define KMEM_CACHE_PACK_WORK_NAME "pack_work_cache"
+struct kmem_cache *pack_work_cache_ = NULL;
 
 /**
  * A write pack.
@@ -92,10 +86,10 @@ UNUSED static void print_req_flags(struct request *req);
 UNUSED static void print_pack(const char *level, struct pack *pack);
 UNUSED static void print_pack_list(const char *level, struct list_head *wpack_list);
 
-/* pack_list_work related. */
-static struct pack_list_work* create_pack_list_work(
+/* pack_work related. */
+static struct pack_work* create_pack_work(
 	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
-static void destroy_pack_list_work(struct pack_list_work *work);
+static void destroy_pack_work(struct pack_work *work);
 
 /* bio_entry related. */
 static void bio_entry_end_io(struct bio *bio, int error);
@@ -128,6 +122,8 @@ static void write_req_task(struct work_struct *work);
 static void read_req_task(struct work_struct *work);
 
 /* Helper functions for tasks. */
+static void logpack_list_submit(
+	struct wrapper_blk_dev *wdev, struct list_head *wpack_list);
 #ifdef WALB_FAST_ALGORITHM
 static void read_req_task_fast(struct work_struct *work);
 static void write_req_task_fast(struct work_struct *work);
@@ -326,52 +322,45 @@ static void print_pack_list(const char *level, struct list_head *wpack_list)
 }
 
 /**
- * Create a pack_list_work.
+ * Create a pack_work.
  *
  * RETURN:
  * NULL if failed.
  * CONTEXT:
  * Any.
  */
-static struct pack_list_work* create_pack_list_work(
+static struct pack_work* create_pack_work(
 	struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
 {
-	struct pack_list_work *plwork;
+	struct pack_work *pwork;
 
 	ASSERT(wdev);
-	ASSERT(pack_list_work_cache_);
+	ASSERT(pack_work_cache_);
 
-	plwork = kmem_cache_alloc(pack_list_work_cache_, gfp_mask);
-	if (!plwork) {
+	pwork = kmem_cache_alloc(pack_work_cache_, gfp_mask);
+	if (!pwork) {
 		goto error0;
 	}
-	plwork->wdev = wdev;
-	INIT_LIST_HEAD(&plwork->wpack_list);
-	/* INIT_WORK(&plwork->work, NULL); */
+	pwork->wdev = wdev;
+	INIT_LIST_HEAD(&pwork->wpack_list);
+	/* INIT_WORK(&pwork->work, NULL); */
         
-	return plwork;
+	return pwork;
 error0:
 	return NULL;
 }
 
 /**
- * Destory a pack_list_work.
+ * Destory a pack_work.
  */
-static void destroy_pack_list_work(struct pack_list_work *work)
+static void destroy_pack_work(struct pack_work *work)
 {
-	struct pack *pack, *next;
-
 	if (!work) { return; }
-	
-	list_for_each_entry_safe(pack, next, &work->wpack_list, list) {
-		list_del(&pack->list);
-		destroy_pack(pack);
-	}
+	ASSERT(list_empty(&work->wpack_list));
 #ifdef WALB_DEBUG
 	work->wdev = NULL;
-	INIT_LIST_HEAD(&work->wpack_list);
 #endif
-	kmem_cache_free(pack_list_work_cache_, work);
+	kmem_cache_free(pack_work_cache_, work);
 }
 
 /**
@@ -879,35 +868,22 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 }
 
 /**
- * Submit all logpacks related to a call of request_fn.
- * 
- * (1) Complete logpack creation.
- * (2) Submit all logpack-related bio(s).
- * (3) Enqueue logpack_list_wait_task.
- *
- *
- * If an error (memory allocation failure) occurred,
- * logpack_list_wait_task must finalize the logpack resources and
- * must not execute datapack IO.
- *
- * @work work in a logpack_list_work.
- *
- * CONTEXT:
- *   Workqueue task.
- *   Works are serialized by singlethread workqueue.
+ * Submit all write packs in a list to the log device.
  */
-static void logpack_list_submit_task(struct work_struct *work)
+static void logpack_list_submit(
+	struct wrapper_blk_dev *wdev, struct list_head *wpack_list)
 {
-	struct pack_list_work *plwork = container_of(work, struct pack_list_work, work);
-	struct wrapper_blk_dev *wdev = plwork->wdev;
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
-	struct blk_plug plug;
+	struct pdata *pdata;
 	struct pack *wpack;
+	struct blk_plug plug;
 	struct walb_logpack_header *lhead;
 	bool ret;
+	ASSERT(wpack_list);
+	ASSERT(wdev);
+	pdata = pdata_get_from_wdev(wdev);
 
 	blk_start_plug(&plug);
-	list_for_each_entry(wpack, &plwork->wpack_list, list) {
+	list_for_each_entry(wpack, wpack_list, list) {
 
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		lhead = get_logpack_header(wpack->logpack_header_sector);
@@ -922,16 +898,79 @@ static void logpack_list_submit_task(struct work_struct *work)
 			ret = logpack_submit(
 				lhead, wpack->is_fua,
 				&wpack->req_ent_list, &wpack->bio_ent_list,
-				wdev->pbs, pdata->ldev, pdata->ring_buffer_off, pdata->ring_buffer_size);
+				wdev->pbs, pdata->ldev, pdata->ring_buffer_off,
+				pdata->ring_buffer_size);
 		}
 		wpack->is_logpack_failed = !ret;
 		if (!ret) { break; }
 	}
 	blk_finish_plug(&plug);
+}
 
-	/* Enqueue logpack list wait task. */
-	INIT_WORK(&plwork->work, logpack_list_wait_task);
-	queue_work(wq_logpack_wait_, &plwork->work);
+/**
+ * Submit all logpacks related to a call of request_fn.
+ * 
+ * (1) Complete logpack creation.
+ * (2) Submit all logpack-related bio(s).
+ * (3) Enqueue logpack_list_wait_task.
+ *
+ *
+ * If an error (memory allocation failure) occurred,
+ * logpack_list_wait_task must finalize the logpack resources and
+ * must not execute datapack IO.
+ *
+ * @work work in a pack_work.
+ *
+ * CONTEXT:
+ *   Workqueue task.
+ *   Works are serialized by singlethread workqueue.
+ */
+static void logpack_list_submit_task(struct work_struct *work)
+{
+	struct pack_work *pwork = container_of(work, struct pack_work, work);
+	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct pack *wpack, *wpack_next;
+	struct list_head wpack_list;
+	bool is_empty;
+
+	while (true) {
+
+		/* Dequeue logpack list from the submit queue. */
+		INIT_LIST_HEAD(&wpack_list);
+		spin_lock(&pdata->logpack_submit_queue_lock);
+		is_empty = list_empty(&pdata->logpack_submit_queue);
+		list_for_each_entry_safe(wpack, wpack_next,
+					&pdata->logpack_submit_queue, list) {
+			list_move_tail(&wpack->list, &wpack_list);
+		}
+		spin_unlock(&pdata->logpack_submit_queue_lock);
+		if (is_empty) { break; }
+
+		/* Submit. */
+		logpack_list_submit(wdev, &wpack_list);
+
+		/* Enqueue logpack list to the wait queue. */
+		spin_lock(&pdata->logpack_wait_queue_lock);
+		is_empty = list_empty(&pdata->logpack_wait_queue);
+		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
+			list_move_tail(&wpack->list, &pdata->logpack_wait_queue);
+		}
+		ASSERT(list_empty(&wpack_list));
+		spin_unlock(&pdata->logpack_wait_queue_lock);
+		if (is_empty) {
+			struct pack_work *pwork2;
+			pwork2 = create_pack_work(wdev, GFP_NOIO);
+			if (!pwork2) {
+				/* You must do error handling. */
+				BUG();
+			}
+			INIT_WORK(&pwork2->work, logpack_list_wait_task);
+			queue_work(wq_logpack_, &pwork2->work);
+		}
+		
+	}
+	destroy_pack_work(pwork);
 }
 
 /**
@@ -1163,7 +1202,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
  *
  * All failed (and end_request called) reqe(s) will be destroyed.
  *
- * @work work in a logpack_list_work.
+ * @work work in a logpack_work.
  *
  * CONTEXT:
  *   Workqueue task.
@@ -1171,25 +1210,51 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
  */
 static void logpack_list_wait_task(struct work_struct *work)
 {
-	struct pack_list_work *plwork = container_of(work, struct pack_list_work, work);
-	struct wrapper_blk_dev *wdev = plwork->wdev;
-	struct pack *wpack;
+	struct pack_work *pwork = container_of(work, struct pack_work, work);
+	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct pack *wpack, *wpack_next;
+	bool is_empty;
+	struct list_head wpack_list;
+	struct pack_work *pwork2;
 
-	list_for_each_entry(wpack, &plwork->wpack_list, list) {
-		
-		wait_logpack_and_enqueue_datapack_tasks(wpack, wdev);
-	}
+	while (true) {
 	
-	/* Enqueue logpack list gc task. */
-	INIT_WORK(&plwork->work, logpack_list_gc_task);
-	queue_work(wq_normal_, &plwork->work);
+		/* Dequeue logpack list from the submit queue. */
+		INIT_LIST_HEAD(&wpack_list);
+		spin_lock(&pdata->logpack_wait_queue_lock);
+		is_empty = list_empty(&pdata->logpack_wait_queue);
+		list_for_each_entry_safe(wpack, wpack_next,
+					&pdata->logpack_wait_queue, list) {
+			list_move_tail(&wpack->list, &wpack_list);
+		}
+		spin_unlock(&pdata->logpack_wait_queue_lock);
+		if (is_empty) { break; }
+
+		/* Allocate work struct for gc task. */
+		pwork2 = create_pack_work(wdev, GFP_NOIO);
+		if (!pwork2) {
+			/* We must do error handling. */
+			BUG();
+		}
+		
+		/* Wait logpack completion and submit datapacks. */
+		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
+			wait_logpack_and_enqueue_datapack_tasks(wpack, wdev);
+			list_move_tail(&wpack->list, &pwork2->wpack_list);
+		}
+		/* Enqueue logpack list gc task. */
+		INIT_WORK(&pwork2->work, logpack_list_gc_task);
+		queue_work(wq_normal_, &pwork2->work);
+	}
+	destroy_pack_work(pwork);
 }
 
 /**
  * Wait all related write requests done and
  * free all related resources.
  *
- * @work work in a logpack_list_work.
+ * @work work in a pack_work.
  *
  * CONTEXT:
  *   Workqueue task.
@@ -1197,11 +1262,11 @@ static void logpack_list_wait_task(struct work_struct *work)
  */
 static void logpack_list_gc_task(struct work_struct *work)
 {
-	struct pack_list_work *plwork = container_of(work, struct pack_list_work, work);
+	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct pack *wpack, *next_wpack;
 	struct req_entry *reqe, *next_reqe;
 
-	list_for_each_entry_safe(wpack, next_wpack, &plwork->wpack_list, list) {
+	list_for_each_entry_safe(wpack, next_wpack, &pwork->wpack_list, list) {
 		list_del(&wpack->list);
 		list_for_each_entry_safe(reqe, next_reqe, &wpack->req_ent_list, list) {
 			list_del(&reqe->list);
@@ -1212,8 +1277,8 @@ static void logpack_list_gc_task(struct work_struct *work)
 		ASSERT(list_empty(&wpack->bio_ent_list));
 		destroy_pack(wpack);
 	}
-	ASSERT(list_empty(&plwork->wpack_list));
-	destroy_pack_list_work(plwork);
+	ASSERT(list_empty(&pwork->wpack_list));
+	destroy_pack_work(pwork);
 }
 
 /**
@@ -2215,13 +2280,15 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct request *req;
 	struct req_entry *reqe;
-	struct pack_list_work *plwork;
-	struct pack *wpack = NULL;
+	struct pack_work *pwork;
+	struct pack *wpack = NULL, *wpack_next;
 	struct walb_logpack_header *lhead;
 	bool ret;
 	u64 latest_lsid, latest_lsid_old;
+	struct list_head wpack_list;
 	
 	LOGd_("wrapper_blk_req_request_fn: begin.\n");
+	INIT_LIST_HEAD(&wpack_list);
 	
 	/* Load latest_lsid */
 	spin_lock(&pdata->lsid_lock);
@@ -2229,10 +2296,10 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	spin_unlock(&pdata->lsid_lock);
 	latest_lsid_old = latest_lsid;
 
-	/* Initialize pack_list_work. */
-	plwork = create_pack_list_work(wdev, GFP_ATOMIC);
-  	if (!plwork) { goto error0; }
-
+	/* Initialize pack_work. */
+	pwork = create_pack_work(wdev, GFP_ATOMIC);
+	if (!pwork) { goto error0; }
+			
 	/* Fetch requests and create pack list. */
 	while ((req = blk_fetch_request(q)) != NULL) {
 
@@ -2246,7 +2313,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 				LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
 			}
 			LOGd_("call writepack_add_req\n"); /* debug */
-			ret = writepack_add_req(&plwork->wpack_list, &wpack, req,
+			ret = writepack_add_req(&wpack_list, &wpack, req,
 						pdata->ring_buffer_size,
 						&latest_lsid, wdev, GFP_ATOMIC);
 			if (!ret) { goto req_error; }
@@ -2277,18 +2344,33 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 
 		/* Add the last writepack to the list. */
 		ASSERT(!list_empty(&wpack->req_ent_list));
-		list_add_tail(&wpack->list, &plwork->wpack_list);
+		list_add_tail(&wpack->list, &wpack_list);
 	}
 	
-	if (list_empty(&plwork->wpack_list)) {
+	if (list_empty(&wpack_list)) {
 		/* No write request. */
-		destroy_pack_list_work(plwork);
-		plwork = NULL;
+		destroy_pack_work(pwork);
+		pwork = NULL;
 	} else {
+		bool is_empty;
+		
 		/* Currently all requests are packed and lsid of all writepacks is defined. */
-		ASSERT(is_valid_pack_list(&plwork->wpack_list));
-		INIT_WORK(&plwork->work, logpack_list_submit_task);
-		queue_work(wq_logpack_submit_, &plwork->work);
+		ASSERT(is_valid_pack_list(&wpack_list));
+
+		/* Enqueue all writepacks. */
+		spin_lock(&pdata->logpack_submit_queue_lock);
+		is_empty = list_empty(&pdata->logpack_submit_queue);
+		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
+			list_move_tail(&wpack->list, &pdata->logpack_submit_queue);
+		}
+		spin_unlock(&pdata->logpack_submit_queue_lock);
+		if (is_empty) {
+			INIT_WORK(&pwork->work, logpack_list_submit_task);
+			queue_work(wq_logpack_, &pwork->work);
+		} else {
+			destroy_pack_work(pwork);
+			pwork = NULL;
+		}
 
 		/* Store latest_lsid */
 		ASSERT(latest_lsid >= latest_lsid_old);
@@ -2297,12 +2379,13 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		pdata->latest_lsid = latest_lsid;
 		spin_unlock(&pdata->lsid_lock);
 	}
+	ASSERT(list_empty(&wpack_list));
 	
 	LOGd_("wrapper_blk_req_request_fn: end.\n");
 	return;
 #if 0
 error1:
-	destroy_pack_list_work(plwork);
+	destroy_pack_work(pwork);
 #endif
 error0:
 	while ((req = blk_fetch_request(q)) != NULL) {
@@ -2317,11 +2400,11 @@ bool pre_register(void)
 	LOGd("pre_register called.");
 
 	/* Prepare kmem_cache data. */
-	pack_list_work_cache_ = kmem_cache_create(
-		KMEM_CACHE_PACK_LIST_WORK_NAME,
-		sizeof(struct pack_list_work), 0, 0, NULL);
-	if (!pack_list_work_cache_) {
-		LOGe("failed to create a kmem_cache (pack_list_work).\n");
+	pack_work_cache_ = kmem_cache_create(
+		KMEM_CACHE_PACK_WORK_NAME,
+		sizeof(struct pack_work), 0, 0, NULL);
+	if (!pack_work_cache_) {
+		LOGe("failed to create a kmem_cache (pack_work).\n");
 		goto error0;
 	}
 	if (!req_entry_init()) {
@@ -2339,24 +2422,19 @@ bool pre_register(void)
 	}
 	
 	/* prepare workqueues. */
-	wq_logpack_submit_ = create_singlethread_workqueue(WQ_LOGPACK_SUBMIT);
-	if (!wq_logpack_submit_) {
-		LOGe("failed to allocate a workqueue (wq_logpack_submit_).");
+	wq_logpack_ = alloc_workqueue(WQ_LOGPACK, WQ_MEM_RECLAIM, 0);
+	if (!wq_logpack_) {
+		LOGe("failed to allocate a workqueue (wq_logpack_).");
 		goto error4;
 	}
-	wq_logpack_wait_ = create_singlethread_workqueue(WQ_LOGPACK_WAIT);
-	if (!wq_logpack_wait_) {
-		LOGe("failed to allocate a workqueue (wq_logpack_wait_).");
-		goto error5;
-	}		
 	wq_normal_ = alloc_workqueue(WQ_NORMAL, WQ_MEM_RECLAIM, 0);
 	if (!wq_normal_) {
 		LOGe("failed to allocate a workqueue (wq_normal_).");
-		goto error6;
+		goto error5;
 	}
 
 	if (!treemap_init()) {
-		goto error7;
+		goto error6;
 	}
 
 #ifdef WALB_OVERLAPPING_DETECTION
@@ -2373,15 +2451,13 @@ bool pre_register(void)
 	return true;
 
 #if 0
-error8:
+error7:
 	treemap_exit();
 #endif
-error7:
-	destroy_workqueue(wq_normal_);
 error6:
-	destroy_workqueue(wq_logpack_wait_);
+	destroy_workqueue(wq_normal_);
 error5:
-	destroy_workqueue(wq_logpack_submit_);
+	destroy_workqueue(wq_logpack_);
 error4:
 	bio_entry_exit();
 error3:
@@ -2389,7 +2465,7 @@ error3:
 error2:
 	req_entry_exit();
 error1:
-	kmem_cache_destroy(pack_list_work_cache_);
+	kmem_cache_destroy(pack_work_cache_);
 error0:
 	return false;
 }
@@ -2400,9 +2476,10 @@ void pre_unregister(void)
 	LOGn("begin\n");
 	
 	/* Wait for all remaining tasks. */
-	flush_workqueue(wq_logpack_submit_);
-	flush_workqueue(wq_logpack_wait_);
-	flush_workqueue(wq_normal_);
+	flush_workqueue(wq_logpack_); /* complete submit task. */
+	flush_workqueue(wq_logpack_); /* complete wait task. */
+	flush_workqueue(wq_normal_); /* complete read/write for data device
+					and all gc tasks. */
 
 	LOGn("end\n");
 }
@@ -2417,18 +2494,16 @@ void post_unregister(void)
 	/* finalize workqueue data. */
 	destroy_workqueue(wq_normal_);
 	wq_normal_ = NULL;
-	destroy_workqueue(wq_logpack_wait_);
-	wq_logpack_wait_ = NULL;
-	destroy_workqueue(wq_logpack_submit_);
-	wq_logpack_submit_ = NULL;
+	destroy_workqueue(wq_logpack_);
+	wq_logpack_ = NULL;
 
 	/* Destory kmem_cache data. */
 	bio_entry_exit();
 	kmem_cache_destroy(pack_cache_);
 	pack_cache_ = NULL;
 	req_entry_exit();
-	kmem_cache_destroy(pack_list_work_cache_);
-	pack_list_work_cache_ = NULL;
+	kmem_cache_destroy(pack_work_cache_);
+	pack_work_cache_ = NULL;
 
 	LOGn("end\n");
 }

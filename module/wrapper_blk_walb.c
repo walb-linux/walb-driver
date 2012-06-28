@@ -188,6 +188,12 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	/* Set limit. */
         blk_queue_stack_limits(wdev->queue, bdev_get_queue(ldev));
         blk_queue_stack_limits(wdev->queue, bdev_get_queue(ddev));
+
+	/* Prepare logpack submit/wait queue. */
+	spin_lock_init(&pdata->logpack_submit_queue_lock);
+	spin_lock_init(&pdata->logpack_wait_queue_lock);
+	INIT_LIST_HEAD(&pdata->logpack_submit_queue);
+	INIT_LIST_HEAD(&pdata->logpack_wait_queue);
 	
         return true;
 
