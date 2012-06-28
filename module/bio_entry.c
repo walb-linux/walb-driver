@@ -443,7 +443,6 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 	struct bio_vec *bvec, *bvec_orig;
 	int i;
 	char *dst_buf, *src_buf;
-	unsigned long flags;
 	
 	ASSERT(bio);
 	ASSERT(bio_rw(bio) == WRITE);
@@ -477,12 +476,13 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 		ASSERT(bvec_orig->bv_page != bvec->bv_page);
 
 		/* copy IO data. */
-		dst_buf = (char *)kmap_atomic(bvec->bv_page, KM_BIO_DST_IRQ)
+		dst_buf = (char *)kmap_atomic(bvec->bv_page)
 			+ bvec->bv_offset;
-		src_buf = bvec_kmap_irq(bvec_orig, &flags);
+		src_buf = (char *)kmap_atomic(bvec_orig->bv_page)
+			+ bvec_orig->bv_offset;
 		memcpy(dst_buf, src_buf, bvec->bv_len);
-		bvec_kunmap_irq(src_buf, &flags);
-		kunmap_atomic(dst_buf, KM_BIO_DST_IRQ);
+		kunmap_atomic(src_buf);
+		kunmap_atomic(dst_buf);
 	}
 fin:	
 	return clone;

@@ -1575,6 +1575,7 @@ static void logpack_calc_checksum(
         struct bio_vec *bvec;
         u64 sum;
         int n_padding;
+	u8 *buf;
 
 	ASSERT(lhead);
 	ASSERT(lhead->n_records > 0);
@@ -1602,11 +1603,9 @@ static void logpack_calc_checksum(
 
 		sum = 0;
                 rq_for_each_segment(bvec, req, iter) {
-                        sum = checksum_partial
-                                (sum,
-                                 kmap(bvec->bv_page) + bvec->bv_offset,
-                                 bvec->bv_len);
-                        kunmap(bvec->bv_page);
+			buf = (u8 *)kmap_atomic(bvec->bv_page) + bvec->bv_offset;
+                        sum = checksum_partial(sum, buf, bvec->bv_len);
+                        kunmap_atomic(buf);
                 }
 
                 lhead->record[i].checksum = checksum_finish(sum);
