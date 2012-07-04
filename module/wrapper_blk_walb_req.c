@@ -41,6 +41,15 @@ struct workqueue_struct *wq_logpack_ = NULL;
 struct workqueue_struct *wq_normal_ = NULL;
 
 /**
+ * Workqueue for read requests.
+ * This is because pending data writes prevent
+ * read request to be executed.
+ * This should be shared by all walb devices.
+ */
+#define WQ_READ "wq_read"
+struct workqueue_struct *wq_read_ = NULL;
+
+/**
  * Writepack work.
  */
 struct pack_work
@@ -2322,7 +2331,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 			reqe = create_req_entry(req, wdev, GFP_ATOMIC);
 			if (!reqe) { goto req_error; }
 			INIT_WORK(&reqe->work, read_req_task);
-			queue_work(wq_normal_, &reqe->work);
+			queue_work(wq_read_, &reqe->work);
 		}
 		continue;
 	req_error:
@@ -2432,9 +2441,14 @@ bool pre_register(void)
 		LOGe("failed to allocate a workqueue (wq_normal_).");
 		goto error5;
 	}
+	wq_read_ = alloc_workqueue(WQ_READ, WQ_MEM_RECLAIM, 0);
+	if (!wq_read_) {
+		LOGe("failed to allocate a workqueue (wq_read_).");
+		goto error6;
+	}
 
 	if (!treemap_init()) {
-		goto error6;
+		goto error7;
 	}
 
 #ifdef WALB_OVERLAPPING_DETECTION
@@ -2451,9 +2465,11 @@ bool pre_register(void)
 	return true;
 
 #if 0
-error7:
+error8:
 	treemap_exit();
 #endif
+error7:
+	destroy_workqueue(wq_read_);
 error6:
 	destroy_workqueue(wq_normal_);
 error5:
@@ -2478,8 +2494,9 @@ void pre_unregister(void)
 	/* Wait for all remaining tasks. */
 	flush_workqueue(wq_logpack_); /* complete submit task. */
 	flush_workqueue(wq_logpack_); /* complete wait task. */
-	flush_workqueue(wq_normal_); /* complete read/write for data device
+	flush_workqueue(wq_normal_); /* complete write for data device
 					and all gc tasks. */
+	flush_workqueue(wq_read_);
 
 	LOGn("end\n");
 }
@@ -2492,6 +2509,8 @@ void post_unregister(void)
 	treemap_exit();
 	
 	/* finalize workqueue data. */
+	destroy_workqueue(wq_read_);
+	wq_read_ = NULL;
 	destroy_workqueue(wq_normal_);
 	wq_normal_ = NULL;
 	destroy_workqueue(wq_logpack_);
