@@ -129,6 +129,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
                 LOGe("open %s failed.", log_device_str_);
                 goto error1;
         }
+	LOGn("ldev (%d,%d) %d\n", MAJOR(ldev->bd_dev), MINOR(ldev->bd_dev),
+		ldev->bd_contains == ldev);
 
         /* open underlying data device. */
 	ddev = blkdev_get_by_path(
@@ -138,6 +140,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		LOGe("open %s failed.", data_device_str_);
 		goto error2;
 	}
+	LOGn("ddev (%d,%d) %d\n", MAJOR(ddev->bd_dev), MINOR(ddev->bd_dev),
+		ddev->bd_contains == ddev);
 
         /* Block size */
         lbs = bdev_logical_block_size(ddev);
@@ -182,8 +186,9 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->flags = 0;
 	
         /* capacity */
-        wdev->capacity = get_capacity(ddev->bd_disk);
+        wdev->capacity = ddev->bd_part->nr_sects;
         set_capacity(wdev->gd, wdev->capacity);
+	LOGn("capacity %"PRIu64"\n", wdev->capacity);
 
 	/* Set limit. */
         blk_queue_stack_limits(wdev->queue, bdev_get_queue(ldev));
