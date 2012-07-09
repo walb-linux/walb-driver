@@ -39,6 +39,15 @@ int physical_block_size_ = 4096;
 int max_pending_mb_ = 64;
 int min_pending_mb_ = 64 * 7 / 8;
 
+/* Chunk size [bytes].
+   (1) bio must not cross over chunks.
+   (2) bio size must exceeds chunk size.
+   This parameter can be used for foolish block devices like md raid0.
+   chunk_size_ must be multiple of 512 (sector size) or 0.
+   0 means there is no alignemnt limitation.
+*/
+int chunk_size_ = 0;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -49,6 +58,7 @@ module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
 module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
 module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
+module_param_named(chunk_size, chunk_size_, int, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -211,6 +221,11 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		dq->limits.max_hw_sectors,
 		dq->limits.alignment_offset);
 
+	/* Chunk size. */
+	ASSERT(chunk_size_ % LOGICAL_BLOCK_SIZE == 0);
+	pdata->chunk_sectors = chunk_size_  / LOGICAL_BLOCK_SIZE;
+	LOGn("chunk_sectors %u\n", pdata->chunk_sectors);
+	
 	/* Prepare logpack submit/wait queue. */
 	spin_lock_init(&pdata->logpack_submit_queue_lock);
 	spin_lock_init(&pdata->logpack_wait_queue_lock);
@@ -399,6 +414,11 @@ static int __init wrapper_blk_init(void)
 {
 	if (!is_valid_pbs(physical_block_size_)) {
 		LOGe("pbs is invalid.\n");
+		goto error0;
+	}
+
+	if (chunk_size_ % LOGICAL_BLOCK_SIZE != 0) {
+		LOGe("chunk_size is invalid.\n");
 		goto error0;
 	}
 	

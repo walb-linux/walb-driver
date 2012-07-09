@@ -62,6 +62,14 @@ struct pdata
 	   bit 2: logpack wait task working. */
 	unsigned long flags;
 
+	/* chunk sectors.
+	   if chunk_sectors > 0:
+	     (1) bio size must not exceed the size.
+	     (2) bio must not cross over multiple chunks.
+	   else:
+	   no limitation. */
+	unsigned int chunk_sectors;
+
 	spinlock_t logpack_submit_queue_lock;
 	struct list_head logpack_submit_queue; /* writepack list.
 						  logpack_submit_queue_lock

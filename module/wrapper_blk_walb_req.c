@@ -167,8 +167,9 @@ static bool logpack_submit_req(
 	struct request *req, u64 lsid, bool is_fua,
 	struct list_head *bio_ent_list,
 	unsigned int pbs, struct block_device *ldev,
-	u64 ring_buffer_off, u64 ring_buffer_size);
-static struct bio_entry* logpack_submit_bio(
+	u64 ring_buffer_off, u64 ring_buffer_size,
+	unsigned int chunk_sectors);
+static struct bio_entry* logpack_create_bio_entry(
 	struct bio *bio, bool is_fua, unsigned int pbs,
 	struct block_device *ldev,
 	u64 ldev_offset, unsigned int bio_offset);
@@ -178,7 +179,8 @@ static bool logpack_submit(
 	struct walb_logpack_header *lhead, bool is_fua,
 	struct list_head *req_ent_list, struct list_head *bio_ent_list,
 	unsigned int pbs, struct block_device *ldev,
-	u64 ring_buffer_off, u64 ring_buffer_size);
+	u64 ring_buffer_off, u64 ring_buffer_size,
+	unsigned int chunk_sectors);
 
 /* Logpack-datapack related functions. */
 static int wait_for_bio_entry_list(struct list_head *bio_ent_list);
@@ -382,7 +384,10 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	int bi_cnt;
 	ASSERT(bioe);
 	ASSERT(bioe->bio == bio);
-	ASSERT(uptodate);
+	if (!uptodate) {
+		LOGn("BIO_UPTODATE is false (rw %lu addr %"PRIu64" size %u).\n",
+			bioe->bio->bi_rw, (u64)bioe->bio->bi_sector, bioe->bi_size);
+	}
         
 	/* LOGd("bio_entry_end_io() begin.\n"); */
 	bioe->error = error;
@@ -908,7 +913,7 @@ static void logpack_list_submit(
 				lhead, wpack->is_fua,
 				&wpack->req_ent_list, &wpack->bio_ent_list,
 				wdev->pbs, pdata->ldev, pdata->ring_buffer_off,
-				pdata->ring_buffer_size);
+				pdata->ring_buffer_size, pdata->chunk_sectors);
 		}
 		wpack->is_logpack_failed = !ret;
 		if (!ret) { break; }
@@ -1074,6 +1079,11 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			if (!create_bio_entry_list_copy(reqe, pdata->ddev)) {
 				goto failed0;
 			}
+			/* Split if required due to chunk limitations. */
+			if (!split_bio_entry_list_for_chunk(
+					&reqe->bio_ent_list, pdata->chunk_sectors)) {
+				goto failed1;
+			}
 
 			/* Try to insert pending data. */
 			mutex_lock(&pdata->pending_data_mutex);
@@ -1121,12 +1131,11 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 		}
 		continue;
 	failed1:
-#ifdef WALB_OVERLAPPING_DETECTION
 		destroy_bio_entry_list(&reqe->bio_ent_list);
-#endif
 	failed0:
 		is_failed = true;
 		set_read_only_mode(pdata);
+		LOGe("WalB changes device minor:%u to read-only mode.\n", wdev->minor);
 		blk_end_request_all(req, -EIO);
 		list_del(&reqe->list);
 		destroy_req_entry(reqe);
@@ -1174,6 +1183,13 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 		} else {
 			/* Create all related bio(s). */
 			if (!create_bio_entry_list(reqe, pdata->ddev)) { goto failed0; }
+
+			/* Split if required due to chunk limitations. */
+			if (!split_bio_entry_list_for_chunk(
+					&reqe->bio_ent_list, pdata->chunk_sectors)) {
+				goto failed1;
+			}
+			
 #ifdef WALB_OVERLAPPING_DETECTION
 			/* check and insert to overlapping detection data. */
 			mutex_lock(&pdata->overlapping_data_mutex);
@@ -1189,10 +1205,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 			queue_work(wq_normal_, &reqe->work);
 		}
 		continue;
-#ifdef WALB_OVERLAPPING_DETECTION
 	failed1:
 		destroy_bio_entry_list(&reqe->bio_ent_list);
-#endif
 	failed0:
 		is_failed = true;
 		set_read_only_mode(pdata);
@@ -1465,6 +1479,12 @@ static void read_req_task_fast(struct work_struct *work)
 		goto error0;
 	}
 
+	/* Split if required due to chunk limitations. */
+	if (!split_bio_entry_list_for_chunk(
+			&reqe->bio_ent_list, pdata->chunk_sectors)) {
+		goto error1;
+	}
+
 	/* Check pending data and copy data from executing write requests. */
 	mutex_lock(&pdata->pending_data_mutex);
 	ret = pending_check_and_copy(pdata->pending_data, reqe);
@@ -1505,7 +1525,13 @@ static void read_req_task_easy(struct work_struct *work)
 
 	/* Create all related bio(s). */
 	if (!create_bio_entry_list(reqe, pdata->ddev)) {
-		goto error;
+		goto error0;
+	}
+
+	/* Split if required due to chunk limitations. */
+	if (!split_bio_entry_list_for_chunk(
+			&reqe->bio_ent_list, pdata->chunk_sectors)) {
+		goto error1;
 	}
 		
 	/* Submit all related bio(s). */
@@ -1517,7 +1543,9 @@ static void read_req_task_easy(struct work_struct *work)
 	wait_for_req_entry(reqe, is_end_request, is_delete);
 	goto fin;
 
-error:
+error1:
+	destroy_bio_entry_list(&reqe->bio_ent_list);
+error0:
 	blk_end_request_all(reqe->req, -EIO);
 fin:
 	ASSERT(list_empty(&reqe->bio_ent_list));
@@ -1764,32 +1792,53 @@ static bool logpack_submit_req(
 	struct request *req, u64 lsid, bool is_fua,
 	struct list_head *bio_ent_list,
 	unsigned int pbs, struct block_device *ldev,
-	u64 ring_buffer_off, u64 ring_buffer_size)
+	u64 ring_buffer_off, u64 ring_buffer_size,
+	unsigned int chunk_sectors)
 {
 	unsigned int off_lb;
-	struct bio_entry *bioe;
+	struct bio_entry *bioe, *bioe_next;
 	struct bio *bio;
 	u64 ldev_off_pb = lsid % ring_buffer_size + ring_buffer_off;
-	
+	struct list_head tmp_list;
+
+	INIT_LIST_HEAD(&tmp_list);
 	off_lb = 0;
 	__rq_for_each_bio(bio, req) {
 
-		bioe = logpack_submit_bio(bio, is_fua, pbs, ldev, ldev_off_pb, off_lb);
+		bioe = logpack_create_bio_entry(
+			bio, is_fua, pbs, ldev, ldev_off_pb, off_lb);
 		if (!bioe) {
-			goto error;
+			goto error0;
 		}
 		ASSERT(bioe->bi_size % LOGICAL_BLOCK_SIZE == 0);
 		off_lb += bioe->bi_size / LOGICAL_BLOCK_SIZE;
-		list_add_tail(&bioe->list, bio_ent_list);
+		list_add_tail(&bioe->list, &tmp_list);
 	}
-	
+	/* split if required. */
+	if (chunk_sectors > 0) {
+		if (!split_bio_entry_list_for_chunk(
+				&tmp_list, chunk_sectors)) {
+			goto error0;
+		}
+	}
+	/* really submit. */
+	list_for_each_entry_safe(bioe, bioe_next, &tmp_list, list) {
+		generic_make_request(bioe->bio);
+		list_move_tail(&bioe->list, bio_ent_list);
+	}
+	ASSERT(list_empty(&tmp_list));
 	return true;
-error:
+error0:
+	list_for_each_entry_safe(bioe, bioe_next, &tmp_list, list) {
+		list_del(&bioe->list);
+		destroy_bio_entry(bioe);
+	}
+	ASSERT(list_empty(&tmp_list));
 	return false;
 }
 
 /**
- * Create and submit a bio which is a part of logpack.
+ * Create a bio_entry which is a part of logpack.
  *
  * @bio original bio to clone.
  * @is_fua true if logpack must be submitted with FUA flag.
@@ -1800,7 +1849,7 @@ error:
  * RETURN:
  *   bio_entry in success which bio is submitted, or NULL.
  */
-static struct bio_entry* logpack_submit_bio(
+static struct bio_entry* logpack_create_bio_entry(
 	struct bio *bio, bool is_fua, unsigned int pbs,
 	struct block_device *ldev,
 	u64 ldev_offset, unsigned int bio_offset)
@@ -1824,7 +1873,6 @@ static struct bio_entry* logpack_submit_bio(
 	if (is_fua) {
 		cbio->bi_rw |= WRITE_FUA;
 	}
-	generic_make_request(cbio);
 	return bioe;
 
 error1:
@@ -1898,7 +1946,11 @@ error0:
  * @req_ent_list request entry list.
  * @bio_ent_list bio entry list.
  *   submitted bios for logpack header will be added to the list.
- * @wdev wrapper block device.
+ * @pbs physical block size.
+ * @ldev log block device.
+ * @ring_buffer_off ring buffer offset.
+ * @ring_buffer_size ring buffer size.
+ * @chunk_sectors chunk_sectors for bio alignment.
  *
  * RETURN:
  *     true if succeed, or false.
@@ -1909,7 +1961,8 @@ static bool logpack_submit(
 	struct walb_logpack_header *lhead, bool is_fua,
 	struct list_head *req_ent_list, struct list_head *bio_ent_list,
 	unsigned int pbs, struct block_device *ldev,
-	u64 ring_buffer_off, u64 ring_buffer_size)
+	u64 ring_buffer_off, u64 ring_buffer_size,
+	unsigned int chunk_sectors)
 {
 	struct bio_entry *bioe;
 	struct req_entry *reqe;
@@ -1952,9 +2005,11 @@ static bool logpack_submit(
 			ASSERT(i < lhead->n_records);
 			req_lsid = lhead->record[i].lsid;
 
+			/* submit bio(s) for a request. */
 			ret = logpack_submit_req(
 				req, req_lsid, is_fua, &reqe->bio_ent_list,
-				pbs, ldev, ring_buffer_off, ring_buffer_size);
+				pbs, ldev, ring_buffer_off, ring_buffer_size,
+				chunk_sectors);
 			if (!ret) {
 				LOGe("memory allocation failed during logpack submit.\n");
 				goto failed;
