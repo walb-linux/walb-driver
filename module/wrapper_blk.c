@@ -456,7 +456,7 @@ static bool init_queue_and_disk(struct wrapper_blk_dev *wdev)
         blk_queue_physical_block_size(q, wdev->pbs);
         blk_queue_logical_block_size(q, LOGICAL_BLOCK_SIZE);
         /* blk_queue_io_min(q, wdev->pbs); */
-        blk_queue_io_opt(q, wdev->pbs);
+        /* blk_queue_io_opt(q, wdev->pbs); */
 
         /* Accept REQ_DISCARD. */
         /* Do nothing. */

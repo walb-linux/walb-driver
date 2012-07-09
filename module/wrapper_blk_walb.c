@@ -39,15 +39,6 @@ int physical_block_size_ = 4096;
 int max_pending_mb_ = 64;
 int min_pending_mb_ = 64 * 7 / 8;
 
-/* Chunk size [bytes].
-   (1) bio must not cross over chunks.
-   (2) bio size must exceeds chunk size.
-   This parameter can be used for foolish block devices like md raid0.
-   chunk_size_ must be multiple of 512 (sector size) or 0.
-   0 means there is no alignemnt limitation.
-*/
-int chunk_size_ = 0;
-
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -58,7 +49,6 @@ module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
 module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
 module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
-module_param_named(chunk_size, chunk_size_, int, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -173,6 +163,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	wdev->pbs = pbs;
         blk_queue_logical_block_size(wdev->queue, lbs);
         blk_queue_physical_block_size(wdev->queue, pbs);
+	blk_queue_io_min(wdev->queue, pbs);
+	/* blk_queue_io_opt(wdev->queue, pbs); */
 
 	/* Prepare pdata. */
 	pdata->ldev = ldev;
@@ -220,10 +212,21 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		dq->limits.io_opt,
 		dq->limits.max_hw_sectors,
 		dq->limits.alignment_offset);
+	LOGn("wdev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+		wdev->queue->limits.logical_block_size,
+		wdev->queue->limits.physical_block_size,
+		wdev->queue->limits.io_min,
+		wdev->queue->limits.io_opt,
+		wdev->queue->limits.max_hw_sectors,
+		wdev->queue->limits.alignment_offset);
 
 	/* Chunk size. */
-	ASSERT(chunk_size_ % LOGICAL_BLOCK_SIZE == 0);
-	pdata->chunk_sectors = chunk_size_  / LOGICAL_BLOCK_SIZE;
+	
+	if (queue_io_min(wdev->queue) > wdev->pbs) {
+		pdata->chunk_sectors = queue_io_min(wdev->queue) / LOGICAL_BLOCK_SIZE;
+	} else {
+		pdata->chunk_sectors = 0;
+	}
 	LOGn("chunk_sectors %u\n", pdata->chunk_sectors);
 	
 	/* Prepare logpack submit/wait queue. */
@@ -417,11 +420,6 @@ static int __init wrapper_blk_init(void)
 		goto error0;
 	}
 
-	if (chunk_size_ % LOGICAL_BLOCK_SIZE != 0) {
-		LOGe("chunk_size is invalid.\n");
-		goto error0;
-	}
-	
         if (!pre_register()) {
 		LOGe("pre_register failed.\n");
 		goto error0;
