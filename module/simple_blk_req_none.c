@@ -29,6 +29,10 @@ bool pre_register(void)
         return true;
 }
 
+void pre_unregister(void)
+{
+}
+
 void post_unregister(void)
 {
 }

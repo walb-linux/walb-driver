@@ -83,6 +83,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         struct block_device *ldev, *ddev;
         unsigned int lbs, pbs;
 	struct walb_super_sector *ssect;
+	struct request_queue *lq, *dq;
         
         LOGd("create_private_data called");
 
@@ -129,6 +130,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
                 LOGe("open %s failed.", log_device_str_);
                 goto error1;
         }
+	LOGn("ldev (%d,%d) %d\n", MAJOR(ldev->bd_dev), MINOR(ldev->bd_dev),
+		ldev->bd_contains == ldev);
 
         /* open underlying data device. */
 	ddev = blkdev_get_by_path(
@@ -138,6 +141,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		LOGe("open %s failed.", data_device_str_);
 		goto error2;
 	}
+	LOGn("ddev (%d,%d) %d\n", MAJOR(ddev->bd_dev), MINOR(ddev->bd_dev),
+		ddev->bd_contains == ddev);
 
         /* Block size */
         lbs = bdev_logical_block_size(ddev);
@@ -158,6 +163,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	wdev->pbs = pbs;
         blk_queue_logical_block_size(wdev->queue, lbs);
         blk_queue_physical_block_size(wdev->queue, pbs);
+	blk_queue_io_min(wdev->queue, pbs);
+	/* blk_queue_io_opt(wdev->queue, pbs); */
 
 	/* Prepare pdata. */
 	pdata->ldev = ldev;
@@ -182,12 +189,51 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->flags = 0;
 	
         /* capacity */
-        wdev->capacity = get_capacity(ddev->bd_disk);
+        wdev->capacity = ddev->bd_part->nr_sects;
         set_capacity(wdev->gd, wdev->capacity);
+	LOGn("capacity %"PRIu64"\n", wdev->capacity);
 
 	/* Set limit. */
-        blk_queue_stack_limits(wdev->queue, bdev_get_queue(ldev));
-        blk_queue_stack_limits(wdev->queue, bdev_get_queue(ddev));
+	lq = bdev_get_queue(ldev);
+	dq = bdev_get_queue(ddev);
+        blk_queue_stack_limits(wdev->queue, lq);
+        blk_queue_stack_limits(wdev->queue, dq);
+	LOGn("ldev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+		lq->limits.logical_block_size,
+		lq->limits.physical_block_size,
+		lq->limits.io_min,
+		lq->limits.io_opt,
+		lq->limits.max_hw_sectors,
+		lq->limits.alignment_offset);
+	LOGn("ddev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+		dq->limits.logical_block_size,
+		dq->limits.physical_block_size,
+		dq->limits.io_min,
+		dq->limits.io_opt,
+		dq->limits.max_hw_sectors,
+		dq->limits.alignment_offset);
+	LOGn("wdev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+		wdev->queue->limits.logical_block_size,
+		wdev->queue->limits.physical_block_size,
+		wdev->queue->limits.io_min,
+		wdev->queue->limits.io_opt,
+		wdev->queue->limits.max_hw_sectors,
+		wdev->queue->limits.alignment_offset);
+
+	/* Chunk size. */
+	
+	if (queue_io_min(wdev->queue) > wdev->pbs) {
+		pdata->chunk_sectors = queue_io_min(wdev->queue) / LOGICAL_BLOCK_SIZE;
+	} else {
+		pdata->chunk_sectors = 0;
+	}
+	LOGn("chunk_sectors %u\n", pdata->chunk_sectors);
+	
+	/* Prepare logpack submit/wait queue. */
+	spin_lock_init(&pdata->logpack_submit_queue_lock);
+	spin_lock_init(&pdata->logpack_wait_queue_lock);
+	INIT_LIST_HEAD(&pdata->logpack_submit_queue);
+	INIT_LIST_HEAD(&pdata->logpack_wait_queue);
 	
         return true;
 
@@ -269,6 +315,7 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
                         LOGn("Supports REQ_FLUSH.");
                         blk_queue_flush(q, REQ_FLUSH);
                 }
+		blk_queue_flush_queueable(q, true);
         } else {
                 LOGn("Supports neither REQ_FLUSH nor REQ_FUA.");
         }
@@ -369,10 +416,14 @@ static void stop_dev(void)
 static int __init wrapper_blk_init(void)
 {
 	if (!is_valid_pbs(physical_block_size_)) {
+		LOGe("pbs is invalid.\n");
 		goto error0;
 	}
-	
-        pre_register();
+
+        if (!pre_register()) {
+		LOGe("pre_register failed.\n");
+		goto error0;
+	}
         
         if (!register_dev()) {
                 goto error0;
