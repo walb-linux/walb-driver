@@ -83,6 +83,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         struct block_device *ldev, *ddev;
         unsigned int lbs, pbs;
 	struct walb_super_sector *ssect;
+	struct request_queue *lq, *dq;
         
         LOGd("create_private_data called");
 
@@ -191,8 +192,24 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	LOGn("capacity %"PRIu64"\n", wdev->capacity);
 
 	/* Set limit. */
-        blk_queue_stack_limits(wdev->queue, bdev_get_queue(ldev));
-        blk_queue_stack_limits(wdev->queue, bdev_get_queue(ddev));
+	lq = bdev_get_queue(ldev);
+	dq = bdev_get_queue(ddev);
+        blk_queue_stack_limits(wdev->queue, lq);
+        blk_queue_stack_limits(wdev->queue, dq);
+	LOGn("ldev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+		lq->limits.logical_block_size,
+		lq->limits.physical_block_size,
+		lq->limits.io_min,
+		lq->limits.io_opt,
+		lq->limits.max_hw_sectors,
+		lq->limits.alignment_offset);
+	LOGn("ddev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+		dq->limits.logical_block_size,
+		dq->limits.physical_block_size,
+		dq->limits.io_min,
+		dq->limits.io_opt,
+		dq->limits.max_hw_sectors,
+		dq->limits.alignment_offset);
 
 	/* Prepare logpack submit/wait queue. */
 	spin_lock_init(&pdata->logpack_submit_queue_lock);
@@ -380,10 +397,14 @@ static void stop_dev(void)
 static int __init wrapper_blk_init(void)
 {
 	if (!is_valid_pbs(physical_block_size_)) {
+		LOGe("pbs is invalid.\n");
 		goto error0;
 	}
 	
-        pre_register();
+        if (!pre_register()) {
+		LOGe("pre_register failed.\n");
+		goto error0;
+	}
         
         if (!register_dev()) {
                 goto error0;
