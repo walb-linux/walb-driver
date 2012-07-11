@@ -383,7 +383,6 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	UNUSED int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	int bi_cnt;
 	ASSERT(bioe);
-	ASSERT(bioe->bio == bio);
 	if (!uptodate) {
 		LOGn("BIO_UPTODATE is false (rw %lu addr %"PRIu64" size %u).\n",
 			bioe->bio->bi_rw, (u64)bioe->bio->bi_sector, bioe->bi_size);
@@ -401,6 +400,8 @@ static void bio_entry_end_io(struct bio *bio, int error)
 #else
 	ASSERT(bi_cnt == 1);
 #endif
+	LOGd_("complete bioe %p addr %"PRIu64" size %u\n",
+		bioe, (u64)bio->bi_sector, bioe->bi_size);
 	if (bi_cnt == 1) {
 		bioe->bio = NULL;
 	}
@@ -837,9 +838,15 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 		if (bioe->is_copied) {
 			bio_entry_end_io(bioe->bio, 0);
 		} else {
+			LOGd_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",
+				bioe->bio->bi_rw,
+				bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 			generic_make_request(bioe->bio);
 		}
 #else
+		LOGd_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",
+			bioe->bio->bi_rw,
+			bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 		generic_make_request(bioe->bio);
 #endif
 	}
@@ -865,7 +872,9 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
         
 	remaining = reqe->req_sectors * LOGICAL_BLOCK_SIZE;
 	list_for_each_entry_safe(bioe, next, &reqe->bio_ent_list, list) {
-		wait_for_completion(&bioe->done);
+		if (!bioe->is_splitted) {
+			wait_for_completion(&bioe->done);
+		}
 		if (is_end_request) {
 			blk_end_request(reqe->req, bioe->error, bioe->bi_size);
 		}
@@ -1004,7 +1013,9 @@ static int wait_for_bio_entry_list(struct list_head *bio_ent_list)
 	
 	list_for_each_entry_safe(bioe, next_bioe, bio_ent_list, list) {
 		list_del(&bioe->list);
-		wait_for_completion(&bioe->done);
+		if (!bioe->is_splitted) {
+			wait_for_completion(&bioe->done);
+		}
 		if (bioe->error) { bio_error = bioe->error; }
 		destroy_bio_entry(bioe);
 	}
@@ -1761,8 +1772,8 @@ static struct bio_entry* logpack_submit_lhead(
 	init_bio_entry(bioe, bio);
 	ASSERT(bioe->bi_size == pbs);
 
-	LOGd_("submit logpack header bio: off %llu size %u\n",
-		(u64)bio->bi_sector, bio_cur_bytes(bio));
+	LOGd_("submit_lh: bioe %p addr %"PRIu64" size %u\n",
+		bioe, (u64)bio->bi_sector, bioe->bi_size);
 	generic_make_request(bio);
 
 	return bioe;
@@ -1823,6 +1834,9 @@ static bool logpack_submit_req(
 	}
 	/* really submit. */
 	list_for_each_entry_safe(bioe, bioe_next, &tmp_list, list) {
+
+		LOGd_("submit_lr: bioe %p addr %"PRIu64" size %u\n",
+			bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 		generic_make_request(bioe->bio);
 		list_move_tail(&bioe->list, bio_ent_list);
 	}

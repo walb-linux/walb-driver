@@ -19,14 +19,19 @@ struct bio_entry
 {
 	struct list_head list; /* list entry */
 	struct bio *bio; /* must be NULL if bio->bi_cnt is 0 (and deallocated). */
-	struct completion done;
 	unsigned int bi_size; /* keep bi_size at initialization,
 				 because bio->bi_size will be 0 after endio. */
 	int error; /* bio error status. */
+	struct completion done;
+	bool is_splitted; /* if true, do not wait completion.  */
+	
 #ifdef WALB_FAST_ALGORITHM
 	bool is_copied; /* true if read is done by copy from pending data. */
 	bool is_own_pages; /* true when pages are managed by itself.
 			      destroy_bio_entry() must free the page. */
+	struct bio *bio_orig; /* If non-NULL, this is the original bio
+				 while bio member is the first splitted one.
+				 You must finalize the bio_orig. */
 #endif
 };
 
