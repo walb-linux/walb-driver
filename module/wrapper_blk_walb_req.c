@@ -848,7 +848,7 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 			LOGd_("copied: rw %lu bioe %p addr %"PRIu64" size %u\n",
 				bioe->bio->bi_rw,
 				bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
-			bio_entry_end_io(bioe->bio, 0);
+			bio_endio(bioe->bio, 0);
 		} else {
 			LOGd_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",
 				bioe->bio->bi_rw,
