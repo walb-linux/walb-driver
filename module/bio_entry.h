@@ -24,14 +24,14 @@ struct bio_entry
 	int error; /* bio error status. */
 	struct completion done;
 	bool is_splitted; /* if true, do not wait completion.  */
+	struct bio *bio_orig; /* If non-NULL, this is the original bio
+				 while bio member is the first splitted one.
+				 You must finalize the bio_orig. */
 	
 #ifdef WALB_FAST_ALGORITHM
 	bool is_copied; /* true if read is done by copy from pending data. */
 	bool is_own_pages; /* true when pages are managed by itself.
 			      destroy_bio_entry() must free the page. */
-	struct bio *bio_orig; /* If non-NULL, this is the original bio
-				 while bio member is the first splitted one.
-				 You must finalize the bio_orig. */
 #endif
 };
 

@@ -383,6 +383,14 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	UNUSED int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	int bi_cnt;
 	ASSERT(bioe);
+#ifdef WALB_DEBUG
+	if (bioe->bio_orig) {
+		ASSERT(bioe->bio_orig == bio);
+	} else {
+		ASSERT(bioe->bio == bio);
+	}
+#endif
+	ASSERT(!bioe->is_splitted);
 	if (!uptodate) {
 		LOGn("BIO_UPTODATE is false (rw %lu addr %"PRIu64" size %u).\n",
 			bioe->bio->bi_rw, (u64)bioe->bio->bi_sector, bioe->bi_size);
@@ -403,6 +411,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	LOGd_("complete bioe %p addr %"PRIu64" size %u\n",
 		bioe, (u64)bio->bi_sector, bioe->bi_size);
 	if (bi_cnt == 1) {
+		bioe->bio_orig = NULL;
 		bioe->bio = NULL;
 	}
 	bio_put(bio);
@@ -836,6 +845,9 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 	list_for_each_entry(bioe, bio_ent_list, list) {
 #ifdef WALB_FAST_ALGORITHM
 		if (bioe->is_copied) {
+			LOGd_("copied: rw %lu bioe %p addr %"PRIu64" size %u\n",
+				bioe->bio->bi_rw,
+				bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 			bio_entry_end_io(bioe->bio, 0);
 		} else {
 			LOGd_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",

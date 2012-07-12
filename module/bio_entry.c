@@ -513,10 +513,16 @@ static struct bio_pair2* bio_split2(
 	bio2->bi_size -= first_sectors * LOGICAL_BLOCK_SIZE;
 
 	for (i = bio1->bi_vcnt; i < bio->bi_vcnt; i++) {
-		bio_iovec_idx(bio1, i)->bv_page = NULL;
+		bvec = bio_iovec_idx(bio1, i);
+		bvec->bv_page = NULL;
+		bvec->bv_len = 0;
+		bvec->bv_offset = 0;
 	}
 	for (i = bio->bi_idx; i < bio2->bi_idx; i++) {
-		bio_iovec_idx(bio2, i)->bv_page = NULL;
+		bvec = bio_iovec_idx(bio2, i);
+		bvec->bv_page = NULL;
+		bvec->bv_len = 0;
+		bvec->bv_offset = 0;
 	}
 	
 #ifdef WALB_DEBUG
@@ -574,13 +580,12 @@ static struct bio_entry* bio_entry_split(
 	
 	bioe1->bio = bp->bio1;
 	bioe1->bi_size = bp->bio1->bi_size;
-#ifdef WALB_FAST_ALGORITHM
-	if (!bioe1->is_splitted && bioe1->is_own_pages) {
+	if (!bioe1->is_splitted) {
+		ASSERT(!bioe1->bio_orig);
 		bioe1->bio_orig = bp->bio_orig;
 		LOGd_("bioe1->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe1->bio_orig->bi_cnt));
 	}
-#endif
 	init_bio_entry(bioe2, bp->bio2);
 	bioe2->is_splitted = true;
 	LOGd_("is_splitted: %d\n"
@@ -752,7 +757,8 @@ static void copied_bio_put(struct bio *bio)
 	struct bio_vec *bvec;
 	int i;
 	ASSERT(bio);
-	
+	ASSERT(!(bio->bi_flags & (1 << BIO_CLONED)));
+
 	bio_for_each_segment(bvec, bio, i) {
 		__free_page(bvec->bv_page);
 		bvec->bv_page = NULL;
@@ -864,6 +870,7 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 	init_completion(&bioe->done);
 	bioe->error = 0;
 	bioe->is_splitted = false;
+	bioe->bio_orig = NULL;
 	if (bio) {
 		bioe->bio = bio;
 		bioe->bi_size = bio->bi_size;
@@ -875,7 +882,6 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 #ifdef WALB_FAST_ALGORITHM
 	bioe->is_copied = false;
 	bioe->is_own_pages = false;
-	bioe->bio_orig = NULL;
 #endif
 }
 
@@ -904,36 +910,44 @@ error0:
  */
 void destroy_bio_entry(struct bio_entry *bioe)
 {
+	struct bio *bio = NULL;
+	
 	LOGd_("destroy_bio_entry() begin.\n");
         
 	if (!bioe) {
 		return;
 	}
-#ifdef WALB_FAST_ALGORITHM
 	if (bioe->bio_orig) {
-		/* Restore original bio when splitted. */
-		ASSERT(bioe->is_own_pages);
+		ASSERT(!bioe->is_splitted);
 		LOGd_("bioe->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe->bio_orig->bi_cnt));
-		bioe->bio = bioe->bio_orig;
-		bioe->bio_orig = NULL;
-	}
+		bio = bioe->bio_orig;
+#ifdef WALB_FAST_ALGORITHM
+		ASSERT(bioe->is_own_pages);
+		ASSERT(bioe->bio); /* already put but not cleaned. */
+#else
+		ASSERT(!bioe->bio); 
 #endif
-	if (bioe->is_splitted) {
-		bioe->bio = NULL;
+	} else if (bioe->is_splitted) {
+		/* already put but not cleaned. */
+		ASSERT(bioe->bio);
+		bio = NULL;
+	} else {
+		bio = bioe->bio;
+		ASSERT(!bioe->bio_orig);
 	}
-	if (bioe->bio) {
-		LOGd_("bio_put %p\n", bioe->bio);
+	
+	if (bio) {
+		LOGd_("bio_put %p\n", bio);
 #ifdef WALB_FAST_ALGORITHM
 		if (bioe->is_own_pages) {
-			copied_bio_put(bioe->bio);
+			copied_bio_put(bio);
 		} else {
-			bio_put(bioe->bio);
+			bio_put(bio);
 		}
 #else
-		bio_put(bioe->bio);
+		bio_put(bio);
 #endif
-		bioe->bio = NULL;
 	}
 	kmem_cache_free(bio_entry_cache_, bioe);
 
@@ -1053,6 +1067,7 @@ error1:
 	bio_for_each_segment(bvec, clone, i) {
 		if (bvec->bv_page) {
 			__free_page(bvec->bv_page);
+			bvec->bv_page = NULL;
 		}
 	}
 	bio_put(clone);
