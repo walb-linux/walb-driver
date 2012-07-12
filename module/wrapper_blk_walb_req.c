@@ -991,9 +991,10 @@ static void logpack_list_submit_task(struct work_struct *work)
 			INIT_WORK(&pwork2->work, logpack_list_wait_task);
 			queue_work(wq_logpack_, &pwork2->work);
 		}
-		
 	}
+	LOGd_("destroy_pack_work begin %p\n", pwork);
 	destroy_pack_work(pwork);
+	LOGd_("destroy_pack_work end %p\n", pwork);
 }
 
 /**
@@ -1281,7 +1282,9 @@ static void logpack_list_wait_task(struct work_struct *work)
 		INIT_WORK(&pwork2->work, logpack_list_gc_task);
 		queue_work(wq_normal_, &pwork2->work);
 	}
+	LOGd_("destroy_pack_work begin\n");
 	destroy_pack_work(pwork);
+	LOGd_("destroy_pack_work end\n");
 }
 
 /**
@@ -1312,7 +1315,9 @@ static void logpack_list_gc_task(struct work_struct *work)
 		destroy_pack(wpack);
 	}
 	ASSERT(list_empty(&pwork->wpack_list));
+	LOGd_("destroy_pack_work begin\n");
 	destroy_pack_work(pwork);
+	LOGd_("destroy_pack_work end\n");
 }
 
 /**

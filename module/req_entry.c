@@ -203,7 +203,7 @@ bool data_copy_req_entry(
 	ASSERT(dst_reqe);
 	ASSERT(src_reqe);
 
-	LOGd_("begin dst %p src %p.\n", dst_reqe, src_reqe); /* debug */
+	LOGd_("begin dst %p src %p.\n", dst_reqe, src_reqe);
 	
 	/* Get overlapping area. */
 	get_overlapping_pos_and_sectors(
@@ -211,7 +211,7 @@ bool data_copy_req_entry(
 	ASSERT(ol_req_sectors > 0);
 
 	LOGd_("ol_req_pos: %"PRIu64" ol_req_sectors: %u\n",
-		ol_req_pos, ol_req_sectors); /* debug */
+		ol_req_pos, ol_req_sectors);
 
 	/* Initialize cursors. */
 	bio_entry_cursor_init(&dst_cur, &dst_reqe->bio_ent_list);
