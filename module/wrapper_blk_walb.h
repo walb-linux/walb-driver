@@ -74,6 +74,7 @@ struct pdata
 	struct list_head logpack_submit_queue; /* writepack list.
 						  logpack_submit_queue_lock
 						  must be held. */
+	
 	spinlock_t logpack_wait_queue_lock;
 	struct list_head logpack_wait_queue; /* writepack list.
 						logpack_wait_queue_lock

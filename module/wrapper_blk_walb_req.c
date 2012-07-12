@@ -383,7 +383,14 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	UNUSED int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	int bi_cnt;
 	ASSERT(bioe);
-	ASSERT(bioe->bio == bio);
+#ifdef WALB_DEBUG
+	if (bioe->bio_orig) {
+		ASSERT(bioe->bio_orig == bio);
+	} else {
+		ASSERT(bioe->bio == bio);
+	}
+#endif
+	ASSERT(!bioe->is_splitted);
 	if (!uptodate) {
 		LOGn("BIO_UPTODATE is false (rw %lu addr %"PRIu64" size %u).\n",
 			bioe->bio->bi_rw, (u64)bioe->bio->bi_sector, bioe->bi_size);
@@ -401,7 +408,10 @@ static void bio_entry_end_io(struct bio *bio, int error)
 #else
 	ASSERT(bi_cnt == 1);
 #endif
+	LOGd_("complete bioe %p addr %"PRIu64" size %u\n",
+		bioe, (u64)bio->bi_sector, bioe->bi_size);
 	if (bi_cnt == 1) {
+		bioe->bio_orig = NULL;
 		bioe->bio = NULL;
 	}
 	bio_put(bio);
@@ -835,11 +845,20 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 	list_for_each_entry(bioe, bio_ent_list, list) {
 #ifdef WALB_FAST_ALGORITHM
 		if (bioe->is_copied) {
-			bio_entry_end_io(bioe->bio, 0);
+			LOGd_("copied: rw %lu bioe %p addr %"PRIu64" size %u\n",
+				bioe->bio->bi_rw,
+				bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
+			bio_endio(bioe->bio, 0);
 		} else {
+			LOGd_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",
+				bioe->bio->bi_rw,
+				bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 			generic_make_request(bioe->bio);
 		}
 #else
+		LOGd_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",
+			bioe->bio->bi_rw,
+			bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 		generic_make_request(bioe->bio);
 #endif
 	}
@@ -865,7 +884,9 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
         
 	remaining = reqe->req_sectors * LOGICAL_BLOCK_SIZE;
 	list_for_each_entry_safe(bioe, next, &reqe->bio_ent_list, list) {
-		wait_for_completion(&bioe->done);
+		if (!bioe->is_splitted) {
+			wait_for_completion(&bioe->done);
+		}
 		if (is_end_request) {
 			blk_end_request(reqe->req, bioe->error, bioe->bi_size);
 		}
@@ -946,7 +967,7 @@ static void logpack_list_submit_task(struct work_struct *work)
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	struct list_head wpack_list;
-	bool is_empty;
+	bool is_empty, is_working;
 
 	while (true) {
 
@@ -959,20 +980,29 @@ static void logpack_list_submit_task(struct work_struct *work)
 			list_move_tail(&wpack->list, &wpack_list);
 		}
 		spin_unlock(&pdata->logpack_submit_queue_lock);
-		if (is_empty) { break; }
+		if (is_empty) {
+			is_working =
+				test_and_clear_bit(PDATA_STATE_SUBMIT_TASK_WORKING,
+						&pdata->flags);
+			ASSERT(is_working);
+			break;
+		}
 
 		/* Submit. */
 		logpack_list_submit(wdev, &wpack_list);
 
 		/* Enqueue logpack list to the wait queue. */
 		spin_lock(&pdata->logpack_wait_queue_lock);
-		is_empty = list_empty(&pdata->logpack_wait_queue);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			list_move_tail(&wpack->list, &pdata->logpack_wait_queue);
 		}
 		ASSERT(list_empty(&wpack_list));
 		spin_unlock(&pdata->logpack_wait_queue_lock);
-		if (is_empty) {
+
+		if (test_and_set_bit(
+				PDATA_STATE_WAIT_TASK_WORKING,
+				&pdata->flags) == 0) {
+			
 			struct pack_work *pwork2;
 			pwork2 = create_pack_work(wdev, GFP_NOIO);
 			if (!pwork2) {
@@ -982,9 +1012,10 @@ static void logpack_list_submit_task(struct work_struct *work)
 			INIT_WORK(&pwork2->work, logpack_list_wait_task);
 			queue_work(wq_logpack_, &pwork2->work);
 		}
-		
 	}
+	LOGd_("destroy_pack_work begin %p\n", pwork);
 	destroy_pack_work(pwork);
+	LOGd_("destroy_pack_work end %p\n", pwork);
 }
 
 /**
@@ -1004,7 +1035,9 @@ static int wait_for_bio_entry_list(struct list_head *bio_ent_list)
 	
 	list_for_each_entry_safe(bioe, next_bioe, bio_ent_list, list) {
 		list_del(&bioe->list);
-		wait_for_completion(&bioe->done);
+		if (!bioe->is_splitted) {
+			wait_for_completion(&bioe->done);
+		}
 		if (bioe->error) { bio_error = bioe->error; }
 		destroy_bio_entry(bioe);
 	}
@@ -1237,7 +1270,7 @@ static void logpack_list_wait_task(struct work_struct *work)
 	struct wrapper_blk_dev *wdev = pwork->wdev;
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
-	bool is_empty;
+	bool is_empty, is_working;
 	struct list_head wpack_list;
 	struct pack_work *pwork2;
 
@@ -1252,8 +1285,14 @@ static void logpack_list_wait_task(struct work_struct *work)
 			list_move_tail(&wpack->list, &wpack_list);
 		}
 		spin_unlock(&pdata->logpack_wait_queue_lock);
-		if (is_empty) { break; }
-
+		if (is_empty) {
+			is_working = test_and_clear_bit(
+				PDATA_STATE_WAIT_TASK_WORKING,
+				&pdata->flags);
+			ASSERT(is_working);
+			break;
+		}
+		
 		/* Allocate work struct for gc task. */
 		pwork2 = create_pack_work(wdev, GFP_NOIO);
 		if (!pwork2) {
@@ -1270,7 +1309,9 @@ static void logpack_list_wait_task(struct work_struct *work)
 		INIT_WORK(&pwork2->work, logpack_list_gc_task);
 		queue_work(wq_normal_, &pwork2->work);
 	}
+	LOGd_("destroy_pack_work begin\n");
 	destroy_pack_work(pwork);
+	LOGd_("destroy_pack_work end\n");
 }
 
 /**
@@ -1301,7 +1342,9 @@ static void logpack_list_gc_task(struct work_struct *work)
 		destroy_pack(wpack);
 	}
 	ASSERT(list_empty(&pwork->wpack_list));
+	LOGd_("destroy_pack_work begin\n");
 	destroy_pack_work(pwork);
+	LOGd_("destroy_pack_work end\n");
 }
 
 /**
@@ -1761,8 +1804,8 @@ static struct bio_entry* logpack_submit_lhead(
 	init_bio_entry(bioe, bio);
 	ASSERT(bioe->bi_size == pbs);
 
-	LOGd_("submit logpack header bio: off %llu size %u\n",
-		(u64)bio->bi_sector, bio_cur_bytes(bio));
+	LOGd_("submit_lh: bioe %p addr %"PRIu64" size %u\n",
+		bioe, (u64)bio->bi_sector, bioe->bi_size);
 	generic_make_request(bio);
 
 	return bioe;
@@ -1815,14 +1858,15 @@ static bool logpack_submit_req(
 		list_add_tail(&bioe->list, &tmp_list);
 	}
 	/* split if required. */
-	if (chunk_sectors > 0) {
-		if (!split_bio_entry_list_for_chunk(
-				&tmp_list, chunk_sectors)) {
-			goto error0;
-		}
+	if (!split_bio_entry_list_for_chunk(
+			&tmp_list, chunk_sectors)) {
+		goto error0;
 	}
 	/* really submit. */
 	list_for_each_entry_safe(bioe, bioe_next, &tmp_list, list) {
+
+		LOGd_("submit_lr: bioe %p addr %"PRIu64" size %u\n",
+			bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 		generic_make_request(bioe->bio);
 		list_move_tail(&bioe->list, bio_ent_list);
 	}
@@ -2416,19 +2460,19 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 		destroy_pack_work(pwork);
 		pwork = NULL;
 	} else {
-		bool is_empty;
-		
 		/* Currently all requests are packed and lsid of all writepacks is defined. */
 		ASSERT(is_valid_pack_list(&wpack_list));
 
 		/* Enqueue all writepacks. */
 		spin_lock(&pdata->logpack_submit_queue_lock);
-		is_empty = list_empty(&pdata->logpack_submit_queue);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			list_move_tail(&wpack->list, &pdata->logpack_submit_queue);
 		}
 		spin_unlock(&pdata->logpack_submit_queue_lock);
-		if (is_empty) {
+		
+		if (test_and_set_bit(
+				PDATA_STATE_SUBMIT_TASK_WORKING,
+				&pdata->flags) == 0) {
 			INIT_WORK(&pwork->work, logpack_list_submit_task);
 			queue_work(wq_logpack_, &pwork->work);
 		} else {

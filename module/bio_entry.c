@@ -44,6 +44,19 @@ struct bio_cursor
 	unsigned int off_in; /* offset inside io_vec [bytes]. */
 };
 
+/**
+ * This will be used by bio_split2().
+ */
+struct bio_pair2
+{
+	struct bio *bio_orig, *bio1, *bio2;
+	/* bio1 and bio2 must be cloned bios.
+	   bio1->bi_private and bio2->bi_private must be this object. */
+	
+	atomic_t cnt;
+	int error;
+};
+
 /*******************************************************************************
  * Static functions prototype.
  *******************************************************************************/
@@ -68,7 +81,9 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 /* For bio_entry_cursor */
 static void get_bio_split_position(struct bio *bio, unsigned int first_sectors,
 				unsigned int *mid_idx_p, unsigned int *mid_off_p);
-static struct bio* bio_split2(
+static void bio_pair2_release(struct bio_pair2 *bp);
+static void bio_pair2_end(struct bio *bio, int err);
+static struct bio_pair2* bio_split2(
 	struct bio *bio, unsigned int first_sectors, gfp_t gfp_mask);
 static struct bio_entry* bio_entry_split(
 	struct bio_entry *bioe1, unsigned int first_sectors);
@@ -414,62 +429,125 @@ static void get_bio_split_position(struct bio *bio, unsigned int first_sectors,
 	*mid_idx_p = mid_idx;
 }
 
+static void bio_pair2_release(struct bio_pair2 *bp)
+{
+	LOGd_("bio_pair2 %p %u\n", bp, atomic_read(&bp->cnt));
+	if (atomic_dec_and_test(&bp->cnt)) {
+		LOGd_("release bio_pair2 for %p\n", bp->bio_orig);
+		bio_endio(bp->bio_orig, bp->error);
+		kfree(bp);
+	}
+}
+
+static void bio_pair2_end(struct bio *bio, int err)
+{
+	struct bio_pair2 *bp = bio->bi_private;
+	LOGd_("bio_pair %p err %d\n", bp, err);
+	if (err) {
+		bp->error = err;
+	}
+	bio_put(bio);
+	bio_pair2_release(bp);
+}
+
 /**
  * Split a bio with multiple io_vec(s).
  */
-static struct bio* bio_split2(
+static struct bio_pair2* bio_split2(
 	struct bio *bio, unsigned int first_sectors, gfp_t gfp_mask)
 {
-	struct bio *clone;
+	int i;
+	struct bio_pair2 *bp;
+	struct bio *bio1, *bio2;
 	unsigned int mid_idx, mid_off;
 	struct bio_vec *bvec, *bvec2;
 #ifdef WALB_DEBUG
 	unsigned int idx;
 	unsigned int size;
 #endif
-	
-	clone = bio_clone(bio, gfp_mask);
-	if (!clone) { goto error0; }
-	clone->bi_end_io = bio->bi_end_io;
+	LOGd_("bio size %u\n", bio->bi_size);
 
-	ASSERT(bio->bi_vcnt - bio->bi_idx > 0);
-	ASSERT(clone->bi_vcnt - clone->bi_idx > 0);
+	bp = kmalloc(sizeof(struct bio_pair2), gfp_mask);
+	if (!bp) { goto error0; }
+	bp->bio_orig = bio;
+	bp->error = 0;
+	atomic_set(&bp->cnt, 3);
+
+	bio1 = bio_clone(bio, gfp_mask);
+	if (!bio1) { goto error1; }
+	
+	bio2 = bio_clone(bio, gfp_mask);
+	if (!bio2) { goto error2; }
+	
+	bp->bio1 = bio1;
+	bp->bio2 = bio2;
+
+	bio1->bi_end_io = bio_pair2_end;
+	bio2->bi_end_io = bio_pair2_end;
+	
+	bio1->bi_private = bp;
+	bio2->bi_private = bp;
+	
+	ASSERT(bio1->bi_vcnt - bio1->bi_idx > 0);
+	ASSERT(bio2->bi_vcnt - bio2->bi_idx > 0);
 
 	get_bio_split_position(bio, first_sectors, &mid_idx, &mid_off);
-
-	clone->bi_idx = mid_idx;
+	
+	bio2->bi_idx = mid_idx;
 	if (mid_off == 0) {
-		bio->bi_vcnt = mid_idx;
+		bio1->bi_vcnt = mid_idx;
 	} else {
-		bio->bi_vcnt = mid_idx + 1;
+		bio1->bi_vcnt = mid_idx + 1;
 
 		/* Last bvec of the top half. */
-		bvec = bio_iovec_idx(bio, mid_idx);
+		bvec = bio_iovec_idx(bio1, mid_idx);
 		bvec->bv_len = mid_off * LOGICAL_BLOCK_SIZE;
 
 		/* First bvec of the bottom half. */
-		bvec2 = bio_iovec_idx(clone, mid_idx);
+		bvec2 = bio_iovec_idx(bio2, mid_idx);
 		bvec2->bv_offset += mid_off * LOGICAL_BLOCK_SIZE;
 		bvec2->bv_len -= mid_off * LOGICAL_BLOCK_SIZE;
 	}
-	bio->bi_size = first_sectors * LOGICAL_BLOCK_SIZE;
-	clone->bi_sector += first_sectors;
-	clone->bi_size -= first_sectors * LOGICAL_BLOCK_SIZE;
+	bio1->bi_size = first_sectors * LOGICAL_BLOCK_SIZE;
+	bio2->bi_sector += first_sectors;
+	bio2->bi_size -= first_sectors * LOGICAL_BLOCK_SIZE;
 
+	for (i = bio1->bi_vcnt; i < bio->bi_vcnt; i++) {
+		bvec = bio_iovec_idx(bio1, i);
+		bvec->bv_page = NULL;
+		bvec->bv_len = 0;
+		bvec->bv_offset = 0;
+	}
+	for (i = bio->bi_idx; i < bio2->bi_idx; i++) {
+		bvec = bio_iovec_idx(bio2, i);
+		bvec->bv_page = NULL;
+		bvec->bv_len = 0;
+		bvec->bv_offset = 0;
+	}
+	
 #ifdef WALB_DEBUG
 	size = 0;
-	bio_for_each_segment(bvec, bio, idx) {
+	bio_for_each_segment(bvec, bio1, idx) {
 		size += bvec->bv_len;
 	}
-	ASSERT(size == bio->bi_size);
+	ASSERT(size == bio1->bi_size);
 
 	size = 0;
-	bio_for_each_segment(bvec, clone, idx) {
+	bio_for_each_segment(bvec, bio2, idx) {
 		size += bvec->bv_len;
 	}
-	ASSERT(size == clone->bi_size);
+	ASSERT(size == bio2->bi_size);
 #endif
-	return clone;
+	return bp;
+
+#if 0
+error3:
+	bio_put(bio2);
+#endif
+error2:
+	bio_put(bio1);
+error1:
+	kfree(bp);
 error0:
 	return NULL;
 }
@@ -488,7 +566,7 @@ static struct bio_entry* bio_entry_split(
 	struct bio_entry *bioe1, unsigned int first_sectors)
 {
 	struct bio_entry *bioe2;
-	struct bio *bio2;
+	struct bio_pair2 *bp;
 
 	ASSERT(bioe1);
 	ASSERT(bioe1->bio);
@@ -496,11 +574,29 @@ static struct bio_entry* bio_entry_split(
 
 	bioe2 = alloc_bio_entry(GFP_NOIO);
 	if (!bioe2) { goto error0; }
-
-	bio2 = bio_split2(bioe1->bio, first_sectors, GFP_NOIO);
-	if (!bio2) { goto error1; }
-	init_bio_entry(bioe1, bioe1->bio);
-	init_bio_entry(bioe2, bio2);
+	
+	bp = bio_split2(bioe1->bio, first_sectors, GFP_NOIO);
+	if (!bp) { goto error1; }
+	
+	bioe1->bio = bp->bio1;
+	bioe1->bi_size = bp->bio1->bi_size;
+	if (!bioe1->is_splitted) {
+		ASSERT(!bioe1->bio_orig);
+		bioe1->bio_orig = bp->bio_orig;
+		LOGd_("bioe1->bio_orig->bi_cnt %d\n",
+			atomic_read(&bioe1->bio_orig->bi_cnt));
+	}
+	init_bio_entry(bioe2, bp->bio2);
+	bioe2->is_splitted = true;
+	LOGd_("is_splitted: %d\n"
+		"bio_orig addr %"PRIu64" size %u\n"
+		"bioe1 %p addr %"PRIu64" size %u\n"
+		"bioe2 %p addr %"PRIu64" size %u\n",
+		bioe1->is_splitted,
+		(u64)bp->bio_orig->bi_sector, bp->bio_orig->bi_size,
+		bioe1, (u64)bioe1->bio->bi_sector, bioe1->bio->bi_size,
+		bioe2, (u64)bioe2->bio->bi_sector, bioe2->bio->bi_size);
+	bio_pair2_release(bp);
 	
 	return bioe2;
 error1:
@@ -661,7 +757,8 @@ static void copied_bio_put(struct bio *bio)
 	struct bio_vec *bvec;
 	int i;
 	ASSERT(bio);
-	
+	ASSERT(!(bio->bi_flags & (1 << BIO_CLONED)));
+
 	bio_for_each_segment(bvec, bio, i) {
 		__free_page(bvec->bv_page);
 		bvec->bv_page = NULL;
@@ -772,10 +869,11 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 	
 	init_completion(&bioe->done);
 	bioe->error = 0;
+	bioe->is_splitted = false;
+	bioe->bio_orig = NULL;
 	if (bio) {
 		bioe->bio = bio;
 		bioe->bi_size = bio->bi_size;
-		bio->bi_private = bioe;
 	} else {
 		bioe->bio = NULL;
 		bioe->bi_size = 0;
@@ -812,23 +910,44 @@ error0:
  */
 void destroy_bio_entry(struct bio_entry *bioe)
 {
+	struct bio *bio = NULL;
+	
 	LOGd_("destroy_bio_entry() begin.\n");
         
 	if (!bioe) {
 		return;
 	}
-	if (bioe->bio) {
-		LOGd_("bio_put %p\n", bioe->bio);
+	if (bioe->bio_orig) {
+		ASSERT(!bioe->is_splitted);
+		LOGd_("bioe->bio_orig->bi_cnt %d\n",
+			atomic_read(&bioe->bio_orig->bi_cnt));
+		bio = bioe->bio_orig;
+#ifdef WALB_FAST_ALGORITHM
+		ASSERT(bioe->is_own_pages);
+		ASSERT(bioe->bio); /* already put but not cleaned. */
+#else
+		ASSERT(!bioe->bio); 
+#endif
+	} else if (bioe->is_splitted) {
+		/* already put but not cleaned. */
+		ASSERT(bioe->bio);
+		bio = NULL;
+	} else {
+		bio = bioe->bio;
+		ASSERT(!bioe->bio_orig);
+	}
+	
+	if (bio) {
+		LOGd_("bio_put %p\n", bio);
 #ifdef WALB_FAST_ALGORITHM
 		if (bioe->is_own_pages) {
-			copied_bio_put(bioe->bio);
+			copied_bio_put(bio);
 		} else {
-			bio_put(bioe->bio);
+			bio_put(bio);
 		}
 #else
-		bio_put(bioe->bio);
+		bio_put(bio);
 #endif
-		bioe->bio = NULL;
 	}
 	kmem_cache_free(bio_entry_cache_, bioe);
 
@@ -948,6 +1067,7 @@ error1:
 	bio_for_each_segment(bvec, clone, i) {
 		if (bvec->bv_page) {
 			__free_page(bvec->bv_page);
+			bvec->bv_page = NULL;
 		}
 	}
 	bio_put(clone);
@@ -964,7 +1084,7 @@ void init_copied_bio_entry(
 {
 	ASSERT(bioe);
 	ASSERT(bio_with_copy);
-
+	
 	init_bio_entry(bioe, bio_with_copy);
 	bioe->is_own_pages = true;
 	bio_get(bio_with_copy);
