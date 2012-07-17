@@ -987,16 +987,11 @@ void destroy_bio_entry(struct bio_entry *bioe)
 void get_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
-	struct bio_vec *bvec;
-	int i;
 	
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 		ASSERT(bioe->bio);
 		bio_get(bioe->bio);
-		bio_for_each_segment(bvec, bioe->bio, i) {
-			get_page(bvec->bv_page);
-		}
 	}
 }
 
@@ -1008,16 +1003,11 @@ void put_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
 	int bi_cnt;
-	struct bio_vec *bvec;
-	int i;
 	
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 		ASSERT(bioe->bio);
 		bi_cnt = atomic_read(&bioe->bio->bi_cnt);
-		bio_for_each_segment(bvec, bioe->bio, i) {
-			put_page(bvec->bv_page);
-		}
 		bio_put(bioe->bio);
 		if (bi_cnt == 1) { bioe->bio = NULL; }
 	}
