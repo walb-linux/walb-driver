@@ -385,12 +385,12 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	ASSERT(bioe);
 #ifdef WALB_DEBUG
 	if (bioe->bio_orig) {
+		ASSERT(bioe->is_splitted);
 		ASSERT(bioe->bio_orig == bio);
 	} else {
 		ASSERT(bioe->bio == bio);
 	}
 #endif
-	ASSERT(!bioe->is_splitted);
 	if (!uptodate) {
 		LOGn("BIO_UPTODATE is false (rw %lu addr %"PRIu64" size %u).\n",
 			bioe->bio->bi_rw, (u64)bioe->bio->bi_sector, bioe->bi_size);
@@ -401,7 +401,13 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	bi_cnt = atomic_read(&bio->bi_cnt);
 #ifdef WALB_FAST_ALGORITHM
 	if (bio->bi_rw & WRITE) {
-		ASSERT(bi_cnt == 2 || bi_cnt == 1);
+		if (bioe->bio_orig) {
+			/* 2 for data, 1 for log. */
+			ASSERT(bi_cnt == 2 || bi_cnt == 1);
+		} else {
+			/* 3 for data, 1 for log. */
+			ASSERT(bi_cnt == 3 || bi_cnt == 1);
+		}
 	} else {
 		ASSERT(bi_cnt == 1);
 	}
@@ -884,7 +890,7 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
         
 	remaining = reqe->req_sectors * LOGICAL_BLOCK_SIZE;
 	list_for_each_entry_safe(bioe, next, &reqe->bio_ent_list, list) {
-		if (!bioe->is_splitted) {
+		if (bio_entry_should_wait_completion(bioe)) {
 			wait_for_completion(&bioe->done);
 		}
 		if (is_end_request) {
@@ -1035,7 +1041,7 @@ static int wait_for_bio_entry_list(struct list_head *bio_ent_list)
 	
 	list_for_each_entry_safe(bioe, next_bioe, bio_ent_list, list) {
 		list_del(&bioe->list);
-		if (!bioe->is_splitted) {
+		if (bio_entry_should_wait_completion(bioe)) {
 			wait_for_completion(&bioe->done);
 		}
 		if (bioe->error) { bio_error = bioe->error; }
@@ -1129,7 +1135,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			is_pending_insert_succeeded =
 				pending_insert(pdata->pending_data, reqe);
 			mutex_unlock(&pdata->pending_data_mutex);
-			if (!is_pending_insert_succeeded) { goto failed1; }
+			if (!is_pending_insert_succeeded) { goto failed2; }
 
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
@@ -1158,7 +1164,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 					blk_start_queue(wdev->queue);
 					spin_unlock_irqrestore(&wdev->lock, flags);
 				}
-				goto failed1;
+				goto failed2;
 			}
 #endif
 			/* Enqueue as a write req task. */

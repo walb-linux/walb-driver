@@ -611,6 +611,7 @@ static struct bio_entry* bio_entry_split(
 		bioe1->bio_orig = bp->bio_orig;
 		LOGd_("bioe1->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe1->bio_orig->bi_cnt));
+		bioe1->is_splitted = true;
 	}
 	init_bio_entry(bioe2, bp->bio2);
 	bioe2->is_splitted = true;
@@ -944,19 +945,15 @@ void destroy_bio_entry(struct bio_entry *bioe)
 		return;
 	}
 	if (bioe->bio_orig) {
-		ASSERT(!bioe->is_splitted);
+		ASSERT(bioe->is_splitted);
 		LOGd_("bioe->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe->bio_orig->bi_cnt));
 		bio = bioe->bio_orig;
 #ifdef WALB_FAST_ALGORITHM
 		ASSERT(bioe->is_own_pages);
-		ASSERT(bioe->bio); /* already put but not cleaned. */
-#else
-		ASSERT(!bioe->bio); 
 #endif
+		ASSERT(!bioe->bio);
 	} else if (bioe->is_splitted) {
-		/* already put but not cleaned. */
-		ASSERT(bioe->bio);
 		bio = NULL;
 	} else {
 		bio = bioe->bio;

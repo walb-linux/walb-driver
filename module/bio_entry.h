@@ -12,6 +12,8 @@
 #include <linux/list.h>
 #include <linux/completion.h>
 
+#include "walb/common.h"
+
 /**
  * bio as a list entry.
  */
@@ -22,9 +24,11 @@ struct bio_entry
 	unsigned int bi_size; /* keep bi_size at initialization,
 				 because bio->bi_size will be 0 after endio. */
 	int error; /* bio error status. */
-	struct completion done;
-	bool is_splitted; /* if true, do not wait completion.  */
-	struct bio *bio_orig; /* If non-NULL, this is the original bio
+	struct completion done; /* If is_splitted is true and bio_orig is NULL,
+				   this completion never be called. */
+	bool is_splitted; /* If true, the bio is splitted one.  */
+	struct bio *bio_orig; /* If non-NULL, is_splitted is always true and
+				 this is the original bio
 				 while bio member is the first splitted one.
 				 You must finalize the bio_orig. */
 	
@@ -83,5 +87,18 @@ bool split_bio_entry_list_for_chunk(
 /* init/exit */
 bool bio_entry_init(void);
 void bio_entry_exit(void);
+
+
+/**
+ * Check whether complete(&bioe->done) will be called, or not.
+ *
+ * RETURN:
+ *   true if you should wait the completion.
+ */
+static inline bool bio_entry_should_wait_completion(struct bio_entry *bioe)
+{
+	ASSERT(bioe);
+	return !bioe->is_splitted || bioe->bio_orig;
+}
 
 #endif /* WALB_BIO_ENTRY_H_KERNEL */
