@@ -221,7 +221,6 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		wdev->queue->limits.alignment_offset);
 
 	/* Chunk size. */
-	
 	if (queue_io_min(wdev->queue) > wdev->pbs) {
 		pdata->chunk_sectors = queue_io_min(wdev->queue) / LOGICAL_BLOCK_SIZE;
 	} else {
