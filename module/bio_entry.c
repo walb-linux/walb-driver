@@ -66,6 +66,7 @@ static inline void list_insert_after(struct list_head *list, struct list_head *n
 
 /* For bio_cursor */
 #ifdef WALB_FAST_ALGORITHM
+UNUSED static void bio_cursor_print(const char* level, struct bio_cursor *cur);
 UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur);
 static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe);
 static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len);
@@ -136,6 +137,29 @@ static inline void list_insert_after(struct list_head *pos, struct list_head *ne
 	new->next = pos->next;
 	pos->next = new;
 }
+
+#ifdef WALB_FAST_ALGORITHM
+UNUSED static void bio_cursor_print(
+	const char *level, struct bio_cursor *cur)
+{
+	u64 addr = 0;
+	unsigned int bi_size = 0;
+	ASSERT(cur);
+	ASSERT(bio_cursor_is_valid(cur));
+
+	ASSERT(cur->bioe);
+	addr = cur->bioe->bio->bi_sector;
+	bi_size = cur->bioe->bi_size;
+	
+	printk("%s"
+		"bio_cursor: "
+		"bioe %p bio %p (%"PRIu64", %u) idx %u off %u off_in %u\n",
+		level,
+		cur->bioe, cur->bioe->bio,
+		addr, bi_size,
+		cur->idx, cur->off, cur->off_in);
+}
+#endif
 
 /**
  * Check whether bio_cursor data is valid or not.
