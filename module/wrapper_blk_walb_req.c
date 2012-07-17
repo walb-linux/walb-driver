@@ -1795,6 +1795,9 @@ static struct bio_entry* logpack_submit_lhead(
 	struct page *page;
 	u64 off_pb, off_lb;
 	int rw = WRITE;
+#ifdef WALB_DEBUG
+	struct page *page2;
+#endif
 
 	if (is_flush) { rw |= WRITE_FLUSH; }
 	if (is_fua) { rw |= WRITE_FUA; }
@@ -1805,6 +1808,10 @@ static struct bio_entry* logpack_submit_lhead(
 	if (!bio) { goto error1; }
 
 	page = virt_to_page(lhead);
+#ifdef WALB_DEBUG
+	page2 = virt_to_page((unsigned long)lhead + pbs - 1);
+	ASSERT(page == page2);
+#endif
 	bio->bi_bdev = ldev;
 	off_pb = lhead->logpack_lsid % ring_buffer_size + ring_buffer_off;
 	
