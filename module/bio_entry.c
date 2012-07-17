@@ -74,7 +74,8 @@ static bool bio_cursor_is_end(struct bio_cursor *cur);
 UNUSED static bool bio_cursor_is_boundary(struct bio_cursor *cur);
 static unsigned int bio_cursor_size_to_boundary(struct bio_cursor *cur);
 static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur);
-static char* bio_cursor_map(struct bio_cursor *cur, unsigned long *flags);
+static char* bio_cursor_map(struct bio_cursor *cur);
+static void bio_cursor_unmap(char *buffer);
 static unsigned int bio_cursor_try_copy_and_proceed(
 	struct bio_cursor *dst, struct bio_cursor *src, unsigned int len);
 #endif
@@ -338,17 +339,19 @@ static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
  * You must call bio_cursor_put_buf() after operations done.
  */
 #ifdef WALB_FAST_ALGORITHM
-static char* bio_cursor_map(struct bio_cursor *cur, unsigned long *flags)
+static char* bio_cursor_map(struct bio_cursor *cur)
 {
+	struct bio_vec *bvec;
 	unsigned long addr;
 	ASSERT(bio_cursor_is_valid(cur));
 	ASSERT(!bio_cursor_is_end(cur));
-	ASSERT(flags);
 
-	addr = (unsigned long)bvec_kmap_irq(
-		bio_iovec_idx(cur->bioe->bio, cur->idx), flags);
+	ASSERT(cur->bioe->bio);
+	bvec = bio_iovec_idx(cur->bioe->bio, cur->idx);
+	addr = (unsigned long)kmap_atomic(bvec->bv_page);
 	ASSERT(addr != 0);
-	addr += cur->off_in;
+	addr += bvec->bv_offset + cur->off_in;
+	ASSERT(addr != 0);
 	return (char *)addr;
 }
 #endif
@@ -358,9 +361,9 @@ static char* bio_cursor_map(struct bio_cursor *cur, unsigned long *flags)
  * You must call this after calling bio_cursor_map().
  */
 #ifdef WALB_FAST_ALGORITHM
-static void bio_cursor_unmap(char *buffer, unsigned long *flags)
+static void bio_cursor_unmap(char *buffer)
 {
-	bvec_kunmap_irq(buffer, flags);
+	kunmap_atomic(buffer);
 }
 #endif
 
@@ -380,7 +383,6 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 	struct bio_cursor *dst, struct bio_cursor *src, unsigned int len)
 {
 	unsigned int copied;
-	unsigned long dst_flags, src_flags;
 	char *dst_buf, *src_buf;
 	unsigned int dst_size, src_size;
 
@@ -399,16 +401,16 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 	copied = min(min(dst_size, src_size), len);
 	ASSERT(copied > 0);
 
-	dst_buf = bio_cursor_map(dst, &dst_flags);
-	src_buf = bio_cursor_map(src, &src_flags);
+	dst_buf = bio_cursor_map(dst);
+	src_buf = bio_cursor_map(src);
 	ASSERT(dst_buf);
 	ASSERT(src_buf);
 
 	LOGd_("copied %u\n", copied);
 	memcpy(dst_buf, src_buf, copied);
 
-	bio_cursor_unmap(src_buf, &src_flags);
-	bio_cursor_unmap(dst_buf, &dst_flags);
+	bio_cursor_unmap(src_buf);
+	bio_cursor_unmap(dst_buf);
 
 	bio_cursor_proceed(dst, copied);
 	bio_cursor_proceed(src, copied);
