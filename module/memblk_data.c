@@ -23,7 +23,16 @@
  *******************************************************************************/
 
 /* for debug */
-int count_ = 0;
+#ifdef WALB_DEBUG
+atomic_t count_ = ATOMIC_INIT(0);
+#define CNT_INC() atomic_inc(&count_)
+#define CNT_DEC() atomic_dec(&count_)
+#define CNT() atomic_read(&count_)
+#else
+#define CNT_INC()
+#define CNT_DEC()
+#define CNT()
+#endif
 
 /*******************************************************************************
  * Static functions prototype.
@@ -198,7 +207,7 @@ struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask)
         n_pages = mdata_get_required_n_pages(capacity, block_size);
         /* LOGd("n_pages: %"PRIu64"\n", n_pages); */
         for (ui = 0; ui < n_pages; ui ++) {
-                addr = __get_free_page(gfp_mask); count_ ++;
+                addr = __get_free_page(gfp_mask); CNT_INC();
                 /* LOGd("allocate a page addr %p.\n", (void *)addr); */
                 if (!addr) {
                         LOGe("__get_free_page failed.\n");
@@ -206,7 +215,7 @@ struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask)
                 }
                 if (map_add(mdata->index, ui, addr, gfp_mask)) {
                         LOGe("map_add failed.\n");
-                        free_page(addr); count_ --;
+                        free_page(addr); CNT_DEC();
                         goto error1;
                 }
                 /* LOGd("allocate ui %"PRIu64" addr %p.\n", ui, (void *)addr); */
@@ -238,7 +247,7 @@ void mdata_destroy(struct memblk_data *mdata)
                         ASSERT(addr != TREEMAP_INVALID_VAL);
                         /* LOGd("page_id %"PRIu64" n_pages %"PRIu64" addr %p\n", */
                         /*      page_id, n_pages, (void *)addr); */
-                        free_page(addr); count_ --;
+                        free_page(addr); CNT_DEC();
                 }
                 map_destroy(mdata->index);
         }
@@ -411,7 +420,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         char *strbuf = NULL;
 
         LOGd("test_memblk_data start.\n");
-        strbuf = (char *)__get_free_page(GFP_KERNEL); count_ ++;
+        strbuf = (char *)__get_free_page(GFP_KERNEL); CNT_INC();
         WALB_CHECK(strbuf);
 
         if (capacity == 0) {
@@ -420,9 +429,9 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         mdata = mdata_create(capacity, block_size, GFP_KERNEL);
         WALB_CHECK(mdata);
 
-        data1 = (u8 *)__get_free_page(GFP_KERNEL); count_ ++;
+        data1 = (u8 *)__get_free_page(GFP_KERNEL); CNT_INC();
         WALB_CHECK(data1);
-        data2 = (u8 *)__get_free_page(GFP_KERNEL); count_ ++;
+        data2 = (u8 *)__get_free_page(GFP_KERNEL); CNT_INC();
         WALB_CHECK(data2);
 
         sprint_hex(strbuf, PAGE_SIZE, data1, 128);
@@ -476,24 +485,24 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
                 WALB_CHECK(memcmp(data1, data2, size * block_size) == 0);
         }
 
-        free_page((unsigned long)strbuf); count_ --;
-        free_page((unsigned long)data2); count_ --;
-        free_page((unsigned long)data1); count_ --;
+        free_page((unsigned long)strbuf); CNT_DEC();
+        free_page((unsigned long)data2); CNT_DEC();
+        free_page((unsigned long)data1); CNT_DEC();
         mdata_destroy(mdata);
 
         LOGd("test_memblk_data succeeded.\n");
-        LOGd("count_: %d\n", count_);
+        LOGd("count_: %d\n", CNT());
         return true;
 error:
         LOGe("ERROR\n");
         if (strbuf) {
-                free_page((unsigned long)strbuf); count_ --;
+                free_page((unsigned long)strbuf); CNT_DEC();
         }
         if (data2) {
-                free_page((unsigned long)data2); count_ --;
+                free_page((unsigned long)data2); CNT_DEC();
         }
         if (data1) {
-                free_page((unsigned long)data1); count_ --;
+                free_page((unsigned long)data1); CNT_DEC();
         }
         mdata_destroy(mdata);
         LOGe("test_memblk_data failed..\n");
