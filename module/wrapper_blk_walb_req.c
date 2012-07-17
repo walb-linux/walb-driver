@@ -1118,6 +1118,9 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 				goto failed1;
 			}
 
+			/* Get related bio(s) */
+			get_bio_entry_list(&reqe->bio_ent_list);
+
 			/* Try to insert pending data. */
 			mutex_lock(&pdata->pending_data_mutex);
 			LOGd_("pending_sectors %u\n", pdata->pending_sectors);
@@ -1163,6 +1166,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			queue_work(wq_normal_, &reqe->work);
 		}
 		continue;
+	failed2:
+		put_bio_entry_list(&reqe->bio_ent_list);
 	failed1:
 		destroy_bio_entry_list(&reqe->bio_ent_list);
 	failed0:
@@ -1427,6 +1432,9 @@ static void write_req_task_fast(struct work_struct *work)
 		spin_unlock_irqrestore(&wdev->lock, flags);
 	}
 
+	/* put related bio(s). */
+	put_bio_entry_list(&reqe->bio_ent_list);
+	
 	/* Free resources. */
 	destroy_bio_entry_list(&reqe->bio_ent_list);
 	
