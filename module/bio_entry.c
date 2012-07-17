@@ -21,7 +21,7 @@
 static struct kmem_cache *bio_entry_cache_ = NULL;
 
 /* shared coutner of the cache. */
-static unsigned int shared_cnt_ = 0;
+static atomic_t shared_cnt_ = ATOMIC_INIT(0);
 
 /*******************************************************************************
  * Struct data.
@@ -1412,12 +1412,15 @@ error0:
  */
 bool bio_entry_init(void)
 {
+	int cnt;
 	LOGd("bio_entry_init begin\n");
-	if (shared_cnt_) {
-		shared_cnt_ ++;
+
+	cnt = atomic_inc_return(&shared_cnt_);
+	if (cnt > 1) {
 		return true;
 	}
 
+	ASSERT(cnt == 1);
 	bio_entry_cache_ = kmem_cache_create(
 		KMEM_CACHE_BIO_ENTRY_NAME,
 		sizeof(struct bio_entry), 0, 0, NULL);
@@ -1425,7 +1428,6 @@ bool bio_entry_init(void)
 		LOGe("failed to create a kmem_cache (bio_entry).\n");
 		goto error;
 	}
-	shared_cnt_ ++;
 	LOGd("bio_entry_init end\n");
 	return true;
 error:
@@ -1438,14 +1440,18 @@ error:
  */
 void bio_entry_exit(void)
 {
-	if (shared_cnt_) {
-		shared_cnt_ --;
-	} else {
-		LOGn("bio_entry_init() is not called yet.\n");
-		return;
-	}
+	int cnt;
+	
+	cnt = atomic_dec_return(&shared_cnt_);
 
-	if (!shared_cnt_) {
+	if (cnt > 0) {
+		return;
+	} else if (cnt < 0) {
+		LOGn("bio_entry_init() is not called yet.\n");
+		atomic_inc(&shared_cnt_);
+		return;
+	} else {
+		ASSERT(cnt == 0);
 		kmem_cache_destroy(bio_entry_cache_);
 		bio_entry_cache_ = NULL;
 	}
