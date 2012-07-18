@@ -67,8 +67,9 @@ struct pdata
 	     (1) bio size must not exceed the size.
 	     (2) bio must not cross over multiple chunks.
 	   else:
-	   no limitation. */
-	unsigned int chunk_sectors;
+	     no limitation. */
+	unsigned int ldev_chunk_sectors;
+	unsigned int ddev_chunk_sectors;
 
 	spinlock_t logpack_submit_queue_lock;
 	struct list_head logpack_submit_queue; /* writepack list.

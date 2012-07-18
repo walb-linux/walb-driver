@@ -221,12 +221,18 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		wdev->queue->limits.alignment_offset);
 
 	/* Chunk size. */
-	if (queue_io_min(wdev->queue) > wdev->pbs) {
-		pdata->chunk_sectors = queue_io_min(wdev->queue) / LOGICAL_BLOCK_SIZE;
+	if (queue_io_min(lq) > wdev->pbs) {
+		pdata->ldev_chunk_sectors = queue_io_min(lq) / LOGICAL_BLOCK_SIZE;
 	} else {
-		pdata->chunk_sectors = 0;
+		pdata->ldev_chunk_sectors = 0;
 	}
-	LOGn("chunk_sectors %u\n", pdata->chunk_sectors);
+	if (queue_io_min(dq) > wdev->pbs) {
+		pdata->ddev_chunk_sectors = queue_io_min(dq) / LOGICAL_BLOCK_SIZE;
+	} else {
+		pdata->ddev_chunk_sectors = 0;
+	}
+	LOGn("chunk_sectors ldev %u ddev %u.\n",
+		pdata->ldev_chunk_sectors, pdata->ddev_chunk_sectors);
 	
 	/* Prepare logpack submit/wait queue. */
 	spin_lock_init(&pdata->logpack_submit_queue_lock);

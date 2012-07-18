@@ -940,7 +940,7 @@ static void logpack_list_submit(
 				lhead, wpack->is_fua,
 				&wpack->req_ent_list, &wpack->bio_ent_list,
 				wdev->pbs, pdata->ldev, pdata->ring_buffer_off,
-				pdata->ring_buffer_size, pdata->chunk_sectors);
+				pdata->ring_buffer_size, pdata->ldev_chunk_sectors);
 		}
 		wpack->is_logpack_failed = !ret;
 		if (!ret) { break; }
@@ -1120,7 +1120,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			}
 			/* Split if required due to chunk limitations. */
 			if (!split_bio_entry_list_for_chunk(
-					&reqe->bio_ent_list, pdata->chunk_sectors)) {
+					&reqe->bio_ent_list,
+					pdata->ddev_chunk_sectors)) {
 				goto failed1;
 			}
 
@@ -1230,7 +1231,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 
 			/* Split if required due to chunk limitations. */
 			if (!split_bio_entry_list_for_chunk(
-					&reqe->bio_ent_list, pdata->chunk_sectors)) {
+					&reqe->bio_ent_list,
+					pdata->ddev_chunk_sectors)) {
 				goto failed1;
 			}
 			
@@ -1538,7 +1540,7 @@ static void read_req_task_fast(struct work_struct *work)
 
 	/* Split if required due to chunk limitations. */
 	if (!split_bio_entry_list_for_chunk(
-			&reqe->bio_ent_list, pdata->chunk_sectors)) {
+			&reqe->bio_ent_list, pdata->ddev_chunk_sectors)) {
 		goto error1;
 	}
 
@@ -1587,7 +1589,7 @@ static void read_req_task_easy(struct work_struct *work)
 
 	/* Split if required due to chunk limitations. */
 	if (!split_bio_entry_list_for_chunk(
-			&reqe->bio_ent_list, pdata->chunk_sectors)) {
+			&reqe->bio_ent_list, pdata->ddev_chunk_sectors)) {
 		goto error1;
 	}
 		
