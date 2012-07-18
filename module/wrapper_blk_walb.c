@@ -425,19 +425,22 @@ static int __init wrapper_blk_init(void)
 	}
         
         if (!register_dev()) {
-                goto error0;
+                goto error1;
         }
         if (!start_dev()) {
-                goto error1;
+                goto error2;
         }
 
         return 0;
 #if 0
-error2:
+error3:
         stop_dev();
 #endif
-error1:
+error2:
+	pre_unregister();
         unregister_dev();
+error1:
+	post_unregister();
 error0:
         return -1;
 }
