@@ -136,7 +136,8 @@ static inline void list_insert_after(struct list_head *pos, struct list_head *ne
 {
 	new->prev = pos;
 	new->next = pos->next;
-	pos->next = new;
+	new->prev->next = new;
+	new->next->prev = new;
 }
 
 #ifdef WALB_FAST_ALGORITHM
