@@ -1,14 +1,17 @@
-# Comment/uncomment the following line to disable/enable debugging
-#DEBUG = 1
+# You can specify the following parameters.
+DEBUG = 0
+DYNAMIC_DEBUG = 0
 OVERLAP_DETECT = 1
 FAST_ALG = 1
 
 # Add your debugging flag (or not) to CFLAGS
-ifeq ($(DEBUG),1)
-  DEBFLAGS = -O -g -DDEBUG -DWALB_DEBUG # "-O" is needed to expand inlines
-else
-  DEBFLAGS = -O2
+ifeq ($(DYNAMIC_DEBUG),1)
+  DEBFLAGS = -O -g -DDEBUG -DWALB_DEBUG -DUSE_DYNAMIC_DEBUG
 endif
+ifeq ($(DEBUG),1)
+  DEBFLAGS = -O -g -DDEBUG -DWALB_DEBUG
+endif
+DEBFLAGS ?= -O2
 
 ifeq ($(OVERLAP_DETECT),1)
   DEBFLAGS += -DWALB_OVERLAPPING_DETECTION
@@ -103,6 +106,8 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD       := $(shell pwd)
 
 default:
+	@echo DEBUG=$(DEBUG) DYNAMIC_DEBUG=$(DYNAMIC_DEBUG) OVERLAP_DETECT=$(OVERLAP_DETECT) FAST_ALG=$(FAST_ALG)
+	@echo DEBFLAGS=$(DEBFLAGS)
 	$(MAKE) clean
 	$(MAKE) buildmodule
 

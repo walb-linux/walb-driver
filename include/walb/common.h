@@ -75,7 +75,11 @@
  * Simple logger.
  */
 #define LOGd_ PRINTV_D_
+#ifdef USE_DYNAMIC_DEBUG
+#define LOGd pr_debug
+#else
 #define LOGd PRINTV_D
+#endif
 #define LOGi PRINTV_I
 #define LOGn PRINTV_N
 #define LOGw PRINTV_W
