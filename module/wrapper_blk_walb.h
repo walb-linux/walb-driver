@@ -105,6 +105,9 @@ struct pdata
 					     we must stop the queue. */
 	unsigned int min_pending_sectors; /* min_pending_sectors > pending_sectors
 					     we can restart the queue. */
+	unsigned int queue_stop_timeout_ms; /* queue stopped period must not exceed
+					       queue_stop_time_ms. */
+	unsigned long queue_restart_jiffies; /* For queue stopped timeout check. */
 	bool is_queue_stopped; /* true if queue is stopped. */
 #endif
 };

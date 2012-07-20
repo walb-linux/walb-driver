@@ -1148,7 +1148,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
-				LOGn("stop queue.\n");
+				LOGd("stop queue.\n");
 				spin_lock_irqsave(&wdev->lock, flags);
 				blk_stop_queue(wdev->queue);
 				spin_unlock_irqrestore(&wdev->lock, flags);
@@ -1442,7 +1442,7 @@ static void write_req_task_fast(struct work_struct *work)
 
 	/* Check queue restart is required. */
 	if (is_start_queue) {
-		LOGn("restart queue.\n");
+		LOGd("restart queue.\n");
 		spin_lock_irqsave(&wdev->lock, flags);
 		blk_start_queue(wdev->queue);
 		spin_unlock_irqrestore(&wdev->lock, flags);
@@ -2376,11 +2376,20 @@ UNUSED static bool pending_check_and_copy(
 #ifdef WALB_FAST_ALGORITHM
 static inline bool should_stop_queue(struct pdata *pdata, struct req_entry *reqe)
 {
+	bool should_stop;
 	ASSERT(pdata);
 	ASSERT(reqe);
 
-	if (!pdata->is_queue_stopped &&
-		pdata->pending_sectors + reqe->req_sectors > pdata->max_pending_sectors) {
+	if (pdata->is_queue_stopped) {
+		return false;
+	}
+
+	should_stop = pdata->pending_sectors + reqe->req_sectors
+		> pdata->max_pending_sectors;
+
+	if (should_stop) {
+		pdata->queue_restart_jiffies = jiffies +
+			msecs_to_jiffies(pdata->queue_stop_timeout_ms);
 		pdata->is_queue_stopped = true;
 		return true;
 	} else {
@@ -2399,12 +2408,21 @@ static inline bool should_stop_queue(struct pdata *pdata, struct req_entry *reqe
 #ifdef WALB_FAST_ALGORITHM
 static inline bool should_start_queue(struct pdata *pdata, struct req_entry *reqe)
 {
+	bool is_size;
+	bool is_timeout;
 	ASSERT(pdata);
 	ASSERT(reqe);
 	ASSERT(pdata->pending_sectors >= reqe->req_sectors);
 
-	if (pdata->is_queue_stopped &&
-		pdata->pending_sectors - reqe->req_sectors < pdata->min_pending_sectors) {
+	if (!pdata->is_queue_stopped) {
+		return false;
+	}
+	
+	is_size = pdata->pending_sectors - reqe->req_sectors
+		< pdata->min_pending_sectors;
+	is_timeout = time_is_before_jiffies(pdata->queue_restart_jiffies);
+
+	if (is_size || is_timeout) {
 		pdata->is_queue_stopped = false;
 		return true;
 	} else {

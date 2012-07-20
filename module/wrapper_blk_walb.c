@@ -39,6 +39,9 @@ int physical_block_size_ = 4096;
 int max_pending_mb_ = 64;
 int min_pending_mb_ = 64 * 7 / 8;
 
+/* Queue stop timeout [msec]. */
+int queue_stop_timeout_ms_ = 100;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -49,6 +52,7 @@ module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
 module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
 module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
+module_param_named(queue_stop_timeout_ms, queue_stop_timeout_ms_, int, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -119,6 +123,11 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->min_pending_sectors = min_pending_mb_
 		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
 	LOGn("max pending sectors: %u\n", pdata->max_pending_sectors);
+
+	pdata->queue_stop_timeout_ms = queue_stop_timeout_ms_;
+	pdata->queue_restart_jiffies = jiffies;
+	LOGn("queue stop timeout: %u ms\n", queue_stop_timeout_ms_);
+	
 	pdata->is_queue_stopped = false;
 #endif
 	
@@ -422,6 +431,10 @@ static int __init wrapper_blk_init(void)
 {
 	if (!is_valid_pbs(physical_block_size_)) {
 		LOGe("pbs is invalid.\n");
+		goto error0;
+	}
+	if (queue_stop_timeout_ms_ < 1) {
+		LOGe("queue_stop_timeout_ms must > 0.\n");
 		goto error0;
 	}
 
