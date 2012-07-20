@@ -82,9 +82,13 @@ struct pack
 #define KMEM_CACHE_PACK_NAME "pack_cache"
 struct kmem_cache *pack_cache_ = NULL;
 
+/* Completion timeout [msec]. */
+static const unsigned long completion_timeo_ms_ = 5000;
+
 /*******************************************************************************
  * Macros definition.
  *******************************************************************************/
+
 
 /*******************************************************************************
  * Static functions prototype.
@@ -852,6 +856,11 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 #ifdef WALB_FAST_ALGORITHM
+#ifdef WALB_DEBUG
+		if (!bioe->is_splitted) {
+			ASSERT(bioe->bio->bi_end_io == bio_entry_end_io);
+		}
+#endif /* WALB_DEBUG */
 		if (bioe->is_copied) {
 			LOGd_("copied: rw %lu bioe %p addr %"PRIu64" size %u\n",
 				bioe->bio->bi_rw,
@@ -863,12 +872,12 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 				bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 			generic_make_request(bioe->bio);
 		}
-#else
+#else /* WALB_FAST_ALGORITHM */
 		LOGd_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",
 			bioe->bio->bi_rw,
 			bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 		generic_make_request(bioe->bio);
-#endif
+#endif /* WALB_FAST_ALGORITHM */
 	}
 }
 
@@ -888,12 +897,23 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 {
 	struct bio_entry *bioe, *next;
 	int remaining;
+	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
+	unsigned long rtimeo;
+	int c;
 	ASSERT(reqe);
         
 	remaining = reqe->req_sectors * LOGICAL_BLOCK_SIZE;
 	list_for_each_entry(bioe, &reqe->bio_ent_list, list) {
 		if (bio_entry_should_wait_completion(bioe)) {
-			wait_for_completion(&bioe->done);
+			c = 0;
+		retry:
+			rtimeo = wait_for_completion_timeout(&bioe->done, timeo);
+			if (rtimeo == 0) {
+				LOGn("timeout(%d): reqe %p bioe %p bio %p pos %"PRIu64" sectors %u\n",
+					c, reqe, bioe, bioe->bio,
+					reqe->req_pos, reqe->req_sectors);
+				goto retry;
+			}
 		}
 		if (is_end_request) {
 			blk_end_request(reqe->req, bioe->error, bioe->bi_size);
@@ -1040,13 +1060,24 @@ static int wait_for_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe, *next_bioe;
 	int bio_error = 0;
+	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
+	unsigned long rtimeo;
+	int c;
 	ASSERT(bio_ent_list);
-
+	
 	/* wait for completion. */
 	list_for_each_entry(bioe, bio_ent_list, list) {
 
 		if (bio_entry_should_wait_completion(bioe)) {
-			wait_for_completion(&bioe->done);
+			c = 0;
+		retry:
+			rtimeo = wait_for_completion_timeout(&bioe->done, timeo);
+			if (rtimeo == 0) {
+				LOGn("timeout(%d): bioe %p bio %p size %u\n",
+					c, bioe, bioe->bio, bioe->bi_size);
+				c++;
+				goto retry;
+			}
 		}
 		if (bioe->error) { bio_error = bioe->error; }
 	}
@@ -1350,12 +1381,23 @@ static void logpack_list_gc_task(struct work_struct *work)
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct pack *wpack, *next_wpack;
 	struct req_entry *reqe, *next_reqe;
+	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
+	unsigned long rtimeo;
+	int c;
 
 	list_for_each_entry_safe(wpack, next_wpack, &pwork->wpack_list, list) {
 		list_del(&wpack->list);
 		list_for_each_entry_safe(reqe, next_reqe, &wpack->req_ent_list, list) {
 			list_del(&reqe->list);
-			wait_for_completion(&reqe->done);
+			c = 0;
+		retry:
+			rtimeo = wait_for_completion_timeout(&reqe->done, timeo);
+			if (rtimeo == 0) {
+				LOGn("timeout(%d): reqe %p pos %"PRIu64" sectors %u\n",
+					c, reqe, reqe->req_pos, reqe->req_sectors);
+				c++;
+				goto retry;
+			}
 			destroy_req_entry(reqe);
 		}
 		ASSERT(list_empty(&wpack->req_ent_list));
@@ -1410,14 +1452,27 @@ static void write_req_task_fast(struct work_struct *work)
 	const bool is_delete = false;
 	bool is_start_queue = false;
 	unsigned long flags;
-
-	/* Wait for previous overlapping writes. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
-	if (reqe->n_overlapping > 0) {
-		wait_for_completion(&reqe->overlapping_done);
-	}
+	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
+	unsigned long rtimeo;
+	int c;
 #endif
 
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	/* Wait for previous overlapping writes. */
+	if (reqe->n_overlapping > 0) {
+		c = 0;
+	retry:
+		rtimeo = wait_for_completion_timeout(
+			&reqe->overlapping_done, timeo);
+		if (rtimeo == 0) {
+			LOGw("timeout(%d): reqe %p pos %"PRIu64" sectors %u\n",
+				c, reqe, reqe->req_pos, reqe->req_sectors);
+			c++;
+			goto retry;
+		}
+	}
+#endif
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
 	submit_bio_entry_list(&reqe->bio_ent_list);
@@ -1472,14 +1527,27 @@ static void write_req_task_easy(struct work_struct *work)
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
-
-	/* Wait for previous overlapping writes. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
+	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
+	unsigned long rtimeo;
+	int c;
+#endif
+
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	/* Wait for previous overlapping writes. */
 	if (reqe->n_overlapping > 0) {
-		wait_for_completion(&reqe->overlapping_done);
+		c = 0;
+	retry:
+		rtimeo = wait_for_completion_timeout(
+			&reqe->overlapping_done, timeo);
+		if (rtimeo == 0) {
+			LOGw("timeout(%d): reqe %p pos %"PRIu64" sectors %u\n",
+				c, reqe, reqe->req_pos, reqe->req_sectors);
+			c++;
+			goto retry;
+		}
 	}
 #endif
-	
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
 	submit_bio_entry_list(&reqe->bio_ent_list);
