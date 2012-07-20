@@ -1,8 +1,9 @@
-# You can specify the following parameters.
+# Debug options. Choose one of the followings.
 DEBUG = 0
 DYNAMIC_DEBUG = 0
-OVERLAP_DETECT = 1
-FAST_ALG = 1
+# You can specify the following parameters.
+OVERLAP = 1 #overlapping writes serialization.
+FAST_ALG = 1 # use fast algorithm instead of easy.
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DYNAMIC_DEBUG),1)
@@ -13,8 +14,8 @@ ifeq ($(DEBUG),1)
 endif
 DEBFLAGS ?= -O2
 
-ifeq ($(OVERLAP_DETECT),1)
-  DEBFLAGS += -DWALB_OVERLAPPING_DETECTION
+ifeq ($(OVERLAP),1)
+  DEBFLAGS += -DWALB_OVERLAPPING_SERIALIZE
 endif
 
 ifeq ($(FAST_ALG),1)
@@ -106,7 +107,7 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD       := $(shell pwd)
 
 default:
-	@echo DEBUG=$(DEBUG) DYNAMIC_DEBUG=$(DYNAMIC_DEBUG) OVERLAP_DETECT=$(OVERLAP_DETECT) FAST_ALG=$(FAST_ALG)
+	@echo DEBUG=$(DEBUG) DYNAMIC_DEBUG=$(DYNAMIC_DEBUG) OVERLAP=$(OVERLAP) FAST_ALG=$(FAST_ALG)
 	@echo DEBFLAGS=$(DEBFLAGS)
 	$(MAKE) clean
 	$(MAKE) buildmodule

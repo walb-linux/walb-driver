@@ -98,7 +98,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	spin_lock_init(&pdata->lsid_lock);
 	spin_lock_init(&pdata->lsuper0_lock);
 
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	mutex_init(&pdata->overlapping_data_mutex);
 	pdata->overlapping_data = multimap_create(GFP_KERNEL);
 	if (!pdata->overlapping_data) {
@@ -253,7 +253,7 @@ error1:
 error02:
 	multimap_destroy(pdata->pending_data);
 #endif
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 error01:
 	multimap_destroy(pdata->overlapping_data);
 #endif
@@ -293,7 +293,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 #ifdef WALB_FAST_ALGORITHM
 	multimap_destroy(pdata->pending_data);
 #endif
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	multimap_destroy(pdata->overlapping_data);
 #endif
 	kfree(pdata);
