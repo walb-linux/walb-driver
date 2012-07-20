@@ -81,7 +81,7 @@ struct pdata
 						logpack_wait_queue_lock
 						must be held. */
 
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	/**
 	 * All req_entry data may not keep reqe->bio_ent_list.
 	 * You must keep address and size information in another way.

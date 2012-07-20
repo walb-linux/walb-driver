@@ -37,7 +37,7 @@ struct req_entry
 	   read_req_task does not use this. */
 	struct completion done;
 
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	struct completion overlapping_done;
 	int n_overlapping; /* initial value is -1. */
 #endif

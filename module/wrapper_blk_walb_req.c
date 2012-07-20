@@ -197,7 +197,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 #endif
 
 /* Overlapping data functions. */
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 static bool overlapping_check_and_insert(
 	struct multimap *overlapping_data, struct req_entry *reqe);
 static void overlapping_delete_and_notify(
@@ -217,7 +217,7 @@ static inline bool should_start_queue(struct pdata *pdata, struct req_entry *req
 #endif
 
 /* For overlapping data and pending data. */
-#if defined(WALB_OVERLAPPING_DETECTION) || defined(WALB_FAST_ALGORITHM)
+#if defined(WALB_OVERLAPPING_SERIALIZE) || defined(WALB_FAST_ALGORITHM)
 static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1);
 #endif
 
@@ -1088,7 +1088,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 	struct request *req;
 	bool is_failed = false;
 	struct pdata *pdata;
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	bool is_overlapping_insert_succeeded;
 #endif
 	bool is_pending_insert_succeeded;
@@ -1157,7 +1157,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			/* call end_request where with fast algorithm
 			   while easy algorithm call it after data device IO. */
 			blk_end_request_all(req, 0);
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 			/* check and insert to overlapping detection data. */
 			mutex_lock(&pdata->overlapping_data_mutex);
 			is_overlapping_insert_succeeded =
@@ -1203,7 +1203,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 	struct request *req;
 	bool is_failed = false;
 	struct pdata *pdata;
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	bool is_overlapping_insert_succeeded;
 #endif
 
@@ -1244,7 +1244,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 				goto failed1;
 			}
 			
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 			/* check and insert to overlapping detection data. */
 			mutex_lock(&pdata->overlapping_data_mutex);
 			is_overlapping_insert_succeeded =
@@ -1373,11 +1373,11 @@ static void logpack_list_gc_task(struct work_struct *work)
  *
  * (1) create (already done)
  * (2) wait for overlapping write requests done
- *     (only when WALB_OVERLAPPING_DETECTION)
+ *     (only when WALB_OVERLAPPING_SERIALIZE)
  * (3) submit
  * (4) wait for completion
  * (5) notify waiting overlapping write requests
- *     (only when WALB_OVERLAPPING_DETECTION)
+ *     (only when WALB_OVERLAPPING_SERIALIZE)
  * (6) notify gc_task.
  *
  * CONTEXT:
@@ -1412,7 +1412,7 @@ static void write_req_task_fast(struct work_struct *work)
 	unsigned long flags;
 
 	/* Wait for previous overlapping writes. */
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	if (reqe->n_overlapping > 0) {
 		wait_for_completion(&reqe->overlapping_done);
 	}
@@ -1427,7 +1427,7 @@ static void write_req_task_fast(struct work_struct *work)
 	wait_for_req_entry(reqe, is_end_request, is_delete);
 
 	/* Delete from overlapping detection data. */
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	mutex_lock(&pdata->overlapping_data_mutex);
 	overlapping_delete_and_notify(pdata->overlapping_data, reqe);
 	mutex_unlock(&pdata->overlapping_data_mutex);
@@ -1474,7 +1474,7 @@ static void write_req_task_easy(struct work_struct *work)
 	const bool is_delete = true;
 
 	/* Wait for previous overlapping writes. */
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	if (reqe->n_overlapping > 0) {
 		wait_for_completion(&reqe->overlapping_done);
 	}
@@ -1489,7 +1489,7 @@ static void write_req_task_easy(struct work_struct *work)
 	wait_for_req_entry(reqe, is_end_request, is_delete);
 
 	/* Delete from overlapping detection data. */
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	mutex_lock(&pdata->overlapping_data_mutex);
 	overlapping_delete_and_notify(pdata->overlapping_data, reqe);
 	mutex_unlock(&pdata->overlapping_data_mutex);
@@ -2133,7 +2133,7 @@ failed:
  * RETURN:
  *   true in success, or false (memory allocation failure).
  */
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 static bool overlapping_check_and_insert(
 	struct multimap *overlapping_data, struct req_entry *reqe)
 {
@@ -2206,7 +2206,7 @@ fin:
  * CONTEXT:
  *   overlapping_data lock must be held.
  */
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 static void overlapping_delete_and_notify(
 	struct multimap *overlapping_data, struct req_entry *reqe)
 {
@@ -2417,7 +2417,7 @@ static inline bool should_start_queue(struct pdata *pdata, struct req_entry *req
 /**
  * Check two request entrys is overlapping.
  */
-#if defined(WALB_OVERLAPPING_DETECTION) || defined(WALB_FAST_ALGORITHM)
+#if defined(WALB_OVERLAPPING_SERIALIZE) || defined(WALB_FAST_ALGORITHM)
 static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1)
 {
 	ASSERT(reqe0);
@@ -2608,7 +2608,7 @@ bool pre_register(void)
 		goto error7;
 	}
 
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	LOGn("WalB Overlapping Detection supported.\n");
 #else
 	LOGn("WalB Overlapping Detection not supported.\n");
