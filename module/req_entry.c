@@ -22,7 +22,7 @@
 static struct kmem_cache *req_entry_cache_ = NULL;
 
 /* shared coutner of the cache. */
-static unsigned int shared_cnt_ = 0;
+static atomic_t shared_cnt_ = ATOMIC_INIT(0);
 
 /*******************************************************************************
  * Static functions prototype.
@@ -69,7 +69,7 @@ struct req_entry* create_req_entry(
 	INIT_LIST_HEAD(&reqe->bio_ent_list);
 	init_completion(&reqe->done);
         
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	init_completion(&reqe->overlapping_done);
 	reqe->n_overlapping = -1;
 #endif
@@ -251,12 +251,15 @@ error:
  */
 bool req_entry_init(void)
 {
+	int cnt;
 	LOGd("req_entry_init begin\n");
-	if (shared_cnt_) {
-		shared_cnt_ ++;
+	cnt = atomic_inc_return(&shared_cnt_);
+	
+	if (cnt > 1) {
 		return true;
 	}
 
+	ASSERT(cnt == 1);
 	req_entry_cache_ = kmem_cache_create(
 		KMEM_CACHE_REQ_ENTRY_NAME,
 		sizeof(struct req_entry), 0, 0, NULL);
@@ -264,7 +267,6 @@ bool req_entry_init(void)
 		LOGe("failed to create a kmem_cache (req_entry).\n");
 		goto error;
 	}
-	shared_cnt_ ++;
 	LOGd("req_entry_init end\n");
 	return true;
 error:
@@ -277,14 +279,18 @@ error:
  */
 void req_entry_exit(void)
 {
-	if (shared_cnt_) {
-		shared_cnt_ --;
-	} else {
-		LOGn("req_entry_init() is not called yet.\n");
-		return;
-	}
+	int cnt;
 
-	if (!shared_cnt_) {
+	cnt = atomic_dec_return(&shared_cnt_);
+	
+	if (cnt > 0) {
+		return;
+	} else if (cnt < 0) {
+		LOGn("req_entry_init() is not called yet.\n");
+		atomic_inc(&shared_cnt_);
+		return;
+	} else {
+		ASSERT(cnt == 0);
 		kmem_cache_destroy(req_entry_cache_);
 		req_entry_cache_ = NULL;
 	}

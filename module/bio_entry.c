@@ -21,7 +21,7 @@
 static struct kmem_cache *bio_entry_cache_ = NULL;
 
 /* shared coutner of the cache. */
-static unsigned int shared_cnt_ = 0;
+static atomic_t shared_cnt_ = ATOMIC_INIT(0);
 
 /*******************************************************************************
  * Struct data.
@@ -66,6 +66,7 @@ static inline void list_insert_after(struct list_head *list, struct list_head *n
 
 /* For bio_cursor */
 #ifdef WALB_FAST_ALGORITHM
+UNUSED static void bio_cursor_print(const char* level, struct bio_cursor *cur);
 UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur);
 static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe);
 static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len);
@@ -73,7 +74,8 @@ static bool bio_cursor_is_end(struct bio_cursor *cur);
 UNUSED static bool bio_cursor_is_boundary(struct bio_cursor *cur);
 static unsigned int bio_cursor_size_to_boundary(struct bio_cursor *cur);
 static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur);
-static char* bio_cursor_map(struct bio_cursor *cur, unsigned long *flags);
+static char* bio_cursor_map(struct bio_cursor *cur);
+static void bio_cursor_unmap(char *buffer);
 static unsigned int bio_cursor_try_copy_and_proceed(
 	struct bio_cursor *dst, struct bio_cursor *src, unsigned int len);
 #endif
@@ -134,8 +136,32 @@ static inline void list_insert_after(struct list_head *pos, struct list_head *ne
 {
 	new->prev = pos;
 	new->next = pos->next;
-	pos->next = new;
+	new->prev->next = new;
+	new->next->prev = new;
 }
+
+#ifdef WALB_FAST_ALGORITHM
+UNUSED static void bio_cursor_print(
+	const char *level, struct bio_cursor *cur)
+{
+	u64 addr = 0;
+	unsigned int bi_size = 0;
+	ASSERT(cur);
+	ASSERT(bio_cursor_is_valid(cur));
+
+	ASSERT(cur->bioe);
+	addr = cur->bioe->bio->bi_sector;
+	bi_size = cur->bioe->bi_size;
+	
+	printk("%s"
+		"bio_cursor: "
+		"bioe %p bio %p (%"PRIu64", %u) idx %u off %u off_in %u\n",
+		level,
+		cur->bioe, cur->bioe->bio,
+		addr, bi_size,
+		cur->idx, cur->off, cur->off_in);
+}
+#endif
 
 /**
  * Check whether bio_cursor data is valid or not.
@@ -314,17 +340,19 @@ static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
  * You must call bio_cursor_put_buf() after operations done.
  */
 #ifdef WALB_FAST_ALGORITHM
-static char* bio_cursor_map(struct bio_cursor *cur, unsigned long *flags)
+static char* bio_cursor_map(struct bio_cursor *cur)
 {
+	struct bio_vec *bvec;
 	unsigned long addr;
 	ASSERT(bio_cursor_is_valid(cur));
 	ASSERT(!bio_cursor_is_end(cur));
-	ASSERT(flags);
 
-	addr = (unsigned long)bvec_kmap_irq(
-		bio_iovec_idx(cur->bioe->bio, cur->idx), flags);
+	ASSERT(cur->bioe->bio);
+	bvec = bio_iovec_idx(cur->bioe->bio, cur->idx);
+	addr = (unsigned long)kmap_atomic(bvec->bv_page);
 	ASSERT(addr != 0);
-	addr += cur->off_in;
+	addr += bvec->bv_offset + cur->off_in;
+	ASSERT(addr != 0);
 	return (char *)addr;
 }
 #endif
@@ -334,9 +362,9 @@ static char* bio_cursor_map(struct bio_cursor *cur, unsigned long *flags)
  * You must call this after calling bio_cursor_map().
  */
 #ifdef WALB_FAST_ALGORITHM
-static void bio_cursor_unmap(char *buffer, unsigned long *flags)
+static void bio_cursor_unmap(char *buffer)
 {
-	bvec_kunmap_irq(buffer, flags);
+	kunmap_atomic(buffer);
 }
 #endif
 
@@ -356,7 +384,6 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 	struct bio_cursor *dst, struct bio_cursor *src, unsigned int len)
 {
 	unsigned int copied;
-	unsigned long dst_flags, src_flags;
 	char *dst_buf, *src_buf;
 	unsigned int dst_size, src_size;
 
@@ -375,16 +402,16 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 	copied = min(min(dst_size, src_size), len);
 	ASSERT(copied > 0);
 
-	dst_buf = bio_cursor_map(dst, &dst_flags);
-	src_buf = bio_cursor_map(src, &src_flags);
+	dst_buf = bio_cursor_map(dst);
+	src_buf = bio_cursor_map(src);
 	ASSERT(dst_buf);
 	ASSERT(src_buf);
 
 	LOGd_("copied %u\n", copied);
 	memcpy(dst_buf, src_buf, copied);
 
-	bio_cursor_unmap(src_buf, &src_flags);
-	bio_cursor_unmap(dst_buf, &dst_flags);
+	bio_cursor_unmap(src_buf);
+	bio_cursor_unmap(dst_buf);
 
 	bio_cursor_proceed(dst, copied);
 	bio_cursor_proceed(src, copied);
@@ -585,6 +612,7 @@ static struct bio_entry* bio_entry_split(
 		bioe1->bio_orig = bp->bio_orig;
 		LOGd_("bioe1->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe1->bio_orig->bi_cnt));
+		bioe1->is_splitted = true;
 	}
 	init_bio_entry(bioe2, bp->bio2);
 	bioe2->is_splitted = true;
@@ -918,19 +946,15 @@ void destroy_bio_entry(struct bio_entry *bioe)
 		return;
 	}
 	if (bioe->bio_orig) {
-		ASSERT(!bioe->is_splitted);
+		ASSERT(bioe->is_splitted);
 		LOGd_("bioe->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe->bio_orig->bi_cnt));
 		bio = bioe->bio_orig;
 #ifdef WALB_FAST_ALGORITHM
 		ASSERT(bioe->is_own_pages);
-		ASSERT(bioe->bio); /* already put but not cleaned. */
-#else
-		ASSERT(!bioe->bio); 
 #endif
+		ASSERT(!bioe->bio);
 	} else if (bioe->is_splitted) {
-		/* already put but not cleaned. */
-		ASSERT(bioe->bio);
 		bio = NULL;
 	} else {
 		bio = bioe->bio;
@@ -961,16 +985,11 @@ void destroy_bio_entry(struct bio_entry *bioe)
 void get_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
-	struct bio_vec *bvec;
-	int i;
 	
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 		ASSERT(bioe->bio);
 		bio_get(bioe->bio);
-		bio_for_each_segment(bvec, bioe->bio, i) {
-			get_page(bvec->bv_page);
-		}
 	}
 }
 
@@ -982,16 +1001,11 @@ void put_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
 	int bi_cnt;
-	struct bio_vec *bvec;
-	int i;
 	
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 		ASSERT(bioe->bio);
 		bi_cnt = atomic_read(&bioe->bio->bi_cnt);
-		bio_for_each_segment(bvec, bioe->bio, i) {
-			put_page(bvec->bv_page);
-		}
 		bio_put(bioe->bio);
 		if (bi_cnt == 1) { bioe->bio = NULL; }
 	}
@@ -1343,6 +1357,47 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 #endif
 
 /**
+ * Check whether split bio(s) is required or not.
+ *
+ * RETURN:
+ *   true if one or more split operations is required.
+ */
+bool should_split_bio_entry_list_for_chunk(
+	struct list_head *bio_ent_list, unsigned int chunk_sectors)
+{
+	struct bio_entry_cursor cur;
+	u64 addr;
+	unsigned int sectors;
+	bool ret;
+	
+	if (chunk_sectors == 0) {
+		return false;
+	}
+
+	ASSERT(bio_ent_list);
+	bio_entry_cursor_init(&cur, bio_ent_list);
+	while (!bio_entry_cursor_is_end(&cur)) {
+		ASSERT(cur.bioe);
+		ASSERT(cur.bioe->bio);
+		addr = cur.bioe->bio->bi_sector;
+		sectors = cur.bioe->bi_size / LOGICAL_BLOCK_SIZE;
+		ASSERT(sectors > 0);
+		if (addr / chunk_sectors == (addr + sectors - 1) / chunk_sectors) {
+			ret = bio_entry_cursor_proceed(&cur, sectors);
+			ASSERT(ret);
+			ASSERT(bio_entry_cursor_is_boundary(&cur));
+		} else {
+			goto split_required;
+		}
+	}
+	/* no need to split. */
+	return false;
+
+split_required:
+	return true;
+}
+
+/**
  * Split bio(s) if chunk_sectors.
  */
 bool split_bio_entry_list_for_chunk(
@@ -1399,12 +1454,15 @@ error0:
  */
 bool bio_entry_init(void)
 {
+	int cnt;
 	LOGd("bio_entry_init begin\n");
-	if (shared_cnt_) {
-		shared_cnt_ ++;
+
+	cnt = atomic_inc_return(&shared_cnt_);
+	if (cnt > 1) {
 		return true;
 	}
 
+	ASSERT(cnt == 1);
 	bio_entry_cache_ = kmem_cache_create(
 		KMEM_CACHE_BIO_ENTRY_NAME,
 		sizeof(struct bio_entry), 0, 0, NULL);
@@ -1412,7 +1470,6 @@ bool bio_entry_init(void)
 		LOGe("failed to create a kmem_cache (bio_entry).\n");
 		goto error;
 	}
-	shared_cnt_ ++;
 	LOGd("bio_entry_init end\n");
 	return true;
 error:
@@ -1425,14 +1482,18 @@ error:
  */
 void bio_entry_exit(void)
 {
-	if (shared_cnt_) {
-		shared_cnt_ --;
-	} else {
-		LOGn("bio_entry_init() is not called yet.\n");
-		return;
-	}
+	int cnt;
+	
+	cnt = atomic_dec_return(&shared_cnt_);
 
-	if (!shared_cnt_) {
+	if (cnt > 0) {
+		return;
+	} else if (cnt < 0) {
+		LOGn("bio_entry_init() is not called yet.\n");
+		atomic_inc(&shared_cnt_);
+		return;
+	} else {
+		ASSERT(cnt == 0);
 		kmem_cache_destroy(bio_entry_cache_);
 		bio_entry_cache_ = NULL;
 	}

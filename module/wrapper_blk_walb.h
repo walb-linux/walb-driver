@@ -67,8 +67,9 @@ struct pdata
 	     (1) bio size must not exceed the size.
 	     (2) bio must not cross over multiple chunks.
 	   else:
-	   no limitation. */
-	unsigned int chunk_sectors;
+	     no limitation. */
+	unsigned int ldev_chunk_sectors;
+	unsigned int ddev_chunk_sectors;
 
 	spinlock_t logpack_submit_queue_lock;
 	struct list_head logpack_submit_queue; /* writepack list.
@@ -80,7 +81,7 @@ struct pdata
 						logpack_wait_queue_lock
 						must be held. */
 
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	/**
 	 * All req_entry data may not keep reqe->bio_ent_list.
 	 * You must keep address and size information in another way.
@@ -104,6 +105,9 @@ struct pdata
 					     we must stop the queue. */
 	unsigned int min_pending_sectors; /* min_pending_sectors > pending_sectors
 					     we can restart the queue. */
+	unsigned int queue_stop_timeout_ms; /* queue stopped period must not exceed
+					       queue_stop_time_ms. */
+	unsigned long queue_restart_jiffies; /* For queue stopped timeout check. */
 	bool is_queue_stopped; /* true if queue is stopped. */
 #endif
 };

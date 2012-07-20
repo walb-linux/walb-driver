@@ -39,6 +39,9 @@ int physical_block_size_ = 4096;
 int max_pending_mb_ = 64;
 int min_pending_mb_ = 64 * 7 / 8;
 
+/* Queue stop timeout [msec]. */
+int queue_stop_timeout_ms_ = 100;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -49,6 +52,7 @@ module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
 module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
 module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
+module_param_named(queue_stop_timeout_ms, queue_stop_timeout_ms_, int, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -98,7 +102,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	spin_lock_init(&pdata->lsid_lock);
 	spin_lock_init(&pdata->lsuper0_lock);
 
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	mutex_init(&pdata->overlapping_data_mutex);
 	pdata->overlapping_data = multimap_create(GFP_KERNEL);
 	if (!pdata->overlapping_data) {
@@ -119,6 +123,11 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->min_pending_sectors = min_pending_mb_
 		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
 	LOGn("max pending sectors: %u\n", pdata->max_pending_sectors);
+
+	pdata->queue_stop_timeout_ms = queue_stop_timeout_ms_;
+	pdata->queue_restart_jiffies = jiffies;
+	LOGn("queue stop timeout: %u ms\n", queue_stop_timeout_ms_);
+	
 	pdata->is_queue_stopped = false;
 #endif
 	
@@ -221,13 +230,18 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		wdev->queue->limits.alignment_offset);
 
 	/* Chunk size. */
-	
-	if (queue_io_min(wdev->queue) > wdev->pbs) {
-		pdata->chunk_sectors = queue_io_min(wdev->queue) / LOGICAL_BLOCK_SIZE;
+	if (queue_io_min(lq) > wdev->pbs) {
+		pdata->ldev_chunk_sectors = queue_io_min(lq) / LOGICAL_BLOCK_SIZE;
 	} else {
-		pdata->chunk_sectors = 0;
+		pdata->ldev_chunk_sectors = 0;
 	}
-	LOGn("chunk_sectors %u\n", pdata->chunk_sectors);
+	if (queue_io_min(dq) > wdev->pbs) {
+		pdata->ddev_chunk_sectors = queue_io_min(dq) / LOGICAL_BLOCK_SIZE;
+	} else {
+		pdata->ddev_chunk_sectors = 0;
+	}
+	LOGn("chunk_sectors ldev %u ddev %u.\n",
+		pdata->ldev_chunk_sectors, pdata->ddev_chunk_sectors);
 	
 	/* Prepare logpack submit/wait queue. */
 	spin_lock_init(&pdata->logpack_submit_queue_lock);
@@ -248,7 +262,7 @@ error1:
 error02:
 	multimap_destroy(pdata->pending_data);
 #endif
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 error01:
 	multimap_destroy(pdata->overlapping_data);
 #endif
@@ -288,7 +302,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 #ifdef WALB_FAST_ALGORITHM
 	multimap_destroy(pdata->pending_data);
 #endif
-#ifdef WALB_OVERLAPPING_DETECTION
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	multimap_destroy(pdata->overlapping_data);
 #endif
 	kfree(pdata);
@@ -419,6 +433,10 @@ static int __init wrapper_blk_init(void)
 		LOGe("pbs is invalid.\n");
 		goto error0;
 	}
+	if (queue_stop_timeout_ms_ < 1) {
+		LOGe("queue_stop_timeout_ms must > 0.\n");
+		goto error0;
+	}
 
         if (!pre_register()) {
 		LOGe("pre_register failed.\n");
@@ -426,19 +444,22 @@ static int __init wrapper_blk_init(void)
 	}
         
         if (!register_dev()) {
-                goto error0;
+                goto error1;
         }
         if (!start_dev()) {
-                goto error1;
+                goto error2;
         }
 
         return 0;
 #if 0
-error2:
+error3:
         stop_dev();
 #endif
-error1:
+error2:
+	pre_unregister();
         unregister_dev();
+error1:
+	post_unregister();
 error0:
         return -1;
 }

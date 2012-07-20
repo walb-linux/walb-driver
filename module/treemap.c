@@ -21,7 +21,7 @@
  *
  * Should we make this atomic value?
  */
-static unsigned int init_called_ = 0;
+static atomic_t shared_cnt_ = ATOMIC_INIT(0);
 
 /**
  * kmem_cache struct data.
@@ -361,7 +361,7 @@ multimap_add_newkey(struct multimap *tmap, u64 key,
         struct tree_cell_head *newhead;
 	
         /* Allocate and initialize new tree cell head. */
-	ASSERT(init_called_);
+	ASSERT(atomic_read(&shared_cnt_));
 	newhead = tree_cell_head_alloc(gfp_mask);
         if (newhead == NULL) {
                 LOGe("memory allocation failed.\n");
@@ -569,7 +569,7 @@ int map_add(struct map *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
         }
 
         /* Generate new node. */
-	ASSERT(init_called_);
+	ASSERT(atomic_read(&shared_cnt_));
 	newnode = tree_node_alloc(gfp_mask);
         if (newnode == NULL) {
                 LOGe("allocation failed.\n");
@@ -601,7 +601,7 @@ unsigned long map_lookup(const struct map *tmap, u64 key)
 {
         struct tree_node *t;
 
-	ASSERT(init_called_);
+	ASSERT(atomic_read(&shared_cnt_));
         ASSERT_TREEMAP(tmap);
         
         t = map_lookup_node(tmap, key);
@@ -1263,7 +1263,7 @@ int multimap_add(struct multimap *tmap, u64 key, unsigned long val, gfp_t gfp_ma
         }
 
         /* Prepare new cell. */
-	ASSERT(init_called_);
+	ASSERT(atomic_read(&shared_cnt_));
         newcell = tree_cell_alloc(gfp_mask);
         if (newcell == NULL) {
                 LOGe("memory allocation failed.\n");
@@ -2087,10 +2087,13 @@ error:
  */
 bool treemap_init(void)
 {
-	if (init_called_) {
-		init_called_ ++;
+	int cnt;
+
+	cnt = atomic_inc_return(&shared_cnt_);
+	if (cnt > 1) {
 		return true;
 	}
+	ASSERT(cnt == 1);
 	
 	tree_node_cache_ = kmem_cache_create(
 		KMEM_CACHE_TREE_NODE,
@@ -2106,8 +2109,6 @@ bool treemap_init(void)
 		KMEM_CACHE_TREE_CELL,
 		sizeof(struct tree_cell), 0, 0, NULL);
 	if (!tree_cell_cache_) { goto error2; }
-
-	init_called_ ++;
 	
 	return true;
 #if 0
@@ -2127,14 +2128,17 @@ error0:
  */
 void treemap_exit(void)
 {
-	if (init_called_) {
-		init_called_ --;
-	} else {
-		LOGn("treemap_init() is not called yet.\n");
-		return;
-	}
+	int cnt;
 
-	if (!init_called_) {
+	cnt = atomic_dec_return(&shared_cnt_);
+	if (cnt > 1) {
+		return;
+	} else if (cnt < 0) {
+		LOGn("treemap_init() is not called yet.\n");
+		atomic_inc(&shared_cnt_);
+		return;
+	} else {
+		ASSERT(cnt == 0);
 		kmem_cache_destroy(tree_cell_cache_);
 		kmem_cache_destroy(tree_cell_head_cache_);
 		kmem_cache_destroy(tree_node_cache_);
