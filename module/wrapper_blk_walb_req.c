@@ -1846,7 +1846,6 @@ static bool logpack_submit_lhead(
 
 	init_bio_entry(bioe, bio);
 	ASSERT(bioe->bi_size == pbs);
-	bioe->is_lhead = true;
 
 	ASSERT(bio_ent_list);
 	list_add_tail(&bioe->list, bio_ent_list);
