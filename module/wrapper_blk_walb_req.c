@@ -159,10 +159,12 @@ UNUSED static bool is_valid_pack_list(struct list_head *pack_list);
 static void logpack_calc_checksum(
 	struct walb_logpack_header *lhead,
 	unsigned int pbs, struct list_head *req_ent_list);
-static struct bio_entry* logpack_submit_lhead(
+static bool logpack_submit_lhead(
 	struct walb_logpack_header *lhead, bool is_flush, bool is_fua,
+	struct list_head *bio_ent_list,
 	unsigned int pbs, struct block_device *ldev,
-	u64 ring_buffer_off, u64 ring_buffer_size);
+	u64 ring_buffer_off, u64 ring_buffer_size,
+	unsigned int chunk_sectors);
 static bool logpack_submit_req(
 	struct request *req, u64 lsid, bool is_fua,
 	struct list_head *bio_ent_list,
@@ -889,7 +891,7 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 	ASSERT(reqe);
         
 	remaining = reqe->req_sectors * LOGICAL_BLOCK_SIZE;
-	list_for_each_entry_safe(bioe, next, &reqe->bio_ent_list, list) {
+	list_for_each_entry(bioe, &reqe->bio_ent_list, list) {
 		if (bio_entry_should_wait_completion(bioe)) {
 			wait_for_completion(&bioe->done);
 		}
@@ -897,13 +899,14 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 			blk_end_request(reqe->req, bioe->error, bioe->bi_size);
 		}
 		remaining -= bioe->bi_size;
-		if (is_delete) {
+	}
+	ASSERT(remaining == 0);
+
+	if (is_delete) {
+		list_for_each_entry_safe(bioe, next, &reqe->bio_ent_list, list) {
 			list_del(&bioe->list);
 			destroy_bio_entry(bioe);
 		}
-	}
-	ASSERT(remaining == 0);
-	if (is_delete) {
 		ASSERT(list_empty(&reqe->bio_ent_list));
 	}
 }
@@ -1038,13 +1041,18 @@ static int wait_for_bio_entry_list(struct list_head *bio_ent_list)
 	struct bio_entry *bioe, *next_bioe;
 	int bio_error = 0;
 	ASSERT(bio_ent_list);
-	
-	list_for_each_entry_safe(bioe, next_bioe, bio_ent_list, list) {
-		list_del(&bioe->list);
+
+	/* wait for completion. */
+	list_for_each_entry(bioe, bio_ent_list, list) {
+
 		if (bio_entry_should_wait_completion(bioe)) {
 			wait_for_completion(&bioe->done);
 		}
 		if (bioe->error) { bio_error = bioe->error; }
+	}
+	/* destroy. */
+	list_for_each_entry_safe(bioe, next_bioe, bio_ent_list, list) {
+		list_del(&bioe->list);
 		destroy_bio_entry(bioe);
 	}
 	ASSERT(list_empty(bio_ent_list));
@@ -1784,23 +1792,35 @@ static void logpack_calc_checksum(
 /**
  * Submit bio of header block.
  *
+ * @lhead logpack header data.
+ * @is_flush flush is required.
+ * @is_fua fua is required.
+ * @bio_ent_list must be empty.
+ *     submitted lhead bio(s) will be added to this.
+ * @pbs physical block size [bytes].
+ * @ldev log device.
+ * @ring_buffer_off ring buffer offset [physical blocks].
+ * @ring_buffer_size ring buffer size [physical blocks].
+ *
  * RETURN:
- *   bio_entry in success, or NULL.
+ *   true in success, or false.
  */
-static struct bio_entry* logpack_submit_lhead(
+static bool logpack_submit_lhead(
 	struct walb_logpack_header *lhead, bool is_flush, bool is_fua,
+	struct list_head *bio_ent_list,
 	unsigned int pbs, struct block_device *ldev,
-	u64 ring_buffer_off, u64 ring_buffer_size)
+	u64 ring_buffer_off, u64 ring_buffer_size,
+	unsigned int chunk_sectors)
 {
 	struct bio *bio;
 	struct bio_entry *bioe;
 	struct page *page;
 	u64 off_pb, off_lb;
 	int rw = WRITE;
+	int len;
 #ifdef WALB_DEBUG
 	struct page *page2;
 #endif
-
 	if (is_flush) { rw |= WRITE_FLUSH; }
 	if (is_fua) { rw |= WRITE_FUA; }
 	
@@ -1816,27 +1836,35 @@ static struct bio_entry* logpack_submit_lhead(
 #endif
 	bio->bi_bdev = ldev;
 	off_pb = lhead->logpack_lsid % ring_buffer_size + ring_buffer_off;
-	
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_sector = off_lb;
 	bio->bi_rw = rw;
 	bio->bi_end_io = bio_entry_end_io;
 	bio->bi_private = bioe;
-	bio_add_page(bio, page, pbs, offset_in_page(lhead));
+	len = bio_add_page(bio, page, pbs, offset_in_page(lhead));
+	if (len != pbs) { goto error2; }
 
 	init_bio_entry(bioe, bio);
 	ASSERT(bioe->bi_size == pbs);
+	bioe->is_lhead = true;
 
-	LOGd_("submit_lh: bioe %p addr %"PRIu64" size %u\n",
-		bioe, (u64)bio->bi_sector, bioe->bi_size);
-	generic_make_request(bio);
+	ASSERT(bio_ent_list);
+	list_add_tail(&bioe->list, bio_ent_list);
 
-	return bioe;
-
+#ifdef WALB_DEBUG
+	if (should_split_bio_entry_list_for_chunk(bio_ent_list, chunk_sectors)) {
+		LOGw("logpack header bio should be splitted.\n");
+	}
+#endif
+	submit_bio_entry_list(bio_ent_list);
+	return true;
+error2:
+	bio_put(bio);
+	bioe->bio = NULL;
 error1:
 	destroy_bio_entry(bioe);
 error0:
-	return NULL;
+	return false;
 }
 
 /**
@@ -1867,10 +1895,10 @@ static bool logpack_submit_req(
 	u64 ldev_off_pb = lsid % ring_buffer_size + ring_buffer_off;
 	struct list_head tmp_list;
 
+	ASSERT(list_empty(bio_ent_list));
 	INIT_LIST_HEAD(&tmp_list);
 	off_lb = 0;
 	__rq_for_each_bio(bio, req) {
-
 		bioe = logpack_create_bio_entry(
 			bio, is_fua, pbs, ldev, ldev_off_pb, off_lb);
 		if (!bioe) {
@@ -1885,15 +1913,22 @@ static bool logpack_submit_req(
 			&tmp_list, chunk_sectors)) {
 		goto error0;
 	}
-	/* really submit. */
+	/* move all bioe to the bio_ent_list. */
+#if 0
+	*bio_ent_list = tmp_list;
+	INIT_LIST_HEAD(&tmp_list);
+#else
 	list_for_each_entry_safe(bioe, bioe_next, &tmp_list, list) {
-
-		LOGd_("submit_lr: bioe %p addr %"PRIu64" size %u\n",
-			bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
-		generic_make_request(bioe->bio);
 		list_move_tail(&bioe->list, bio_ent_list);
 	}
 	ASSERT(list_empty(&tmp_list));
+#endif
+	/* really submit. */
+	list_for_each_entry_safe(bioe, bioe_next, bio_ent_list, list) {
+		LOGd_("submit_lr: bioe %p addr %"PRIu64" size %u\n",
+			bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
+		generic_make_request(bioe->bio);
+	}
 	return true;
 error0:
 	list_for_each_entry_safe(bioe, bioe_next, &tmp_list, list) {
@@ -2031,7 +2066,6 @@ static bool logpack_submit(
 	u64 ring_buffer_off, u64 ring_buffer_size,
 	unsigned int chunk_sectors)
 {
-	struct bio_entry *bioe;
 	struct req_entry *reqe;
 	struct request *req;
 	bool ret;
@@ -2044,15 +2078,16 @@ static bool logpack_submit(
 	is_flush = is_flush_first_req_entry(req_ent_list);
 
 	/* Submit logpack header block. */
-	bioe = logpack_submit_lhead(lhead, is_flush, is_fua, pbs, ldev,
-				ring_buffer_off, ring_buffer_size);
-	if (!bioe) {
+	ret = logpack_submit_lhead(lhead, is_flush, is_fua,
+				bio_ent_list, pbs, ldev,
+				ring_buffer_off, ring_buffer_size,
+				chunk_sectors);
+	if (!ret) {
 		LOGe("logpack header submit failed.\n");
 		goto failed;
 	}
-	list_add_tail(&bioe->list, bio_ent_list);
-	bioe = NULL;
-
+	ASSERT(!list_empty(bio_ent_list));
+	
 	/* Submit logpack contents for each request. */
 	i = 0;
 	list_for_each_entry(reqe, req_ent_list, list) {
