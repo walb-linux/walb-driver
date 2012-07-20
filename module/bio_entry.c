@@ -1357,6 +1357,47 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 #endif
 
 /**
+ * Check whether split bio(s) is required or not.
+ *
+ * RETURN:
+ *   true if one or more split operations is required.
+ */
+bool should_split_bio_entry_list_for_chunk(
+	struct list_head *bio_ent_list, unsigned int chunk_sectors)
+{
+	struct bio_entry_cursor cur;
+	u64 addr;
+	unsigned int sectors;
+	bool ret;
+	
+	if (chunk_sectors == 0) {
+		return false;
+	}
+
+	ASSERT(bio_ent_list);
+	bio_entry_cursor_init(&cur, bio_ent_list);
+	while (!bio_entry_cursor_is_end(&cur)) {
+		ASSERT(cur.bioe);
+		ASSERT(cur.bioe->bio);
+		addr = cur.bioe->bio->bi_sector;
+		sectors = cur.bioe->bi_size / LOGICAL_BLOCK_SIZE;
+		ASSERT(sectors > 0);
+		if (addr / chunk_sectors == (addr + sectors - 1) / chunk_sectors) {
+			ret = bio_entry_cursor_proceed(&cur, sectors);
+			ASSERT(ret);
+			ASSERT(bio_entry_cursor_is_boundary(&cur));
+		} else {
+			goto split_required;
+		}
+	}
+	/* no need to split. */
+	return false;
+
+split_required:
+	return true;
+}
+
+/**
  * Split bio(s) if chunk_sectors.
  */
 bool split_bio_entry_list_for_chunk(

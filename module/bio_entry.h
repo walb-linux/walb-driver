@@ -81,6 +81,8 @@ void bio_entry_cursor_init(
 	struct bio_entry_cursor *cur, struct list_head *bio_ent_list);
 bool bio_entry_cursor_proceed(struct bio_entry_cursor *cur,
 			unsigned int sectors);
+bool should_split_bio_entry_list_for_chunk(
+	struct list_head *bio_ent_list, unsigned int chunk_sectors);
 bool split_bio_entry_list_for_chunk(
 	struct list_head *bio_ent_list, unsigned int chunk_sectors);
 
