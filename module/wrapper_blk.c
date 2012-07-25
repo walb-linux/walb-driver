@@ -130,7 +130,6 @@ bool wdev_unregister(unsigned int minor)
                 return false;
         }        
         fin_queue_and_disk(wdev);
-        FREE(wdev);
         return true;
 }
 EXPORT_SYMBOL_GPL(wdev_unregister);
@@ -532,6 +531,7 @@ static void stop_and_unregister_all_devices(void)
                 if (wdev) {
                         wdev_stop(i);
                         wdev_unregister(i);
+			FREE(wdev);
                 }
         }
 }

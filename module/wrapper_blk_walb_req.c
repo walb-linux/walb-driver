@@ -2731,22 +2731,23 @@ error0:
 /* Called before unregister. */
 void pre_unregister(void)
 {
-	LOGn("begin\n");
-	
+}
+
+/* Called before destroy_private_data. */
+void pre_destroy_private_data(void)
+{
 	/* Wait for all remaining tasks. */
 	flush_workqueue(wq_logpack_); /* complete submit task. */
 	flush_workqueue(wq_logpack_); /* complete wait task. */
-	flush_workqueue(wq_normal_); /* complete write for data device
-					and all gc tasks. */
-	flush_workqueue(wq_read_);
-
-	LOGn("end\n");
+	flush_workqueue(wq_normal_); /* complete write for data device */
+	flush_workqueue(wq_normal_); /* complete all gc tasks. */
+	flush_workqueue(wq_read_); /* complete all read tasks. */
 }
 
 /* Called after unregister. */
 void post_unregister(void)
 {
-	LOGn("begin\n");
+	LOGd_("begin\n");
 
 	treemap_exit();
 	
@@ -2766,7 +2767,7 @@ void post_unregister(void)
 	kmem_cache_destroy(pack_work_cache_);
 	pack_work_cache_ = NULL;
 
-	LOGn("end\n");
+	LOGd_("end\n");
 }
 
 /* end of file. */

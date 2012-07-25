@@ -392,10 +392,12 @@ static void unregister_dev(void)
         struct wrapper_blk_dev *wdev;
         
         wdev = wdev_get(get_minor(i));
-        if (wdev) {
-                destroy_private_data(wdev);
-        }
         wdev_unregister(get_minor(i));
+        if (wdev) {
+		pre_destroy_private_data();
+                destroy_private_data(wdev);
+		FREE(wdev);
+        }
 }
 
 static bool start_dev(void)

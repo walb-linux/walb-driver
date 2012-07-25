@@ -25,6 +25,9 @@ bool pre_register(void);
 /* Called before unregister */
 void pre_unregister(void);
 
+/* Called just before destroy_private_data. */
+void pre_destroy_private_data(void);
+
 /* Called after unregister. */
 void post_unregister(void);
 
