@@ -181,7 +181,7 @@ bool wdev_stop(unsigned int minor)
 	if (test_and_clear_bit(0, &wdev->is_started)) {
 		ASSERT(wdev->gd);
 		del_gendisk(wdev->gd);
-		LOGi("Stop device with minor %u.\n", minor);
+		LOGn("Stop device with minor %u.\n", minor);
 	} else {
 		LOGe("Device wit minor %u is already stopped.\n", minor);
 		goto error0;

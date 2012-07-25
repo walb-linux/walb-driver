@@ -225,6 +225,7 @@ static inline bool should_start_queue(struct pdata *pdata, struct req_entry *req
 static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1);
 #endif
 
+static void flush_all_wq(void);
 
 /*******************************************************************************
  * Static functions definition.
@@ -2537,8 +2538,13 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	bool ret;
 	u64 latest_lsid, latest_lsid_old;
 	struct list_head wpack_list;
-	
+
 	LOGd_("wrapper_blk_req_request_fn: begin.\n");
+
+	if (!test_bit(0, &wdev->is_started)) {
+		goto error0;
+	}
+
 	INIT_LIST_HEAD(&wpack_list);
 	
 	/* Load latest_lsid */
@@ -2728,20 +2734,29 @@ error0:
 	return false;
 }
 
-/* Called before unregister. */
-void pre_unregister(void)
+static void flush_all_wq(void)
 {
-}
-
-/* Called before destroy_private_data. */
-void pre_destroy_private_data(void)
-{
-	/* Wait for all remaining tasks. */
 	flush_workqueue(wq_logpack_); /* complete submit task. */
 	flush_workqueue(wq_logpack_); /* complete wait task. */
 	flush_workqueue(wq_normal_); /* complete write for data device */
 	flush_workqueue(wq_normal_); /* complete all gc tasks. */
 	flush_workqueue(wq_read_); /* complete all read tasks. */
+}
+
+/* Called before unregister. */
+void pre_unregister(void)
+{
+	LOGn("begin\n");
+	flush_all_wq();
+	LOGn("end\n");
+}
+
+/* Called before destroy_private_data. */
+void pre_destroy_private_data(void)
+{
+	LOGn("begin\n");
+	flush_all_wq();
+	LOGn("end\n");
 }
 
 /* Called after unregister. */

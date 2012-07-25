@@ -362,7 +362,7 @@ static bool register_dev(void)
         bool ret;
         struct wrapper_blk_dev *wdev;
 
-        LOGe("register_dev begin");
+        LOGn("begin\n");
         
         /* capacity must be set lator. */
         ret = wdev_register_with_req(get_minor(i), capacity,
@@ -378,7 +378,7 @@ static bool register_dev(void)
         }
         customize_wdev(wdev);
 
-        LOGe("register_dev end");
+        LOGn("end\n");
 
         return true;
 error:
@@ -390,7 +390,9 @@ static void unregister_dev(void)
 {
         unsigned int i = 0;
         struct wrapper_blk_dev *wdev;
-        
+
+	LOGn("begin\n");
+	
         wdev = wdev_get(get_minor(i));
         wdev_unregister(get_minor(i));
         if (wdev) {
@@ -398,6 +400,8 @@ static void unregister_dev(void)
                 destroy_private_data(wdev);
 		FREE(wdev);
         }
+	
+	LOGn("end\n");
 }
 
 static bool start_dev(void)
