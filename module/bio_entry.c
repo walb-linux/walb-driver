@@ -873,18 +873,27 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 {
 	struct bio_vec *bvec;
 	int i;
-	
 	ASSERT(bioe);
+
+	printk("%s""bio %p bi_size %u, error %d is_splitted %d bio_orig %p\n",
+		level,
+		bioe->bio, bioe->bi_size, bioe->error,
+		bioe->is_splitted, bioe->bio_orig);
 	if (bioe->bio) {
-		printk("%s""bioe pos %"PRIu64" size %u\n",
-			level, (u64)bioe->bio->bi_sector, bioe->bi_size);
+		printk("%s""bio pos %"PRIu64"\n",
+			level, (u64)bioe->bio->bi_sector);
 		bio_for_each_segment(bvec, bioe->bio, i) {
 			printk("%s""segment %d off %u len %u\n",
 				level, i, bvec->bv_offset, bvec->bv_len);
 		}
-	} else {
-		printk("%s""bioe size %u\n",
-			level, bioe->bi_size);
+	}
+	if (bioe->bio_orig) {
+		printk("%s""bio_orig pos %"PRIu64"\n",
+			level, (u64)bioe->bio_orig->bi_sector);
+		bio_for_each_segment(bvec, bioe->bio_orig, i) {
+			printk("%s""segment %d off %u len %u\n",
+				level, i, bvec->bv_offset, bvec->bv_len);
+		}
 	}
 }
 
