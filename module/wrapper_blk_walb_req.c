@@ -897,7 +897,7 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool is_delete)
 {
 	struct bio_entry *bioe, *next;
-	int remaining;
+	unsigned int remaining;
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	int c;
@@ -913,6 +913,7 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 				LOGn("timeout(%d): reqe %p bioe %p bio %p pos %"PRIu64" sectors %u\n",
 					c, reqe, bioe, bioe->bio,
 					reqe->req_pos, reqe->req_sectors);
+				c++;
 				goto retry;
 			}
 		}
