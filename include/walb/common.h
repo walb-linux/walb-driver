@@ -13,7 +13,7 @@
 #include <linux/types.h>
 #include <linux/kdev_t.h>
 #include "inttypes_kernel.h"
-#ifdef WALB_DEBUG
+#if defined(WALB_DEBUG) || defined(ASSERT_ON)
 #define ASSERT(cond) BUG_ON(!(cond))
 #else /* WALB_DEBUG */
 #define ASSERT(cond)

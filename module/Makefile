@@ -4,6 +4,7 @@ DYNAMIC_DEBUG = 0
 # You can specify the following parameters.
 OVERLAP = 1 #overlapping writes serialization.
 FAST_ALG = 1 # use fast algorithm instead of easy.
+ASSERT = 0 # enable ASSERT even with relase build.
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DYNAMIC_DEBUG),1)
@@ -13,6 +14,10 @@ ifeq ($(DEBUG),1)
   DEBFLAGS = -O -g -DDEBUG -DWALB_DEBUG
 endif
 DEBFLAGS ?= -O2
+
+ifeq ($(ASSERT),1)
+  DEBFLAGS += -DASSERT_ON
+endif
 
 ifeq ($(OVERLAP),1)
   DEBFLAGS += -DWALB_OVERLAPPING_SERIALIZE
