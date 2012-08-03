@@ -43,7 +43,11 @@ int main(int argc, char *argv[])
 	}
 
 	/* discard */
+#if 1
 	int ret = ioctl(fd, BLKDISCARD, &range);
+#else
+	int ret = ioctl(fd, BLKSECDISCARD, &range);
+#endif
 	if (ret) {
 		perror("trim is not supported.");
 		goto error1;
