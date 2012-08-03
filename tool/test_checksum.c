@@ -80,6 +80,7 @@ static void make_sorted_random_array_index(
         }
 }
 
+#define MID_SIZE 16
 
 int main()
 {
@@ -88,14 +89,15 @@ int main()
         size_t size = 1024 * 1024;
         u64 csum2tmp, csum3tmp;
         u32 csum1, csum2, csum3;
-        size_t mid[16];
+        size_t mid[MID_SIZE];
         struct timeval tv;
         double t1, t2, t3, t4;
+	size_t s1, s2, s3;
 
         init_random();
         
         printf("making sorted_random_array_index...\n");
-        make_sorted_random_array_index(mid, 16, size, sizeof(u32));
+        make_sorted_random_array_index(mid, MID_SIZE, size, sizeof(u32));
         
         printf("making random array...\n");
         buf = alloc_buf(size);
@@ -104,11 +106,14 @@ int main()
         gettimeofday(&tv, 0); t1 = time_double(&tv);
         
         csum1 = checksum(buf, size);
+	s1 = size;
         gettimeofday(&tv, 0); t2 = time_double(&tv);
 
         csum2tmp = 0;
-        for (i = 0; i < 16 - 1; i ++) {
+	s2 = 0;
+        for (i = 0; i < MID_SIZE - 1; i ++) {
                 size_t tmp_size = mid[i + 1] - mid[i];
+		s2 += tmp_size;
                 printf("idx: %zu size: %zu\n", mid[i], tmp_size);
                 csum2tmp = checksum_partial(csum2tmp, buf + mid[i], tmp_size);
         }
@@ -118,14 +123,15 @@ int main()
         csum3tmp = 0;
         csum3tmp = checksum_partial(csum3tmp, buf, size);
         csum3 = checksum_finish(csum3tmp);
+	s3 = size;
         gettimeofday(&tv, 0); t4 = time_double(&tv);
         
-        printf("%u (%f sec)\n"
-               "%u (%f sec)\n"
-               "%u (%f sec)\n",
-               csum1, t2 - t1,
-               csum2, t3 - t2,
-               csum3, t4 - t3);
+        printf("%u (%zu bytes %f sec)\n"
+               "%u (%zu bytes %f sec)\n"
+               "%u (%zu bytes %f sec)\n",
+                csum1, s1, t2 - t1,
+                csum2, s2, t3 - t2,
+                csum3, s3, t4 - t3);
 
         ASSERT(csum1 == csum2);
         ASSERT(csum1 == csum3);
