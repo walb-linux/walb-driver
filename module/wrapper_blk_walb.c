@@ -207,26 +207,29 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	dq = bdev_get_queue(ddev);
         blk_queue_stack_limits(wdev->queue, lq);
         blk_queue_stack_limits(wdev->queue, dq);
-	LOGn("ldev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+	LOGn("ldev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
 		lq->limits.logical_block_size,
 		lq->limits.physical_block_size,
 		lq->limits.io_min,
 		lq->limits.io_opt,
 		lq->limits.max_hw_sectors,
+		lq->limits.max_sectors,
 		lq->limits.alignment_offset);
-	LOGn("ddev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+	LOGn("ddev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
 		dq->limits.logical_block_size,
 		dq->limits.physical_block_size,
 		dq->limits.io_min,
 		dq->limits.io_opt,
 		dq->limits.max_hw_sectors,
+		dq->limits.max_sectors,
 		dq->limits.alignment_offset);
-	LOGn("wdev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+	LOGn("wdev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
 		wdev->queue->limits.logical_block_size,
 		wdev->queue->limits.physical_block_size,
 		wdev->queue->limits.io_min,
 		wdev->queue->limits.io_opt,
 		wdev->queue->limits.max_hw_sectors,
+		wdev->queue->limits.max_sectors,
 		wdev->queue->limits.alignment_offset);
 
 	/* Chunk size. */
