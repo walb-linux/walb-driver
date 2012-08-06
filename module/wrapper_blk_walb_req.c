@@ -1893,13 +1893,16 @@ static void logpack_calc_checksum(
 		}
 
 		sum = 0;
+#if 0 /* for test */
                 rq_for_each_segment(bvec, req, iter) {
 			buf = (u8 *)kmap_atomic(bvec->bv_page) + bvec->bv_offset;
                         sum = checksum_partial(sum, buf, bvec->bv_len);
                         kunmap_atomic(buf);
                 }
-
                 lhead->record[i].checksum = checksum_finish(sum);
+#else
+		lhead->record[i].checksum = 0;
+#endif
                 i ++;
 	}
 	
@@ -1907,8 +1910,10 @@ static void logpack_calc_checksum(
         ASSERT(n_padding == lhead->n_padding);
         ASSERT(i == lhead->n_records);
         ASSERT(lhead->checksum == 0);
+#if 0 /* for test */
         lhead->checksum = checksum((u8 *)lhead, pbs);
         ASSERT(checksum((u8 *)lhead, pbs) == 0);
+#endif
 }
 
 /**
@@ -1945,6 +1950,11 @@ static bool logpack_submit_lhead(
 #endif
 	if (is_flush) { rw |= WRITE_FLUSH; }
 	if (is_fua) { rw |= WRITE_FUA; }
+
+#if 0
+	/* debug */
+	LOGn("logpack_size: %u\n", pbs * (unsigned int)lhead->total_io_size);
+#endif
 	
 	bioe = alloc_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
