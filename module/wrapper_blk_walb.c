@@ -32,7 +32,7 @@ char *data_device_str_ = "/dev/simple_blk/1";
 /* Minor id start. */
 int start_minor_ = 0;
 
-/* Physical block size. */
+/* Physical block size [bytes]. */
 int physical_block_size_ = 4096;
 
 /* Pending data limit size [MB]. */
@@ -130,7 +130,6 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	
 	pdata->is_queue_stopped = false;
 #endif
-	
         /* open underlying log device. */
         ldev = blkdev_get_by_path(
                 log_device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
