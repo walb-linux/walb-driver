@@ -119,11 +119,15 @@ static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpa
 static void destroy_pack(struct pack *pack);
 UNUSED static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe);
 UNUSED static bool is_zero_flush_only(struct pack *pack);
+static bool is_pack_size_exceeds(
+	struct walb_logpack_header *lhead,
+	unsigned int pbs, unsigned int max_logpack_pb,
+	struct req_entry *reqe);
 
 /* helper function. */
 static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
-	u64 ring_buffer_size, u64 *latest_lsidp,
+	u64 ring_buffer_size, unsigned int max_logpack_pb, u64 *latest_lsidp,
 	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
 static bool is_flush_first_req_entry(struct list_head *req_ent_list);
 
@@ -644,6 +648,31 @@ static bool is_zero_flush_only(struct pack *pack)
 }
 
 /**
+ * Check the pack size exceeds max_logpack_pb or not.
+ *
+ * RETURN:
+ *   true if pack is already exceeds or will be exceeds.
+ */
+static bool is_pack_size_exceeds(
+	struct walb_logpack_header *lhead, 
+	unsigned int pbs, unsigned int max_logpack_pb,
+	struct req_entry *reqe)
+{
+	/* now editing */
+	unsigned int pb;
+	ASSERT(lhead);
+	ASSERT(pbs);
+	ASSERT_PBS(pbs);
+
+	if (max_logpack_pb == 0) {
+		return false;
+	}
+
+	pb = (unsigned int)capacity_pb(pbs, reqe->req_sectors);
+	return lhead->total_io_size + pb > max_logpack_pb;
+}
+
+/**
  * Add a request to a writepack.
  *
  * @wpack_list wpack list.
@@ -662,7 +691,8 @@ static bool is_zero_flush_only(struct pack *pack)
  */
 static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
-	u64 ring_buffer_size, u64 *latest_lsidp, struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
+	u64 ring_buffer_size, unsigned int max_logpack_pb,
+	u64 *latest_lsidp, struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
 {
 	struct req_entry *reqe;
 	struct pack *pack;
@@ -699,9 +729,12 @@ static bool writepack_add_req(
 #if 0
 		/* Now we need not overlapping check in a pack
 		   because atomicity is kept by unit of request. */
-		if ((req->cmd_flags & REQ_FLUSH) || is_overlap_pack_reqe(pack, reqe)) {
+		if ((req->cmd_flags & REQ_FLUSH)
+			|| is_pack_size_exceeds(lhead, pbs, max_logpack_pb, reqe)
+			|| is_overlap_pack_reqe(pack, reqe)) {
 #else
-		if (req->cmd_flags & REQ_FLUSH) {
+		if (req->cmd_flags & REQ_FLUSH
+			|| is_pack_size_exceeds(lhead, pbs, max_logpack_pb, reqe)) {
 #endif
 			/* Flush request must be the first of the pack. */
 			/* overlap found so create a new pack. */
@@ -2573,6 +2606,7 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 			LOGd_("call writepack_add_req\n"); /* debug */
 			ret = writepack_add_req(&wpack_list, &wpack, req,
 						pdata->ring_buffer_size,
+						pdata->max_logpack_pb,
 						&latest_lsid, wdev, GFP_ATOMIC);
 			if (!ret) { goto req_error; }
 		} else {

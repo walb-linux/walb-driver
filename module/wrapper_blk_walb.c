@@ -42,6 +42,13 @@ int min_pending_mb_ = 64 * 7 / 8;
 /* Queue stop timeout [msec]. */
 int queue_stop_timeout_ms_ = 100;
 
+/* Maximum logpack size [KB].
+   A logpack containing a requests can exceeds the limitation.
+   This must be the integral multiple of physical block size.
+   0 means there is no limitation of logpack size
+   (practically limited by physical block size for logpack header). */
+int max_logpack_size_kb_ = 256;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -53,6 +60,7 @@ module_param_named(pbs, physical_block_size_, int, S_IRUGO);
 module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
 module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
 module_param_named(queue_stop_timeout_ms, queue_stop_timeout_ms_, int, S_IRUGO);
+module_param_named(max_logpack_size_kb, max_logpack_size_kb_, int, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -174,7 +182,14 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	blk_queue_io_min(wdev->queue, pbs);
 	/* blk_queue_io_opt(wdev->queue, pbs); */
 
-	/* Prepare pdata. */
+	/* Set max_logpack_pb. */
+	ASSERT(max_logpack_size_kb_ >= 0);
+	ASSERT((max_logpack_size_kb_ * 1024) % pbs == 0);
+	pdata->max_logpack_pb = (max_logpack_size_kb_ * 1024) / pbs;
+	LOGn("max_logpack_size_kb: %u max_logpack_pb: %u\n",
+		max_logpack_size_kb_, pdata->max_logpack_pb);
+	
+	/* Set underlying devices. */
 	pdata->ldev = ldev;
 	pdata->ddev = ddev;
         wdev->private_data = pdata;
@@ -443,6 +458,12 @@ static int __init wrapper_blk_init(void)
 	}
 	if (queue_stop_timeout_ms_ < 1) {
 		LOGe("queue_stop_timeout_ms must > 0.\n");
+		goto error0;
+	}
+	if (max_logpack_size_kb_ < 0 ||
+		(max_logpack_size_kb_ * 1024) % physical_block_size_ != 0) {
+		LOGe("max_logpack_size_kb must >= 0 and"
+			" the integral multiple of physical block size if positive.\n");
 		goto error0;
 	}
 

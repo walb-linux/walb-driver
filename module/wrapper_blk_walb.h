@@ -84,6 +84,12 @@ struct pdata
 						logpack_wait_queue_lock
 						must be held. */
 
+	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
+					This will be used for logpack size
+					not to be too long
+					This will avoid decrease of
+					sequential write performance. */
+
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	/**
 	 * All req_entry data may not keep reqe->bio_ent_list.
