@@ -117,6 +117,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		LOGe("multimap creation failed.\n");
 		goto error01;
 	}
+	pdata->max_req_sectors_in_overlapping = 0;
 #endif
 #ifdef WALB_FAST_ALGORITHM
 	mutex_init(&pdata->pending_data_mutex);
@@ -125,6 +126,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		LOGe("multimap creation failed.\n");
 		goto error02;
 	}
+	pdata->max_req_sectors_in_pending = 0;
+	
 	pdata->pending_sectors = 0;
 	pdata->max_pending_sectors = max_pending_mb_
 		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);

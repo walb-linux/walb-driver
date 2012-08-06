@@ -207,19 +207,24 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 /* Overlapping data functions. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
 static bool overlapping_check_and_insert(
-	struct multimap *overlapping_data, struct req_entry *reqe);
+	struct multimap *overlapping_data, unsigned int *max_req_sectors_p,
+	struct req_entry *reqe);
 static void overlapping_delete_and_notify(
-	struct multimap *overlapping_data, struct req_entry *reqe);
+	struct multimap *overlapping_data, unsigned int *max_req_sectors_p,
+	struct req_entry *reqe);
 #endif
 
 /* Pending data functions. */
 #ifdef WALB_FAST_ALGORITHM
 static bool pending_insert(
-	struct multimap *pending_data, struct req_entry *reqe);
+	struct multimap *pending_data, unsigned int *max_req_sectors_p,
+	struct req_entry *reqe);
 static void pending_delete(
-	struct multimap *pending_data, struct req_entry *reqe);
+	struct multimap *pending_data, unsigned int *max_req_sectors_p,
+	struct req_entry *reqe);
 static bool pending_check_and_copy(
-	struct multimap *pending_data, struct req_entry *reqe);
+	struct multimap *pending_data, unsigned int max_req_sectors,
+	struct req_entry *reqe);
 static inline bool should_stop_queue(struct pdata *pdata, struct req_entry *reqe);
 static inline bool should_start_queue(struct pdata *pdata, struct req_entry *reqe);
 #endif
@@ -669,7 +674,7 @@ static bool is_pack_size_exceeds(
 	}
 
 	pb = (unsigned int)capacity_pb(pbs, reqe->req_sectors);
-	return lhead->total_io_size + pb > max_logpack_pb;
+	return pb + (unsigned int)lhead->total_io_size > max_logpack_pb;
 }
 
 /**
@@ -1209,7 +1214,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			is_stop_queue = should_stop_queue(pdata, reqe);
 			pdata->pending_sectors += reqe->req_sectors;
 			is_pending_insert_succeeded =
-				pending_insert(pdata->pending_data, reqe);
+				pending_insert(pdata->pending_data,
+					&pdata->max_req_sectors_in_pending, reqe);
 			mutex_unlock(&pdata->pending_data_mutex);
 			if (!is_pending_insert_succeeded) { goto failed2; }
 
@@ -1228,11 +1234,14 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			/* check and insert to overlapping detection data. */
 			mutex_lock(&pdata->overlapping_data_mutex);
 			is_overlapping_insert_succeeded =
-				overlapping_check_and_insert(pdata->overlapping_data, reqe);
+				overlapping_check_and_insert(pdata->overlapping_data,
+							&pdata->max_req_sectors_in_overlapping,
+							reqe);
 			mutex_unlock(&pdata->overlapping_data_mutex);
 			if (!is_overlapping_insert_succeeded) {
 				mutex_lock(&pdata->pending_data_mutex);
-				pending_delete(pdata->pending_data, reqe);
+				pending_delete(pdata->pending_data,
+					&pdata->max_req_sectors_in_pending, reqe);
 				pdata->pending_sectors -= reqe->req_sectors;
 				mutex_unlock(&pdata->pending_data_mutex);
 				if (is_stop_queue) {
@@ -1315,7 +1324,9 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 			/* check and insert to overlapping detection data. */
 			mutex_lock(&pdata->overlapping_data_mutex);
 			is_overlapping_insert_succeeded =
-				overlapping_check_and_insert(pdata->overlapping_data, reqe);
+				overlapping_check_and_insert(pdata->overlapping_data,
+							&pdata->max_req_sectors_in_overlapping,
+							reqe);
 			mutex_unlock(&pdata->overlapping_data_mutex);
 			if (!is_overlapping_insert_succeeded) {
 				goto failed1;
@@ -1520,7 +1531,9 @@ static void write_req_task_fast(struct work_struct *work)
 	/* Delete from overlapping detection data. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	mutex_lock(&pdata->overlapping_data_mutex);
-	overlapping_delete_and_notify(pdata->overlapping_data, reqe);
+	overlapping_delete_and_notify(pdata->overlapping_data,
+				&pdata->max_req_sectors_in_overlapping,
+				reqe);
 	mutex_unlock(&pdata->overlapping_data_mutex);
 #endif
 
@@ -1528,7 +1541,7 @@ static void write_req_task_fast(struct work_struct *work)
 	mutex_lock(&pdata->pending_data_mutex);
 	is_start_queue = should_start_queue(pdata, reqe);
 	pdata->pending_sectors -= reqe->req_sectors;
-	pending_delete(pdata->pending_data, reqe);
+	pending_delete(pdata->pending_data, &pdata->max_req_sectors_in_pending, reqe);
 	mutex_unlock(&pdata->pending_data_mutex);
 
 	/* Check queue restart is required. */
@@ -1595,7 +1608,9 @@ static void write_req_task_easy(struct work_struct *work)
 	/* Delete from overlapping detection data. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	mutex_lock(&pdata->overlapping_data_mutex);
-	overlapping_delete_and_notify(pdata->overlapping_data, reqe);
+	overlapping_delete_and_notify(pdata->overlapping_data,
+				&pdata->max_req_sectors_in_overlapping,				
+				reqe);
 	mutex_unlock(&pdata->overlapping_data_mutex);
 #endif
 
@@ -1658,7 +1673,8 @@ static void read_req_task_fast(struct work_struct *work)
 
 	/* Check pending data and copy data from executing write requests. */
 	mutex_lock(&pdata->pending_data_mutex);
-	ret = pending_check_and_copy(pdata->pending_data, reqe);
+	ret = pending_check_and_copy(pdata->pending_data,
+				pdata->max_req_sectors_in_pending, reqe);
 	mutex_unlock(&pdata->pending_data_mutex);
 	if (!ret) {
 		goto error1;
@@ -2238,7 +2254,9 @@ failed:
  */
 #ifdef WALB_OVERLAPPING_SERIALIZE
 static bool overlapping_check_and_insert(
-	struct multimap *overlapping_data, struct req_entry *reqe)
+	struct multimap *overlapping_data,
+	unsigned int *max_req_sectors_p,
+	struct req_entry *reqe)
 {
 	struct multimap_cursor cur;
 	u64 max_io_size, start_pos;
@@ -2246,11 +2264,12 @@ static bool overlapping_check_and_insert(
 	struct req_entry *reqe_tmp;
 
 	ASSERT(overlapping_data);
+	ASSERT(max_req_sectors_p);
 	ASSERT(reqe);
 	ASSERT(reqe->req_sectors > 0);
 
 	/* Decide search start position. */
-	max_io_size = queue_max_sectors(reqe->wdev->queue);
+	max_io_size = *max_req_sectors_p;
 	if (reqe->req_pos > max_io_size) {
 		start_pos = reqe->req_pos - max_io_size;
 	} else {
@@ -2295,6 +2314,7 @@ fin:
 		LOGe("overlapping_check_and_insert failed.\n");
 		return false;
 	}
+	*max_req_sectors_p = max(*max_req_sectors_p, reqe->req_sectors);
 	if (reqe->n_overlapping == 0) {
 		complete(&reqe->overlapping_done);
 	}
@@ -2311,17 +2331,20 @@ fin:
  */
 #ifdef WALB_OVERLAPPING_SERIALIZE
 static void overlapping_delete_and_notify(
-	struct multimap *overlapping_data, struct req_entry *reqe)
+	struct multimap *overlapping_data,
+	unsigned int *max_req_sectors_p,
+	struct req_entry *reqe)
 {
 	struct multimap_cursor cur;
 	u64 max_io_size, start_pos;
 	struct req_entry *reqe_tmp;
 
 	ASSERT(overlapping_data);
+	ASSERT(max_req_sectors_p);
 	ASSERT(reqe);
 	ASSERT(reqe->n_overlapping == 0);
 	
-	max_io_size = queue_max_sectors(reqe->wdev->queue);
+	max_io_size = *max_req_sectors_p;
 	if (reqe->req_pos > max_io_size) {
 		start_pos = reqe->req_pos - max_io_size;
 	} else {
@@ -2333,6 +2356,11 @@ static void overlapping_delete_and_notify(
 		overlapping_data, reqe->req_pos, (unsigned long)reqe);
 	LOGd_("reqe_tmp %p reqe %p\n", reqe_tmp, reqe); /* debug */
 	ASSERT(reqe_tmp == reqe);
+
+	/* Initialize max_req_sectors. */
+	if (multimap_is_empty(overlapping_data)) {
+		*max_req_sectors_p = 0;
+	}
 	
 	/* Search the smallest candidate. */
 	multimap_cursor_init(overlapping_data, &cur);
@@ -2369,18 +2397,21 @@ static void overlapping_delete_and_notify(
  */
 #ifdef WALB_FAST_ALGORITHM
 static bool pending_insert(
-	struct multimap *pending_data, struct req_entry *reqe)
+	struct multimap *pending_data,
+	unsigned int *max_req_sectors_p,
+	struct req_entry *reqe)
 {
 	int ret;
 
 	ASSERT(pending_data);
+	ASSERT(max_req_sectors_p);
 	ASSERT(reqe);
 	ASSERT(reqe->req);
 	ASSERT(reqe->req->cmd_flags & REQ_WRITE);
 	ASSERT(reqe->req_sectors > 0);
-
+	
 	/* Insert the entry. */
-	ret = multimap_add(pending_data, blk_rq_pos(reqe->req),
+	ret = multimap_add(pending_data, reqe->req_pos,
 			(unsigned long)reqe, GFP_NOIO);
 	ASSERT(ret != EEXIST);
 	ASSERT(ret != EINVAL);
@@ -2389,6 +2420,7 @@ static bool pending_insert(
 		LOGe("pending_insert failed.\n");
 		return false;
 	}
+	*max_req_sectors_p = max(*max_req_sectors_p, reqe->req_sectors);
 	return true;
 }
 #endif
@@ -2401,11 +2433,14 @@ static bool pending_insert(
  */
 #ifdef WALB_FAST_ALGORITHM
 static void pending_delete(
-	struct multimap *pending_data, struct req_entry *reqe)
+	struct multimap *pending_data,
+	unsigned int *max_req_sectors_p,
+	struct req_entry *reqe)
 {
 	struct req_entry *reqe_tmp;
 
 	ASSERT(pending_data);
+	ASSERT(max_req_sectors_p);
 	ASSERT(reqe);
 	
 	/* Delete the entry. */
@@ -2413,6 +2448,9 @@ static void pending_delete(
 		pending_data, reqe->req_pos, (unsigned long)reqe);
 	LOGd_("reqe_tmp %p reqe %p\n", reqe_tmp, reqe);
 	ASSERT(reqe_tmp == reqe);
+	if (multimap_is_empty(pending_data)) {
+		*max_req_sectors_p = 0;
+	}
 }
 #endif
 
@@ -2427,7 +2465,7 @@ static void pending_delete(
  */
 #ifdef WALB_FAST_ALGORITHM
 UNUSED static bool pending_check_and_copy(
-	struct multimap *pending_data, struct req_entry *reqe)
+	struct multimap *pending_data, unsigned int max_req_sectors, struct req_entry *reqe)
 {
 	struct multimap_cursor cur;
 	u64 max_io_size, start_pos;
@@ -2437,7 +2475,7 @@ UNUSED static bool pending_check_and_copy(
 	ASSERT(reqe);
 
 	/* Decide search start position. */
-	max_io_size = queue_max_sectors(reqe->wdev->queue);
+	max_io_size = max_req_sectors;
 	if (reqe->req_pos > max_io_size) {
 		start_pos = reqe->req_pos - max_io_size;
 	} else {

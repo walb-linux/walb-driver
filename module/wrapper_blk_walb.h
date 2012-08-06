@@ -98,6 +98,7 @@ struct pdata
 	struct mutex overlapping_data_mutex; /* Use mutex_lock()/mutex_unlock(). */
 	struct multimap *overlapping_data; /* key: blk_rq_pos(req),
 					      val: pointer to req_entry. */
+	unsigned int max_req_sectors_in_overlapping; /* Maximum request size [logical block]. */
 #endif
 	
 #ifdef WALB_FAST_ALGORITHM
@@ -108,6 +109,8 @@ struct pdata
 	struct mutex pending_data_mutex; /* Use mutex_lock()/mutex_unlock(). */
 	struct multimap *pending_data; /* key: blk_rq_pos(req),
 					  val: pointer to req_entry. */
+	unsigned int max_req_sectors_in_pending; /* Maximum request size [logical block]. */
+	
 	unsigned int pending_sectors; /* Number of sectors pending
 					 [logical block]. */
 	unsigned int max_pending_sectors; /* max_pending_sectors < pending_sectors
