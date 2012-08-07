@@ -70,6 +70,8 @@ wrapper-blk-mod-objs := wrapper_blk.o
 WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o
 wrapper-blk-simple-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
 wrapper_blk_simple_plug.o
+WRAPPER_BLK_BIO_OBJS = wrapper_blk_bio.o bio_entry.o
+wrapper-blk-bio-mod-objs := $(WRAPPER_BLK_BIO_OBJS)
 WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o \
 sector_io.o bio_entry.o req_entry.o logpack.o treemap.o
 wrapper-blk-walb-req-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
@@ -104,6 +106,7 @@ simple-blk-req-mem-mod.o \
 simple-blk-req-mem-barrier-mod.o \
 wrapper-blk-mod.o \
 wrapper-blk-simple-plug-mod.o \
+wrapper-blk-bio-mod.o \
 wrapper-blk-walb-req-mod.o \
 
 else
