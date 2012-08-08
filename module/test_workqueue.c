@@ -12,8 +12,10 @@
 #include <linux/workqueue.h>
 #include <linux/time.h>
 #include <linux/delay.h>
+#include <linux/sched.h>
 #include <linux/completion.h>
 #include <linux/spinlock.h>
+#include <linux/mutex.h>
 
 #include "walb/common.h"
 #include "walb/util.h"
@@ -29,6 +31,9 @@ char *wq_name_[N_WQ];
 
 struct workqueue_struct *wq_single_;
 #define WQ_NAME_SINGLE "test_workqueue_single"
+
+struct workqueue_struct *wq_unbound_;
+#define WQ_NAME_UNBOUND "test_workqueue_unbound"
 
 /**
  * A wrapper of work.
@@ -59,6 +64,17 @@ struct tail_recur_work
 	struct completion done;
 };
 
+/**
+ * Test work for shared mutex.
+ */
+struct test_work_mutex
+{
+	struct work_struct work;
+	struct mutex *mutex;
+	unsigned int id;
+	unsigned int n_trial;
+};
+
 /*******************************************************************************
  * Static functions prototype.
  *******************************************************************************/
@@ -86,6 +102,8 @@ static void tail_recur_task(struct work_struct *work);
 static void test_recursive_enqueue(void);
 static void test_workqueue(void);
 
+static void test_mutex_task(struct work_struct *work);
+static void test_mutex(void);
 
 /*******************************************************************************
  * Static functions definition.
@@ -195,6 +213,9 @@ static void init_workqueue(void)
 	wq_single_ = alloc_workqueue(WQ_NAME_SINGLE, WQ_MEM_RECLAIM |WQ_UNBOUND, 1);
 #endif
 	ASSERT(wq_single_);
+
+	wq_unbound_ = alloc_workqueue(WQ_NAME_UNBOUND, WQ_MEM_RECLAIM | WQ_UNBOUND, 32);
+	ASSERT(wq_unbound_);
 }
 
 static void fin_workqueue(void)
@@ -210,6 +231,8 @@ static void fin_workqueue(void)
         }
 	flush_workqueue(wq_single_);
 	destroy_workqueue(wq_single_);
+	flush_workqueue(wq_unbound_);
+	destroy_workqueue(wq_unbound_);
 }
 
 static struct tail_recur_work* create_tail_recur_work(int i)
@@ -331,7 +354,68 @@ static void test_spinlock(void)
 	getnstimeofday(&end_ts);
 	
 	sub_ts = timespec_sub(end_ts, bgn_ts);
-	LOGn("test_spinlock: %ld.%09ld", sub_ts.tv_sec, sub_ts.tv_nsec);
+	LOGn("test_spinlock: %ld.%09ld\n", sub_ts.tv_sec, sub_ts.tv_nsec);
+}
+
+/**
+ * Task for test_mutex().
+ */
+static void test_mutex_task(struct work_struct *work)
+{
+	int i;
+	struct test_work_mutex *twork =
+		container_of(work, struct test_work_mutex, work);
+	struct timespec bgn_ts, end_ts, sub_ts;
+	unsigned long period = 0;
+	ASSERT(twork);
+
+	LOGn("start id %u processor %u\n", twork->id, get_cpu());
+	put_cpu();
+	for (i = 0; i < twork->n_trial; i++) {
+		mutex_lock(twork->mutex);
+		getnstimeofday(&bgn_ts);
+#if 0
+		udelay(4000);
+		msleep(4);
+#else
+		schedule();
+#endif
+		getnstimeofday(&end_ts);
+		sub_ts = timespec_sub(end_ts, bgn_ts);
+		period += sub_ts.tv_nsec / 1000;
+		mutex_unlock(twork->mutex);
+		msleep(8);
+		
+	}
+	LOGn("end id %u\n", twork->id);
+	LOGn("critial section takes %lu us (average)\n", period / twork->n_trial);
+}
+
+/**
+ * Mutex overhead.
+ */
+static void test_mutex(void)
+{
+	const unsigned int N_TASK = 8;
+	struct mutex mutex;
+	struct test_work_mutex twork[N_TASK];
+	int i;
+	struct timespec bgn_ts, end_ts, sub_ts;
+
+	mutex_init(&mutex);
+	getnstimeofday(&bgn_ts);
+	for (i = 0; i < N_TASK; i++) {
+		INIT_WORK(&twork[i].work, test_mutex_task);
+		twork[i].mutex = &mutex;
+		twork[i].n_trial = 250;
+		twork[i].id = i;
+		queue_work(wq_[0], &twork[i].work);
+	}
+	flush_workqueue(wq_[0]);
+	getnstimeofday(&end_ts);
+
+	sub_ts = timespec_sub(end_ts, bgn_ts);
+	LOGn("test_mutex: %ld.%09ld sec.\n", sub_ts.tv_sec, sub_ts.tv_nsec);
 }
 
 static void test_workqueue(void)
@@ -376,6 +460,9 @@ static void test_workqueue(void)
 
 	/* test7 */
 	test_spinlock();
+
+	/* test8 */
+	test_mutex();
 }
 
 static int __init test_init(void)
