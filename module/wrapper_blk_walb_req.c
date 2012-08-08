@@ -208,7 +208,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 #ifdef WALB_OVERLAPPING_SERIALIZE
 static bool overlapping_check_and_insert(
 	struct multimap *overlapping_data, unsigned int *max_req_sectors_p,
-	struct req_entry *reqe);
+	struct req_entry *reqe, gfp_t gfp_mask);
 static void overlapping_delete_and_notify(
 	struct multimap *overlapping_data, unsigned int *max_req_sectors_p,
 	struct req_entry *reqe);
@@ -218,13 +218,13 @@ static void overlapping_delete_and_notify(
 #ifdef WALB_FAST_ALGORITHM
 static bool pending_insert(
 	struct multimap *pending_data, unsigned int *max_req_sectors_p,
-	struct req_entry *reqe);
+	struct req_entry *reqe, gfp_t gfp_mask);
 static void pending_delete(
 	struct multimap *pending_data, unsigned int *max_req_sectors_p,
 	struct req_entry *reqe);
 static bool pending_check_and_copy(
 	struct multimap *pending_data, unsigned int max_req_sectors,
-	struct req_entry *reqe);
+	struct req_entry *reqe, gfp_t gfp_mask);
 static inline bool should_stop_queue(struct pdata *pdata, struct req_entry *reqe);
 static inline bool should_start_queue(struct pdata *pdata, struct req_entry *reqe);
 #endif
@@ -1201,7 +1201,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			/* Split if required due to chunk limitations. */
 			if (!split_bio_entry_list_for_chunk(
 					&reqe->bio_ent_list,
-					pdata->ddev_chunk_sectors)) {
+					pdata->ddev_chunk_sectors,
+					GFP_NOIO)) {
 				goto failed1;
 			}
 
@@ -1215,7 +1216,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			pdata->pending_sectors += reqe->req_sectors;
 			is_pending_insert_succeeded =
 				pending_insert(pdata->pending_data,
-					&pdata->max_req_sectors_in_pending, reqe);
+					&pdata->max_req_sectors_in_pending,
+					reqe, GFP_NOIO);
 			mutex_unlock(&pdata->pending_data_mutex);
 			if (!is_pending_insert_succeeded) { goto failed2; }
 
@@ -1236,7 +1238,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			is_overlapping_insert_succeeded =
 				overlapping_check_and_insert(pdata->overlapping_data,
 							&pdata->max_req_sectors_in_overlapping,
-							reqe);
+							reqe, GFP_NOIO);
 			mutex_unlock(&pdata->overlapping_data_mutex);
 			if (!is_overlapping_insert_succeeded) {
 				mutex_lock(&pdata->pending_data_mutex);
@@ -1316,7 +1318,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 			/* Split if required due to chunk limitations. */
 			if (!split_bio_entry_list_for_chunk(
 					&reqe->bio_ent_list,
-					pdata->ddev_chunk_sectors)) {
+					pdata->ddev_chunk_sectors, GFP_NOIO)) {
 				goto failed1;
 			}
 			
@@ -1326,7 +1328,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 			is_overlapping_insert_succeeded =
 				overlapping_check_and_insert(pdata->overlapping_data,
 							&pdata->max_req_sectors_in_overlapping,
-							reqe);
+							reqe, GFP_NOIO);
 			mutex_unlock(&pdata->overlapping_data_mutex);
 			if (!is_overlapping_insert_succeeded) {
 				goto failed1;
@@ -1667,14 +1669,15 @@ static void read_req_task_fast(struct work_struct *work)
 
 	/* Split if required due to chunk limitations. */
 	if (!split_bio_entry_list_for_chunk(
-			&reqe->bio_ent_list, pdata->ddev_chunk_sectors)) {
+			&reqe->bio_ent_list, pdata->ddev_chunk_sectors, GFP_NOIO)) {
 		goto error1;
 	}
 
 	/* Check pending data and copy data from executing write requests. */
 	mutex_lock(&pdata->pending_data_mutex);
 	ret = pending_check_and_copy(pdata->pending_data,
-				pdata->max_req_sectors_in_pending, reqe);
+				pdata->max_req_sectors_in_pending,
+				reqe, GFP_NOIO);
 	mutex_unlock(&pdata->pending_data_mutex);
 	if (!ret) {
 		goto error1;
@@ -1717,7 +1720,7 @@ static void read_req_task_easy(struct work_struct *work)
 
 	/* Split if required due to chunk limitations. */
 	if (!split_bio_entry_list_for_chunk(
-			&reqe->bio_ent_list, pdata->ddev_chunk_sectors)) {
+			&reqe->bio_ent_list, pdata->ddev_chunk_sectors, GFP_NOIO)) {
 		goto error1;
 	}
 		
@@ -2029,7 +2032,7 @@ static bool logpack_submit_req(
 	}
 	/* split if required. */
 	if (!split_bio_entry_list_for_chunk(
-			&tmp_list, chunk_sectors)) {
+			&tmp_list, chunk_sectors, GFP_NOIO)) {
 		goto error0;
 	}
 	/* move all bioe to the bio_ent_list. */
@@ -2256,7 +2259,7 @@ failed:
 static bool overlapping_check_and_insert(
 	struct multimap *overlapping_data,
 	unsigned int *max_req_sectors_p,
-	struct req_entry *reqe)
+	struct req_entry *reqe, gfp_t gfp_mask)
 {
 	struct multimap_cursor cur;
 	u64 max_io_size, start_pos;
@@ -2306,7 +2309,7 @@ static bool overlapping_check_and_insert(
 #endif
 
 fin:
-	ret = multimap_add(overlapping_data, reqe->req_pos, (unsigned long)reqe, GFP_NOIO);
+	ret = multimap_add(overlapping_data, reqe->req_pos, (unsigned long)reqe, gfp_mask);
 	ASSERT(ret != EEXIST);
 	ASSERT(ret != EINVAL);
 	if (ret) {
@@ -2399,7 +2402,7 @@ static void overlapping_delete_and_notify(
 static bool pending_insert(
 	struct multimap *pending_data,
 	unsigned int *max_req_sectors_p,
-	struct req_entry *reqe)
+	struct req_entry *reqe, gfp_t gfp_mask)
 {
 	int ret;
 
@@ -2412,7 +2415,7 @@ static bool pending_insert(
 	
 	/* Insert the entry. */
 	ret = multimap_add(pending_data, reqe->req_pos,
-			(unsigned long)reqe, GFP_NOIO);
+			(unsigned long)reqe, gfp_mask);
 	ASSERT(ret != EEXIST);
 	ASSERT(ret != EINVAL);
 	if (ret) {
@@ -2465,7 +2468,8 @@ static void pending_delete(
  */
 #ifdef WALB_FAST_ALGORITHM
 UNUSED static bool pending_check_and_copy(
-	struct multimap *pending_data, unsigned int max_req_sectors, struct req_entry *reqe)
+	struct multimap *pending_data, unsigned int max_req_sectors,
+	struct req_entry *reqe, gfp_t gfp_mask)
 {
 	struct multimap_cursor cur;
 	u64 max_io_size, start_pos;
@@ -2496,7 +2500,7 @@ UNUSED static bool pending_check_and_copy(
 		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
 		ASSERT(reqe_tmp);
 		if (is_overlap_req_entry(reqe, reqe_tmp)) {
-			if (!data_copy_req_entry(reqe, reqe_tmp)) {
+			if (!data_copy_req_entry(reqe, reqe_tmp, gfp_mask)) {
 				return false;
 			}
 		}

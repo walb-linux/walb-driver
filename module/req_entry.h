@@ -61,7 +61,8 @@ void get_overlapping_pos_and_sectors(
 	struct req_entry *reqe0,  struct req_entry *reqe1,
 	u64 *ol_req_pos_p, unsigned int *ol_req_sectors_p);
 bool data_copy_req_entry(
-	struct req_entry *dst_reqe,  struct req_entry *src_reqe);
+	struct req_entry *dst_reqe,  struct req_entry *src_reqe,
+	gfp_t gfp_mask);
 #endif
 
 /* init/exit */

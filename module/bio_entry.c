@@ -88,7 +88,7 @@ static void bio_pair2_end(struct bio *bio, int err);
 static struct bio_pair2* bio_split2(
 	struct bio *bio, unsigned int first_sectors, gfp_t gfp_mask);
 static struct bio_entry* bio_entry_split(
-	struct bio_entry *bioe1, unsigned int first_sectors);
+	struct bio_entry *bioe1, unsigned int first_sectors, gfp_t gfp_mask);
 static struct bio_entry* bio_entry_next(
 	struct bio_entry *bioe,
 	struct list_head *bio_ent_list);
@@ -101,7 +101,7 @@ static unsigned int bio_entry_cursor_size_to_boundary(
 	struct bio_entry_cursor *cur);
 static void bio_entry_cursor_proceed_to_boundary(
 	struct bio_entry_cursor *cur);
-static bool bio_entry_cursor_split(struct bio_entry_cursor *cur);
+static bool bio_entry_cursor_split(struct bio_entry_cursor *cur, gfp_t gfp_mask);
 
 #ifdef WALB_FAST_ALGORITHM
 static void copied_bio_put(struct bio *bio);
@@ -584,13 +584,14 @@ error0:
  *
  * @bioe1 target bio entry.
  * @first_sectors number of sectors of first splitted bio [sectors].
+ * @gfp_mask for memory allocation.
  *
  * RETURN:
  *   splitted bio entry in success,
  *   or NULL due to memory allocation failure.
  */
 static struct bio_entry* bio_entry_split(
-	struct bio_entry *bioe1, unsigned int first_sectors)
+	struct bio_entry *bioe1, unsigned int first_sectors, gfp_t gfp_mask)
 {
 	struct bio_entry *bioe2;
 	struct bio_pair2 *bp;
@@ -599,10 +600,10 @@ static struct bio_entry* bio_entry_split(
 	ASSERT(bioe1->bio);
 	ASSERT(first_sectors > 0);
 
-	bioe2 = alloc_bio_entry(GFP_NOIO);
+	bioe2 = alloc_bio_entry(gfp_mask);
 	if (!bioe2) { goto error0; }
 	
-	bp = bio_split2(bioe1->bio, first_sectors, GFP_NOIO);
+	bp = bio_split2(bioe1->bio, first_sectors, gfp_mask);
 	if (!bp) { goto error1; }
 	
 	bioe1->bio = bp->bio1;
@@ -735,12 +736,13 @@ static void bio_entry_cursor_proceed_to_boundary(
  * Try to bio split at a cursor position.
  *
  * @cur target bio_entry cursor.
+ * @gfp_mask for memory allocation.
  *
  * RETURN:
  *   true when split is successfully done or no need to split.
- *   false due to memory allocation failure. 
+ *   false due to memory allocation failure.
  */
-static bool bio_entry_cursor_split(struct bio_entry_cursor *cur)
+static bool bio_entry_cursor_split(struct bio_entry_cursor *cur, gfp_t gfp_mask)
 {
 	struct bio_entry *bioe1, *bioe2;
 	
@@ -758,7 +760,7 @@ static bool bio_entry_cursor_split(struct bio_entry_cursor *cur)
 
 	ASSERT(cur->off_in > 0);
 	bioe1 = cur->bioe;
-	bioe2 = bio_entry_split(bioe1, cur->off_in);
+	bioe2 = bio_entry_split(bioe1, cur->off_in, gfp_mask);
 	if (!bioe2) { goto error; }
 
 #if 0
@@ -1124,6 +1126,7 @@ void init_copied_bio_entry(
  * @bio_ent_list bio_entry list.
  * @off offset from the begin [sectors].
  * @sectors number of sectors [sectors].
+ * @gfp_t for memory allocation in split.
  *
  * RETURN:
  *   true in success.
@@ -1131,7 +1134,8 @@ void init_copied_bio_entry(
  */
 #ifdef WALB_FAST_ALGORITHM
 bool bio_entry_list_mark_copied(
-	struct list_head *bio_ent_list, unsigned int off, unsigned int sectors)
+	struct list_head *bio_ent_list, unsigned int off, unsigned int sectors,
+	gfp_t gfp_mask)
 {
 	struct bio_entry_cursor curt, *cur;
 
@@ -1145,13 +1149,13 @@ bool bio_entry_list_mark_copied(
 	bio_entry_cursor_init(cur, bio_ent_list);
 	bio_entry_cursor_proceed(cur, off);
 	ASSERT(cur->off == off);
-	if (!bio_entry_cursor_split(cur)) {  /* left edge. */
+	if (!bio_entry_cursor_split(cur, gfp_mask)) {  /* left edge. */
 		goto error;
 	}
 	ASSERT(cur->off == off);
 	bio_entry_cursor_proceed(cur, sectors);
 	ASSERT(cur->off == off + sectors);
-	if (!bio_entry_cursor_split(cur)) { /* right edge. */
+	if (!bio_entry_cursor_split(cur, gfp_mask)) { /* right edge. */
 		goto error;
 	}
 	ASSERT(cur->off == off + sectors);
@@ -1414,7 +1418,7 @@ split_required:
  * Split bio(s) if chunk_sectors.
  */
 bool split_bio_entry_list_for_chunk(
-	struct list_head *bio_ent_list, unsigned int chunk_sectors)
+	struct list_head *bio_ent_list, unsigned int chunk_sectors, gfp_t gfp_mask)
 {
 	struct bio_entry_cursor cur;
 	u64 addr;
@@ -1450,7 +1454,7 @@ bool split_bio_entry_list_for_chunk(
 		ASSERT(chunk_sectors > addr % chunk_sectors);
 		ret = bio_entry_cursor_proceed(&cur, chunk_sectors - addr % chunk_sectors);
 		ASSERT(ret);
-		ret = bio_entry_cursor_split(&cur);
+		ret = bio_entry_cursor_split(&cur, gfp_mask);
 		LOGd_("need to split %"PRIu64" %u\n", addr, sectors);
 		if (!ret) {
 			LOGe("bio split failed.\n");
