@@ -12,7 +12,6 @@
 #include <linux/list.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
-#include <linux/mutex.h>
 
 #include "walb/walb.h"
 #include "walb/block_size.h"
@@ -111,7 +110,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	spin_lock_init(&pdata->lsuper0_lock);
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
-	mutex_init(&pdata->overlapping_data_mutex);
+	spin_lock_init(&pdata->overlapping_data_lock);
 	pdata->overlapping_data = multimap_create(GFP_KERNEL);
 	if (!pdata->overlapping_data) {
 		LOGe("multimap creation failed.\n");
@@ -120,7 +119,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->max_req_sectors_in_overlapping = 0;
 #endif
 #ifdef WALB_FAST_ALGORITHM
-	mutex_init(&pdata->pending_data_mutex);
+	spin_lock_init(&pdata->pending_data_lock);
 	pdata->pending_data = multimap_create(GFP_KERNEL);
 	if (!pdata->pending_data) {
 		LOGe("multimap creation failed.\n");

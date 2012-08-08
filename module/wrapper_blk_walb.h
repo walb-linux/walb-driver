@@ -11,7 +11,6 @@
 #include <linux/blkdev.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
-#include <linux/mutex.h>
 #include "walb/sector.h"
 #include "wrapper_blk.h"
 #include "treemap.h"
@@ -95,7 +94,7 @@ struct pdata
 	 * All req_entry data may not keep reqe->bio_ent_list.
 	 * You must keep address and size information in another way.
 	 */
-	struct mutex overlapping_data_mutex; /* Use mutex_lock()/mutex_unlock(). */
+	spinlock_t overlapping_data_lock; /* Use spin_lock()/spin_unlock(). */
 	struct multimap *overlapping_data; /* key: blk_rq_pos(req),
 					      val: pointer to req_entry. */
 	unsigned int max_req_sectors_in_overlapping; /* Maximum request size [logical block]. */
@@ -106,7 +105,7 @@ struct pdata
 	 * All req_entry data must keep
 	 * reqe->bio_ent_list while they are stored in the pending_data.
 	 */
-	struct mutex pending_data_mutex; /* Use mutex_lock()/mutex_unlock(). */
+	spinlock_t pending_data_lock; /* Use spin_lock()/spin_unlock(). */
 	struct multimap *pending_data; /* key: blk_rq_pos(req),
 					  val: pointer to req_entry. */
 	unsigned int max_req_sectors_in_pending; /* Maximum request size [logical block]. */
