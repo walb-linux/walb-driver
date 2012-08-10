@@ -472,18 +472,29 @@ static void wait_for_req_entry(struct req_entry *reqe)
 {
 	struct bio_entry *bioe, *next;
 	int remaining;
+#ifndef END_REQUEST_PER_BIO
+	int error = 0;
+#endif
 
 	ASSERT(reqe);
         
 	remaining = blk_rq_bytes(reqe->req);
 	list_for_each_entry_safe(bioe, next, &reqe->bio_entry_list, list) {
 		wait_for_completion(&bioe->done);
+#ifdef END_REQUEST_PER_BIO
 		blk_end_request(reqe->req, bioe->error, bioe->bi_size);
+#else
+		if (bioe->error) { error = bioe->error; }
+#endif
 		remaining -= bioe->bi_size;
 		list_del(&bioe->list);
 		destroy_bio_entry(bioe);
 	}
 	ASSERT(remaining == 0);
+	ASSERT(list_empty(&reqe->bio_entry_list));
+#ifndef END_REQUEST_PER_BIO
+	blk_end_request_all(reqe->req, error);
+#endif
 }
 
 static void blk_start_plug_p(struct blk_plug *plug, bool pred)
