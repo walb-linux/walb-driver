@@ -179,9 +179,10 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		goto error3;
 	}
 	wdev->pbs = pbs;
+	blk_set_default_limits(&wdev->queue->limits);
         blk_queue_logical_block_size(wdev->queue, lbs);
         blk_queue_physical_block_size(wdev->queue, pbs);
-	blk_queue_io_min(wdev->queue, pbs);
+	/* blk_queue_io_min(wdev->queue, pbs); */
 	/* blk_queue_io_opt(wdev->queue, pbs); */
 
 	/* Set max_logpack_pb. */
