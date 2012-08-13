@@ -4,12 +4,17 @@
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
+#define PROFILE_LOGPACK
+
 #include <linux/blkdev.h>
 #include <linux/atomic.h>
 #include <linux/list.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
 #include <linux/spinlock.h>
+#ifdef PROFILE_LOGPACK
+#include <linux/time.h>
+#endif
 
 #include "wrapper_blk.h"
 #include "wrapper_blk_walb.h"
@@ -20,6 +25,15 @@
 #include "req_entry.h"
 #include "walb/walb.h"
 #include "walb/block_size.h"
+
+/* debug */
+static atomic_t total_n_req_ = ATOMIC_INIT(0);
+static atomic_t n_req_fn_ = ATOMIC_INIT(0);
+
+static spinlock_t profile_lock_;
+static struct timespec ts_[5];
+static atomic_t total_logpack_size_ = ATOMIC_INIT(0);
+static atomic_t n_logpack_ = ATOMIC_INIT(0);
 
 /*******************************************************************************
  * Static data definition.
@@ -77,6 +91,9 @@ struct pack
 					  or logpack header bio. */
 
 	bool is_logpack_failed; /* true if submittion failed. */
+#ifdef PROFILE_LOGPACK
+	struct timespec ts[6];
+#endif
 };
 #define KMEM_CACHE_PACK_NAME "pack_cache"
 struct kmem_cache *pack_cache_ = NULL;
@@ -718,7 +735,6 @@ static bool writepack_add_req(
 	
 	reqe = create_req_entry(req, wdev, gfp_mask);
 	if (!reqe) { goto error0; }
-
 	if (!pack) {
 		goto newpack;
 	}
@@ -772,6 +788,9 @@ newpack:
 	}
 	pack = create_writepack(gfp_mask, pbs, *latest_lsidp);
 	if (!pack) { goto error1; }
+#ifdef PROFILE_LOGPACK
+	getnstimeofday(&pack->ts[0]);
+#endif
 	*wpackp = pack;
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ret = walb_logpack_header_add_req(lhead, req, pbs, ring_buffer_size);
@@ -985,10 +1004,11 @@ static void logpack_list_submit(
 	ASSERT(wpack_list);
 	ASSERT(wdev);
 	pdata = pdata_get_from_wdev(wdev);
-
 	blk_start_plug(&plug);
 	list_for_each_entry(wpack, wpack_list, list) {
-
+#ifdef PROFILE_LOGPACK
+		getnstimeofday(&wpack->ts[1]);
+#endif
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		lhead = get_logpack_header(wpack->logpack_header_sector);
 		
@@ -1005,6 +1025,9 @@ static void logpack_list_submit(
 				wdev->pbs, pdata->ldev, pdata->ring_buffer_off,
 				pdata->ring_buffer_size, pdata->ldev_chunk_sectors);
 		}
+#ifdef PROFILE_LOGPACK
+		getnstimeofday(&wpack->ts[2]);
+#endif
 		wpack->is_logpack_failed = !ret;
 		if (!ret) { break; }
 	}
@@ -1402,7 +1425,13 @@ static void logpack_list_wait_task(struct work_struct *work)
 		
 		/* Wait logpack completion and submit datapacks. */
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
+#ifdef PROFILE_LOGPACK
+			getnstimeofday(&wpack->ts[3]);
+#endif
 			wait_logpack_and_enqueue_datapack_tasks(wpack, wdev);
+#ifdef PROFILE_LOGPACK
+			getnstimeofday(&wpack->ts[4]);
+#endif
 			list_move_tail(&wpack->list, &pwork2->wpack_list);
 		}
 		/* Enqueue logpack list gc task. */
@@ -1432,6 +1461,9 @@ static void logpack_list_gc_task(struct work_struct *work)
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	int c;
+#ifdef PROFILE_LOGPACK
+	struct timespec ts[5];
+#endif
 
 	list_for_each_entry_safe(wpack, next_wpack, &pwork->wpack_list, list) {
 		list_del(&wpack->list);
@@ -1450,6 +1482,38 @@ static void logpack_list_gc_task(struct work_struct *work)
 		}
 		ASSERT(list_empty(&wpack->req_ent_list));
 		ASSERT(list_empty(&wpack->bio_ent_list));
+#ifdef PROFILE_LOGPACK
+		getnstimeofday(&wpack->ts[5]);
+		ts[0] = timespec_sub(wpack->ts[1], wpack->ts[0]);
+		ts[1] = timespec_sub(wpack->ts[2], wpack->ts[1]);
+		ts[2] = timespec_sub(wpack->ts[3], wpack->ts[2]);
+		ts[3] = timespec_sub(wpack->ts[4], wpack->ts[3]);
+		ts[4] = timespec_sub(wpack->ts[5], wpack->ts[4]);
+
+		spin_lock(&profile_lock_);
+		ts_[0] = timespec_add(ts_[0], ts[0]);
+		ts_[1] = timespec_add(ts_[1], ts[1]);
+		ts_[2] = timespec_add(ts_[2], ts[2]);
+		ts_[3] = timespec_add(ts_[3], ts[3]);
+		ts_[4] = timespec_add(ts_[4], ts[4]);
+		spin_unlock(&profile_lock_);
+#if 0		
+		LOGn("logpack_profile: total_io_size %u create %ld.%09ld submit0 %ld.%09ld submit1 %ld.%09ld "
+			"wait0 %ld.%09ld wait1 %ld.%09ld destroy\n",
+			get_logpack_header(wpack->logpack_header_sector)->total_io_size,
+			ts[0].tv_sec, ts[0].tv_nsec,
+			ts[1].tv_sec, ts[1].tv_nsec,
+			ts[2].tv_sec, ts[2].tv_nsec,
+			ts[3].tv_sec, ts[3].tv_nsec,
+			ts[4].tv_sec, ts[4].tv_nsec);
+#endif
+#endif
+		/* debug */
+		atomic_add(
+			get_logpack_header(wpack->logpack_header_sector)->total_io_size,
+			&total_logpack_size_);
+		atomic_inc(&n_logpack_);
+		
 		destroy_pack(wpack);
 	}
 	ASSERT(list_empty(&pwork->wpack_list));
@@ -2632,9 +2696,11 @@ void wrapper_blk_req_request_fn(struct request_queue *q)
 	/* Initialize pack_work. */
 	pwork = create_pack_work(wdev, GFP_ATOMIC);
 	if (!pwork) { goto error0; }
-			
+
+	atomic_inc(&n_req_fn_);
 	/* Fetch requests and create pack list. */
 	while ((req = blk_fetch_request(q)) != NULL) {
+		atomic_inc(&total_n_req_);
 
 		/* print_req_flags(req); */
 		if (req->cmd_flags & REQ_WRITE) {
@@ -2786,6 +2852,14 @@ bool pre_register(void)
 #else
 	LOGn("WalB Easy Algorithm.\n");
 #endif
+
+	/* debug */
+	spin_lock_init(&profile_lock_);
+	ts_[0] = ns_to_timespec(0);
+	ts_[1] = ns_to_timespec(0);
+	ts_[2] = ns_to_timespec(0);
+	ts_[3] = ns_to_timespec(0);
+	ts_[4] = ns_to_timespec(0);
 	
 	return true;
 
@@ -2859,6 +2933,19 @@ void post_unregister(void)
 	kmem_cache_destroy(pack_work_cache_);
 	pack_work_cache_ = NULL;
 
+	/* debug */
+	LOGn("total_n_req: %d n_req_fn: %d\n",
+		atomic_read(&total_n_req_), atomic_read(&n_req_fn_));
+	LOGn("total_logpack_size_ %d n_logpack_ %d\n",
+		atomic_read(&total_logpack_size_), atomic_read(&n_logpack_));
+	LOGn("logpack_profile: create %ld.%09ld submit0 %ld.%09ld submit1 %ld.%09ld "
+		"wait0 %ld.%09ld wait1 %ld.%09ld destroy\n",
+		ts_[0].tv_sec, ts_[0].tv_nsec,
+		ts_[1].tv_sec, ts_[1].tv_nsec,
+		ts_[2].tv_sec, ts_[2].tv_nsec,
+		ts_[3].tv_sec, ts_[3].tv_nsec,
+		ts_[4].tv_sec, ts_[4].tv_nsec);
+	
 	LOGd_("end\n");
 }
 
