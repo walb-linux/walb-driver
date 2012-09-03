@@ -148,7 +148,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         wdev->private_data = bdev;
 
         /* capacity */
-        wdev->capacity = get_capacity(bdev->bd_disk);
+        wdev->capacity = bdev->bd_part->nr_sects;
         set_capacity(wdev->gd, wdev->capacity);
 
         /* Block size */
