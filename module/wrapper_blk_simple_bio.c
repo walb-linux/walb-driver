@@ -31,6 +31,9 @@ int start_minor_ = 0;
 /* Physical block size. */
 int physical_block_size_ = 4096;
 
+/* Always IO fails when true. */
+bool io_should_fail_ = false;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -38,6 +41,7 @@ int physical_block_size_ = 4096;
 module_param_named(device_str, device_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
+module_param_named(io_should_fail, io_should_fail_, bool, S_IRUGO | S_IWUSR);
 	
 /*******************************************************************************
  * Static data definition.
@@ -108,6 +112,8 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 
 	LOGd_("bio rw %lu pos %"PRIu64" size %u\n",
 		bio->bi_rw, (u64)bio->bi_sector, bio->bi_size);
+
+	if (io_should_fail_) { goto error0; }
 	
 	bioe = alloc_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
