@@ -4,22 +4,66 @@
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
+#include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <linux/init.h>
 #include <linux/blkdev.h>
 #include <linux/atomic.h>
 #include <linux/list.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
 #include <linux/spinlock.h>
+#include <linux/types.h>
 
+#include "walb/walb.h"
+#include "walb/block_size.h"
+#include "walb/sector.h"
 #include "wrapper_blk.h"
-#include "wrapper_blk_walb.h"
 #include "sector_io.h"
 #include "logpack.h"
 #include "treemap.h"
 #include "bio_entry.h"
 #include "req_entry.h"
-#include "walb/walb.h"
-#include "walb/block_size.h"
+
+/*******************************************************************************
+ * Module variables definition.
+ *******************************************************************************/
+
+/* Device size list string. The unit of each size is bytes. */
+char *log_device_str_ = "/dev/simple_blk/0";
+char *data_device_str_ = "/dev/simple_blk/1";
+/* Minor id start. */
+int start_minor_ = 0;
+
+/* Physical block size [bytes]. */
+int physical_block_size_ = 4096;
+
+/* Pending data limit size [MB]. */
+int max_pending_mb_ = 64;
+int min_pending_mb_ = 64 * 7 / 8;
+
+/* Queue stop timeout [msec]. */
+int queue_stop_timeout_ms_ = 100;
+
+/* Maximum logpack size [KB].
+   A logpack containing a requests can exceeds the limitation.
+   This must be the integral multiple of physical block size.
+   0 means there is no limitation of logpack size
+   (practically limited by physical block size for logpack header). */
+int max_logpack_size_kb_ = 256;
+
+/*******************************************************************************
+ * Module parameters definition.
+ *******************************************************************************/
+
+module_param_named(log_device_str, log_device_str_, charp, S_IRUGO);
+module_param_named(data_device_str, data_device_str_, charp, S_IRUGO);
+module_param_named(start_minor, start_minor_, int, S_IRUGO);
+module_param_named(pbs, physical_block_size_, int, S_IRUGO);
+module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
+module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
+module_param_named(queue_stop_timeout_ms, queue_stop_timeout_ms_, int, S_IRUGO);
+module_param_named(max_logpack_size_kb, max_logpack_size_kb_, int, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -84,14 +128,139 @@ struct kmem_cache *pack_cache_ = NULL;
 /* Completion timeout [msec]. */
 static const unsigned long completion_timeo_ms_ = 5000;
 
+/**
+ * Private data as wrapper_blk_dev.private_data.
+ */
+struct pdata
+{
+	struct block_device *ldev; /* underlying log device. */
+	struct block_device *ddev; /* underlying data device. */
+
+	spinlock_t lsid_lock;
+	u64 latest_lsid; /* latest lsid.
+			    This is lsid of next created logpack.
+			    lsid_lock must be held. */
+	u64 oldest_lsid; /* oldest lsid.
+			    All previous logpacks of the logpack with
+			    the oldest lsid can be overwritten.
+			    lsid_lock must be held. */
+	u64 written_lsid; /* written lsid.
+			     All previous logpacks of the logpack with
+			     the written_lsid have been stored.
+			     lsid_lock must be held. */
+	
+	spinlock_t lsuper0_lock; /* Use spin_lock() and spin_unlock(). */
+	struct sector_data *lsuper0; /* lsuper0_lock must be held
+					to access the sector image. */
+
+	/* To avoid lock lsuper0 during request processing. */
+	u64 ring_buffer_off; 
+	u64 ring_buffer_size;
+	
+	/* bit 0: all write must failed.
+	   bit 1: logpack submit task working.
+	   bit 2: logpack wait task working. */
+	unsigned long flags;
+
+	/* chunk sectors.
+	   if chunk_sectors > 0:
+	     (1) bio size must not exceed the size.
+	     (2) bio must not cross over multiple chunks.
+	   else:
+	     no limitation. */
+	unsigned int ldev_chunk_sectors;
+	unsigned int ddev_chunk_sectors;
+
+	spinlock_t logpack_submit_queue_lock;
+	struct list_head logpack_submit_queue; /* writepack list.
+						  logpack_submit_queue_lock
+						  must be held. */
+	
+	spinlock_t logpack_wait_queue_lock;
+	struct list_head logpack_wait_queue; /* writepack list.
+						logpack_wait_queue_lock
+						must be held. */
+
+	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
+					This will be used for logpack size
+					not to be too long
+					This will avoid decrease of
+					sequential write performance. */
+
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	/**
+	 * All req_entry data may not keep reqe->bio_ent_list.
+	 * You must keep address and size information in another way.
+	 */
+	spinlock_t overlapping_data_lock; /* Use spin_lock()/spin_unlock(). */
+	struct multimap *overlapping_data; /* key: blk_rq_pos(req),
+					      val: pointer to req_entry. */
+	unsigned int max_req_sectors_in_overlapping; /* Maximum request size [logical block]. */
+#endif
+	
+#ifdef WALB_FAST_ALGORITHM
+	/**
+	 * All req_entry data must keep
+	 * reqe->bio_ent_list while they are stored in the pending_data.
+	 */
+	spinlock_t pending_data_lock; /* Use spin_lock()/spin_unlock(). */
+	struct multimap *pending_data; /* key: blk_rq_pos(req),
+					  val: pointer to req_entry. */
+	unsigned int max_req_sectors_in_pending; /* Maximum request size [logical block]. */
+	
+	unsigned int pending_sectors; /* Number of sectors pending
+					 [logical block]. */
+	unsigned int max_pending_sectors; /* max_pending_sectors < pending_sectors
+					     we must stop the queue. */
+	unsigned int min_pending_sectors; /* min_pending_sectors > pending_sectors
+					     we can restart the queue. */
+	unsigned int queue_stop_timeout_ms; /* queue stopped period must not exceed
+					       queue_stop_time_ms. */
+	unsigned long queue_restart_jiffies; /* For queue stopped timeout check. */
+	bool is_queue_stopped; /* true if queue is stopped. */
+#endif
+};
+
 /*******************************************************************************
  * Macros definition.
  *******************************************************************************/
 
+/* pdata->flags bit. */
+#define PDATA_STATE_READ_ONLY            0
+#define PDATA_STATE_SUBMIT_TASK_WORKING 1
+#define PDATA_STATE_WAIT_TASK_WORKING   2
 
 /*******************************************************************************
  * Static functions prototype.
  *******************************************************************************/
+
+/* Make requrest for wrapper_blk_walb_* modules. */
+static void wrapper_blk_req_request_fn(struct request_queue *q);
+
+/* Called before register. */
+static bool pre_register(void);
+
+/* Called before unregister */
+static void pre_unregister(void);
+
+/* Called just before destroy_private_data. */
+static void pre_destroy_private_data(void);
+
+/* Called after unregister. */
+static void post_unregister(void);
+
+/* Create private data for wdev. */
+static bool create_private_data(struct wrapper_blk_dev *wdev);
+/* Destroy private data for ssev. */
+static void destroy_private_data(struct wrapper_blk_dev *wdev);
+/* Customize wdev after register before start. */
+static void customize_wdev(struct wrapper_blk_dev *wdev);
+
+static unsigned int get_minor(unsigned int id);
+static bool register_dev(void);
+static void unregister_dev(void);
+static bool start_dev(void);
+static void stop_dev(void);
 
 /* Print functions for debug. */
 UNUSED static void print_req_flags(struct request *req);
@@ -236,8 +405,412 @@ static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entr
 static void flush_all_wq(void);
 
 /*******************************************************************************
+ * Utility functions.
+ *******************************************************************************/
+
+static inline struct pdata* pdata_get_from_wdev(struct wrapper_blk_dev *wdev)
+{
+	return (struct pdata *)wdev->private_data;
+}
+
+/**
+ * Check two requests are overlapping.
+ */
+static inline bool is_overlap_req(struct request *req0, struct request *req1)
+{
+	ASSERT(req0);
+	ASSERT(req1);
+	ASSERT(req0 != req1);
+
+	return (blk_rq_pos(req0) + blk_rq_sectors(req0) > blk_rq_pos(req1) &&
+		blk_rq_pos(req1) + blk_rq_sectors(req1) > blk_rq_pos(req0));
+}
+
+/**
+ * Check read-only mode.
+ */
+static inline int is_read_only_mode(struct pdata *pdata)
+{
+	return test_bit(PDATA_STATE_READ_ONLY, &pdata->flags);
+}
+
+/**
+ * Set read-only mode.
+ */
+static inline void set_read_only_mode(struct pdata *pdata)
+{
+	set_bit(PDATA_STATE_READ_ONLY, &pdata->flags);
+}
+
+/**
+ * Clear read-only mode.
+ */
+static inline void clear_read_only_mode(struct pdata *pdata)
+{
+	clear_bit(PDATA_STATE_READ_ONLY, &pdata->flags);
+}
+
+/*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
+
+/* Create private data for wdev. */
+static bool create_private_data(struct wrapper_blk_dev *wdev)
+{
+	struct pdata *pdata;
+        struct block_device *ldev, *ddev;
+        unsigned int lbs, pbs;
+	struct walb_super_sector *ssect;
+	struct request_queue *lq, *dq;
+        
+        LOGd("create_private_data called");
+
+	/* Allocate pdata. */
+	pdata = kmalloc(sizeof(struct pdata), GFP_KERNEL);
+	if (!pdata) {
+		LOGe("kmalloc failed.\n");
+		goto error0;
+	}
+	pdata->ldev = NULL;
+	pdata->ddev = NULL;
+	spin_lock_init(&pdata->lsid_lock);
+	spin_lock_init(&pdata->lsuper0_lock);
+
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	spin_lock_init(&pdata->overlapping_data_lock);
+	pdata->overlapping_data = multimap_create(GFP_KERNEL);
+	if (!pdata->overlapping_data) {
+		LOGe("multimap creation failed.\n");
+		goto error01;
+	}
+	pdata->max_req_sectors_in_overlapping = 0;
+#endif
+#ifdef WALB_FAST_ALGORITHM
+	spin_lock_init(&pdata->pending_data_lock);
+	pdata->pending_data = multimap_create(GFP_KERNEL);
+	if (!pdata->pending_data) {
+		LOGe("multimap creation failed.\n");
+		goto error02;
+	}
+	pdata->max_req_sectors_in_pending = 0;
+	
+	pdata->pending_sectors = 0;
+	pdata->max_pending_sectors = max_pending_mb_
+		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
+	pdata->min_pending_sectors = min_pending_mb_
+		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
+	LOGn("max pending sectors: %u\n", pdata->max_pending_sectors);
+
+	pdata->queue_stop_timeout_ms = queue_stop_timeout_ms_;
+	pdata->queue_restart_jiffies = jiffies;
+	LOGn("queue stop timeout: %u ms\n", queue_stop_timeout_ms_);
+	
+	pdata->is_queue_stopped = false;
+#endif
+        /* open underlying log device. */
+        ldev = blkdev_get_by_path(
+                log_device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
+                create_private_data);
+        if (IS_ERR(ldev)) {
+                LOGe("open %s failed.", log_device_str_);
+                goto error1;
+        }
+	LOGn("ldev (%d,%d) %d\n", MAJOR(ldev->bd_dev), MINOR(ldev->bd_dev),
+		ldev->bd_contains == ldev);
+
+        /* open underlying data device. */
+	ddev = blkdev_get_by_path(
+		data_device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
+                create_private_data);
+	if (IS_ERR(ddev)) {
+		LOGe("open %s failed.", data_device_str_);
+		goto error2;
+	}
+	LOGn("ddev (%d,%d) %d\n", MAJOR(ddev->bd_dev), MINOR(ddev->bd_dev),
+		ddev->bd_contains == ddev);
+
+        /* Block size */
+        lbs = bdev_logical_block_size(ddev);
+        pbs = bdev_physical_block_size(ddev);
+	LOGn("pbs: %u lbs: %u\n", pbs, lbs);
+        
+        if (lbs != LOGICAL_BLOCK_SIZE) {
+		LOGe("logical block size must be %u but %u.\n",
+			LOGICAL_BLOCK_SIZE, lbs);
+                goto error3;
+        }
+	ASSERT(bdev_logical_block_size(ldev) == lbs);
+	if (bdev_physical_block_size(ldev) != pbs) {
+		LOGe("physical block size is different (ldev: %u, ddev: %u).\n",
+			bdev_physical_block_size(ldev), pbs);
+		goto error3;
+	}
+	wdev->pbs = pbs;
+	blk_set_default_limits(&wdev->queue->limits);
+        blk_queue_logical_block_size(wdev->queue, lbs);
+        blk_queue_physical_block_size(wdev->queue, pbs);
+	/* blk_queue_io_min(wdev->queue, pbs); */
+	/* blk_queue_io_opt(wdev->queue, pbs); */
+
+	/* Set max_logpack_pb. */
+	ASSERT(max_logpack_size_kb_ >= 0);
+	ASSERT((max_logpack_size_kb_ * 1024) % pbs == 0);
+	pdata->max_logpack_pb = (max_logpack_size_kb_ * 1024) / pbs;
+	LOGn("max_logpack_size_kb: %u max_logpack_pb: %u\n",
+		max_logpack_size_kb_, pdata->max_logpack_pb);
+	
+	/* Set underlying devices. */
+	pdata->ldev = ldev;
+	pdata->ddev = ddev;
+        wdev->private_data = pdata;
+
+	/* Load super block. */
+	pdata->lsuper0 = sector_alloc(pbs, GFP_KERNEL);
+	if (!pdata->lsuper0) {
+		goto error3;
+	}
+	if (!walb_read_super_sector(pdata->ldev, pdata->lsuper0)) {
+		LOGe("read super sector 0 failed.\n");
+		goto error4;
+	}
+	ssect = get_super_sector(pdata->lsuper0);
+	pdata->written_lsid = ssect->written_lsid;
+	pdata->oldest_lsid = ssect->oldest_lsid;
+	pdata->latest_lsid = pdata->written_lsid; /* redo must be done. */
+	pdata->ring_buffer_size = ssect->ring_buffer_size;
+	pdata->ring_buffer_off = get_ring_buffer_offset_2(ssect);
+	pdata->flags = 0;
+	
+        /* capacity */
+        wdev->capacity = ddev->bd_part->nr_sects;
+        set_capacity(wdev->gd, wdev->capacity);
+	LOGn("capacity %"PRIu64"\n", wdev->capacity);
+
+	/* Set limit. */
+	lq = bdev_get_queue(ldev);
+	dq = bdev_get_queue(ddev);
+        blk_queue_stack_limits(wdev->queue, lq);
+        blk_queue_stack_limits(wdev->queue, dq);
+	LOGn("ldev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
+		lq->limits.logical_block_size,
+		lq->limits.physical_block_size,
+		lq->limits.io_min,
+		lq->limits.io_opt,
+		lq->limits.max_hw_sectors,
+		lq->limits.max_sectors,
+		lq->limits.alignment_offset);
+	LOGn("ddev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
+		dq->limits.logical_block_size,
+		dq->limits.physical_block_size,
+		dq->limits.io_min,
+		dq->limits.io_opt,
+		dq->limits.max_hw_sectors,
+		dq->limits.max_sectors,
+		dq->limits.alignment_offset);
+	LOGn("wdev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
+		wdev->queue->limits.logical_block_size,
+		wdev->queue->limits.physical_block_size,
+		wdev->queue->limits.io_min,
+		wdev->queue->limits.io_opt,
+		wdev->queue->limits.max_hw_sectors,
+		wdev->queue->limits.max_sectors,
+		wdev->queue->limits.alignment_offset);
+
+	/* Chunk size. */
+	if (queue_io_min(lq) > wdev->pbs) {
+		pdata->ldev_chunk_sectors = queue_io_min(lq) / LOGICAL_BLOCK_SIZE;
+	} else {
+		pdata->ldev_chunk_sectors = 0;
+	}
+	if (queue_io_min(dq) > wdev->pbs) {
+		pdata->ddev_chunk_sectors = queue_io_min(dq) / LOGICAL_BLOCK_SIZE;
+	} else {
+		pdata->ddev_chunk_sectors = 0;
+	}
+	LOGn("chunk_sectors ldev %u ddev %u.\n",
+		pdata->ldev_chunk_sectors, pdata->ddev_chunk_sectors);
+	
+	/* Prepare logpack submit/wait queue. */
+	spin_lock_init(&pdata->logpack_submit_queue_lock);
+	spin_lock_init(&pdata->logpack_wait_queue_lock);
+	INIT_LIST_HEAD(&pdata->logpack_submit_queue);
+	INIT_LIST_HEAD(&pdata->logpack_wait_queue);
+	
+        return true;
+
+error4:
+	sector_free(pdata->lsuper0);
+error3:
+        blkdev_put(ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+error2:
+        blkdev_put(ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+error1:
+#ifdef WALB_FAST_ALGORITHM
+error02:
+	multimap_destroy(pdata->pending_data);
+#endif
+#ifdef WALB_OVERLAPPING_SERIALIZE
+error01:
+	multimap_destroy(pdata->overlapping_data);
+#endif
+	kfree(pdata);
+	wdev->private_data = NULL;
+error0:
+        return false;
+}
+
+/* Destroy private data for ssev. */
+static void destroy_private_data(struct wrapper_blk_dev *wdev)
+{
+	struct pdata *pdata;
+	struct walb_super_sector *ssect;
+
+        LOGd("destoroy_private_data called.");
+	
+	pdata = wdev->private_data;
+	if (!pdata) { return; }
+	ASSERT(pdata);
+
+	/* sync super block.
+	   The locks are not required because
+	   block device is now offline. */
+	ssect = get_super_sector(pdata->lsuper0);
+	ssect->written_lsid = pdata->written_lsid;
+	ssect->oldest_lsid = pdata->oldest_lsid;
+	if (!walb_write_super_sector(pdata->ldev, pdata->lsuper0)) {
+		LOGe("super block write failed.\n");
+	}
+	
+        /* close underlying devices. */
+        blkdev_put(pdata->ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+        blkdev_put(pdata->ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+
+	sector_free(pdata->lsuper0);
+#ifdef WALB_FAST_ALGORITHM
+	multimap_destroy(pdata->pending_data);
+#endif
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	multimap_destroy(pdata->overlapping_data);
+#endif
+	kfree(pdata);
+	wdev->private_data = NULL;
+}
+
+/* Customize wdev after register before start. */
+static void customize_wdev(struct wrapper_blk_dev *wdev)
+{
+        struct request_queue *q, *lq, *dq;
+	struct pdata *pdata;
+        ASSERT(wdev);
+        q = wdev->queue;
+	pdata = wdev->private_data;
+
+	lq = bdev_get_queue(pdata->ldev);
+        dq = bdev_get_queue(pdata->ddev);
+        /* Accept REQ_FLUSH and REQ_FUA. */
+        if (lq->flush_flags & REQ_FLUSH && dq->flush_flags & REQ_FLUSH) {
+                if (lq->flush_flags & REQ_FUA && dq->flush_flags & REQ_FUA) {
+                        LOGn("Supports REQ_FLUSH | REQ_FUA.");
+                        blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
+                } else {
+                        LOGn("Supports REQ_FLUSH.");
+                        blk_queue_flush(q, REQ_FLUSH);
+                }
+		blk_queue_flush_queueable(q, true);
+        } else {
+                LOGn("Supports neither REQ_FLUSH nor REQ_FUA.");
+        }
+
+#if 0
+        if (blk_queue_discard(dq)) {
+                /* Accept REQ_DISCARD. */
+                LOGn("Supports REQ_DISCARD.");
+                q->limits.discard_granularity = PAGE_SIZE;
+                q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
+                q->limits.max_discard_sectors = UINT_MAX;
+                q->limits.discard_zeroes_data = 1;
+                queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+                /* queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q); */
+        } else {
+                LOGn("Not support REQ_DISCARD.");
+        }
+#endif 
+}
+
+static unsigned int get_minor(unsigned int id)
+{
+        return (unsigned int)start_minor_ + id;
+}
+
+static bool register_dev(void)
+{
+        unsigned int i = 0;
+        u64 capacity = 0;
+        bool ret;
+        struct wrapper_blk_dev *wdev;
+
+        LOGn("begin\n");
+        
+        /* capacity must be set lator. */
+        ret = wdev_register_with_req(get_minor(i), capacity,
+				physical_block_size_,
+				wrapper_blk_req_request_fn);
+                
+        if (!ret) {
+                goto error;
+        }
+        wdev = wdev_get(get_minor(i));
+        if (!create_private_data(wdev)) {
+                goto error;
+        }
+        customize_wdev(wdev);
+
+        LOGn("end\n");
+
+        return true;
+error:
+        unregister_dev();
+        return false;
+}
+
+static void unregister_dev(void)
+{
+        unsigned int i = 0;
+        struct wrapper_blk_dev *wdev;
+
+	LOGn("begin\n");
+	
+        wdev = wdev_get(get_minor(i));
+        wdev_unregister(get_minor(i));
+        if (wdev) {
+		pre_destroy_private_data();
+                destroy_private_data(wdev);
+		FREE(wdev);
+        }
+	
+	LOGn("end\n");
+}
+
+static bool start_dev(void)
+{
+        unsigned int i = 0;
+
+        if (!wdev_start(get_minor(i))) {
+                goto error;
+        }
+        return true;
+error:
+        stop_dev();
+        return false;
+}
+
+
+static void stop_dev(void)
+{
+        unsigned int i = 0;
+        
+        wdev_stop(get_minor(i));
+}
 
 /**
  * Print request flags for debug.
@@ -2602,7 +3175,7 @@ static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entr
  *     IRQ: no. ATOMIC: yes.
  *     queue lock is held.
  */
-void wrapper_blk_req_request_fn(struct request_queue *q)
+static void wrapper_blk_req_request_fn(struct request_queue *q)
 {
 	struct wrapper_blk_dev *wdev = wdev_get_from_queue(q);
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
@@ -2729,7 +3302,7 @@ error0:
 }
 
 /* Called before register. */
-bool pre_register(void)
+static bool pre_register(void)
 {
 	LOGd("pre_register called.");
 
@@ -2821,7 +3394,7 @@ static void flush_all_wq(void)
 }
 
 /* Called before unregister. */
-void pre_unregister(void)
+static void pre_unregister(void)
 {
 	LOGn("begin\n");
 	flush_all_wq();
@@ -2829,7 +3402,7 @@ void pre_unregister(void)
 }
 
 /* Called before destroy_private_data. */
-void pre_destroy_private_data(void)
+static void pre_destroy_private_data(void)
 {
 	LOGn("begin\n");
 	flush_all_wq();
@@ -2837,7 +3410,7 @@ void pre_destroy_private_data(void)
 }
 
 /* Called after unregister. */
-void post_unregister(void)
+static void post_unregister(void)
 {
 	LOGd_("begin\n");
 
@@ -2861,5 +3434,66 @@ void post_unregister(void)
 
 	LOGd_("end\n");
 }
+
+/*******************************************************************************
+ * Init/exit definition.
+ *******************************************************************************/
+
+static int __init wrapper_blk_init(void)
+{
+	if (!is_valid_pbs(physical_block_size_)) {
+		LOGe("pbs is invalid.\n");
+		goto error0;
+	}
+	if (queue_stop_timeout_ms_ < 1) {
+		LOGe("queue_stop_timeout_ms must > 0.\n");
+		goto error0;
+	}
+	if (max_logpack_size_kb_ < 0 ||
+		(max_logpack_size_kb_ * 1024) % physical_block_size_ != 0) {
+		LOGe("max_logpack_size_kb must >= 0 and"
+			" the integral multiple of physical block size if positive.\n");
+		goto error0;
+	}
+
+        if (!pre_register()) {
+		LOGe("pre_register failed.\n");
+		goto error0;
+	}
+        
+        if (!register_dev()) {
+                goto error1;
+        }
+        if (!start_dev()) {
+                goto error2;
+        }
+
+        return 0;
+#if 0
+error3:
+        stop_dev();
+#endif
+error2:
+	pre_unregister();
+        unregister_dev();
+error1:
+	post_unregister();
+error0:
+        return -1;
+}
+
+static void wrapper_blk_exit(void)
+{
+        stop_dev();
+	pre_unregister();
+        unregister_dev();
+        post_unregister();
+}
+
+module_init(wrapper_blk_init);
+module_exit(wrapper_blk_exit);
+MODULE_LICENSE("Dual BSD/GPL");
+MODULE_DESCRIPTION("Walb block req device for Test");
+MODULE_ALIAS("wrapper_blk_walb_req");
 
 /* end of file. */
