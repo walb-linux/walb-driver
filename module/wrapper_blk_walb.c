@@ -12,7 +12,6 @@
 #include <linux/list.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
-#include <linux/mutex.h>
 
 #include "walb/walb.h"
 #include "walb/block_size.h"
@@ -32,7 +31,7 @@ char *data_device_str_ = "/dev/simple_blk/1";
 /* Minor id start. */
 int start_minor_ = 0;
 
-/* Physical block size. */
+/* Physical block size [bytes]. */
 int physical_block_size_ = 4096;
 
 /* Pending data limit size [MB]. */
@@ -41,6 +40,13 @@ int min_pending_mb_ = 64 * 7 / 8;
 
 /* Queue stop timeout [msec]. */
 int queue_stop_timeout_ms_ = 100;
+
+/* Maximum logpack size [KB].
+   A logpack containing a requests can exceeds the limitation.
+   This must be the integral multiple of physical block size.
+   0 means there is no limitation of logpack size
+   (practically limited by physical block size for logpack header). */
+int max_logpack_size_kb_ = 256;
 
 /*******************************************************************************
  * Module parameters definition.
@@ -53,6 +59,7 @@ module_param_named(pbs, physical_block_size_, int, S_IRUGO);
 module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
 module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
 module_param_named(queue_stop_timeout_ms, queue_stop_timeout_ms_, int, S_IRUGO);
+module_param_named(max_logpack_size_kb, max_logpack_size_kb_, int, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -103,20 +110,23 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	spin_lock_init(&pdata->lsuper0_lock);
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
-	mutex_init(&pdata->overlapping_data_mutex);
+	spin_lock_init(&pdata->overlapping_data_lock);
 	pdata->overlapping_data = multimap_create(GFP_KERNEL);
 	if (!pdata->overlapping_data) {
 		LOGe("multimap creation failed.\n");
 		goto error01;
 	}
+	pdata->max_req_sectors_in_overlapping = 0;
 #endif
 #ifdef WALB_FAST_ALGORITHM
-	mutex_init(&pdata->pending_data_mutex);
+	spin_lock_init(&pdata->pending_data_lock);
 	pdata->pending_data = multimap_create(GFP_KERNEL);
 	if (!pdata->pending_data) {
 		LOGe("multimap creation failed.\n");
 		goto error02;
 	}
+	pdata->max_req_sectors_in_pending = 0;
+	
 	pdata->pending_sectors = 0;
 	pdata->max_pending_sectors = max_pending_mb_
 		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
@@ -130,7 +140,6 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	
 	pdata->is_queue_stopped = false;
 #endif
-	
         /* open underlying log device. */
         ldev = blkdev_get_by_path(
                 log_device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
@@ -170,12 +179,20 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		goto error3;
 	}
 	wdev->pbs = pbs;
+	blk_set_default_limits(&wdev->queue->limits);
         blk_queue_logical_block_size(wdev->queue, lbs);
         blk_queue_physical_block_size(wdev->queue, pbs);
-	blk_queue_io_min(wdev->queue, pbs);
+	/* blk_queue_io_min(wdev->queue, pbs); */
 	/* blk_queue_io_opt(wdev->queue, pbs); */
 
-	/* Prepare pdata. */
+	/* Set max_logpack_pb. */
+	ASSERT(max_logpack_size_kb_ >= 0);
+	ASSERT((max_logpack_size_kb_ * 1024) % pbs == 0);
+	pdata->max_logpack_pb = (max_logpack_size_kb_ * 1024) / pbs;
+	LOGn("max_logpack_size_kb: %u max_logpack_pb: %u\n",
+		max_logpack_size_kb_, pdata->max_logpack_pb);
+	
+	/* Set underlying devices. */
 	pdata->ldev = ldev;
 	pdata->ddev = ddev;
         wdev->private_data = pdata;
@@ -207,26 +224,29 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	dq = bdev_get_queue(ddev);
         blk_queue_stack_limits(wdev->queue, lq);
         blk_queue_stack_limits(wdev->queue, dq);
-	LOGn("ldev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+	LOGn("ldev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
 		lq->limits.logical_block_size,
 		lq->limits.physical_block_size,
 		lq->limits.io_min,
 		lq->limits.io_opt,
 		lq->limits.max_hw_sectors,
+		lq->limits.max_sectors,
 		lq->limits.alignment_offset);
-	LOGn("ddev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+	LOGn("ddev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
 		dq->limits.logical_block_size,
 		dq->limits.physical_block_size,
 		dq->limits.io_min,
 		dq->limits.io_opt,
 		dq->limits.max_hw_sectors,
+		dq->limits.max_sectors,
 		dq->limits.alignment_offset);
-	LOGn("wdev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u align %u\n",
+	LOGn("wdev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
 		wdev->queue->limits.logical_block_size,
 		wdev->queue->limits.physical_block_size,
 		wdev->queue->limits.io_min,
 		wdev->queue->limits.io_opt,
 		wdev->queue->limits.max_hw_sectors,
+		wdev->queue->limits.max_sectors,
 		wdev->queue->limits.alignment_offset);
 
 	/* Chunk size. */
@@ -362,7 +382,7 @@ static bool register_dev(void)
         bool ret;
         struct wrapper_blk_dev *wdev;
 
-        LOGe("register_dev begin");
+        LOGn("begin\n");
         
         /* capacity must be set lator. */
         ret = wdev_register_with_req(get_minor(i), capacity,
@@ -378,7 +398,7 @@ static bool register_dev(void)
         }
         customize_wdev(wdev);
 
-        LOGe("register_dev end");
+        LOGn("end\n");
 
         return true;
 error:
@@ -390,12 +410,18 @@ static void unregister_dev(void)
 {
         unsigned int i = 0;
         struct wrapper_blk_dev *wdev;
-        
+
+	LOGn("begin\n");
+	
         wdev = wdev_get(get_minor(i));
-        if (wdev) {
-                destroy_private_data(wdev);
-        }
         wdev_unregister(get_minor(i));
+        if (wdev) {
+		pre_destroy_private_data();
+                destroy_private_data(wdev);
+		FREE(wdev);
+        }
+	
+	LOGn("end\n");
 }
 
 static bool start_dev(void)
@@ -435,6 +461,12 @@ static int __init wrapper_blk_init(void)
 	}
 	if (queue_stop_timeout_ms_ < 1) {
 		LOGe("queue_stop_timeout_ms must > 0.\n");
+		goto error0;
+	}
+	if (max_logpack_size_kb_ < 0 ||
+		(max_logpack_size_kb_ * 1024) % physical_block_size_ != 0) {
+		LOGe("max_logpack_size_kb must >= 0 and"
+			" the integral multiple of physical block size if positive.\n");
 		goto error0;
 	}
 

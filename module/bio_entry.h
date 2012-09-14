@@ -68,7 +68,7 @@ void init_copied_bio_entry(
 	struct bio_entry *bioe, struct bio *bio_with_copy);
 bool bio_entry_list_mark_copied(
 	struct list_head *bio_ent_list,
-	unsigned int off, unsigned int sectors);
+	unsigned int off, unsigned int sectors, gfp_t gfp_mask);
 
 unsigned int bio_entry_cursor_try_copy_and_proceed(
 	struct bio_entry_cursor *dst,
@@ -84,7 +84,8 @@ bool bio_entry_cursor_proceed(struct bio_entry_cursor *cur,
 bool should_split_bio_entry_list_for_chunk(
 	struct list_head *bio_ent_list, unsigned int chunk_sectors);
 bool split_bio_entry_list_for_chunk(
-	struct list_head *bio_ent_list, unsigned int chunk_sectors);
+	struct list_head *bio_ent_list,
+	unsigned int chunk_sectors, gfp_t gfp_mask);
 
 /* init/exit */
 bool bio_entry_init(void);

@@ -11,7 +11,6 @@
 #include <linux/blkdev.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
-#include <linux/mutex.h>
 #include "walb/sector.h"
 #include "wrapper_blk.h"
 #include "treemap.h"
@@ -24,6 +23,9 @@ bool pre_register(void);
 
 /* Called before unregister */
 void pre_unregister(void);
+
+/* Called just before destroy_private_data. */
+void pre_destroy_private_data(void);
 
 /* Called after unregister. */
 void post_unregister(void);
@@ -81,14 +83,21 @@ struct pdata
 						logpack_wait_queue_lock
 						must be held. */
 
+	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
+					This will be used for logpack size
+					not to be too long
+					This will avoid decrease of
+					sequential write performance. */
+
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	/**
 	 * All req_entry data may not keep reqe->bio_ent_list.
 	 * You must keep address and size information in another way.
 	 */
-	struct mutex overlapping_data_mutex; /* Use mutex_lock()/mutex_unlock(). */
+	spinlock_t overlapping_data_lock; /* Use spin_lock()/spin_unlock(). */
 	struct multimap *overlapping_data; /* key: blk_rq_pos(req),
 					      val: pointer to req_entry. */
+	unsigned int max_req_sectors_in_overlapping; /* Maximum request size [logical block]. */
 #endif
 	
 #ifdef WALB_FAST_ALGORITHM
@@ -96,9 +105,11 @@ struct pdata
 	 * All req_entry data must keep
 	 * reqe->bio_ent_list while they are stored in the pending_data.
 	 */
-	struct mutex pending_data_mutex; /* Use mutex_lock()/mutex_unlock(). */
+	spinlock_t pending_data_lock; /* Use spin_lock()/spin_unlock(). */
 	struct multimap *pending_data; /* key: blk_rq_pos(req),
 					  val: pointer to req_entry. */
+	unsigned int max_req_sectors_in_pending; /* Maximum request size [logical block]. */
+	
 	unsigned int pending_sectors; /* Number of sectors pending
 					 [logical block]. */
 	unsigned int max_pending_sectors; /* max_pending_sectors < pending_sectors

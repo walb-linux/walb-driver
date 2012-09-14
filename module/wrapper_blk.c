@@ -130,7 +130,6 @@ bool wdev_unregister(unsigned int minor)
                 return false;
         }        
         fin_queue_and_disk(wdev);
-        FREE(wdev);
         return true;
 }
 EXPORT_SYMBOL_GPL(wdev_unregister);
@@ -182,7 +181,7 @@ bool wdev_stop(unsigned int minor)
 	if (test_and_clear_bit(0, &wdev->is_started)) {
 		ASSERT(wdev->gd);
 		del_gendisk(wdev->gd);
-		LOGi("Stop device with minor %u.\n", minor);
+		LOGn("Stop device with minor %u.\n", minor);
 	} else {
 		LOGe("Device wit minor %u is already stopped.\n", minor);
 		goto error0;
@@ -453,8 +452,8 @@ static bool init_queue_and_disk(struct wrapper_blk_dev *wdev)
                         goto error0;
                 }
         }
-        blk_queue_physical_block_size(q, wdev->pbs);
-        blk_queue_logical_block_size(q, LOGICAL_BLOCK_SIZE);
+        /* blk_queue_physical_block_size(q, wdev->pbs); */
+        /* blk_queue_logical_block_size(q, LOGICAL_BLOCK_SIZE); */
         /* blk_queue_io_min(q, wdev->pbs); */
         /* blk_queue_io_opt(q, wdev->pbs); */
 
@@ -532,6 +531,7 @@ static void stop_and_unregister_all_devices(void)
                 if (wdev) {
                         wdev_stop(i);
                         wdev_unregister(i);
+			FREE(wdev);
                 }
         }
 }

@@ -4,6 +4,7 @@ DYNAMIC_DEBUG = 0
 # You can specify the following parameters.
 OVERLAP = 1 #overlapping writes serialization.
 FAST_ALG = 1 # use fast algorithm instead of easy.
+ASSERT = 0 # enable ASSERT even with relase build.
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DYNAMIC_DEBUG),1)
@@ -13,6 +14,10 @@ ifeq ($(DEBUG),1)
   DEBFLAGS = -O -g -DDEBUG -DWALB_DEBUG
 endif
 DEBFLAGS ?= -O2
+
+ifeq ($(ASSERT),1)
+  DEBFLAGS += -DASSERT_ON
+endif
 
 ifeq ($(OVERLAP),1)
   DEBFLAGS += -DWALB_OVERLAPPING_SERIALIZE
@@ -62,9 +67,10 @@ $(SIMPLE_BLK_REQ_OBJS) simple_blk_req_none.o
 #simple-blk-wrap-mod-objs := $(SIMPLE_BLK_WRAP_OBJS)
 
 wrapper-blk-mod-objs := wrapper_blk.o
-WRAPPER_BLK_SIMPLE_OBJS = wrapper_blk_simple.o
-wrapper-blk-simple-plug-mod-objs := $(WRAPPER_BLK_SIMPLE_OBJS) \
-wrapper_blk_simple_plug.o
+WRAPPER_BLK_SIMPLE_REQ_OBJS = wrapper_blk_simple_req.o
+wrapper-blk-simple-req-mod-objs := $(WRAPPER_BLK_SIMPLE_REQ_OBJS)
+WRAPPER_BLK_SIMPLE_BIO_OBJS = wrapper_blk_simple_bio.o bio_entry.o
+wrapper-blk-simple-bio-mod-objs := $(WRAPPER_BLK_SIMPLE_BIO_OBJS)
 WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o \
 sector_io.o bio_entry.o req_entry.o logpack.o treemap.o
 wrapper-blk-walb-req-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
@@ -98,7 +104,8 @@ simple-blk-req-none-mod.o \
 simple-blk-req-mem-mod.o \
 simple-blk-req-mem-barrier-mod.o \
 wrapper-blk-mod.o \
-wrapper-blk-simple-plug-mod.o \
+wrapper-blk-simple-req-mod.o \
+wrapper-blk-simple-bio-mod.o \
 wrapper-blk-walb-req-mod.o \
 
 else

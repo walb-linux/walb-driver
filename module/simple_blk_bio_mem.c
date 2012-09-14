@@ -98,7 +98,14 @@ static struct memblk_data* get_mdata_from_queue(struct request_queue *q)
 void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
 {
         ASSERT(bio);
+#if 0
+	LOGn("bio %p rw %lu pos %"PRIu64" size %u\n",
+		bio, bio->bi_rw, (u64)bio->bi_sector, bio->bi_size);
+#endif
         mdata_exec_bio(get_mdata_from_queue(q), bio);
+#if 0
+	LOGn("bio_endio %p\n", bio);
+#endif
         bio_endio(bio, 0);
 }
 

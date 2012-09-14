@@ -1,5 +1,5 @@
 /**
- * wrapper_blk_simple.c - Simple wrapper block device.
+ * wrapper_blk_simple_bio.c - Simple wrapper block device with bio interface.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -15,7 +15,7 @@
 
 #include "walb/block_size.h"
 #include "wrapper_blk.h"
-#include "wrapper_blk_simple.h"
+#include "bio_entry.h"
 
 /*******************************************************************************
  * Module variables definition.
@@ -31,11 +31,8 @@ int start_minor_ = 0;
 /* Physical block size. */
 int physical_block_size_ = 4096;
 
-/**
- * Plugging policy.
- * 'plug_per_plug' or 'plug_per_req'.
- */
-char *plug_policy_str_ = "plug_per_plug";
+/* Always IO fails when true. */
+bool io_should_fail_ = false;
 
 /*******************************************************************************
  * Module parameters definition.
@@ -44,18 +41,20 @@ char *plug_policy_str_ = "plug_per_plug";
 module_param_named(device_str, device_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
-module_param_named(plug_policy, plug_policy_str_, charp, S_IRUGO);
+module_param_named(io_should_fail, io_should_fail_, bool, S_IRUGO | S_IWUSR);
 	
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
 
-/* Policy. */
-enum plug_policy plug_policy_;
-
 /*******************************************************************************
  * Static functions prototype.
  *******************************************************************************/
+
+/* bio callback. */
+static void bio_entry_end_io(struct bio *bio, int error);
+/* make_request. */
+static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio);
 
 /* Create private data for wdev. */
 static bool create_private_data(struct wrapper_blk_dev *wdev);
@@ -74,6 +73,67 @@ static void stop_dev(void);
  * Static functions definition.
  *******************************************************************************/
 
+/**
+ * End io callback for bio wrapped by bio_entry struct.
+ */
+static void bio_entry_end_io(struct bio *bio, int error)
+{
+	struct bio_entry *bioe = bio->bi_private;
+	ASSERT(bioe);
+
+	LOGd_("bio rw %lu pos %"PRIu64" size %u error %d\n",
+		bio->bi_rw, (u64)bio->bi_sector, bio->bi_size, error);
+
+	bioe->error = error;
+	ASSERT(bioe->bio == bio);
+	bioe->bio = NULL;
+	bio_put(bio);
+
+	bio_endio(bioe->bio_orig, bioe->error);
+	bioe->bio_orig = NULL;
+	destroy_bio_entry(bioe);
+}
+
+/**
+ * The entry point of IOs.
+ */
+static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio)
+{
+	struct bio_entry *bioe = NULL;
+	struct bio *clone = NULL;
+	struct wrapper_blk_dev *wdev;
+	struct block_device *bdev;
+	ASSERT(q);
+	ASSERT(bio);
+	wdev = wdev_get_from_queue(q);
+	ASSERT(wdev);
+	bdev = wdev->private_data;
+	ASSERT(bdev);
+
+	LOGd_("bio rw %lu pos %"PRIu64" size %u\n",
+		bio->bi_rw, (u64)bio->bi_sector, bio->bi_size);
+
+	if (io_should_fail_) { goto error0; }
+	
+	bioe = alloc_bio_entry(GFP_NOIO);
+	if (!bioe) { goto error0; }
+	clone = bio_clone(bio, GFP_NOIO);
+	if (!clone) { goto error1; }
+
+	clone->bi_bdev = bdev;
+	clone->bi_end_io = bio_entry_end_io;
+	clone->bi_private = bioe;
+	init_bio_entry(bioe, clone);
+	bioe->bio_orig = bio;
+
+	generic_make_request(clone);
+
+	return;
+error1:
+	destroy_bio_entry(bioe);
+error0:
+	bio_endio(bio, -EIO);
+}
 
 /* Create private data for wdev. */
 static bool create_private_data(struct wrapper_blk_dev *wdev)
@@ -94,16 +154,20 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         wdev->private_data = bdev;
 
         /* capacity */
-        wdev->capacity = get_capacity(bdev->bd_disk);
+        wdev->capacity = bdev->bd_part->nr_sects;
         set_capacity(wdev->gd, wdev->capacity);
 
         /* Block size */
         lbs = bdev_logical_block_size(bdev);
         pbs = bdev_physical_block_size(bdev);
-        
         if (lbs != LOGICAL_BLOCK_SIZE) {
                 goto error0;
         }
+	if (physical_block_size_ != pbs) {
+		LOGe("physical block size is different wrapper %u underlying %u.\n",
+			physical_block_size_, pbs);
+		goto error0;
+	}
 	wdev->pbs = pbs;
         blk_queue_logical_block_size(wdev->queue, lbs);
         blk_queue_physical_block_size(wdev->queue, pbs);
@@ -136,20 +200,20 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
         /* Accept REQ_FLUSH and REQ_FUA. */
         if (uq->flush_flags & REQ_FLUSH) {
                 if (uq->flush_flags & REQ_FUA) {
-                        LOGn("Supports REQ_FLUSH | REQ_FUA.");
+                        LOGn("Supports REQ_FLUSH | REQ_FUA.\n");
                         blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
                 } else {
-                        LOGn("Supports REQ_FLUSH.");
+                        LOGn("Supports REQ_FLUSH.\n");
                         blk_queue_flush(q, REQ_FLUSH);
                 }
         } else {
-                LOGn("Not support REQ_FLUSH (but support).");
+                LOGn("Not support REQ_FLUSH (but support).\n");
 		blk_queue_flush(q, REQ_FLUSH);
         }
 
         if (blk_queue_discard(uq)) {
                 /* Accept REQ_DISCARD. */
-                LOGn("Supports REQ_DISCARD.");
+                LOGn("Supports REQ_DISCARD.\n");
                 q->limits.discard_granularity = PAGE_SIZE;
                 q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
                 q->limits.max_discard_sectors = UINT_MAX;
@@ -157,7 +221,7 @@ static void customize_wdev(struct wrapper_blk_dev *wdev)
                 queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
                 /* queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q); */
         } else {
-                LOGn("Not support REQ_DISCARD.");
+                LOGn("Not support REQ_DISCARD.\n");
         }
 }
 
@@ -176,8 +240,9 @@ static bool register_dev(void)
         LOGe("register_dev begin");
         
         /* capacity must be set lator. */
-        ret = wdev_register_with_req(get_minor(i), capacity, physical_block_size_,
-				wrapper_blk_req_request_fn);
+        ret = wdev_register_with_bio(get_minor(i),
+				capacity, physical_block_size_,
+				wrapper_blk_make_request_fn);
                 
         if (!ret) {
                 goto error;
@@ -202,10 +267,11 @@ static void unregister_dev(void)
         struct wrapper_blk_dev *wdev;
         
         wdev = wdev_get(get_minor(i));
+        wdev_unregister(get_minor(i));
         if (wdev) {
                 destroy_private_data(wdev);
+		FREE(wdev);
         }
-        wdev_unregister(get_minor(i));
 }
 
 static bool start_dev(void)
@@ -229,25 +295,9 @@ static void stop_dev(void)
         wdev_stop(get_minor(i));
 }
 
-static void set_policy(void)
-{
-	if (strcmp(plug_policy_str_, "plug_per_req") == 0) {
-		plug_policy_ = PLUG_PER_REQ;
-		LOGn("plug_policy: plug_per_req\n");
-	} else {
-		plug_policy_ = PLUG_PER_PLUG;
-		LOGn("plug_policy: plug_per_plug\n");
-	}
-}
-
 /*******************************************************************************
  * Global function definition.
  *******************************************************************************/
-
-enum plug_policy get_policy(void)
-{
-	return plug_policy_;
-}
 
 /*******************************************************************************
  * Init/exit definition.
@@ -258,25 +308,25 @@ static int __init wrapper_blk_init(void)
 	if (!is_valid_pbs(physical_block_size_)) {
 		goto error0;
 	}
-
-	set_policy();
-	
-        pre_register();
-        
+	if (!bio_entry_init()) {
+		goto error0;
+	}
         if (!register_dev()) {
-                goto error0;
+                goto error1;
         }
         if (!start_dev()) {
-                goto error1;
+                goto error2;
         }
 
         return 0;
 #if 0
-error2:
+error3:
         stop_dev();
 #endif
-error1:
+error2:
         unregister_dev();
+error1:
+	bio_entry_exit();
 error0:
         return -1;
 }
@@ -285,11 +335,11 @@ static void wrapper_blk_exit(void)
 {
         stop_dev();
         unregister_dev();
-        post_unregister();
+	bio_entry_exit();
 }
 
 module_init(wrapper_blk_init);
 module_exit(wrapper_blk_exit);
 MODULE_LICENSE("Dual BSD/GPL");
-MODULE_DESCRIPTION("Simple block req device for Test");
-MODULE_ALIAS("wrapper_blk_req");
+MODULE_DESCRIPTION("Simple block bio device for Test");
+MODULE_ALIAS("wrapper_blk_simple_bio");

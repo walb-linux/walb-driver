@@ -180,6 +180,7 @@ void get_overlapping_pos_and_sectors(
  *
  * @dst_reqe destination. You can split inside bio(s).
  * @src_reqe source. You must not modify this.
+ * @gfp_mask for memory allocation in bio split.
  *
  * bioe->is_copied will be true when it uses data of the source.
  * bio and bioe in the destination
@@ -191,7 +192,7 @@ void get_overlapping_pos_and_sectors(
  */
 #ifdef WALB_FAST_ALGORITHM
 bool data_copy_req_entry(
-	struct req_entry *dst_reqe,  struct req_entry *src_reqe)
+	struct req_entry *dst_reqe,  struct req_entry *src_reqe, gfp_t gfp_mask)
 {
 	u64 ol_req_pos;
 	unsigned int ol_req_sectors;
@@ -234,7 +235,8 @@ bool data_copy_req_entry(
 
 	/* Set copied flag. */
 	if (!bio_entry_list_mark_copied(
-			&dst_reqe->bio_ent_list, dst_off, ol_req_sectors)) {
+			&dst_reqe->bio_ent_list, dst_off, ol_req_sectors,
+			gfp_mask)) {
 		goto error;
 	}
 			

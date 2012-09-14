@@ -8,7 +8,7 @@ else
 	CFLAGS+=-DNDEBUG -O2
 endif
 
-BINARIES = walbctl test_rw
+BINARIES = walbctl trim test_rw
 TEST_BINARIES = \
 	test_checksum test_bitmap test_u64bits \
 	test_sector test_super test_snapshot test_logpack
@@ -34,6 +34,9 @@ HEADER_FILES = \
 
 walbctl: walbctl.o util.o logpack.o snapshot.o
 	$(CC) -o $@ $(CFLAGS) walbctl.o util.o logpack.o snapshot.o
+
+trim: trim.o util.o
+	$(CC) -o $@ $(CFLAGS) trim.o util.o
 
 test_checksum: test_checksum.o
 	$(CC) -o $@ $(CFLAGS) test_checksum.o
@@ -69,6 +72,7 @@ logpack.o: logpack.c logpack.h util.h $(HEADER_FILES)
 test_rw.o: test_rw.c util.h random.h $(HEADER_FILES)
 walbctl.o: walbctl.c walblog_format.h $(HEADER_FILES)
 snapshot.o: snapshot.c snapshot.h util.h $(HEADER_FILES)
+trim.o: trim.c util.h $(HEADER_FILES)
 
 .c.o:
 	$(CC) -c $< -o $@ $(CFLAGS)
