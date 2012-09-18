@@ -106,6 +106,11 @@ bool walb_logpack_header_add_req(
 	struct walb_logpack_header *lhead,
 	struct request *req,
 	unsigned int pbs, u64 ring_buffer_size);
+bool walb_logpack_header_add_bio(
+	struct walb_logpack_header *lhead,
+	struct bio *bio,
+	unsigned int pbs, u64 ring_buffer_size);
+
 DEPRECATED int walb_logpack_header_fill(
 	struct walb_logpack_header *lhead,
 	u64 logpack_lsid,
