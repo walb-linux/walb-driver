@@ -19,6 +19,8 @@
  *******************************************************************************/
 
 /**
+ * DEPRECATED
+ *
  * Work to create logpack.
  */
 struct walb_make_logpack_work
@@ -31,6 +33,8 @@ struct walb_make_logpack_work
 
 
 /**
+ * DEPRECATED
+ *
  * Bio wrapper for logpack write.
  */
 struct walb_logpack_bio {
@@ -48,6 +52,8 @@ struct walb_logpack_bio {
 };
 
 /**
+ * DEPRECATED
+ *
  * Logpack list entry.
  */
 struct walb_logpack_entry {
@@ -70,6 +76,8 @@ struct walb_logpack_entry {
 };
 
 /**
+ * DEPRECATED
+ *
  * Logpack request entry.
  *
  * A logpack may have several requests.
@@ -117,27 +125,27 @@ DEPRECATED int walb_logpack_header_fill(
 	struct request** reqp_ary, int n_req,
 	int n_lb_in_pb,
 	u64 ring_buffer_size);
-struct walb_logpack_request_entry* walb_create_logpack_request_entry(
+DEPRECATED struct walb_logpack_request_entry* walb_create_logpack_request_entry(
         struct walb_logpack_entry *logpack_entry, int idx);
-void walb_destroy_logpack_request_entry(
+DEPRECATED void walb_destroy_logpack_request_entry(
         struct walb_logpack_request_entry *entry);
-struct walb_logpack_entry* walb_create_logpack_entry(
+DEPRECATED struct walb_logpack_entry* walb_create_logpack_entry(
         struct walb_dev *wdev,
         struct walb_logpack_header *logpack,
         struct request** reqp_ary);
-void walb_destroy_logpack_entry(struct walb_logpack_entry *entry);
-struct walb_bio_with_completion* walb_submit_logpack_bio_to_ldev(
+DEPRECATED void walb_destroy_logpack_entry(struct walb_logpack_entry *entry);
+DEPRECATED struct walb_bio_with_completion* walb_submit_logpack_bio_to_ldev(
         struct walb_logpack_request_entry *req_entry,
         struct bio *bio,
         u64 ldev_offset, int bio_offset);
-int walb_submit_logpack_request_to_ldev(
+DEPRECATED int walb_submit_logpack_request_to_ldev(
         struct walb_logpack_request_entry *req_entry);
-int walb_submit_logpack_to_ldev(
+DEPRECATED int walb_submit_logpack_to_ldev(
         struct walb_logpack_entry* logpack_entry);
-int walb_logpack_write(struct walb_dev *wdev,
+DEPRECATED int walb_logpack_write(struct walb_dev *wdev,
                        struct walb_logpack_header *logpack,
                        struct request** reqp_ary);
-int walb_logpack_calc_checksum(struct walb_logpack_header *lhead,
+DEPRECATED int walb_logpack_calc_checksum(struct walb_logpack_header *lhead,
                                int physical_bs,
                                struct request** reqp_ary, int n_req);
 

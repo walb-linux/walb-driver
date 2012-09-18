@@ -53,8 +53,6 @@ void walb_logpack_header_print(const char *level,
 }
 
 /**
- * NOT TESTED YET.
- *
  * Add a request to a logpack header.
  * Do not validate checksum.
  *
@@ -388,6 +386,7 @@ int walb_logpack_header_fill(struct walb_logpack_header *lhead,
  * @return Pointer to created entry, or NULL.
  *         This must be destroyed with @walb_destroy_logpack_request_entry().
  */
+DEPRECATED
 struct walb_logpack_request_entry*
 walb_create_logpack_request_entry(
         struct walb_logpack_entry *logpack_entry, int idx)
@@ -483,6 +482,7 @@ void walb_destroy_logpack_request_entry(
  *         This must be destroyed with @walb_destroy_logpack_entry().
  *
  */
+DEPRECATED
 struct walb_logpack_entry* walb_create_logpack_entry(
         struct walb_dev *wdev,
         struct walb_logpack_header *logpack,
@@ -541,6 +541,7 @@ error0:
  *
  * @entry logpack entry.
  */
+DEPRECATED
 void walb_destroy_logpack_entry(struct walb_logpack_entry *entry)
 {
         struct walb_logpack_request_entry *req_entry, *tmp_req_entry;
@@ -564,6 +565,7 @@ void walb_destroy_logpack_entry(struct walb_logpack_entry *entry)
  *
  * @return walb_bio_with_completion or NULL.
  */
+DEPRECATED
 struct walb_bio_with_completion*
 walb_submit_logpack_bio_to_ldev(
         struct walb_logpack_request_entry *req_entry, struct bio *bio,
@@ -637,6 +639,7 @@ error0:
  *
  * @return 0 in success, or -1.
  */
+DEPRECATED
 int walb_submit_logpack_request_to_ldev(
         struct walb_logpack_request_entry *req_entry)
 {
@@ -685,6 +688,7 @@ error0:
  * 
  * @return 0 in success, or -1.
  */
+DEPRECATED
 int walb_submit_logpack_to_ldev(struct walb_logpack_entry* logpack_entry)
 {
         int i, is_fail;
@@ -812,6 +816,7 @@ error0:
  *
  * @return 0 in success, or -1.
  */
+DEPRECATED
 int walb_logpack_write(struct walb_dev *wdev,
                        struct walb_logpack_header *logpack,
                        struct request** reqp_ary)
