@@ -150,7 +150,7 @@ UNUSED static void bio_cursor_print(
 	ASSERT(bio_cursor_is_valid(cur));
 
 	ASSERT(cur->bioe);
-	addr = cur->bioe->bio->bi_sector;
+	addr = cur->bioe->bi_sector;
 	bi_size = cur->bioe->bi_size;
 	
 	printk("%s"
@@ -668,7 +668,7 @@ static void bio_entry_cursor_print(
 	ASSERT(cur);
 
 	if (cur->bioe) {
-		addr = cur->bioe->bio->bi_sector;
+		addr = cur->bioe->bi_sector;
 		sectors = cur->bioe->bi_size / LOGICAL_BLOCK_SIZE;
 	}
 	printk("%s"
@@ -883,7 +883,7 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 		bioe->is_splitted, bioe->bio_orig);
 	if (bioe->bio) {
 		printk("%s""bio pos %"PRIu64" bdev(%d:%d)\n",
-			level, (u64)bioe->bio->bi_sector,
+			level, (u64)bioe->bi_sector,
 			MAJOR(bioe->bio->bi_bdev->bd_dev),
 			MINOR(bioe->bio->bi_bdev->bd_dev));
 		bio_for_each_segment(bvec, bioe->bio, i) {
@@ -916,9 +916,11 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 	bioe->bio_orig = NULL;
 	if (bio) {
 		bioe->bio = bio;
+		bioe->bi_sector = bio->bi_sector;
 		bioe->bi_size = bio->bi_size;
 	} else {
 		bioe->bio = NULL;
+		bioe->bi_sector = 0;
 		bioe->bi_size = 0;
 	}
 
@@ -1396,7 +1398,7 @@ bool should_split_bio_entry_list_for_chunk(
 	while (!bio_entry_cursor_is_end(&cur)) {
 		ASSERT(cur.bioe);
 		ASSERT(cur.bioe->bio);
-		addr = cur.bioe->bio->bi_sector;
+		addr = cur.bioe->bi_sector;
 		sectors = cur.bioe->bi_size / LOGICAL_BLOCK_SIZE;
 		ASSERT(sectors > 0);
 		if (addr / chunk_sectors == (addr + sectors - 1) / chunk_sectors) {
@@ -1441,7 +1443,7 @@ bool split_bio_entry_list_for_chunk(
 #if 0
 		bio_entry_cursor_print(KERN_DEBUG, &cur);
 #endif
-		addr = cur.bioe->bio->bi_sector;
+		addr = cur.bioe->bi_sector;
 		sectors = cur.bioe->bi_size / LOGICAL_BLOCK_SIZE;
 		ASSERT(sectors > 0);
 		if (addr / chunk_sectors == (addr + sectors - 1) / chunk_sectors) {

@@ -21,6 +21,7 @@ struct bio_entry
 {
 	struct list_head list; /* list entry */
 	struct bio *bio; /* must be NULL if bio->bi_cnt is 0 (and deallocated). */
+	sector_t bi_sector; /* [logical block] */
 	unsigned int bi_size; /* keep bi_size at initialization,
 				 because bio->bi_size will be 0 after endio. */
 	int error; /* bio error status. */
