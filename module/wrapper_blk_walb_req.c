@@ -2881,10 +2881,10 @@ static bool overlapping_check_and_insert(
 
 fin:
 	ret = multimap_add(overlapping_data, reqe->req_pos, (unsigned long)reqe, gfp_mask);
-	ASSERT(ret != EEXIST);
-	ASSERT(ret != EINVAL);
+	ASSERT(ret != -EEXIST);
+	ASSERT(ret != -EINVAL);
 	if (ret) {
-		ASSERT(ret == ENOMEM);
+		ASSERT(ret == -ENOMEM);
 		LOGe("overlapping_check_and_insert failed.\n");
 		return false;
 	}
