@@ -980,8 +980,8 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	}
 #endif
 	if (!uptodate) {
-		LOGn("BIO_UPTODATE is false (rw %lu addr %"PRIu64" size %u).\n",
-			bioe->bio->bi_rw, (u64)bioe->bio->bi_sector, bioe->bi_size);
+		LOGn("BIO_UPTODATE is false (rw %lu pos %"PRIu64" len %u).\n",
+			bioe->bio->bi_rw, (u64)bioe->pos, bioe->len);
 	}
         
 	/* LOGd("bio_entry_end_io() begin.\n"); */
@@ -1514,7 +1514,7 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 	int c;
 	ASSERT(reqe);
         
-	remaining = reqe->req_sectors * LOGICAL_BLOCK_SIZE;
+	remaining = reqe->req_sectors;
 	list_for_each_entry(bioe, &reqe->bio_ent_list, list) {
 		if (bio_entry_should_wait_completion(bioe)) {
 			c = 0;
@@ -1529,9 +1529,9 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 			}
 		}
 		if (is_end_request) {
-			blk_end_request(reqe->req, bioe->error, bioe->bi_size);
+			blk_end_request(reqe->req, bioe->error, bioe->len << 9);
 		}
-		remaining -= bioe->bi_size;
+		remaining -= bioe->len;
 	}
 	ASSERT(remaining == 0);
 
@@ -1686,8 +1686,8 @@ static int wait_for_bio_entry_list(struct list_head *bio_ent_list)
 		retry:
 			rtimeo = wait_for_completion_timeout(&bioe->done, timeo);
 			if (rtimeo == 0) {
-				LOGn("timeout(%d): bioe %p bio %p size %u\n",
-					c, bioe, bioe->bio, bioe->bi_size);
+				LOGn("timeout(%d): bioe %p bio %p len %u\n",
+					c, bioe, bioe->bio, bioe->len);
 				c++;
 				goto retry;
 			}
@@ -2540,7 +2540,7 @@ static bool logpack_submit_lhead(
 	if (len != pbs) { goto error2; }
 
 	init_bio_entry(bioe, bio);
-	ASSERT(bioe->bi_size == pbs);
+	ASSERT(bioe->len << 9 == pbs);
 
 	ASSERT(bio_ent_list);
 	list_add_tail(&bioe->list, bio_ent_list);
@@ -2598,8 +2598,7 @@ static bool logpack_submit_req(
 		if (!bioe) {
 			goto error0;
 		}
-		ASSERT(bioe->bi_size % LOGICAL_BLOCK_SIZE == 0);
-		off_lb += bioe->bi_size / LOGICAL_BLOCK_SIZE;
+		off_lb += bioe->len;
 		list_add_tail(&bioe->list, &tmp_list);
 	}
 	/* split if required. */
@@ -2704,7 +2703,7 @@ static struct bio_entry* submit_flush(struct block_device *bdev)
 	bio->bi_rw = WRITE_FLUSH;
 
 	init_bio_entry(bioe, bio);
-	ASSERT(bioe->bi_size == 0);
+	ASSERT(bioe->len == 0);
 	
 	generic_make_request(bio);
 
