@@ -110,7 +110,7 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 	if (bio) {
 		biow->bio = bio;
 		biow->pos = bio->bi_sector;
-		biow->len = bio->bi_size << 9;
+		biow->len = bio->bi_size >> 9;
 	} else {
 		biow->bio = NULL;
 		biow->pos = 0;

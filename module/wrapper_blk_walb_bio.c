@@ -1747,7 +1747,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 		is_empty = list_empty(&pdata->logpack_submit_queue);
 		list_for_each_entry_safe(biow, biow_next,
 					&pdata->logpack_submit_queue, list) {
-			list_move_tail(&pdata->logpack_submit_queue, &biow_list);
+			list_move_tail(&biow->list, &biow_list);
 		}
 		spin_unlock(&pdata->logpack_submit_queue_lock);
 		if (is_empty) {
