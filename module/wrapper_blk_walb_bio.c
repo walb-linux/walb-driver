@@ -270,91 +270,46 @@ static struct pack* create_pack(gfp_t gfp_mask);
 static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
 static void destroy_pack(struct pack *pack);
 UNUSED static bool is_zero_flush_only(struct pack *pack);
-static bool is_pack_size_exceeds(
+static bool is_pack_size_too_large(
 	struct walb_logpack_header *lhead,
 	unsigned int pbs, unsigned int max_logpack_pb,
 	struct bio_wrapper *biow);
 
-/* helper function. */
-static bool writepack_add_bio_wrapper(
-	struct list_head *wpack_list, struct pack **wpackp,
-	struct bio_wrapper *biow,
-	u64 ring_buffer_size, unsigned int max_logpack_pb, u64 *latest_lsidp,
-	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
-static bool is_flush_first_bio_wrapper(struct list_head *biow_list);
-static void writepack_check_and_set_flush(struct pack *wpack);
-
 /* Workqueue tasks. */
-static void logpack_list_submit_task(struct work_struct *work);
-static void logpack_list_wait_task(struct work_struct *work);
-static void logpack_list_gc_task(struct work_struct *work);
+static void task_submit_logpack_list(struct work_struct *work);
+static void task_wait_for_logpack_list(struct work_struct *work);
+static void task_gc_logpack_list(struct work_struct *work);
 #ifdef WALB_OVERLAPPING_SERIALIZE
-static void datapack_submit_task(struct work_struct *work);
+static void task_submit_datapack(struct work_struct *work);
 #endif
-static void bio_wrapper_read_wait_and_gc_task(struct work_struct *work);
-
-/* Helper functions for tasks. */
-static void logpack_list_submit(
-	struct wrapper_blk_dev *wdev, struct list_head *wpack_list);
+static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work);
 
 /* Helper functions for bio_entry list. */
 static bool create_bio_entry_list(
 	struct bio_wrapper *biow, struct block_device *bdev);
 #ifdef WALB_FAST_ALGORITHM
-static bool create_bio_entry_list_copy(
+static bool create_bio_entry_list_by_copy(
 	struct bio_wrapper *biow, struct block_device *bdev);
 #endif
 static void submit_bio_entry_list(struct list_head *bioe_list);
+static int wait_for_bio_entry_list(struct list_head *bioe_list);
+
+/* Other helper functions. */
+static bool writepack_add_bio_wrapper(
+	struct list_head *wpack_list, struct pack **wpackp,
+	struct bio_wrapper *biow,
+	u64 ring_buffer_size, unsigned int max_logpack_pb, u64 *latest_lsidp,
+	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
+static bool bio_wrapper_list_is_first_entry_flush(struct list_head *biow_list);
+static void writepack_check_and_set_flush(struct pack *wpack);
 static void wait_for_bio_wrapper(
 	struct bio_wrapper *biow, bool is_endio, bool is_delete);
-
-/* Validator for debug. */
-static bool is_valid_prepared_pack(struct pack *pack);
-UNUSED static bool is_valid_pack_list(struct list_head *pack_list);
-
-/* Logpack related functions. */
-static void logpack_list_create(
-	struct wrapper_blk_dev *wdev, struct list_head *biow_list,
-	struct list_head *pack_list);
-static void logpack_calc_checksum(
-	struct walb_logpack_header *lhead,
-	unsigned int pbs, struct list_head *biow_list);
-static void logpack_submit_header(
-	struct walb_logpack_header *logh, bool is_flush, bool is_fua,
-	struct list_head *bioe_list,
-	unsigned int pbs, struct block_device *ldev,
-	u64 ring_buffer_off, u64 ring_buffer_size,
-	unsigned int chunk_sectors);
-static void logpack_submit_bio(
-	struct bio_wrapper *biow, u64 lsid, bool is_fua,
-	struct list_head *bioe_list,
-	unsigned int pbs, struct block_device *ldev,
-	u64 ring_buffer_off, u64 ring_buffer_size,
-	unsigned int chunk_sectors);
-static struct bio_entry* logpack_create_bio_entry(
-	struct bio *bio, bool is_fua, unsigned int pbs,
-	struct block_device *ldev,
-	u64 ldev_offset, unsigned int bio_offset);
-static struct bio_entry* submit_flush(struct block_device *bdev);
-static void logpack_submit_flush(struct block_device *bdev, struct list_head *bioe_list);
-static void logpack_submit(
-	struct walb_logpack_header *logh, bool is_fua,
-	struct list_head *biow_list, struct list_head *bioe_list,
-	unsigned int pbs, struct block_device *ldev,
-	u64 ring_buffer_off, u64 ring_buffer_size,
-	unsigned int chunk_sectors);
-
-/* Logpack-datapack related functions. */
-static int wait_for_bio_entry_list(struct list_head *bioe_list);
-static void wait_logpack_and_submit_datapack(
+static void wait_for_logpack_and_submit_datapack(
 	struct wrapper_blk_dev *wdev, struct pack *wpack);
-
-/* Helper functions for write. */
-static void datapack_wait(struct wrapper_blk_dev *wdev, struct bio_wrapper *biow);
-
-/* Helper functions for read. */
-static void submit_bio_wrapper_read(
+static void wait_for_datapack(struct wrapper_blk_dev *wdev, struct bio_wrapper *biow);
+static void submit_read_bio_wrapper(
 	struct wrapper_blk_dev *wdev, struct bio_wrapper *biow);
+static struct bio_entry* submit_flush(struct block_device *bdev);
 
 /* Overlapping data functions. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -365,6 +320,44 @@ static void overlapping_delete_and_notify(
 	struct multimap *overlapping_data, unsigned int *max_sectors_p,
 	struct bio_wrapper *biow);
 #endif
+
+/* Validator for debug. */
+static bool is_prepared_pack_valid(struct pack *pack);
+UNUSED static bool is_pack_list_valid(struct list_head *pack_list);
+
+/* Logpack related functions. */
+static void create_logpack_list(
+	struct wrapper_blk_dev *wdev, struct list_head *biow_list,
+	struct list_head *pack_list);
+static void submit_logpack_list(
+	struct wrapper_blk_dev *wdev, struct list_head *wpack_list);
+static void logpack_calc_checksum(
+	struct walb_logpack_header *lhead,
+	unsigned int pbs, struct list_head *biow_list);
+static void submit_logpack(
+	struct walb_logpack_header *logh, bool is_fua,
+	struct list_head *biow_list, struct list_head *bioe_list,
+	unsigned int pbs, struct block_device *ldev,
+	u64 ring_buffer_off, u64 ring_buffer_size,
+	unsigned int chunk_sectors);
+static void logpack_submit_header(
+	struct walb_logpack_header *logh, bool is_flush, bool is_fua,
+	struct list_head *bioe_list,
+	unsigned int pbs, struct block_device *ldev,
+	u64 ring_buffer_off, u64 ring_buffer_size,
+	unsigned int chunk_sectors);
+static void logpack_submit_bio_wrapper(
+	struct bio_wrapper *biow, u64 lsid, bool is_fua,
+	struct list_head *bioe_list,
+	unsigned int pbs, struct block_device *ldev,
+	u64 ring_buffer_off, u64 ring_buffer_size,
+	unsigned int chunk_sectors);
+static struct bio_entry* logpack_create_bio_entry(
+	struct bio *bio, bool is_fua, unsigned int pbs,
+	struct block_device *ldev,
+	u64 ldev_offset, unsigned int bio_offset);
+static void logpack_submit_flush(
+	struct block_device *bdev, struct list_head *bioe_list);
 
 /* Pending data functions. */
 #ifdef WALB_FAST_ALGORITHM
@@ -1174,7 +1167,7 @@ static bool is_zero_flush_only(struct pack *pack)
  * RETURN:
  *   true if pack is already exceeds or will be exceeds.
  */
-static bool is_pack_size_exceeds(
+static bool is_pack_size_too_large(
 	struct walb_logpack_header *lhead, 
 	unsigned int pbs, unsigned int max_logpack_pb,
 	struct bio_wrapper *biow)
@@ -1246,7 +1239,7 @@ static bool writepack_add_bio_wrapper(
 	
 	if (lhead->n_records > 0 &&
 		(biow->bio->bi_rw & REQ_FLUSH
-			|| is_pack_size_exceeds(lhead, pbs, max_logpack_pb, biow))) {
+			|| is_pack_size_too_large(lhead, pbs, max_logpack_pb, biow))) {
 		/* Flush request must be the first of the pack. */
 		goto newpack;
 	}
@@ -1259,7 +1252,7 @@ static bool writepack_add_bio_wrapper(
 newpack:
 	if (lhead) {
 		writepack_check_and_set_flush(pack);
-		ASSERT(is_valid_prepared_pack(pack));
+		ASSERT(is_prepared_pack_valid(pack));
 		list_add_tail(&pack->list, wpack_list);
 		*latest_lsidp = get_next_lsid_unsafe(lhead);
 	}
@@ -1290,7 +1283,7 @@ error0:
  * RETURN:
  *   true if the first req_entry is flush request, or false.
  */
-static bool is_flush_first_bio_wrapper(struct list_head *biow_list)
+static bool bio_wrapper_list_is_first_entry_flush(struct list_head *biow_list)
 {
 	struct bio_wrapper *biow;
 	ASSERT(!list_empty(biow_list));
@@ -1361,7 +1354,7 @@ error0:
  *     Non-IRQ, Non-Atomic.
  */
 #ifdef WALB_FAST_ALGORITHM
-static bool create_bio_entry_list_copy(
+static bool create_bio_entry_list_by_copy(
 	struct bio_wrapper *biow, struct block_device *bdev)
 {
 	struct bio_entry *bioe;
@@ -1373,7 +1366,7 @@ static bool create_bio_entry_list_copy(
 	
 	bioe = create_bio_entry_by_clone_copy(biow->bio, bdev, GFP_NOIO);
 	if (!bioe) {
-		LOGd("create_bio_entry_list_copy() failed.\n");
+		LOGd("create_bio_entry_list_by_copy() failed.\n");
 		goto error0;
 	}
 	list_add_tail(&bioe->list, &biow->bioe_list);
@@ -1487,7 +1480,7 @@ static void wait_for_bio_wrapper(
 /**
  * Submit all write packs in a list to the log device.
  */
-static void logpack_list_submit(
+static void submit_logpack_list(
 	struct wrapper_blk_dev *wdev, struct list_head *wpack_list)
 {
 	struct pdata *pdata;
@@ -1512,7 +1505,7 @@ static void logpack_list_submit(
 			ASSERT(logh->n_records > 0);
 			logpack_calc_checksum(logh, wdev->pbs, &wpack->biow_list);
 
-			logpack_submit(
+			submit_logpack(
 				logh, wpack->is_fua,
 				&wpack->biow_list, &wpack->bioe_list,
 				wdev->pbs, pdata->ldev, pdata->ring_buffer_off,
@@ -1573,7 +1566,7 @@ static int wait_for_bio_entry_list(struct list_head *bioe_list)
  *
  * If any write failed, wdev will be read-only mode.
  */
-static void wait_logpack_and_submit_datapack(
+static void wait_for_logpack_and_submit_datapack(
 	struct wrapper_blk_dev *wdev, struct pack *wpack)
 {
 	int bio_error;
@@ -1612,7 +1605,7 @@ static void wait_logpack_and_submit_datapack(
 		} else {
 			/* Create all related bio(s) by copying IO data. */
 		retry_create:
-			if (!create_bio_entry_list_copy(biow, pdata->ddev)) {
+			if (!create_bio_entry_list_by_copy(biow, pdata->ddev)) {
 				schedule();
 				goto retry_create;
 			}
@@ -1681,7 +1674,7 @@ static void wait_logpack_and_submit_datapack(
 			if (biow->n_overlapping == 0) {
 				submit_bio_entry_list(&biow->bioe_list);
 			} else {
-				INIT_WORK(&biow->work, datapack_submit_task);
+				INIT_WORK(&biow->work, task_submit_datapack);
 				queue_work(wq_io_, &biow->work);
 			}
 #else /* WALB_OVERLAPPING_SERIALIZE */
@@ -1689,7 +1682,7 @@ static void wait_logpack_and_submit_datapack(
 			submit_bio_entry_list(&biow->bioe_list);
 #endif /* WALB_OVERLAPPING_SERIALIZE */
 
-			/* datapack_wait() will be called in the logpack gc task. */
+			/* wait_for_datapack() will be called in the logpack gc task. */
 		}
 		continue;
 	error_io:
@@ -1707,7 +1700,7 @@ static void wait_logpack_and_submit_datapack(
  * 
  * (1) Create logpack list.
  * (2) Submit all logpack-related bio(s).
- * (3) Enqueue logpack_list_wait_task.
+ * (3) Enqueue task_wait_for_logpack_list.
  *
  * If an error (memory allocation failure) occurred inside this,
  * allocator will retry allocation after calling scheule() infinitely.
@@ -1718,7 +1711,7 @@ static void wait_logpack_and_submit_datapack(
  *   Workqueue task.
  *   The same task is not executed concurrently.
  */
-static void logpack_list_submit_task(struct work_struct *work)
+static void task_submit_logpack_list(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct wrapper_blk_dev *wdev = pwork->wdev;
@@ -1754,10 +1747,10 @@ static void logpack_list_submit_task(struct work_struct *work)
 		}
 
 		/* Create and submit. */
-		logpack_list_create(wdev, &biow_list, &wpack_list);
+		create_logpack_list(wdev, &biow_list, &wpack_list);
 		ASSERT(list_empty(&biow_list));
 		ASSERT(!list_empty(&wpack_list));
-		logpack_list_submit(wdev, &wpack_list);
+		submit_logpack_list(wdev, &wpack_list);
 
 		/* Enqueue logpack list to the wait queue. */
 		spin_lock(&pdata->logpack_wait_queue_lock);
@@ -1777,7 +1770,7 @@ static void logpack_list_submit_task(struct work_struct *work)
 				schedule();
 				goto retry_pack_work;
 			}
-			INIT_WORK(&pwork->work, logpack_list_wait_task);
+			INIT_WORK(&pwork->work, task_wait_for_logpack_list);
 			queue_work(wq_io_, &pwork->work);
 			pwork = NULL;
 		}
@@ -1798,7 +1791,7 @@ static void logpack_list_submit_task(struct work_struct *work)
  *   Workqueue task.
  *   Works are serialized by singlethread workqueue.
  */
-static void logpack_list_wait_task(struct work_struct *work)
+static void task_wait_for_logpack_list(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct wrapper_blk_dev *wdev = pwork->wdev;
@@ -1842,13 +1835,13 @@ static void logpack_list_wait_task(struct work_struct *work)
 		/* Wait logpack completion and submit datapacks. */
 		blk_start_plug(&plug);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
-			wait_logpack_and_submit_datapack(wdev, wpack);
+			wait_for_logpack_and_submit_datapack(wdev, wpack);
 			list_move_tail(&wpack->list, &pwork->wpack_list);
 		}
 		blk_finish_plug(&plug);
 
 		/* Enqueue logpack list gc task. */
-		INIT_WORK(&pwork->work, logpack_list_gc_task);
+		INIT_WORK(&pwork->work, task_gc_logpack_list);
 		queue_work(wq_io_, &pwork->work);
 		pwork = NULL;
 	}
@@ -1864,7 +1857,7 @@ static void logpack_list_wait_task(struct work_struct *work)
  *   Workqueue task.
  *   Works will be executed in parallel.
  */
-static void logpack_list_gc_task(struct work_struct *work)
+static void task_gc_logpack_list(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct wrapper_blk_dev *wdev = pwork->wdev;
@@ -1875,7 +1868,7 @@ static void logpack_list_gc_task(struct work_struct *work)
 		list_del(&wpack->list);
 		list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
 			list_del(&biow->list);
-			datapack_wait(wdev, biow);
+			wait_for_datapack(wdev, biow);
 			destroy_bio_wrapper(biow);
 		}
 		ASSERT(list_empty(&wpack->biow_list));
@@ -1890,7 +1883,7 @@ static void logpack_list_gc_task(struct work_struct *work)
  * Datapack submit task.
  */
 #ifdef WALB_OVERLAPPING_SERIALIZE
-static void datapack_submit_task(struct work_struct *work)
+static void task_submit_datapack(struct work_struct *work)
 {
 	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
 	struct blk_plug plug;
@@ -1924,7 +1917,7 @@ static void datapack_submit_task(struct work_struct *work)
 /**
  * Wait for completion of datapack IO.
  */
-static void datapack_wait(struct wrapper_blk_dev *wdev, struct bio_wrapper *biow)
+static void wait_for_datapack(struct wrapper_blk_dev *wdev, struct bio_wrapper *biow)
 {
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	const bool is_endio = false;
@@ -1975,7 +1968,7 @@ static void datapack_wait(struct wrapper_blk_dev *wdev, struct bio_wrapper *biow
 /**
  * Wait for all related bio(s) for a bio_wrapper and gc it.
  */
-static void bio_wrapper_read_wait_and_gc_task(struct work_struct *work)
+static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
 {
 	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
 	const bool is_endio = true;
@@ -1994,7 +1987,7 @@ static void bio_wrapper_read_wait_and_gc_task(struct work_struct *work)
  * RETURN:
  *   true if valid, or false.
  */
-static bool is_valid_prepared_pack(struct pack *pack)
+static bool is_prepared_pack_valid(struct pack *pack)
 {
 	struct walb_logpack_header *lhead;
 	unsigned int pbs;
@@ -2004,7 +1997,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	u64 total_pb; /* total io size in physical block. */
 	unsigned int n_padding = 0;
 
-	LOGd_("is_valid_prepared_pack begin.\n");
+	LOGd_("is_prepared_pack_valid begin.\n");
 	
 	CHECK(pack);
 	CHECK(pack->logpack_header_sector);
@@ -2078,12 +2071,12 @@ error:
  * RETURN:
  *   true if valid, or false.
  */
-static bool is_valid_pack_list(struct list_head *pack_list)
+static bool is_pack_list_valid(struct list_head *pack_list)
 {
 	struct pack *pack;
 	
 	list_for_each_entry(pack, pack_list, list) {
-		CHECK(is_valid_prepared_pack(pack));
+		CHECK(is_prepared_pack_valid(pack));
 	}
 	return true;
 error:
@@ -2236,7 +2229,7 @@ error0:
  * RETURN:
  *   true in success, false in partially failed.
  */
-static void logpack_submit_bio(
+static void logpack_submit_bio_wrapper(
 	struct bio_wrapper *biow, u64 lsid, bool is_fua,
 	struct list_head *bioe_list,
 	unsigned int pbs, struct block_device *ldev,
@@ -2409,7 +2402,7 @@ retry:
  * CONTEXT:
  *     Non-IRQ. Non-atomic.
  */
-static void logpack_submit(
+static void submit_logpack(
 	struct walb_logpack_header *logh, bool is_fua,
 	struct list_head *biow_list, struct list_head *bioe_list,
 	unsigned int pbs, struct block_device *ldev,
@@ -2423,7 +2416,7 @@ static void logpack_submit(
 
 	ASSERT(list_empty(bioe_list));
 	ASSERT(!list_empty(biow_list));
-	is_flush = is_flush_first_bio_wrapper(biow_list);
+	is_flush = bio_wrapper_list_is_first_entry_flush(biow_list);
 
 	/* Submit logpack header block. */
 	logpack_submit_header(logh, is_flush, is_fua,
@@ -2451,7 +2444,7 @@ static void logpack_submit(
 			lsid = logh->record[i].lsid;
 
 			/* submit bio(s) for the biow. */
-			logpack_submit_bio(
+			logpack_submit_bio_wrapper(
 				biow, lsid, is_fua, &biow->bioe_list,
 				pbs, ldev, ring_buffer_off, ring_buffer_size,
 				chunk_sectors);
@@ -2474,7 +2467,7 @@ static void logpack_submit(
  *   Finally all biow(s) in the biow_list will be
  *   moved to pack(s) in the wpack_list.
  */
-static void logpack_list_create(
+static void create_logpack_list(
 	struct wrapper_blk_dev *wdev, struct list_head *biow_list,
 	struct list_head *wpack_list)
 {
@@ -2517,7 +2510,7 @@ static void logpack_list_create(
 	}
 
 	/* Currently all requests are packed and lsid of all writepacks is defined. */
-	ASSERT(is_valid_pack_list(wpack_list));
+	ASSERT(is_pack_list_valid(wpack_list));
 	ASSERT(!list_empty(wpack_list));
 
 	/* Store latest_lsid */
@@ -2864,7 +2857,7 @@ static inline bool should_start_queue(struct pdata *pdata, struct bio_wrapper *b
  * @wdev wrapper block device.
  * @biow bio wrapper (read).
  */
-static void submit_bio_wrapper_read(
+static void submit_read_bio_wrapper(
 	struct wrapper_blk_dev *wdev, struct bio_wrapper *biow)
 {
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
@@ -2898,7 +2891,7 @@ static void submit_bio_wrapper_read(
 	submit_bio_entry_list(&biow->bioe_list);
 
 	/* Enqueue wait/gc task. */
-	INIT_WORK(&biow->work, bio_wrapper_read_wait_and_gc_task);
+	INIT_WORK(&biow->work, task_wait_and_gc_read_bio_wrapper);
 	queue_work(wq_io_, &biow->work);
 	
 	return;
@@ -2953,11 +2946,11 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 				error = -ENOMEM;
 				goto error1;
 			}
-			INIT_WORK(&pwork->work, logpack_list_submit_task);
+			INIT_WORK(&pwork->work, task_submit_logpack_list);
 			queue_work(wq_io_, &pwork->work);
 		}
 	} else { /* read */
-		submit_bio_wrapper_read(wdev, biow);
+		submit_read_bio_wrapper(wdev, biow);
 	}
 	return;
 error1:
