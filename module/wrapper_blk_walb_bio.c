@@ -391,19 +391,6 @@ static inline struct pdata* pdata_get_from_wdev(struct wrapper_blk_dev *wdev)
 }
 
 /**
- * Check two requests are overlapping.
- */
-static inline bool is_overlap_req(struct request *req0, struct request *req1)
-{
-	ASSERT(req0);
-	ASSERT(req1);
-	ASSERT(req0 != req1);
-
-	return (blk_rq_pos(req0) + blk_rq_sectors(req0) > blk_rq_pos(req1) &&
-		blk_rq_pos(req1) + blk_rq_sectors(req1) > blk_rq_pos(req0));
-}
-
-/**
  * Check read-only mode.
  */
 static inline int is_read_only_mode(struct pdata *pdata)
