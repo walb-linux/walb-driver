@@ -247,7 +247,7 @@ static void stop_dev(void);
 
 
 /* Print functions for debug. */
-UNUSED static void print_req_flags(struct request *req);
+UNUSED static void print_bio_flags(struct bio *bio);
 UNUSED static void print_pack(const char *level, struct pack *pack);
 UNUSED static void print_pack_list(const char *level, struct list_head *wpack_list);
 
@@ -795,8 +795,9 @@ static void stop_dev(void)
  * Print request flags for debug.
  */
 UNUSED
-static void print_req_flags(struct request *req)
+static void print_bio_flags(struct bio *bio)
 {
+	ASSERT(bio);
 	LOGd("REQ_FLAGS: "
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
@@ -804,35 +805,35 @@ static void print_req_flags(struct request *req)
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
 		"%s%s%s%s\n", 
-		((req->cmd_flags & REQ_WRITE) ?              "REQ_WRITE" : ""),
-		((req->cmd_flags & REQ_FAILFAST_DEV) ?       " REQ_FAILFAST_DEV" : ""),
-		((req->cmd_flags & REQ_FAILFAST_TRANSPORT) ? " REQ_FAILFAST_TRANSPORT" : ""),
-		((req->cmd_flags & REQ_FAILFAST_DRIVER) ?    " REQ_FAILFAST_DRIVER" : ""),
-		((req->cmd_flags & REQ_SYNC) ?               " REQ_SYNC" : ""),
-		((req->cmd_flags & REQ_META) ?               " REQ_META" : ""),
-		((req->cmd_flags & REQ_PRIO) ?               " REQ_PRIO" : ""),
-		((req->cmd_flags & REQ_DISCARD) ?            " REQ_DISCARD" : ""),
-		((req->cmd_flags & REQ_NOIDLE) ?             " REQ_NOIDLE" : ""),
-		((req->cmd_flags & REQ_RAHEAD) ?             " REQ_RAHEAD" : ""),
-		((req->cmd_flags & REQ_THROTTLED) ?          " REQ_THROTTLED" : ""),
-		((req->cmd_flags & REQ_SORTED) ?             " REQ_SORTED" : ""),
-		((req->cmd_flags & REQ_SOFTBARRIER) ?        " REQ_SOFTBARRIER" : ""),
-		((req->cmd_flags & REQ_FUA) ?                " REQ_FUA" : ""),
-		((req->cmd_flags & REQ_NOMERGE) ?            " REQ_NOMERGE" : ""),
-		((req->cmd_flags & REQ_STARTED) ?            " REQ_STARTED" : ""),
-		((req->cmd_flags & REQ_DONTPREP) ?           " REQ_DONTPREP" : ""),
-		((req->cmd_flags & REQ_QUEUED) ?             " REQ_QUEUED" : ""),
-		((req->cmd_flags & REQ_ELVPRIV) ?            " REQ_ELVPRIV" : ""),
-		((req->cmd_flags & REQ_FAILED) ?             " REQ_FAILED" : ""),
-		((req->cmd_flags & REQ_QUIET) ?              " REQ_QUIET" : ""),
-		((req->cmd_flags & REQ_PREEMPT) ?            " REQ_PREEMPT" : ""),
-		((req->cmd_flags & REQ_ALLOCED) ?            " REQ_ALLOCED" : ""),
-		((req->cmd_flags & REQ_COPY_USER) ?          " REQ_COPY_USER" : ""),
-		((req->cmd_flags & REQ_FLUSH) ?              " REQ_FLUSH" : ""),
-		((req->cmd_flags & REQ_FLUSH_SEQ) ?          " REQ_FLUSH_SEQ" : ""),
-		((req->cmd_flags & REQ_IO_STAT) ?            " REQ_IO_STAT" : ""),
-		((req->cmd_flags & REQ_MIXED_MERGE) ?        " REQ_MIXED_MERGE" : ""),
-		((req->cmd_flags & REQ_SECURE) ?             " REQ_SECURE" : ""));
+		((bio->bi_rw & REQ_WRITE) ?              "REQ_WRITE" : ""),
+		((bio->bi_rw & REQ_FAILFAST_DEV) ?       " REQ_FAILFAST_DEV" : ""),
+		((bio->bi_rw & REQ_FAILFAST_TRANSPORT) ? " REQ_FAILFAST_TRANSPORT" : ""),
+		((bio->bi_rw & REQ_FAILFAST_DRIVER) ?    " REQ_FAILFAST_DRIVER" : ""),
+		((bio->bi_rw & REQ_SYNC) ?               " REQ_SYNC" : ""),
+		((bio->bi_rw & REQ_META) ?               " REQ_META" : ""),
+		((bio->bi_rw & REQ_PRIO) ?               " REQ_PRIO" : ""),
+		((bio->bi_rw & REQ_DISCARD) ?            " REQ_DISCARD" : ""),
+		((bio->bi_rw & REQ_NOIDLE) ?             " REQ_NOIDLE" : ""),
+		((bio->bi_rw & REQ_RAHEAD) ?             " REQ_RAHEAD" : ""),
+		((bio->bi_rw & REQ_THROTTLED) ?          " REQ_THROTTLED" : ""),
+		((bio->bi_rw & REQ_SORTED) ?             " REQ_SORTED" : ""),
+		((bio->bi_rw & REQ_SOFTBARRIER) ?        " REQ_SOFTBARRIER" : ""),
+		((bio->bi_rw & REQ_FUA) ?                " REQ_FUA" : ""),
+		((bio->bi_rw & REQ_NOMERGE) ?            " REQ_NOMERGE" : ""),
+		((bio->bi_rw & REQ_STARTED) ?            " REQ_STARTED" : ""),
+		((bio->bi_rw & REQ_DONTPREP) ?           " REQ_DONTPREP" : ""),
+		((bio->bi_rw & REQ_QUEUED) ?             " REQ_QUEUED" : ""),
+		((bio->bi_rw & REQ_ELVPRIV) ?            " REQ_ELVPRIV" : ""),
+		((bio->bi_rw & REQ_FAILED) ?             " REQ_FAILED" : ""),
+		((bio->bi_rw & REQ_QUIET) ?              " REQ_QUIET" : ""),
+		((bio->bi_rw & REQ_PREEMPT) ?            " REQ_PREEMPT" : ""),
+		((bio->bi_rw & REQ_ALLOCED) ?            " REQ_ALLOCED" : ""),
+		((bio->bi_rw & REQ_COPY_USER) ?          " REQ_COPY_USER" : ""),
+		((bio->bi_rw & REQ_FLUSH) ?              " REQ_FLUSH" : ""),
+		((bio->bi_rw & REQ_FLUSH_SEQ) ?          " REQ_FLUSH_SEQ" : ""),
+		((bio->bi_rw & REQ_IO_STAT) ?            " REQ_IO_STAT" : ""),
+		((bio->bi_rw & REQ_MIXED_MERGE) ?        " REQ_MIXED_MERGE" : ""),
+		((bio->bi_rw & REQ_SECURE) ?             " REQ_SECURE" : ""));
 }
 
 /**
