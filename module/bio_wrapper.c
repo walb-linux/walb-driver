@@ -30,9 +30,11 @@ static atomic_t shared_cnt_ = ATOMIC_INIT(0);
  * Static functions prototype.
  *******************************************************************************/
 
+#ifdef WALB_FAST_ALGORITHM
 static void bio_wrapper_get_overlapping_pos_and_len(
 	struct bio_wrapper *biow0,  struct bio_wrapper *biow1,
 	u64 *ol_pos_p, unsigned int *ol_len_p);
+#endif
 
 /*******************************************************************************
  * Macros definition.
