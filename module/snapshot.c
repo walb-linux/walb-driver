@@ -12,9 +12,9 @@
 #include "walb/log_device.h"
 #include "walb/sector.h"
 #include "util.h"
-#include "io.h"
 #include "hashtbl.h"
 #include "treemap.h"
+#include "sector_io.h"
 #include "snapshot.h"
 
 /*******************************************************************************
@@ -532,7 +532,7 @@ static u32 get_snapshot_id_with_name(
 static struct tree_cell_head* get_snapshot_id_with_lsid(
         const struct snapshot_data *snapd, u64 lsid)
 {
-        ASSERT(snapd != NULL);
+        ASSERT(snapd);
         
         return multimap_lookup(snapd->lsid_idx, lsid);
 }
@@ -792,8 +792,8 @@ static int get_n_snapshot_in_name_idx(
 static int get_n_snapshot_in_lsid_idx(
         const struct snapshot_data *snapd, u32 snapshot_id)
 {
-        multimap_cursor_t curt;
-        multimap_cursor_t *cur = &curt;
+        struct multimap_cursor curt;
+        struct multimap_cursor *cur = &curt;
         int count = 0;
         unsigned long val;
 
@@ -825,7 +825,7 @@ static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
         hashtbl_cursor_t *cur = &curt;
         int count = 0;
         unsigned long val;
-        map_t *smap = NULL; /* map of snapshot_id -> 0. */
+        struct map *smap = NULL; /* map of snapshot_id -> 0. */
         u32 snapshot_id;
         int ret;
 
@@ -867,11 +867,11 @@ error:
 __attribute__((unused))
 static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
 {
-        multimap_cursor_t curt;
-        multimap_cursor_t *cur = &curt;
+        struct multimap_cursor curt;
+        struct multimap_cursor *cur = &curt;
         int count = 0;
         unsigned long val;
-        map_t *smap = NULL; /* map of snapshot_id -> 0. */
+        struct map *smap = NULL; /* map of snapshot_id -> 0. */
         u32 snapshot_id;
         int ret;
 
@@ -1002,7 +1002,7 @@ nomem:
 void snapshot_data_destroy(struct snapshot_data *snapd)
 {
         struct snapshot_sector_control *ctl;
-        map_cursor_t curt;
+        struct map_cursor curt;
 
         if (snapd == NULL) { return; }
 

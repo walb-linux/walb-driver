@@ -33,7 +33,7 @@ EXTRA_CFLAGS += -I$(obj)/../include
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 
-walb-mod-objs := walb.o control.o alldevs.o snapshot.o io.o hashtbl.o treemap.o datapack.o logpack.o
+walb-mod-objs := walb.o control.o alldevs.o snapshot.o hashtbl.o treemap.o logpack.o
 test-hashtbl-mod-objs := test_hashtbl.o hashtbl.o
 test-treemap-mod-objs := test_treemap.o treemap.o
 test-memblk-data-mod-objs := test_memblk_data.o treemap.o memblk_data.o
@@ -45,9 +45,6 @@ test-workqueue-mod-objs := test_workqueue.o
 test-kthread-mod-objs := test_kthread.o
 test-deadlock-mod-objs := test_deadlock.o
 test-serialized-task-mod-objs := test_serialized_task.o
-#wrapblk-mod-objs := wrapblk.o
-#memblk-none-mod-objs := memblk.o treemap.o memblk_io_none.o
-#memblk-simple-mod-objs := memblk.o treemap.o memblk_io_simple.o
 simple-blk-mod-objs := simple_blk.o
 SIMPLE_BLK_BIO_OBJS = simple_blk_bio.o size_list.o
 SIMPLE_BLK_REQ_OBJS = simple_blk_req.o size_list.o
@@ -78,16 +75,8 @@ WRAPPER_BLK_WALB_BIO_OBJS = wrapper_blk_walb_bio.o \
 sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o
 wrapper-blk-walb-bio-mod-objs := $(WRAPPER_BLK_WALB_BIO_OBJS)
 
-#obj-m := walb-mod.o \
-#test-hashtbl-mod.o \
-#test-treemap-mod.o \
-#wrapblk-mod.o \
-#memblk-none-mod.o \
-#test-memblk-data-mod.o \
-#test-sg-util-mod.o \
-#memblk-simple-mod.o
-
 obj-m := \
+test-hashtbl-mod.o \
 test-treemap-mod.o \
 test-memblk-data-mod.o \
 test-memblk-data-perf-mod.o \
@@ -110,6 +99,7 @@ wrapper-blk-simple-req-mod.o \
 wrapper-blk-simple-bio-mod.o \
 wrapper-blk-walb-req-mod.o \
 wrapper-blk-walb-bio-mod.o \
+walb-mod.o \
 
 else
 

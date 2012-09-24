@@ -16,7 +16,6 @@
 #include "walb/log_device.h"
 #include "walb/sector.h"
 #include "util.h"
-#include "io.h"
 
 /**
  * Walb device major.
