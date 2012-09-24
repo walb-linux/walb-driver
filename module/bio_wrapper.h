@@ -20,6 +20,7 @@
 struct bio_wrapper
 {
 	struct list_head list; /* list entry. */
+	struct list_head list2; /* another list entry. */
 	struct work_struct work; /* for workqueue tasks. */
 
 	struct bio *bio; /* original bio. */
@@ -27,8 +28,11 @@ struct bio_wrapper
 	unsigned int len; /* length of the original bio [logical block]. */
 	u32 csum; /* checksum for write IO. */
 	int error;
+	struct completion done;
 	
 	struct list_head bioe_list; /* list head of bio_entry */
+
+	void *private_data;
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	struct completion overlapping_done;

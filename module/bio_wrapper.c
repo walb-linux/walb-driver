@@ -107,6 +107,8 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 	INIT_LIST_HEAD(&biow->bioe_list);
 	biow->error = 0;
 	biow->csum = 0;
+	biow->private_data = NULL;
+	init_completion(&biow->done);
 	if (bio) {
 		biow->bio = bio;
 		biow->pos = bio->bi_sector;
