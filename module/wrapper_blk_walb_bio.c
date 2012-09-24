@@ -74,8 +74,15 @@ module_param_named(max_logpack_size_kb, max_logpack_size_kb_, int, S_IRUGO);
  * Workqueue for logpack submit/wait/gc task.
  * This should be shared by all walb devices.
  */
+#define WQ_LOGPACK "wq_logpack"
+struct workqueue_struct *wq_logpack_ = NULL;
+
 #define WQ_IO "wq_io"
 struct workqueue_struct *wq_io_ = NULL;
+
+/* overlapping */
+#define WQ_OL "wq_ol"
+struct workqueue_struct *wq_ol_ = NULL;
 
 /**
  * Writepack work.
@@ -83,6 +90,7 @@ struct workqueue_struct *wq_io_ = NULL;
 struct pack_work
 {
 	struct work_struct work;
+	struct delayed_work dwork;
 	struct wrapper_blk_dev *wdev;
 	struct list_head wpack_list; /* used for gc task only. */
 };
@@ -111,7 +119,7 @@ struct pack
 struct kmem_cache *pack_cache_ = NULL;
 
 /* Completion timeout [msec]. */
-static const unsigned long completion_timeo_ms_ = 5000;
+static const unsigned long completion_timeo_ms_ = 10000; /* 10 seconds. */
 
 /**
  * Private data as wrapper_blk_dev.private_data.
@@ -160,11 +168,19 @@ struct pdata
 	struct list_head logpack_submit_queue; /* writepack list.
 						  logpack_submit_queue_lock
 						  must be held. */
+	unsigned int logpack_submit_queue_n; /* debug */
 	
 	spinlock_t logpack_wait_queue_lock;
 	struct list_head logpack_wait_queue; /* writepack list.
 						logpack_wait_queue_lock
 						must be held. */
+	unsigned int logpack_wait_queue_n; /* debug */
+
+	spinlock_t datapack_submit_queue_lock;
+	struct list_head datapack_submit_queue; /* bio_wrapper list.
+						   datapack_submit_queue_lock
+						   must be held. */
+	unsigned int datapack_submit_queue_n; /* debug */
 
 	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
 					This will be used for logpack size
@@ -210,10 +226,15 @@ struct pdata
  * Macros definition.
  *******************************************************************************/
 
+#define N_PACK_BULK 32
+#define N_IO_BULK 128
+
 /* pdata->flags bit. */
-#define PDATA_STATE_READ_ONLY            0
-#define PDATA_STATE_SUBMIT_TASK_WORKING 1
-#define PDATA_STATE_WAIT_TASK_WORKING   2
+#define PDATA_STATE_READ_ONLY                 0
+#define PDATA_STATE_SUBMIT_TASK_WORKING      1
+#define PDATA_STATE_WAIT_TASK_WORKING        2
+#define PDATA_STATE_QUEUE_STOPPED             3
+#define PDATA_STATE_SUBMIT_DATA_TASK_WORKING 4
 
 /*******************************************************************************
  * Static functions prototype.
@@ -280,9 +301,16 @@ static void task_submit_logpack_list(struct work_struct *work);
 static void task_wait_for_logpack_list(struct work_struct *work);
 static void task_gc_logpack_list(struct work_struct *work);
 #ifdef WALB_OVERLAPPING_SERIALIZE
-static void task_submit_datapack(struct work_struct *work);
+static void task_submit_write_bio_wrapper(struct work_struct *work);
 #endif
+static void task_wait_for_write_bio_wrapper(struct work_struct *work);
 static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work);
+static void task_submit_bio_wrapper_list(struct work_struct *work);
+#if 0
+#ifdef WALB_FAST_ALGORITHM
+static void task_restart_queue(struct work_struct *work);
+#endif
+#endif
 
 /* Helper functions for bio_entry list. */
 static bool create_bio_entry_list(
@@ -306,15 +334,19 @@ static void wait_for_bio_wrapper(
 	struct bio_wrapper *biow, bool is_endio, bool is_delete);
 static void wait_for_logpack_and_submit_datapack(
 	struct wrapper_blk_dev *wdev, struct pack *wpack);
-static void wait_for_datapack(struct wrapper_blk_dev *wdev, struct bio_wrapper *biow);
+static void wait_for_write_bio_wrapper(
+	struct wrapper_blk_dev *wdev, struct bio_wrapper *biow);
 static void submit_read_bio_wrapper(
 	struct wrapper_blk_dev *wdev, struct bio_wrapper *biow);
 static struct bio_entry* submit_flush(struct block_device *bdev);
 static void enqueue_submit_task_if_necessary(struct wrapper_blk_dev *wdev);
 static void enqueue_wait_task_if_necessary(struct wrapper_blk_dev *wdev);
-static void enqueue_task_detail(
+static void enqueue_submit_data_task_if_necessary(struct wrapper_blk_dev *wdev);
+static void enqueue_task_if_necessary(
 	struct wrapper_blk_dev *wdev,
-	int nr, void (*task)(struct work_struct *));
+	int nr, struct workqueue_struct *wq,
+	void (*task)(struct work_struct *));
+static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging);
 
 /* Overlapping data functions. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -377,6 +409,29 @@ static bool pending_check_and_copy(
 	struct bio_wrapper *biow, gfp_t gfp_mask);
 static inline bool should_stop_queue(struct pdata *pdata, struct bio_wrapper *biow);
 static inline bool should_start_queue(struct pdata *pdata, struct bio_wrapper *biow);
+#endif
+
+/*******************************************************************************
+ * For debug.
+ *******************************************************************************/
+
+#if 0
+struct delayed_work shared_dwork;
+static atomic_t n_pending_bio = ATOMIC_INIT(0);
+static atomic_t wbiow_n_pending = ATOMIC_INIT(0);
+
+static void task_periodic_print(struct work_struct *work)
+{
+	struct delayed_work *dwork = container_of(work, struct delayed_work, work);
+
+	LOGn("n_pending_bio %d wbiow_n_pending %d\n",
+		atomic_read(&n_pending_bio),
+		atomic_read(&wbiow_n_pending));
+	
+	/* self-recursive call. */
+	INIT_DELAYED_WORK(dwork, task_periodic_print);
+	queue_delayed_work(system_wq, dwork, msecs_to_jiffies(1000));
+}
 #endif
 
 /*******************************************************************************
@@ -596,8 +651,13 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	/* Prepare logpack submit/wait queue. */
 	spin_lock_init(&pdata->logpack_submit_queue_lock);
 	spin_lock_init(&pdata->logpack_wait_queue_lock);
+	spin_lock_init(&pdata->datapack_submit_queue_lock);
 	INIT_LIST_HEAD(&pdata->logpack_submit_queue);
 	INIT_LIST_HEAD(&pdata->logpack_wait_queue);
+	INIT_LIST_HEAD(&pdata->datapack_submit_queue);
+	pdata->logpack_submit_queue_n = 0;
+	pdata->logpack_wait_queue_n = 0;
+	pdata->datapack_submit_queue_n = 0;
 	
         return true;
 
@@ -1480,6 +1540,9 @@ static void wait_for_bio_wrapper(
 	}
 }
 
+/* debug */
+atomic_t n_pending_logpack = ATOMIC_INIT(0);
+
 /**
  * Submit all write packs in a list to the log device.
  */
@@ -1582,6 +1645,10 @@ static void wait_for_logpack_and_submit_datapack(
 #ifdef WALB_FAST_ALGORITHM
 	bool is_pending_insert_succeeded;
 	bool is_stop_queue = false;
+	bool ret;
+#if 0
+	struct pack_work *pwork;
+#endif
 #endif
 
 	ASSERT(wpack);
@@ -1618,6 +1685,7 @@ static void wait_for_logpack_and_submit_datapack(
 				schedule();
 				goto retry_create;
 			}
+			
 			/* Split if required due to chunk limitations. */
 		retry_split:
 			if (!split_bio_entry_list_for_chunk(
@@ -1636,6 +1704,11 @@ static void wait_for_logpack_and_submit_datapack(
 			spin_lock(&pdata->pending_data_lock);
 			LOGd_("pending_sectors %u\n", pdata->pending_sectors);
 			is_stop_queue = should_stop_queue(pdata, biow);
+			if (is_stop_queue) {
+				ret = test_and_set_bit(PDATA_STATE_QUEUE_STOPPED,
+						&pdata->flags);
+				ASSERT(!ret);
+			}
 			pdata->pending_sectors += biow->len;
 			is_pending_insert_succeeded =
 				pending_insert(pdata->pending_data,
@@ -1652,19 +1725,25 @@ static void wait_for_logpack_and_submit_datapack(
 
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
-				LOGd("stop queue.\n");
+				LOGd_("stop queue.\n");
 #if 0
-				spin_lock_irqsave(&wdev->lock, flags);
-				blk_stop_queue(wdev->queue);
-				spin_unlock_irqrestore(&wdev->lock, flags);
+			retry_pack_work:
+				pwork = create_pack_work(wdev, GFP_NOIO);
+				if (!pwork) {
+					LOGn("memory allocation failed.\n");
+					schedule();
+					goto retry_pack_work;
+				}
+				INIT_DELAYED_WORK(&pwork->dwork, task_restart_queue);
+				queue_delayed_work(system_wq, &pwork->dwork,
+						msecs_to_jiffies(pdata->queue_stop_timeout_ms));
 #endif
-				/* now editing */
-				/* start/stop queue must be controlled by ourself. */
 			}
 
 			/* call endio here in fast algorithm,
 			   while easy algorithm call it after data device IO. */
 			bio_endio(biow->bio, 0);
+			biow->bio = NULL;
 #endif /* WALB_FAST_ALGORITHM */
 			
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -1680,19 +1759,14 @@ static void wait_for_logpack_and_submit_datapack(
 				schedule();
 				goto retry_insert_ol;
 			}
-			/* Submit bio(s) or enqueue submit task. */
-			if (biow->n_overlapping == 0) {
-				submit_bio_entry_list(&biow->bioe_list);
-			} else {
-				INIT_WORK(&biow->work, task_submit_datapack);
-				queue_work(wq_io_, &biow->work);
-			}
-#else /* WALB_OVERLAPPING_SERIALIZE */
-			/* Submit bio(s). */
-			submit_bio_entry_list(&biow->bioe_list);
 #endif /* WALB_OVERLAPPING_SERIALIZE */
 
-			/* wait_for_datapack() will be called in the logpack gc task. */
+			/* Enqueue submit datapack task. */
+			spin_lock(&pdata->datapack_submit_queue_lock);
+			list_add_tail(&biow->list2, &pdata->datapack_submit_queue);
+			pdata->datapack_submit_queue_n ++;
+			spin_unlock(&pdata->datapack_submit_queue_lock);
+			enqueue_submit_data_task_if_necessary(wdev);
 		}
 		continue;
 	error_io:
@@ -1731,6 +1805,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 	bool is_empty, is_working;
 	struct list_head biow_list;
 	struct bio_wrapper *biow, *biow_next;
+	int n_io;
 
 	LOGd_("begin.\n");
 	destroy_pack_work(pwork);
@@ -1745,18 +1820,22 @@ static void task_submit_logpack_list(struct work_struct *work)
 		/* Dequeue all bio wrappers from the submit queue. */
 		spin_lock(&pdata->logpack_submit_queue_lock);
 		is_empty = list_empty(&pdata->logpack_submit_queue);
-		list_for_each_entry_safe(biow, biow_next,
-					&pdata->logpack_submit_queue, list) {
-			list_move_tail(&biow->list, &biow_list);
-		}
-		spin_unlock(&pdata->logpack_submit_queue_lock);
 		if (is_empty) {
 			is_working = test_and_clear_bit(
 				PDATA_STATE_SUBMIT_TASK_WORKING,
 				&pdata->flags);
 			ASSERT(is_working);
-			break;
 		}
+		n_io = 0;
+		list_for_each_entry_safe(biow, biow_next,
+					&pdata->logpack_submit_queue, list) {
+			list_move_tail(&biow->list, &biow_list);
+			pdata->logpack_submit_queue_n --;
+			n_io ++;
+			if (n_io >= N_IO_BULK) { break; }
+		}
+		spin_unlock(&pdata->logpack_submit_queue_lock);
+		if (is_empty) { break; }
 
 		/* Create and submit. */
 		create_logpack_list(wdev, &biow_list, &wpack_list);
@@ -1766,6 +1845,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 		spin_lock(&pdata->logpack_wait_queue_lock);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			list_move_tail(&wpack->list, &pdata->logpack_wait_queue);
+			pdata->logpack_wait_queue_n ++;
 		}
 		spin_unlock(&pdata->logpack_wait_queue_lock);
 
@@ -1797,7 +1877,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 	struct pack *wpack, *wpack_next;
 	bool is_empty, is_working;
 	struct list_head wpack_list;
-	struct blk_plug plug;
+	int n_pack;
 
 	destroy_pack_work(pwork);
 	pwork = NULL;
@@ -1807,18 +1887,22 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		INIT_LIST_HEAD(&wpack_list);
 		spin_lock(&pdata->logpack_wait_queue_lock);
 		is_empty = list_empty(&pdata->logpack_wait_queue);
-		list_for_each_entry_safe(wpack, wpack_next,
-					&pdata->logpack_wait_queue, list) {
-			list_move_tail(&wpack->list, &wpack_list);
-		}
-		spin_unlock(&pdata->logpack_wait_queue_lock);
 		if (is_empty) {
 			is_working = test_and_clear_bit(
 				PDATA_STATE_WAIT_TASK_WORKING,
 				&pdata->flags);
 			ASSERT(is_working);
-			break;
 		}
+		n_pack = 0;
+		list_for_each_entry_safe(wpack, wpack_next,
+					&pdata->logpack_wait_queue, list) {
+			list_move_tail(&wpack->list, &wpack_list);
+			pdata->logpack_wait_queue_n --;
+			n_pack ++;
+			if (n_pack >= N_PACK_BULK) { break; }
+		}
+		spin_unlock(&pdata->logpack_wait_queue_lock);
+		if (is_empty) { break; }
 		
 		/* Allocate work struct for gc task. */
 	retry_pack_work:
@@ -1830,16 +1914,14 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		}
 		
 		/* Wait logpack completion and submit datapacks. */
-		blk_start_plug(&plug);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			wait_for_logpack_and_submit_datapack(wdev, wpack);
 			list_move_tail(&wpack->list, &pwork->wpack_list);
 		}
-		blk_finish_plug(&plug);
 
 		/* Enqueue logpack list gc task. */
 		INIT_WORK(&pwork->work, task_gc_logpack_list);
-		queue_work(wq_io_, &pwork->work);
+		queue_work(wq_logpack_, &pwork->work);
 		pwork = NULL;
 	}
 }
@@ -1857,15 +1939,25 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 static void task_gc_logpack_list(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->wdev;
 	struct pack *wpack, *wpack_next;
 	struct bio_wrapper *biow, *biow_next;
+	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
+	unsigned long rtimeo;
+	int c;
 
 	list_for_each_entry_safe(wpack, wpack_next, &pwork->wpack_list, list) {
 		list_del(&wpack->list);
 		list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
 			list_del(&biow->list);
-			wait_for_datapack(wdev, biow);
+			c = 0;
+		retry:
+			rtimeo = wait_for_completion_timeout(&biow->done, timeo);
+			if (rtimeo == 0) {
+				LOGn("timeout(%d): biow %p bio %p pos %"PRIu64" len %u\n",
+					c, biow, biow->bio, (u64)biow->pos, biow->len);
+				c++;
+				goto retry;
+			}
 			destroy_bio_wrapper(biow);
 		}
 		ASSERT(list_empty(&wpack->biow_list));
@@ -1880,14 +1972,49 @@ static void task_gc_logpack_list(struct work_struct *work)
  * Datapack submit task.
  */
 #ifdef WALB_OVERLAPPING_SERIALIZE
-static void task_submit_datapack(struct work_struct *work)
+static void task_submit_write_bio_wrapper(struct work_struct *work)
 {
 	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
+	const bool is_plugging = true;
+
+	/* Submit related bios. */
+	submit_write_bio_wrapper(biow, is_plugging);
+
+	/* Enqueue wait task. */
+	INIT_WORK(&biow->work, task_wait_for_write_bio_wrapper);
+	queue_work(wq_io_, &biow->work);
+}
+#endif
+
+/**
+ * Datapack wait task.
+ */
+static void task_wait_for_write_bio_wrapper(struct work_struct *work)
+{
+	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
+	struct wrapper_blk_dev *wdev = biow->private_data;
+		
+	ASSERT(wdev);
+	
+	wait_for_write_bio_wrapper(wdev, biow);
+	complete(&biow->done);
+}
+
+/**
+ * Submit datapack.
+ */
+static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
+{
 	struct blk_plug plug;
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	int c;
+#endif
+
+	ASSERT(biow);
 	
+#ifdef WALB_OVERLAPPING_SERIALIZE
 	/* Wait for previous overlapping writes. */
 	if (biow->n_overlapping > 0) {
 		c = 0;
@@ -1901,20 +2028,21 @@ static void task_submit_datapack(struct work_struct *work)
 			goto retry;
 		}
 	}
+#endif
 
 	ASSERT(!list_empty(&biow->bioe_list));
 	
 	/* Submit all related bio(s). */
-	blk_start_plug(&plug);
+	if (is_plugging) { blk_start_plug(&plug); }
 	submit_bio_entry_list(&biow->bioe_list);
-	blk_finish_plug(&plug);
+	if (is_plugging) { blk_finish_plug(&plug); }
 }
-#endif
 
 /**
  * Wait for completion of datapack IO.
  */
-static void wait_for_datapack(struct wrapper_blk_dev *wdev, struct bio_wrapper *biow)
+static void wait_for_write_bio_wrapper(
+	struct wrapper_blk_dev *wdev, struct bio_wrapper *biow)
 {
 #if defined(WALB_FAST_ALGORITHM) || defined(WALB_OVERLAPPING_SERIALIZE)
 	struct pdata *pdata = get_pdata_from_wdev(wdev);
@@ -1922,13 +2050,11 @@ static void wait_for_datapack(struct wrapper_blk_dev *wdev, struct bio_wrapper *
 #ifdef WALB_FAST_ALGORITHM
 	const bool is_endio = false;
 	const bool is_delete = false;
-	bool is_start_queue = false;
+	bool is_start_queue;
+	bool ret;
 #else
 	const bool is_endio = true;
 	const bool is_delete = true;
-#endif
-#if 0
-	unsigned long flags;
 #endif
 	
 	/* Wait for completion and call end_request. */
@@ -1947,19 +2073,18 @@ static void wait_for_datapack(struct wrapper_blk_dev *wdev, struct bio_wrapper *
 	/* Delete from pending data. */
 	spin_lock(&pdata->pending_data_lock);
 	is_start_queue = should_start_queue(pdata, biow);
+	if (is_start_queue) {
+		ret = test_and_clear_bit(PDATA_STATE_QUEUE_STOPPED,
+					&pdata->flags);
+		ASSERT(ret);
+	}
 	pdata->pending_sectors -= biow->len;
 	pending_delete(pdata->pending_data, &pdata->max_sectors_in_pending, biow);
 	spin_unlock(&pdata->pending_data_lock);
 
-	/* Check queue restart is required. */
 	if (is_start_queue) {
-		LOGd("restart queue.\n");
-#if 0
-		spin_lock_irqsave(&wdev->lock, flags);
-		blk_start_queue(wdev->queue);
-		spin_unlock_irqrestore(&wdev->lock, flags);
-#endif
-		/* now editing */
+		LOGd_("restart queue.\n");
+		enqueue_submit_task_if_necessary(wdev);
 	}
 
 	/* put related bio(s). */
@@ -1986,6 +2111,101 @@ static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
 	wait_for_bio_wrapper(biow, is_endio, is_delete);
 	destroy_bio_wrapper(biow);
 }
+
+/**
+ * Submit bio wrapper list for data device.
+ */
+static void task_submit_bio_wrapper_list(struct work_struct *work)
+{
+	struct pack_work *pwork = container_of(work, struct pack_work, work);
+	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
+	bool is_empty, ret;
+	struct list_head biow_list;
+	struct bio_wrapper *biow, *biow_next;
+	struct blk_plug plug;
+	const bool is_plugging = false;
+	unsigned int n_io;
+
+	LOGd_("begin.\n");
+	destroy_pack_work(pwork);
+	pwork = NULL;
+	
+	INIT_LIST_HEAD(&biow_list);
+	while (true) {
+		ASSERT(list_empty(&biow_list));
+
+		/* Dequeue all bio wrappers from the submit queue. */
+		spin_lock(&pdata->datapack_submit_queue_lock);
+		is_empty = list_empty(&pdata->datapack_submit_queue);
+		if (is_empty) {
+			ret = test_and_clear_bit(
+				PDATA_STATE_SUBMIT_DATA_TASK_WORKING,
+				&pdata->flags);
+			ASSERT(ret);
+		}
+		n_io = 0;
+		list_for_each_entry_safe(biow, biow_next,
+					&pdata->datapack_submit_queue, list2) {
+			list_move_tail(&biow->list2, &biow_list);
+			pdata->datapack_submit_queue_n --;
+			n_io ++;
+			if (n_io == N_IO_BULK) { break; }
+		}
+		spin_unlock(&pdata->datapack_submit_queue_lock);
+		if (is_empty) { break; }
+		ASSERT(n_io <= N_IO_BULK);
+
+		/* Submit all. */
+		blk_start_plug(&plug);
+		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
+			list_del(&biow->list2);
+			biow->private_data = wdev;
+#ifdef WALB_OVERLAPPING_SERIALIZE
+			if (&biow->n_overlapping > 0) {
+				/* Enqueue submit task. */
+				INIT_WORK(&biow->work, task_submit_write_bio_wrapper);
+				queue_work(wq_ol_, &biow->work);
+			} else {
+				/* Submit bio wrapper. */
+				submit_write_bio_wrapper(biow, is_plugging);
+				/* Enqueue wait task. */
+				INIT_WORK(&biow->work, task_wait_for_write_bio_wrapper);
+				queue_work(wq_io_, &biow->work);
+			}
+#else
+			/* Submit bio wrapper. */
+			submit_write_bio_wrapper(biow, is_plugging);
+			/* Enqueue wait task. */
+			INIT_WORK(&biow->work, task_wait_for_write_bio_wrapper);
+			queue_work(wq_io_, &biow->work);
+#endif
+		}
+		blk_finish_plug(&plug);
+	}
+	LOGd_("end.\n");
+}
+
+/**
+ * Restart queue.
+ */
+#if 0
+#ifdef WALB_FAST_ALGORITHM
+static void task_restart_queue(struct work_struct *work)
+{
+	struct delayed_work *dwork = container_of(work, struct delayed_work, work);
+	struct pack_work *pwork = container_of(dwork, struct pack_work, dwork);
+	struct pdata *pdata = get_pdata_from_wdev(pwork->wdev);
+	int ret;
+	
+	LOGn("restart queue.\n");
+	ret = test_and_clear_bit(PDATA_STATE_QUEUE_STOPPED, &pdata->flags);
+	ASSERT(ret);
+	enqueue_submit_task_if_necessary(pwork->wdev);
+	destroy_pack_work(pwork);
+}
+#endif
+#endif
 
 /**
  * Check whether pack is valid.
@@ -2208,6 +2428,7 @@ retry_bio:
 	}
 #endif
 	submit_bio_entry_list(bioe_list);
+
 	return;
 #if 0
 error2:
@@ -2263,7 +2484,7 @@ retry_bio_entry:
 	}
 	off_lb += bioe->len;
 	list_add_tail(&bioe->list, &tmp_list);
-	
+
 	/* split if required. */
 retry_bio_split:
 	if (!split_bio_entry_list_for_chunk(
@@ -2505,6 +2726,7 @@ static void create_logpack_list(
 			pdata->ring_buffer_size, pdata->max_logpack_pb,
 			&latest_lsid, wdev, GFP_NOIO);
 		if (!ret) {
+			LOGn("writepack_add_bio_wrapper failed.\n");
 			schedule();
 			goto retry;
 		}
@@ -2660,7 +2882,6 @@ static void overlapping_delete_and_notify(
 		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
 		ASSERT(biow_tmp);
 		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
-			ASSERT(biow_tmp->n_overlapping > 0);
 			biow_tmp->n_overlapping --;
 			if (biow_tmp->n_overlapping == 0) {
 				/* There is no overlapping request before it. */
@@ -2944,13 +3165,20 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 		/* Calculate checksum. */
 		biow->csum = bio_calc_checksum(biow->bio);
 		
-		/* Push into queue and (re)start logpack_submit task */
+		/* Push into queue. */
 		spin_lock(&pdata->logpack_submit_queue_lock);
 		list_add_tail(&biow->list, &pdata->logpack_submit_queue);
+		pdata->logpack_submit_queue_n ++;
 		spin_unlock(&pdata->logpack_submit_queue_lock);
-		enqueue_submit_task_if_necessary(wdev);
+
+		/* Enqueue logpack-submit task. */
+		if (!test_bit(PDATA_STATE_QUEUE_STOPPED, &pdata->flags)) {
+			enqueue_submit_task_if_necessary(wdev);
+		}
 	} else { /* read */
 		submit_read_bio_wrapper(wdev, biow);
+
+		/* TODO: support PDATA_STATE_QUEUE_STOPPED for read also. */
 	}
 	return;
 #if 0
@@ -2964,18 +3192,20 @@ error0:
 /**
  * Helper function for tasks.
  */
-static void enqueue_task_detail(
+static void enqueue_task_if_necessary(
 	struct wrapper_blk_dev *wdev,
-	int nr, void (*task)(struct work_struct *))
+	int nr, struct workqueue_struct *wq,
+	void (*task)(struct work_struct *))
 {
 	struct pack_work *pwork;
 	struct pdata *pdata = get_pdata_from_wdev(wdev);
 
 	ASSERT(pdata);
 	ASSERT(task);
+	ASSERT(wq);
 	
 retry:
-	if (test_and_set_bit(nr, &pdata->flags) == 0) {
+	if (!test_and_set_bit(nr, &pdata->flags)) {
 		pwork = create_pack_work(wdev, GFP_NOIO);
 		if (!pwork) {
 			LOGn("memory allocation failed.\n");
@@ -2983,8 +3213,9 @@ retry:
 			schedule();
 			goto retry;
 		}
+		/* LOGn("enqueue task for %d\n", nr); */
 		INIT_WORK(&pwork->work, task);
-		queue_work(wq_io_, &pwork->work);
+		queue_work(wq, &pwork->work);
 	}
 }
 
@@ -2993,9 +3224,10 @@ retry:
  */
 static void enqueue_submit_task_if_necessary(struct wrapper_blk_dev *wdev)
 {
-	enqueue_task_detail(wdev,
-			PDATA_STATE_SUBMIT_TASK_WORKING,
-			task_submit_logpack_list);
+	enqueue_task_if_necessary(wdev,
+				PDATA_STATE_SUBMIT_TASK_WORKING,
+				wq_logpack_,
+				task_submit_logpack_list);
 }
 
 /**
@@ -3003,10 +3235,23 @@ static void enqueue_submit_task_if_necessary(struct wrapper_blk_dev *wdev)
  */
 static void enqueue_wait_task_if_necessary(struct wrapper_blk_dev *wdev)
 {
-	enqueue_task_detail(wdev,
-			PDATA_STATE_WAIT_TASK_WORKING,
-			task_wait_for_logpack_list);
+	enqueue_task_if_necessary(wdev,
+				PDATA_STATE_WAIT_TASK_WORKING,
+				wq_logpack_,
+				task_wait_for_logpack_list);
 }
+
+/**
+ * Enqueue datapack submit task if necessary.
+ */
+static void enqueue_submit_data_task_if_necessary(struct wrapper_blk_dev *wdev)
+{
+	enqueue_task_if_necessary(wdev,
+				PDATA_STATE_SUBMIT_DATA_TASK_WORKING,
+				wq_logpack_,
+				task_submit_bio_wrapper_list);
+}
+
 
 /* Called before register. */
 static bool pre_register(void)
@@ -3036,14 +3281,24 @@ static bool pre_register(void)
 	}
 	
 	/* prepare workqueues. */
+	wq_logpack_ = alloc_workqueue(WQ_IO, WQ_MEM_RECLAIM, 0);
+	if (!wq_logpack_) {
+		LOGe("failed to allocate a workqueue (wq_logpack_).");
+		goto error4;
+	}
 	wq_io_ = alloc_workqueue(WQ_IO, WQ_MEM_RECLAIM, 0);
 	if (!wq_io_) {
 		LOGe("failed to allocate a workqueue (wq_io_).");
-		goto error4;
+		goto error5;
+	}
+	wq_ol_ = alloc_workqueue(WQ_OL, WQ_MEM_RECLAIM, 0);
+	if (!wq_ol_) {
+		LOGe("failed to allocate a workqueue (wq_ol_).");
+		goto error6;
 	}
 
 	if (!treemap_init()) {
-		goto error5;
+		goto error7;
 	}
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -3060,11 +3315,15 @@ static bool pre_register(void)
 	return true;
 
 #if 0
-error6:
+error8:
 	treemap_exit();
 #endif
-error5:
+error7:
+	destroy_workqueue(wq_ol_);
+error6:
 	destroy_workqueue(wq_io_);
+error5:
+	destroy_workqueue(wq_logpack_);
 error4:
 	bio_entry_exit();
 error3:
@@ -3079,10 +3338,12 @@ error0:
 
 static void flush_all_wq(void)
 {
-	flush_workqueue(wq_io_); /* complete logpack submit task. */
-	flush_workqueue(wq_io_); /* complete logpack wait task. */
-	flush_workqueue(wq_io_); /* complete data io task. */
-	flush_workqueue(wq_io_); /* complete logpack gc task. */
+	flush_workqueue(wq_logpack_); /* complete logpack submit task. */
+	flush_workqueue(wq_logpack_); /* complete logpack wait task. */
+	flush_workqueue(wq_io_); /* complete data submit task. */
+	flush_workqueue(wq_ol_); /* complete overlapping task. */
+	flush_workqueue(wq_io_); /* complete data wait task. */
+	flush_workqueue(wq_logpack_); /* complete logpack gc task. */
 }
 
 /* Called before unregister. */
@@ -3109,8 +3370,12 @@ static void post_unregister(void)
 	treemap_exit();
 	
 	/* finalize workqueue data. */
+	destroy_workqueue(wq_ol_);
+	wq_ol_ = NULL;
 	destroy_workqueue(wq_io_);
 	wq_io_ = NULL;
+	destroy_workqueue(wq_logpack_);
+	wq_logpack_ = NULL;
 
 	/* Destory kmem_cache data. */
 	bio_entry_exit();
@@ -3156,7 +3421,13 @@ static int __init wrapper_blk_init(void)
                 goto error2;
         }
 
-        return 0;
+#if 0
+	/* debug */
+	INIT_DELAYED_WORK(&shared_dwork, task_periodic_print);
+	queue_delayed_work(system_wq, &shared_dwork, msecs_to_jiffies(1000));
+#endif
+
+	return 0;
 #if 0
 error3:
         stop_dev();
@@ -3172,6 +3443,11 @@ error0:
 
 static void wrapper_blk_exit(void)
 {
+#if 0
+	/* debug */
+	cancel_delayed_work_sync(&shared_dwork);
+#endif
+	
         stop_dev();
 	pre_unregister();
         unregister_dev();
