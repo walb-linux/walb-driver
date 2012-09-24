@@ -14,6 +14,10 @@
 
 #include "walb/common.h"
 
+/********************************************************************************
+ * Struct data.
+ ********************************************************************************/
+
 /**
  * bio as a list entry.
  */
@@ -21,7 +25,8 @@ struct bio_entry
 {
 	struct list_head list; /* list entry */
 	struct bio *bio; /* must be NULL if bio->bi_cnt is 0 (and deallocated). */
-	unsigned int bi_size; /* keep bi_size at initialization,
+	sector_t pos; /* [logical block] */
+	unsigned int len; /* keep (bi_size << 9) at initialization,
 				 because bio->bi_size will be 0 after endio. */
 	int error; /* bio error status. */
 	struct completion done; /* If is_splitted is true and bio_orig is NULL,
@@ -50,6 +55,10 @@ struct bio_entry_cursor
 	struct bio_entry *bioe; /* current bioe */
 	unsigned int off_in; /* offset [sectors] inside bioe. */
 };
+
+/********************************************************************************
+ * Utility functions for bio entry.
+ ********************************************************************************/
 
 /* print for debug */
 void print_bio_entry(const char *level, struct bio_entry *bioe);
@@ -87,10 +96,17 @@ bool split_bio_entry_list_for_chunk(
 	struct list_head *bio_ent_list,
 	unsigned int chunk_sectors, gfp_t gfp_mask);
 
+/********************************************************************************
+ * Init/exit.
+ ********************************************************************************/
+
 /* init/exit */
 bool bio_entry_init(void);
 void bio_entry_exit(void);
 
+/********************************************************************************
+ * Static utilities.
+ ********************************************************************************/
 
 /**
  * Check whether complete(&bioe->done) will be called, or not.

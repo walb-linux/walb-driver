@@ -71,10 +71,12 @@ WRAPPER_BLK_SIMPLE_REQ_OBJS = wrapper_blk_simple_req.o
 wrapper-blk-simple-req-mod-objs := $(WRAPPER_BLK_SIMPLE_REQ_OBJS)
 WRAPPER_BLK_SIMPLE_BIO_OBJS = wrapper_blk_simple_bio.o bio_entry.o
 wrapper-blk-simple-bio-mod-objs := $(WRAPPER_BLK_SIMPLE_BIO_OBJS)
-WRAPPER_BLK_WALB_OBJS = wrapper_blk_walb.o \
+WRAPPER_BLK_WALB_REQ_OBJS = wrapper_blk_walb_req.o \
 sector_io.o bio_entry.o req_entry.o logpack.o treemap.o
-wrapper-blk-walb-req-mod-objs := $(WRAPPER_BLK_WALB_OBJS) \
-wrapper_blk_walb_req.o
+wrapper-blk-walb-req-mod-objs := $(WRAPPER_BLK_WALB_REQ_OBJS)
+WRAPPER_BLK_WALB_BIO_OBJS = wrapper_blk_walb_bio.o \
+sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o
+wrapper-blk-walb-bio-mod-objs := $(WRAPPER_BLK_WALB_BIO_OBJS)
 
 #obj-m := walb-mod.o \
 #test-hashtbl-mod.o \
@@ -107,6 +109,7 @@ wrapper-blk-mod.o \
 wrapper-blk-simple-req-mod.o \
 wrapper-blk-simple-bio-mod.o \
 wrapper-blk-walb-req-mod.o \
+wrapper-blk-walb-bio-mod.o \
 
 else
 

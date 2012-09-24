@@ -36,8 +36,8 @@ static atomic_t shared_cnt_ = ATOMIC_INIT(0);
 struct bio_cursor
 {
 	struct bio_entry *bioe; /* Target bio entry.
-				   You must use bioe->bi_size
-				   instead of bioe->bio->bi_size,
+				   You must use bioe->len
+				   instead of (bioe->bio->bi_size >> 9),
 				   because it will be 0 in the end_request(). */
 	unsigned int idx; /* bio io_vec index. */
 	unsigned int off; /* offset inside bio [bytes]. */
@@ -144,21 +144,21 @@ static inline void list_insert_after(struct list_head *pos, struct list_head *ne
 UNUSED static void bio_cursor_print(
 	const char *level, struct bio_cursor *cur)
 {
-	u64 addr = 0;
-	unsigned int bi_size = 0;
+	u64 pos = 0;
+	unsigned int len = 0;
 	ASSERT(cur);
 	ASSERT(bio_cursor_is_valid(cur));
 
 	ASSERT(cur->bioe);
-	addr = cur->bioe->bio->bi_sector;
-	bi_size = cur->bioe->bi_size;
+	pos = cur->bioe->pos;
+	len = cur->bioe->len;
 	
 	printk("%s"
 		"bio_cursor: "
 		"bioe %p bio %p (%"PRIu64", %u) idx %u off %u off_in %u\n",
 		level,
 		cur->bioe, cur->bioe->bio,
-		addr, bi_size,
+		pos, len,
 		cur->idx, cur->off, cur->off_in);
 }
 #endif
@@ -179,7 +179,7 @@ UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur)
 	CHECK(cur);
 	CHECK(cur->bioe);
 
-	if (cur->bioe->bi_size == 0) {
+	if (cur->bioe->len == 0) {
 		/* zero bio. */
 		CHECK(cur->idx == 0);
 		CHECK(cur->off == 0);
@@ -193,7 +193,7 @@ UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur)
 
 	if (cur->idx == cur->bioe->bio->bi_vcnt) {
 		/* cursur indicates the end. */
-		CHECK(cur->off == cur->bioe->bi_size);
+		CHECK(cur->off == cur->bioe->len << 9);
 		CHECK(cur->off_in == 0);
 		goto fin;
 	}
@@ -223,7 +223,7 @@ static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe)
 	ASSERT(bioe);
 
 	cur->bioe = bioe;
-	if (bioe->bi_size == 0) {
+	if (bioe->len == 0) {
 		/* zero bio */
 		cur->idx = 0;
 	} else {
@@ -277,11 +277,11 @@ static bool bio_cursor_is_end(struct bio_cursor *cur)
 {
 	ASSERT(bio_cursor_is_valid(cur));
 	
-	if (cur->bioe->bi_size == 0) {
+	if (cur->bioe->len == 0) {
 		/* zero bio always indicates the end. */
 		return true;
 	} else {
-		return cur->off == cur->bioe->bi_size;
+		return cur->off == cur->bioe->len << 9;
 	}
 }
 #endif
@@ -607,7 +607,7 @@ static struct bio_entry* bio_entry_split(
 	if (!bp) { goto error1; }
 	
 	bioe1->bio = bp->bio1;
-	bioe1->bi_size = bp->bio1->bi_size;
+	bioe1->len = bp->bio1->bi_size >> 9;
 	if (!bioe1->is_splitted) {
 		ASSERT(!bioe1->bio_orig);
 		bioe1->bio_orig = bp->bio_orig;
@@ -663,20 +663,20 @@ UNUSED
 static void bio_entry_cursor_print(
 	const char *level, struct bio_entry_cursor *cur)
 {
-	u64 addr = 0;
-	unsigned int sectors = 0;
+	u64 pos = 0;
+	unsigned int len = 0;
 	ASSERT(cur);
 
 	if (cur->bioe) {
-		addr = cur->bioe->bio->bi_sector;
-		sectors = cur->bioe->bi_size / LOGICAL_BLOCK_SIZE;
+		pos = cur->bioe->pos;
+		len = cur->bioe->len;
 	}
 	printk("%s"
 		"bio_entry_cursor: "
 		"bio_ent_list %p off %u bioe %p (%"PRIu64", %u) off_in %u\n",
 		level,
 		cur->bio_ent_list, cur->off, cur->bioe,
-		addr, sectors, cur->off_in);
+		pos, len, cur->off_in);
 }
 	
 /**
@@ -714,7 +714,7 @@ static unsigned int bio_entry_cursor_size_to_boundary(
 	struct bio_entry_cursor *cur)
 {
 	ASSERT(bio_entry_cursor_is_valid(cur));
-	return cur->bioe->bi_size / LOGICAL_BLOCK_SIZE - cur->off_in;
+	return cur->bioe->len - cur->off_in;
 }
 
 /**
@@ -729,7 +729,7 @@ static void bio_entry_cursor_proceed_to_boundary(
 	cur->off_in = 0;
 	do {
 		cur->bioe = bio_entry_next(cur->bioe, cur->bio_ent_list);
-	} while (cur->bioe != NULL && cur->bioe->bi_size == 0);
+	} while (cur->bioe != NULL && cur->bioe->len == 0);
 }
 
 /**
@@ -817,14 +817,12 @@ static void bio_data_copy(
 	unsigned int size, copied;
 	
 	ASSERT(dst);
-	ASSERT(dst_off + sectors <= dst->bi_size / LOGICAL_BLOCK_SIZE);
+	ASSERT(dst_off + sectors <= dst->len);
 	ASSERT(src);
-	ASSERT(src_off + sectors <= src->bi_size / LOGICAL_BLOCK_SIZE);
+	ASSERT(src_off + sectors <= src->len);
 
-	ASSERT(dst->bi_size > 0);
-	ASSERT(src->bi_size > 0);
-	ASSERT(dst->bi_size % LOGICAL_BLOCK_SIZE == 0);
-	ASSERT(src->bi_size % LOGICAL_BLOCK_SIZE == 0);
+	ASSERT(dst->len > 0);
+	ASSERT(src->len > 0);
 
 	ASSERT(sectors > 0);
 	size = sectors * LOGICAL_BLOCK_SIZE;
@@ -857,10 +855,10 @@ static struct bio_entry* bio_entry_list_get_first_nonzero(struct list_head *bio_
 	}
 
 	bioe = list_first_entry(bio_ent_list, struct bio_entry, list);
-	while (bioe != NULL && bioe->bi_size == 0) {
+	while (bioe != NULL && bioe->len == 0) {
 		bioe = bio_entry_next(bioe, bio_ent_list);
 	}
-	ASSERT(bioe == NULL || bioe->bi_size > 0);
+	ASSERT(bioe == NULL || bioe->len > 0);
 	return bioe;
 }
 
@@ -877,13 +875,13 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 	int i;
 	ASSERT(bioe);
 
-	printk("%s""bio %p bi_size %u, error %d is_splitted %d bio_orig %p\n",
+	printk("%s""bio %p len %u, error %d is_splitted %d bio_orig %p\n",
 		level,
-		bioe->bio, bioe->bi_size, bioe->error,
+		bioe->bio, bioe->len, bioe->error,
 		bioe->is_splitted, bioe->bio_orig);
 	if (bioe->bio) {
 		printk("%s""bio pos %"PRIu64" bdev(%d:%d)\n",
-			level, (u64)bioe->bio->bi_sector,
+			level, (u64)bioe->pos,
 			MAJOR(bioe->bio->bi_bdev->bd_dev),
 			MINOR(bioe->bio->bi_bdev->bd_dev));
 		bio_for_each_segment(bvec, bioe->bio, i) {
@@ -916,10 +914,12 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 	bioe->bio_orig = NULL;
 	if (bio) {
 		bioe->bio = bio;
-		bioe->bi_size = bio->bi_size;
+		bioe->pos = bio->bi_sector;
+		bioe->len = bio->bi_size >> 9;
 	} else {
 		bioe->bio = NULL;
-		bioe->bi_size = 0;
+		bioe->pos = 0;
+		bioe->len = 0;
 	}
 
 #ifdef WALB_FAST_ALGORITHM
@@ -944,7 +944,7 @@ struct bio_entry* alloc_bio_entry(gfp_t gfp_mask)
 	return bioe;
 
 error0:
-	LOGe("create_bio_entry() end with error.\n");
+	LOGe("alloc_bio_entry() end with error.\n");
 	return NULL;
 }
 
@@ -1207,13 +1207,13 @@ bool bio_entry_cursor_is_valid(struct bio_entry_cursor *cur)
 	}
 
 	ASSERT(cur->bioe);
-	CHECK(cur->bioe->bi_size > 0);
-	CHECK(cur->off_in < cur->bioe->bi_size / LOGICAL_BLOCK_SIZE);
+	CHECK(cur->bioe->len > 0);
+	CHECK(cur->off_in < cur->bioe->len);
 	bioe = NULL;
 	off_bytes = 0;
 	list_for_each_entry(bioe, cur->bio_ent_list, list) {
 		if (bioe == cur->bioe) { break; }
-		off_bytes += bioe->bi_size;
+		off_bytes += bioe->len << 9;
 	}
 	CHECK(off_bytes % LOGICAL_BLOCK_SIZE == 0);
 	CHECK(off_bytes / LOGICAL_BLOCK_SIZE + cur->off_in == cur->off);
@@ -1327,24 +1327,24 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 	/* Debug */
 	LOGd_("bio_data_copy: dst %u %u %u %u src %u %u %u %u copied_sectors %u\n",
 		dst->bioe->bio->bi_size,
-		dst->bioe->bi_size,
+		dst->bioe->len << 9,
 		dst->off_in,
 		atomic_read(&dst->bioe->bio->bi_cnt),
 		src->bioe->bio->bi_size,
-		src->bioe->bi_size,
+		src->bioe->len << 9,
 		src->off_in,
 		atomic_read(&src->bioe->bio->bi_cnt),
 		copied_sectors);
 
 	ASSERT(dst->bioe->bio);
 	ASSERT(src->bioe->bio);
-	ASSERT(dst->bioe->bio->bi_size == dst->bioe->bi_size);
+	ASSERT(dst->bioe->bio->bi_size == dst->bioe->len << 9);
 #if 0
 	/* Debug */
-	if (src->bioe->bio->bi_size != src->bioe->bi_size) {
+	if (src->bioe->bio->bi_size != src->bioe->len << 9) {
 		LOGn("src bio invalid: bio %u bioe %u vcnt %u\n",
 			src->bioe->bio->bi_size,
-			src->bioe->bi_size,
+			src->bioe->len << 9,
 			atomic_read(&src->bioe->bio->bi_cnt));
 
 		LOGn("bi_idx %u bi_vcnt %u bi_io_vec %p\n",
@@ -1396,8 +1396,8 @@ bool should_split_bio_entry_list_for_chunk(
 	while (!bio_entry_cursor_is_end(&cur)) {
 		ASSERT(cur.bioe);
 		ASSERT(cur.bioe->bio);
-		addr = cur.bioe->bio->bi_sector;
-		sectors = cur.bioe->bi_size / LOGICAL_BLOCK_SIZE;
+		addr = cur.bioe->pos;
+		sectors = cur.bioe->len;
 		ASSERT(sectors > 0);
 		if (addr / chunk_sectors == (addr + sectors - 1) / chunk_sectors) {
 			ret = bio_entry_cursor_proceed(&cur, sectors);
@@ -1441,8 +1441,8 @@ bool split_bio_entry_list_for_chunk(
 #if 0
 		bio_entry_cursor_print(KERN_DEBUG, &cur);
 #endif
-		addr = cur.bioe->bio->bi_sector;
-		sectors = cur.bioe->bi_size / LOGICAL_BLOCK_SIZE;
+		addr = cur.bioe->pos;
+		sectors = cur.bioe->len;
 		ASSERT(sectors > 0);
 		if (addr / chunk_sectors == (addr + sectors - 1) / chunk_sectors) {
 			/* no need to split for the bio. */
