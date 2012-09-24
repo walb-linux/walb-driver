@@ -82,11 +82,11 @@ struct snapshot_data
            due to PAGE_SIZE limitation.
            Index: offset -> (struct snapshot_sector_control *).
            Each struct snapshot_sector_control data is managed by this map. */
-        map_t *sectors;
+        struct map *sectors;
         
         /* Primary Index: snapshot_id -> (struct snapshot_sector_control *)
            Value should be offset but value type is unsigned long, not u64. */
-        map_t *id_idx;
+        struct map *id_idx;
         
         /* Index: name -> snapshot_id.
            name is unique key. */
@@ -94,7 +94,7 @@ struct snapshot_data
 
         /* Index: lsid -> snapshot_id.
            lsid is not unique key. */
-        multimap_t *lsid_idx;
+        struct multimap *lsid_idx;
 };
 
 /**

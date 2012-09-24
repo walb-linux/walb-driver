@@ -31,10 +31,8 @@
 #include "snapshot.h"
 #include "control.h"
 #include "alldevs.h"
-#include "io.h"
 #include "util.h"
 #include "logpack.h"
-#include "datapack.h"
 
 #include "walb/ioctl.h"
 #include "walb/log_device.h"
@@ -89,17 +87,9 @@ struct workqueue_struct *wqm_ = NULL; /* multi-thread */
 static int walb_lock_bdev(struct block_device **bdevp, dev_t dev);
 static void walb_unlock_bdev(struct block_device *bdev);
 
-/* Thin wrapper of logpack/datapack. */
-static void walb_end_requests(struct request **reqp_ary, int n_req, int error);
-static void walb_make_logpack_and_submit_task(struct work_struct *work);
-static int walb_make_and_write_logpack(struct walb_dev *wdev,
-                                       struct request** reqp_ary, int n_req);
-
-/* Walb device full_request callback. */
-static void walb_full_request2(struct request_queue *q);
-
-/* Walblog make_requrest callback. */
-static int walblog_make_request(struct request_queue *q, struct bio *bio);
+/* make_requrest callback. */
+static void walb_make_request(struct request_queue *q, struct bio *bio);
+static void walblog_make_request(struct request_queue *q, struct bio *bio);
 
 /* Logpack check function. */
 static int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid);
@@ -110,16 +100,12 @@ static int walb_release(struct gendisk *gd, fmode_t mode);
 static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl);
 static int walb_ioctl(struct block_device *bdev, fmode_t mode,
                       unsigned int cmd, unsigned long arg);
-/* Walb unplug_fn. */
-static void walb_unplug_all(struct request_queue *q);
 
 /* Walblog device open/close/ioctl. */
 static int walblog_open(struct block_device *bdev, fmode_t mode);
 static int walblog_release(struct gendisk *gd, fmode_t mode);
 static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
                          unsigned int cmd, unsigned long arg);
-/* Walblog unplug_fn. */
-static void walblog_unplug(struct request_queue *q);
 
 /* Super sector functions. */
 static int walb_sync_super_block(struct walb_dev *wdev);
@@ -154,9 +140,6 @@ static void start_checkpointing(struct walb_dev *wdev);
 static void stop_checkpointing(struct walb_dev *wdev);
 static u32 get_checkpoint_interval(struct walb_dev *wdev);
 static void set_checkpoint_interval(struct walb_dev *wdev, u32 val);
-
-/* Deprecated. */
-static int setup_device_tmp(unsigned int minor);
 
 /* Module init/exit. */
 static int __init walb_init(void);
@@ -201,279 +184,12 @@ static void walb_unlock_bdev(struct block_device *bdev)
 }
 
 /**
- * Call @blk_end_request_all() for all requests.
- *
- * @reqp_ary array of request pointers.
- * @n_req array size.
- * @error error value. 0 is normally complete.
+ * now editing
  */
-static void walb_end_requests(struct request **reqp_ary, int n_req, int error)
+static void walb_make_request(struct request_queue *q, struct bio *bio)
 {
-        int i;
-        for (i = 0; i < n_req; i ++) {
-                blk_end_request_all(reqp_ary[i], error);
-        }
-}
-
-/**
- * Make log pack and submit related bio(s).
- *
- * @work (struct walb_make_logpack_work *)->work
- */
-static void walb_make_logpack_and_submit_task(struct work_struct *work)
-{
-        struct walb_make_logpack_work *wk;
-        struct sector_data *lhead_sect;
-        struct walb_logpack_header *lhead;
-        int logpack_size;
-        u64 logpack_lsid, next_logpack_lsid, oldest_lsid;
-        u64 ringbuf_off, ringbuf_size;
-        struct walb_dev *wdev;
-
-        wk = container_of(work, struct walb_make_logpack_work, work);
-        wdev = wk->wdev;
-
-        LOGd("walb_make_logpack_and_submit_task begin\n");
-        ASSERT(wk->n_req <= max_n_log_record_in_sector(wdev->physical_bs));
-
-        LOGd("making log pack (n_req %d)\n", wk->n_req);
-        
-        /*
-         * Allocate memory (sector size) for log pack header.
-         */
-        lhead_sect = sector_alloc(wdev->physical_bs, GFP_NOIO | __GFP_ZERO);
-        if (lhead_sect == NULL) {
-                LOGe("walb_alloc_sector() failed\n");
-                goto error0;
-        }
-        lhead = get_logpack_header(lhead_sect);
-
-        /*
-         * Get oldest_lsid.
-         */
-        spin_lock(&wdev->oldest_lsid_lock);
-        oldest_lsid = wdev->oldest_lsid;
-        spin_unlock(&wdev->oldest_lsid_lock);
-        
-        /*
-         * Fill log records for for each request.
-         */
-        ringbuf_off = get_ring_buffer_offset_2(get_super_sector(wdev->lsuper0));
-        ringbuf_size = get_log_capacity(wdev);
-        /*
-         * 1. Lock latest_lsid_lock.
-         * 2. Get latest_lsid 
-         * 3. Calc required number of physical blocks for log pack.
-         * 4. Set next latest_lsid.
-         * 5. Unlock latest_lsid_lock.
-         */
-        spin_lock(&wdev->latest_lsid_lock);
-        logpack_lsid = wdev->latest_lsid;
-        logpack_size = walb_logpack_header_fill
-                (lhead, logpack_lsid, wk->reqp_ary, wk->n_req,
-                 wdev->physical_bs / wdev->logical_bs, ringbuf_size);
-        if (logpack_size < 0) {
-                LOGe("walb_logpack_header_fill failed\n");
-                spin_unlock(&wdev->latest_lsid_lock);
-                goto error0;
-        }
-        next_logpack_lsid = logpack_lsid + logpack_size;
-        if (next_logpack_lsid - oldest_lsid > ringbuf_size) {
-                /* Ring buffer overflow. */
-                LOGe("There is not enough space to write log for %d:%d !\n",
-                         MAJOR(wdev->devt), MINOR(wdev->devt));
-                spin_unlock(&wdev->latest_lsid_lock);
-                goto error0;
-        }
-        wdev->latest_lsid = next_logpack_lsid;
-        spin_unlock(&wdev->latest_lsid_lock);
-
-        /* Now log records is filled except checksum.
-           Calculate and fill checksum for all requests and
-           the logpack header. */
-#ifdef WALB_DEBUG
-        walb_logpack_header_print(KERN_DEBUG, lhead); /* debug */
-#endif
-        walb_logpack_calc_checksum(lhead, wdev->physical_bs,
-                                   wk->reqp_ary, wk->n_req);
-#ifdef WALB_DEBUG
-        walb_logpack_header_print(KERN_DEBUG, lhead); /* debug */
-#endif
-        
-        /* 
-         * Complete log pack header and create its bio.
-         *
-         * Currnetly walb_logpack_write() is blocked till all bio(s)
-         * are completed.
-         */
-        if (walb_logpack_write(wdev, lhead, wk->reqp_ary) != 0) {
-                LOGe("logpack write failed (lsid %llu).\n",
-                         lhead->logpack_lsid);
-                goto error0;
-        }
-
-        /* Clone bio(s) of each request and set offset for log pack.
-           Submit prepared bio(s) to log device. */
-        if (walb_datapack_write(wdev, lhead, wk->reqp_ary) != 0) {
-                LOGe("datapack write failed (lsid %llu). \n",
-                         lhead->logpack_lsid);
-                goto error0;
-        }
-
-        /* Normally completed log/data writes. */
-        walb_end_requests(wk->reqp_ary, wk->n_req, 0);
-
-        /* Update written_lsid. */
-        spin_lock(&wdev->datapack_list_lock);
-        if (next_logpack_lsid <= wdev->written_lsid) {
-                LOGe("Logpack/data write order is not kept.\n");
-                atomic_set(&wdev->is_read_only, 1);
-        } /* This is almost assertion. */
-        wdev->written_lsid = next_logpack_lsid;
-        spin_unlock(&wdev->datapack_list_lock);
-
-        goto fin;
-
-error0:
-        walb_end_requests(wk->reqp_ary, wk->n_req, -EIO);
-fin:        
-        kfree(wk->reqp_ary);
-        kfree(wk);
-        sector_free(lhead_sect);
-
-        LOGd("walb_make_logpack_and_submit_task end\n");
-}
-
-/**
- * Register work of making log pack.
- *
- * This is executed inside interruption context.
- *
- * @wdev walb device.
- * @reqp_ary array of (request*). This will be deallocated after making log pack really.
- * @n_req number of items in the array.
- *
- * @return 0 in succeeded, or -1.
- */
-static int walb_make_and_write_logpack(struct walb_dev *wdev,
-                                       struct request** reqp_ary, int n_req)
-{
-        struct walb_make_logpack_work *wk;
-
-        if (atomic_read(&wdev->is_read_only)) {
-                LOGd("Currently read-only mode. write failed.\n");
-                goto error0;
-        }
-        
-        wk = kmalloc(sizeof(struct walb_make_logpack_work), GFP_ATOMIC);
-        if (! wk) { goto error0; }
-
-        wk->reqp_ary = reqp_ary;
-        wk->n_req = n_req;
-        wk->wdev = wdev;
-        INIT_WORK(&wk->work, walb_make_logpack_and_submit_task);
-        queue_work(wqs_, &wk->work);
-        
-        return 0;
-
-error0:
-        return -1;
-}
-
-/**
- * Work as a just wrapper of the underlying data device.
- */
-static void walb_full_request2(struct request_queue *q)
-{
-        struct request *req;
-        struct walb_dev *wdev = q->queuedata;
-        int i;
-
-        struct request **reqp_ary = NULL;
-        int n_req = 0;
-        const int max_n_req = max_n_log_record_in_sector(wdev->physical_bs);
-        /* LOGd("max_n_req: %d\n", max_n_req); */
-        
-        while ((req = blk_peek_request(q)) != NULL) {
-
-                blk_start_request(req);
-                if (req->cmd_type != REQ_TYPE_FS) {
-			LOGn("skip non-fs request.\n");
-                        __blk_end_request_all(req, -EIO);
-                        continue;
-                }
-
-                if (req->cmd_flags & REQ_FLUSH) {
-                        LOGd("REQ_FLUSH\n");
-                }
-                if (req->cmd_flags & REQ_FUA) {
-                        LOGd("REQ_FUA\n");
-                }
-                if (req->cmd_flags & REQ_DISCARD) {
-                        LOGd("REQ_DISCARD\n");
-                }
-
-                if (req->cmd_flags & REQ_WRITE) {
-                        /* Write.
-                           Make log record and
-                           add log pack. */
-
-                        LOGd("WRITE %ld %d\n", blk_rq_pos(req), blk_rq_bytes(req));
-                        
-                        if (n_req == max_n_req) {
-                                if (walb_make_and_write_logpack(wdev, reqp_ary, n_req) != 0) {
-
-                                        for (i = 0; i < n_req; i ++) {
-                                                __blk_end_request_all(reqp_ary[i], -EIO);
-                                        }
-                                        kfree(reqp_ary);
-                                        continue;
-                                }
-                                reqp_ary = NULL;
-                                n_req = 0;
-                        }
-                        if (n_req == 0) {
-                                ASSERT(reqp_ary == NULL);
-                                reqp_ary = kmalloc(sizeof(struct request *) * max_n_req,
-                                                   GFP_ATOMIC);
-                        }
-                                                  
-                        reqp_ary[n_req] = req;
-                        n_req ++;
-                        
-                } else {
-                        /* Read.
-                           Just forward to data device. */
-                        
-                        LOGd("READ %ld %d\n", blk_rq_pos(req), blk_rq_bytes(req));
-
-                        switch (1) {
-                        case 0:
-                                walb_make_ddev_request(wdev->ddev, req);
-                                break;
-                        case 1:
-                                walb_forward_request_to_ddev(wdev->ddev, req);
-                                break;
-                        case 2:
-                                walb_forward_request_to_ddev2(wdev->ddev, req);
-                                break;
-                        default:
-                                BUG();
-                        }
-                }
-        }
-
-        /* If log pack exists(one or more requests are write),
-           Enqueue log write task.
-        */
-        if (n_req > 0) {
-                if (walb_make_and_write_logpack(wdev, reqp_ary, n_req) != 0) {
-                        for (i = 0; i < n_req; i ++) {
-                                __blk_end_request_all(reqp_ary[i], -EIO);
-                        }
-                        kfree(reqp_ary);
-                }
-        }
+	/* now editing */
+	bio_endio(bio, 0);
 }
 
 /**
@@ -485,16 +201,14 @@ static void walb_full_request2(struct request_queue *q)
  * @q request queue.
  * @bio bio.
  */
-static int walblog_make_request(struct request_queue *q, struct bio *bio)
+static void walblog_make_request(struct request_queue *q, struct bio *bio)
 {
         struct walb_dev *wdev = q->queuedata;
         
         if (bio->bi_rw & WRITE) {
                 bio_endio(bio, -EIO);
-                return 0;
         } else {
                 bio->bi_bdev = wdev->ldev;
-                return 1;
         }
 }
 
@@ -669,7 +383,7 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 
                 LOGn("WALB_IOCTL_SNAPSHOT_CREATE\n");
 
-                (walb_snapshot_record_t *)ctl->u2k.__buf;
+                /* (walb_snapshot_record_t *)ctl->u2k.__buf; */
                 /* now editing */
                 
                 break;
@@ -761,28 +475,6 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
         return ret;
 }
 
-/**
- * Unplug walb device.
- *
- * Log -> Data.
- */
-static void walb_unplug_all(struct request_queue *q)
-{
-        struct walb_dev *wdev = q->queuedata;
-        struct request_queue *lq, *dq;
-        
-        ASSERT(wdev != NULL);
-        
-        generic_unplug_device(q);
-
-        lq = bdev_get_queue(wdev->ldev);
-        dq = bdev_get_queue(wdev->ddev);
-        if (lq)
-                blk_unplug(lq);
-        if (dq)
-                blk_unplug(dq);
-}
-
 /*
  * The device operations structure.
  */
@@ -822,26 +514,6 @@ static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 		return 0;
 	}
 	return -ENOTTY;
-}
-
-/**
- * Unplug walblog device.
- *
- * Just unplug underlying log device.
- */
-static void walblog_unplug(struct request_queue *q)
-{
-        struct walb_dev *wdev = q->queuedata;
-        struct request_queue *lq;
-        
-        ASSERT(wdev != NULL);
-
-        lq = bdev_get_queue(wdev->ldev);
-        ASSERT(lq != NULL);
-        
-        generic_unplug_device(q);
-        if (lq)
-                blk_unplug(lq);
 }
 
 static struct block_device_operations walblog_ops = {
@@ -889,7 +561,7 @@ static int walb_sync_super_block(struct walb_dev *wdev)
         sector_copy(lsuper_tmp, wdev->lsuper0);
         spin_unlock(&wdev->lsuper0_lock);
         
-        if (!walb_write_super_sector(wdev->physical_bs, lsuper_tmp)) {
+        if (!walb_write_super_sector(wdev->ldev, lsuper_tmp)) {
                 LOGe("walb_sync_super_block: write super block failed.\n");
                 goto error1;
         }
@@ -983,46 +655,25 @@ error0:
 static int walb_prepare_device(struct walb_dev *wdev, unsigned int minor,
                                const char *name)
 {
-	/*
-	 * The I/O queue, depending on whether we are using our own
-	 * make_request function or not.
-	 */
-	switch (request_mode) {
-#if 0
-        case RM_NOQUEUE:
-		wdev->queue = blk_alloc_queue(GFP_KERNEL);
-		if (wdev->queue == NULL)
-			goto out;
-		blk_queue_make_request(wdev->queue, walb_make_request);
-#endif
-		break;
 
-        case RM_FULL:
-		wdev->queue = blk_init_queue(walb_full_request2, &wdev->lock);
-		if (wdev->queue == NULL)
-			goto out;
-                if (elevator_change(wdev->queue, "noop"))
-                        goto out_queue;
-		break;
+#if 1
+	/* bio interface */
+	wdev->queue = blk_alloc_queue(GFP_KERNEL);
+	if (wdev->queue == NULL)
+		goto out;
+	blk_queue_make_request(wdev->queue, walb_make_request);
+#else
+	/* request interface */
+	wdev->queue = blk_init_queue(walb_full_request2, &wdev->lock);
+	if (wdev->queue == NULL)
+		goto out;
+	if (elevator_change(wdev->queue, "noop"))
+		goto out_queue;
+#endif	
 
-        default:
-		LOGe("Bad request mode %d.\n", request_mode);
-                BUG();
-	}
 	blk_queue_logical_block_size(wdev->queue, wdev->logical_bs);
 	blk_queue_physical_block_size(wdev->queue, wdev->physical_bs);
 	wdev->queue->queuedata = wdev;
-        /*
-         * 1. Bio(s) that can belong to a request should be packed.
-         * 2. Parallel (independent) writes should be packed.
-         *
-         * 'unplug_thresh' is prcatically max requests in a log pack.
-         * 'unplug_delay' should be as small as possible to minimize latency.
-         */
-        wdev->queue->unplug_thresh = 16;
-        wdev->queue->unplug_delay = msecs_to_jiffies(1);
-        LOGd("1ms = %lu jiffies\n", msecs_to_jiffies(1)); /* debug */
-        wdev->queue->unplug_fn = walb_unplug_all;
 
         /*
 	 * And the gendisk structure.
@@ -1094,7 +745,6 @@ static int walblog_prepare_device(struct walb_dev *wdev,
         blk_queue_logical_block_size(wdev->log_queue, wdev->logical_bs);
         blk_queue_physical_block_size(wdev->log_queue, wdev->physical_bs);
         wdev->log_queue->queuedata = wdev;
-        wdev->log_queue->unplug_fn = walblog_unplug;
 
         wdev->log_gd = alloc_disk(1);
         if (! wdev->log_gd) {
@@ -1551,32 +1201,6 @@ static void set_checkpoint_interval(struct walb_dev *wdev, u32 val)
  *
  *******************************************************************************/
 
-/**
- * Set up our internal device.
- *
- * @return 0 in success, or -1.
- */
-static int setup_device_tmp(unsigned int minor)
-{
-        dev_t ldevt, ddevt;
-        struct walb_dev *wdev;
-
-        ldevt = MKDEV(ldev_major, ldev_minor);
-        ddevt = MKDEV(ddev_major, ddev_minor);
-        wdev = prepare_wdev(minor, ldevt, ddevt, NULL);
-        if (wdev == NULL) {
-                goto error0;
-        }
-        register_wdev(wdev);
-
-        Devices = wdev;
-        
-        return 0;
-
-error0:
-        return -1;
-}
-
 static int __init walb_init(void)
 {
         /* DISK_NAME_LEN assersion */
@@ -1622,15 +1246,6 @@ static int __init walb_init(void)
                 goto out_alldevs_exit;
         }
 
-	/*
-	 * Allocate the device array, and initialize each one.
-	 */
-#if 0
-        if (setup_device_tmp(0) != 0) {
-		LOGe("setup_device failed.\n");
-                goto out_control_exit;
-        }
-#endif
 	return 0;
         
 #if 0
