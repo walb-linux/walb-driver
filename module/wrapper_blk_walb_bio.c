@@ -235,6 +235,7 @@ struct pdata
 #define PDATA_STATE_WAIT_TASK_WORKING        2
 #define PDATA_STATE_QUEUE_STOPPED             3
 #define PDATA_STATE_SUBMIT_DATA_TASK_WORKING 4
+#define PDATA_STATE_FAILURE                   5
 
 /*******************************************************************************
  * Static functions prototype.
@@ -415,9 +416,10 @@ static inline bool should_start_queue(struct pdata *pdata, struct bio_wrapper *b
  * For debug.
  *******************************************************************************/
 
+static atomic_t n_pending_bio = ATOMIC_INIT(0);
+
 #if 0
 struct delayed_work shared_dwork;
-static atomic_t n_pending_bio = ATOMIC_INIT(0);
 static atomic_t wbiow_n_pending = ATOMIC_INIT(0);
 
 static void task_periodic_print(struct work_struct *work)
@@ -832,8 +834,21 @@ error:
 static void stop_dev(void)
 {
         unsigned int i = 0;
-        
-        wdev_stop(get_minor(i));
+	unsigned int minor;
+	struct wrapper_blk_dev *wdev;
+	struct pdata *pdata;
+
+	minor = get_minor(i);
+        wdev_stop(minor);
+
+	wdev = wdev_get(minor);
+	ASSERT(wdev);
+	pdata = get_pdata_from_wdev(wdev);
+	ASSERT(pdata);
+
+	/* Flush all pending IOs. */
+	set_bit(PDATA_STATE_FAILURE, &pdata->flags);
+	flush_all_wq();
 }
 
 /**
@@ -1531,7 +1546,9 @@ static void wait_for_bio_wrapper(
 
 	if (is_endio) {
 		ASSERT(biow->bio);
+		atomic_dec(&n_pending_bio);
 		bio_endio(biow->bio, biow->error);
+		biow->bio = NULL;
 	}
 	
 	if (is_delete) {
@@ -1672,6 +1689,7 @@ static void wait_for_logpack_and_submit_datapack(
 			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
 			/* Already the corresponding logpack is permanent. */
 			list_del(&biow->list);
+			atomic_dec(&n_pending_bio);
 			bio_endio(biow->bio, 0);
 			destroy_bio_wrapper(biow);
 		} else {
@@ -1773,6 +1791,7 @@ static void wait_for_logpack_and_submit_datapack(
 		is_failed = true;
 		set_read_only_mode(pdata);
 		LOGe("WalB changes device minor:%u to read-only mode.\n", wdev->minor);
+		atomic_dec(&n_pending_bio);
 		bio_endio(biow->bio, -EIO);
 		list_del(&biow->list);
 		destroy_bio_wrapper(biow);
@@ -1959,6 +1978,7 @@ static void task_gc_logpack_list(struct work_struct *work)
 				goto retry;
 			}
 			destroy_bio_wrapper(biow);
+			atomic_dec(&n_pending_bio);
 		}
 		ASSERT(list_empty(&wpack->biow_list));
 		ASSERT(list_empty(&wpack->bioe_list));
@@ -3131,6 +3151,7 @@ static void submit_read_bio_wrapper(
 error1:
 	destroy_bio_entry_list(&biow->bioe_list);
 error0:
+	atomic_dec(&n_pending_bio);
 	bio_endio(biow->bio, -ENOMEM);
 	ASSERT(list_empty(&biow->bioe_list));
 	destroy_bio_wrapper(biow);
@@ -3145,13 +3166,21 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 	struct pdata *pdata;
 	struct bio_wrapper *biow;
 	int error = -EIO;
-	
+
 	ASSERT(q);
 	ASSERT(bio);
 	wdev = wdev_get_from_queue(q);
 	ASSERT(wdev);
 	pdata = get_pdata_from_wdev(wdev);
 	ASSERT(pdata);
+
+	/* Failure state. */
+	if (test_bit(PDATA_STATE_FAILURE, &pdata->flags)) {
+		bio_endio(bio, -EIO);
+		return;
+	}
+
+	atomic_inc(&n_pending_bio);
 
 	/* Create bio wrapper. */
 	biow = alloc_bio_wrapper(GFP_NOIO);
@@ -3186,6 +3215,7 @@ error1:
 	destroy_bio_wrapper(biow);
 #endif
 error0:
+	atomic_dec(&n_pending_bio);
 	bio_endio(bio, error);
 }
 
@@ -3338,12 +3368,21 @@ error0:
 
 static void flush_all_wq(void)
 {
+	LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio));
+	
 	flush_workqueue(wq_logpack_); /* complete logpack submit task. */
 	flush_workqueue(wq_logpack_); /* complete logpack wait task. */
 	flush_workqueue(wq_io_); /* complete data submit task. */
 	flush_workqueue(wq_ol_); /* complete overlapping task. */
 	flush_workqueue(wq_io_); /* complete data wait task. */
 	flush_workqueue(wq_logpack_); /* complete logpack gc task. */
+
+	while (atomic_read(&n_pending_bio) > 0) {
+		LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio));
+		msleep(1000);
+	}
+
+	LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio));
 }
 
 /* Called before unregister. */
