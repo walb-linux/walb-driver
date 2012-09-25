@@ -3369,18 +3369,15 @@ error0:
 static void flush_all_wq(void)
 {
 	LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio));
-	
-	flush_workqueue(wq_logpack_); /* complete logpack submit task. */
-	flush_workqueue(wq_logpack_); /* complete logpack wait task. */
-	flush_workqueue(wq_io_); /* complete data submit task. */
-	flush_workqueue(wq_ol_); /* complete overlapping task. */
-	flush_workqueue(wq_io_); /* complete data wait task. */
-	flush_workqueue(wq_logpack_); /* complete logpack gc task. */
 
 	while (atomic_read(&n_pending_bio) > 0) {
 		LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio));
 		msleep(1000);
 	}
+
+	flush_workqueue(wq_logpack_);
+	flush_workqueue(wq_io_);
+	flush_workqueue(wq_ol_);
 
 	LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio));
 }
@@ -3388,17 +3385,11 @@ static void flush_all_wq(void)
 /* Called before unregister. */
 static void pre_unregister(void)
 {
-	LOGn("begin\n");
-	flush_all_wq();
-	LOGn("end\n");
 }
 
 /* Called before destroy_private_data. */
 static void pre_destroy_private_data(void)
 {
-	LOGn("begin\n");
-	flush_all_wq();
-	LOGn("end\n");
 }
 
 /* Called after unregister. */
