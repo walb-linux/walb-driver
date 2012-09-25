@@ -71,8 +71,6 @@ module_param(ddev_minor, int, 0);
 static int request_mode = RM_FULL;
 module_param(request_mode, int, 0);
 
-static struct walb_dev *Devices = NULL;
-
 /**
  * Workqueues.
  */
@@ -883,10 +881,12 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 /*         if (wdev->snapd) { */
 /*                 snapshot_data_finalize(wdev->snapd); */
 /*         } */
+#if 0
 out_snapshot_create:
         if (wdev->snapd) {
                 snapshot_data_destroy(wdev->snapd);
         }
+#endif
 error2:
 	sector_free(lsuper0_tmp);
 error1:
@@ -1267,12 +1267,6 @@ static void walb_exit(void)
 {
         struct walb_dev *wdev;
 
-#if 0
-        wdev = Devices;
-        unregister_wdev(wdev);
-        destroy_wdev(wdev);
-#endif
-        
         alldevs_write_lock();
         wdev = alldevs_pop();
         while (wdev != NULL) {

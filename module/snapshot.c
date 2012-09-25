@@ -34,7 +34,7 @@ static u32 record_alloc(struct snapshot_data *snapd,
 static int record_free(struct snapshot_data *snapd, u32 snapshot_id);
 
 /* Issue IO */
-static int snapshot_sector_read(struct snapshot_data *snapd,
+UNUSED static int snapshot_sector_read(struct snapshot_data *snapd,
                                 u64 offset,
                                 struct sector_data *sect);
 static int snapshot_sector_write(struct snapshot_data *snapd,
@@ -52,7 +52,7 @@ get_sector_control_with_snapshot_id(
 /* Get snapshot_id using index. */
 static u32 get_snapshot_id_with_name(
         const struct snapshot_data *snapd, const char *name);
-static struct tree_cell_head* get_snapshot_id_with_lsid(
+UNUSED static struct tree_cell_head* get_snapshot_id_with_lsid(
         const struct snapshot_data *snapd, u64 lsid);
 
 /* Manipultion of primary index. */
@@ -66,7 +66,7 @@ static int delete_snapshot_id(struct snapshot_data *snapd,
 static int insert_snapshot_record_to_index(
         struct snapshot_data *snapd,
         const struct walb_snapshot_record *rec);
-static int delete_snapshot_record_from_index(
+UNUSED static int delete_snapshot_record_from_index(
         struct snapshot_data *snapd,
         const struct walb_snapshot_record *rec);
 
@@ -75,7 +75,12 @@ static int snapshot_data_load_sector(struct snapshot_data *snapd,
                                      u32 *next_snapshot_id_p,
                                      struct snapshot_sector_control *ctl,
                                      struct sector_data *sect);
-static int is_all_sectors_free(const struct snapshot_data *snapd);
+UNUSED static int is_all_sectors_free(const struct snapshot_data *snapd);
+
+UNUSED static int get_n_snapshot_in_name_idx(
+        const struct snapshot_data *snapd, u32 snapshot_id);
+UNUSED static int get_n_snapshot_in_lsid_idx(
+        const struct snapshot_data *snapd, u32 snapshot_id);
 
 static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd);
 static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd);
