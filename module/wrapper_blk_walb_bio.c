@@ -92,7 +92,6 @@ struct pack_work
 	struct work_struct work;
 	struct delayed_work dwork;
 	struct wrapper_blk_dev *wdev;
-	struct list_head wpack_list; /* used for gc task only. */
 };
 /* kmem_cache for logpack_work. */
 #define KMEM_CACHE_PACK_WORK_NAME "pack_work_cache"
@@ -182,6 +181,12 @@ struct pdata
 						   must be held. */
 	unsigned int datapack_submit_queue_n; /* debug */
 
+	spinlock_t logpack_gc_queue_lock;
+	struct list_head logpack_gc_queue; /* writepack list.
+					      logpack_gc_queue_lock
+					      must be held. */
+	unsigned int logpack_gc_queue_n; /* debug */
+
 	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
 					This will be used for logpack size
 					not to be too long
@@ -230,12 +235,15 @@ struct pdata
 #define N_IO_BULK 128
 
 /* pdata->flags bit. */
-#define PDATA_STATE_READ_ONLY                 0
-#define PDATA_STATE_SUBMIT_TASK_WORKING      1
-#define PDATA_STATE_WAIT_TASK_WORKING        2
-#define PDATA_STATE_QUEUE_STOPPED             3
-#define PDATA_STATE_SUBMIT_DATA_TASK_WORKING 4
-#define PDATA_STATE_FAILURE                   5
+enum {
+	PDATA_STATE_READ_ONLY = 0,
+	PDATA_STATE_FAILURE,
+	PDATA_STATE_QUEUE_STOPPED,
+	PDATA_STATE_SUBMIT_TASK_WORKING,
+	PDATA_STATE_WAIT_TASK_WORKING,
+	PDATA_STATE_SUBMIT_DATA_TASK_WORKING,
+	PDATA_STATE_GC_TASK_WORKING,
+};
 
 /*******************************************************************************
  * Static functions prototype.
@@ -343,10 +351,15 @@ static struct bio_entry* submit_flush(struct block_device *bdev);
 static void enqueue_submit_task_if_necessary(struct wrapper_blk_dev *wdev);
 static void enqueue_wait_task_if_necessary(struct wrapper_blk_dev *wdev);
 static void enqueue_submit_data_task_if_necessary(struct wrapper_blk_dev *wdev);
+static void enqueue_gc_task_if_necessary(struct wrapper_blk_dev *wdev);
 static void enqueue_task_if_necessary(
 	struct wrapper_blk_dev *wdev,
 	int nr, struct workqueue_struct *wq,
 	void (*task)(struct work_struct *));
+static void enqueue_delayed_task_if_necessary(
+	struct wrapper_blk_dev *wdev,
+	int nr, struct workqueue_struct *wq,
+	void (*task)(struct work_struct *), unsigned int delay);
 static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging);
 
 /* Overlapping data functions. */
@@ -396,6 +409,7 @@ static struct bio_entry* logpack_create_bio_entry(
 	u64 ldev_offset, unsigned int bio_offset);
 static void logpack_submit_flush(
 	struct block_device *bdev, struct list_head *bioe_list);
+static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list);
 
 /* Pending data functions. */
 #ifdef WALB_FAST_ALGORITHM
@@ -654,12 +668,15 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	spin_lock_init(&pdata->logpack_submit_queue_lock);
 	spin_lock_init(&pdata->logpack_wait_queue_lock);
 	spin_lock_init(&pdata->datapack_submit_queue_lock);
+	spin_lock_init(&pdata->logpack_gc_queue_lock);
 	INIT_LIST_HEAD(&pdata->logpack_submit_queue);
 	INIT_LIST_HEAD(&pdata->logpack_wait_queue);
 	INIT_LIST_HEAD(&pdata->datapack_submit_queue);
+	INIT_LIST_HEAD(&pdata->logpack_gc_queue);
 	pdata->logpack_submit_queue_n = 0;
 	pdata->logpack_wait_queue_n = 0;
 	pdata->datapack_submit_queue_n = 0;
+	pdata->logpack_gc_queue_n = 0;
 	
         return true;
 
@@ -849,6 +866,12 @@ static void stop_dev(void)
 	/* Flush all pending IOs. */
 	set_bit(PDATA_STATE_FAILURE, &pdata->flags);
 	flush_all_wq();
+
+	/* Print status. */
+	LOGn("latest_lsid %"PRIu64"\n"
+		"written_lsid %"PRIu64"\n",
+		pdata->latest_lsid,
+		pdata->written_lsid);
 }
 
 /**
@@ -981,8 +1004,6 @@ static struct pack_work* create_pack_work(
 		goto error0;
 	}
 	pwork->wdev = wdev;
-	INIT_LIST_HEAD(&pwork->wpack_list);
-	/* INIT_WORK(&pwork->work, NULL); */
         
 	return pwork;
 error0:
@@ -995,7 +1016,6 @@ error0:
 static void destroy_pack_work(struct pack_work *work)
 {
 	if (!work) { return; }
-	ASSERT(list_empty(&work->wpack_list));
 #ifdef WALB_DEBUG
 	work->wdev = NULL;
 #endif
@@ -1901,9 +1921,11 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 	destroy_pack_work(pwork);
 	pwork = NULL;
 	
+	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
+		ASSERT(list_empty(&wpack_list));
+		
 		/* Dequeue logpack list from the submit queue. */
-		INIT_LIST_HEAD(&wpack_list);
 		spin_lock(&pdata->logpack_wait_queue_lock);
 		is_empty = list_empty(&pdata->logpack_wait_queue);
 		if (is_empty) {
@@ -1923,48 +1945,41 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		spin_unlock(&pdata->logpack_wait_queue_lock);
 		if (is_empty) { break; }
 		
-		/* Allocate work struct for gc task. */
-	retry_pack_work:
-		pwork = create_pack_work(wdev, GFP_NOIO);
-		if (!pwork) {
-			LOGn("memory allocation failed.\n");
-			schedule();
-			goto retry_pack_work;
-		}
-		
 		/* Wait logpack completion and submit datapacks. */
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			wait_for_logpack_and_submit_datapack(wdev, wpack);
-			list_move_tail(&wpack->list, &pwork->wpack_list);
 		}
 
-		/* Enqueue logpack list gc task. */
-		INIT_WORK(&pwork->work, task_gc_logpack_list);
-		queue_work(wq_logpack_, &pwork->work);
-		pwork = NULL;
+		/* Put packs into the gc queue. */
+		spin_lock(&pdata->logpack_gc_queue_lock);
+		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
+			list_move_tail(&wpack->list, &pdata->logpack_gc_queue);
+			pdata->logpack_gc_queue_n ++;
+		}
+		spin_unlock(&pdata->logpack_gc_queue_lock);
 	}
+	/* Enqueue a gc task. */
+	enqueue_gc_task_if_necessary(wdev);
 }
 
 /**
- * Wait all related write requests done and
- * free all related resources.
- *
- * @work work in a pack_work.
- *
- * CONTEXT:
- *   Workqueue task.
- *   Works will be executed in parallel.
+ * Gc logpack list.
  */
-static void task_gc_logpack_list(struct work_struct *work)
+static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct pack *wpack, *wpack_next;
 	struct bio_wrapper *biow, *biow_next;
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	int c;
+	struct walb_logpack_header *logh;
+	u64 written_lsid = INVALID_LSID;
 
-	list_for_each_entry_safe(wpack, wpack_next, &pwork->wpack_list, list) {
+	ASSERT(pdata);
+	ASSERT(wpack_list);
+	ASSERT(!list_empty(wpack_list));
+	
+	list_for_each_entry_safe(wpack, wpack_next, wpack_list, list) {
 		list_del(&wpack->list);
 		list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
 			list_del(&biow->list);
@@ -1982,10 +1997,79 @@ static void task_gc_logpack_list(struct work_struct *work)
 		}
 		ASSERT(list_empty(&wpack->biow_list));
 		ASSERT(list_empty(&wpack->bioe_list));
+
+		logh = get_logpack_header(wpack->logpack_header_sector);
+		ASSERT(logh);
+		written_lsid = logh->logpack_lsid + 1 + logh->total_io_size;
+		
 		destroy_pack(wpack);
 	}
-	ASSERT(list_empty(&pwork->wpack_list));
+	ASSERT(list_empty(wpack_list));
+
+	/* Update written_lsid. */
+	ASSERT(written_lsid != INVALID_LSID);
+	spin_lock(&pdata->lsid_lock);
+	pdata->written_lsid = written_lsid;
+	spin_unlock(&pdata->lsid_lock);
+}
+
+/**
+ * Wait all related write requests done and
+ * free all related resources.
+ *
+ * @work work in a pack_work.
+ *
+ * CONTEXT:
+ *   Workqueue task.
+ *   Works will be executed in parallel.
+ */
+static void task_gc_logpack_list(struct work_struct *work)
+{
+#if 0
+	struct pack_work *pwork = container_of(work, struct pack_work, work);
+#else
+	struct delayed_work *dwork = container_of(work, struct delayed_work, work);
+	struct pack_work *pwork = container_of(dwork, struct pack_work, dwork);
+#endif
+	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
+	struct pack *wpack, *wpack_next;
+	bool is_empty, is_working;
+	struct list_head wpack_list;
+	int n_pack, iter;
+
 	destroy_pack_work(pwork);
+	pwork = NULL;
+
+	iter = 0;
+	INIT_LIST_HEAD(&wpack_list);
+	while (true) {
+		/* Dequeue logpack list */
+		spin_lock(&pdata->logpack_gc_queue_lock);
+		is_empty = list_empty(&pdata->logpack_gc_queue);
+		if (is_empty) {
+			is_working = test_and_clear_bit(
+				PDATA_STATE_GC_TASK_WORKING,
+				&pdata->flags);
+			ASSERT(is_working);
+		}
+		n_pack = 0;
+		list_for_each_entry_safe(wpack, wpack_next,
+					&pdata->logpack_gc_queue, list) {
+			list_move_tail(&wpack->list, &wpack_list);
+			pdata->logpack_gc_queue_n --;
+			n_pack ++;
+			if (n_pack >= N_PACK_BULK) { break; }
+		}
+		spin_unlock(&pdata->logpack_gc_queue_lock);
+		if (is_empty) { break; }
+
+		/* LOGn("begin %p %d\n", work, iter); */
+		/* Gc */
+		gc_logpack_list(pdata, &wpack_list);
+		ASSERT(list_empty(&wpack_list));
+		/* LOGn("end %p %d\n", work, iter++); */
+	}
 }
 
 /**
@@ -2013,7 +2097,7 @@ static void task_wait_for_write_bio_wrapper(struct work_struct *work)
 {
 	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
 	struct wrapper_blk_dev *wdev = biow->private_data;
-		
+
 	ASSERT(wdev);
 	
 	wait_for_write_bio_wrapper(wdev, biow);
@@ -3221,6 +3305,11 @@ error0:
 
 /**
  * Helper function for tasks.
+ *
+ * @wdev wrapper block device.
+ * @nr flag bit number.
+ * @wq workqueue.
+ * @task task.
  */
 static void enqueue_task_if_necessary(
 	struct wrapper_blk_dev *wdev,
@@ -3243,9 +3332,45 @@ retry:
 			schedule();
 			goto retry;
 		}
-		/* LOGn("enqueue task for %d\n", nr); */
+		LOGd_("enqueue task for %d\n", nr);
 		INIT_WORK(&pwork->work, task);
 		queue_work(wq, &pwork->work);
+	}
+}
+
+/**
+ * Helper function for tasks.
+ *
+ * @wdev wrapper block device.
+ * @nr flag bit number.
+ * @wq workqueue.
+ * @task task.
+ * @delay delay [jiffies].
+ */
+static void enqueue_delayed_task_if_necessary(
+	struct wrapper_blk_dev *wdev,
+	int nr, struct workqueue_struct *wq,
+	void (*task)(struct work_struct *), unsigned int delay)
+{
+	struct pack_work *pwork;
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
+
+	ASSERT(pdata);
+	ASSERT(task);
+	ASSERT(wq);
+	
+retry:
+	if (!test_and_set_bit(nr, &pdata->flags)) {
+		pwork = create_pack_work(wdev, GFP_NOIO);
+		if (!pwork) {
+			LOGn("memory allocation failed.\n");
+			clear_bit(nr, &pdata->flags);
+			schedule();
+			goto retry;
+		}
+		LOGd_("enqueue delayed task for %d\n", nr);
+		INIT_DELAYED_WORK(&pwork->dwork, task);
+		queue_delayed_work(wq, &pwork->dwork, delay);
 	}
 }
 
@@ -3282,6 +3407,18 @@ static void enqueue_submit_data_task_if_necessary(struct wrapper_blk_dev *wdev)
 				task_submit_bio_wrapper_list);
 }
 
+/**
+ * Enqueue gc task if necessary.
+ */
+static void enqueue_gc_task_if_necessary(struct wrapper_blk_dev *wdev)
+{
+	/* Delayed work is required to avoid deadlock. */
+	enqueue_delayed_task_if_necessary(
+		wdev,
+		PDATA_STATE_GC_TASK_WORKING,
+		wq_logpack_,
+		task_gc_logpack_list, 1);
+}
 
 /* Called before register. */
 static bool pre_register(void)
