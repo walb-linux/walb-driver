@@ -3311,7 +3311,7 @@ static bool pre_register(void)
 	}
 	
 	/* prepare workqueues. */
-	wq_logpack_ = alloc_workqueue(WQ_IO, WQ_MEM_RECLAIM, 0);
+	wq_logpack_ = alloc_workqueue(WQ_LOGPACK, WQ_MEM_RECLAIM, 0);
 	if (!wq_logpack_) {
 		LOGe("failed to allocate a workqueue (wq_logpack_).");
 		goto error4;
