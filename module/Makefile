@@ -33,7 +33,7 @@ EXTRA_CFLAGS += -I$(obj)/../include
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 
-walb-mod-objs := walb.o control.o alldevs.o snapshot.o hashtbl.o treemap.o logpack.o
+walb-mod-objs := walb.o control.o alldevs.o snapshot.o hashtbl.o treemap.o logpack.o checkpoint.o super.o io.o
 test-hashtbl-mod-objs := test_hashtbl.o hashtbl.o
 test-treemap-mod-objs := test_treemap.o treemap.o
 test-memblk-data-mod-objs := test_memblk_data.o treemap.o memblk_data.o

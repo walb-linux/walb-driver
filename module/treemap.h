@@ -3,8 +3,8 @@
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef _TREEMAP_H_KERNEL
-#define _TREEMAP_H_KERNEL
+#ifndef TREEMAP_H_KERNEL
+#define TREEMAP_H_KERNEL
 
 #include "check_kernel.h"
 
@@ -202,4 +202,4 @@ bool treemap_init(void);
 void treemap_exit(void);
 
 
-#endif /* _TREEMAP_H_KERNEL */
+#endif /* TREEMAP_H_KERNEL */
