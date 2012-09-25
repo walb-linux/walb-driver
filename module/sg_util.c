@@ -570,7 +570,7 @@ void test_sg_pos(void)
 
         /* Allocate a page and fill randomly. */
         tmp_data = (u8 *)__get_free_page(GFP_KERNEL);
-        fill_random(tmp_data, PAGE_SIZE);
+        get_random_bytes(tmp_data, PAGE_SIZE);
 
         /* Allocate a scatterlist with pages. */
         ASSERT(PAGE_SIZE % nents == 0);
@@ -675,7 +675,7 @@ void test_sg_util(void)
         ASSERT(sg_data_length(&sgt1) >= PAGE_SIZE);
         
         /* Make random data */
-        fill_random(tmp_data0, PAGE_SIZE);
+        get_random_bytes(tmp_data0, PAGE_SIZE);
 
         /* Copy data with offset 0. */
         sg_copy_from_buffer(sgt0.sgl, sgt0.nents, tmp_data0, PAGE_SIZE);
