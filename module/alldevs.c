@@ -144,7 +144,7 @@ struct walb_dev* search_wdev_with_minor(unsigned int minor)
         /* odd -> even */
         if (minor % 2 == 1) { -- minor; }
 
-        wdevt = MKDEV(walb_major, minor);
+        wdevt = MKDEV(walb_major_, minor);
 
         list_for_each_entry_safe(wdev, wdev_next, &all_wdevs_, list) {
                 

@@ -48,7 +48,7 @@
 /**
  * Device major of walb.
  */
-static int walb_major_ = 0;
+int walb_major_ = 0;
 module_param_named(walb_major, walb_major_, int, S_IRUGO);
 
 /**
