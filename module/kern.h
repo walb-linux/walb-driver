@@ -20,7 +20,7 @@
 /**
  * Walb device major.
  */
-extern int walb_major;
+extern int walb_major_;
 
 /**
  * Workqueues.
