@@ -45,6 +45,7 @@ test-workqueue-mod-objs := test_workqueue.o
 test-kthread-mod-objs := test_kthread.o
 test-deadlock-mod-objs := test_deadlock.o
 test-serialized-task-mod-objs := test_serialized_task.o
+test-completion-mod-objs := test_completion.o
 simple-blk-mod-objs := simple_blk.o
 SIMPLE_BLK_BIO_OBJS = simple_blk_bio.o size_list.o
 SIMPLE_BLK_REQ_OBJS = simple_blk_req.o size_list.o
@@ -87,6 +88,7 @@ test-size-list-mod.o \
 test-kmem-cache-mod.o \
 test-workqueue-mod.o \
 test-serialized-task-mod.o \
+test-completion-mod.o \
 simple-blk-mod.o \
 simple-blk-bio-none-mod.o \
 simple-blk-bio-mem-mod.o \
