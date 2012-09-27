@@ -38,6 +38,10 @@ struct bio_wrapper
 	struct completion overlapping_done;
 	int n_overlapping; /* initial value is -1. */
 #endif
+
+	/* debug */
+	atomic_t submitter;
+	atomic_t waiter;
 };
 
 UNUSED void print_bio_wrapper(const char *level, struct bio_wrapper *biow);

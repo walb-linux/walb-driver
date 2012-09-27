@@ -123,6 +123,10 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 	init_completion(&biow->overlapping_done);
 	biow->n_overlapping = -1;
 #endif
+
+	/* debug */
+	atomic_set(&biow->submitter, 0);
+	atomic_set(&biow->waiter, 0);
 }
 
 struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask)
