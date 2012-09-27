@@ -448,6 +448,17 @@ static inline bool should_start_queue(struct pdata *pdata, struct bio_wrapper *b
 
 static atomic_t n_pending_bio_ = ATOMIC_INIT(0);
 
+static atomic_t n_task_submit_logpack_list_ = ATOMIC_INIT(0);
+static atomic_t n_task_wait_for_logpack_list_ = ATOMIC_INIT(0);
+static atomic_t n_task_gc_logpack_list_ = ATOMIC_INIT(0);
+#ifdef WALB_OVERLAPPING_SERIALIZE
+static atomic_t n_task_submit_write_bio_wrapper_ = ATOMIC_INIT(0);
+#endif
+static atomic_t n_task_wait_for_write_bio_wrapper_ = ATOMIC_INIT(0);
+static atomic_t n_task_wait_and_gc_read_bio_wrapper_ = ATOMIC_INIT(0);
+static atomic_t n_task_submit_bio_wrapper_list_ = ATOMIC_INIT(0);
+
+
 #if 0
 struct delayed_work shared_dwork;
 static atomic_t wbiow_n_pending = ATOMIC_INIT(0);
@@ -1875,6 +1886,8 @@ static void task_submit_logpack_list(struct work_struct *work)
 	struct bio_wrapper *biow, *biow_next;
 	int n_io;
 
+	atomic_inc(&n_task_submit_logpack_list_); /* debug */
+
 	LOGd_("begin.\n");
 	destroy_pack_work(pwork);
 	pwork = NULL;
@@ -1922,6 +1935,8 @@ static void task_submit_logpack_list(struct work_struct *work)
 	}
 	LOGd_("end.\n");
 	atomic_dec(&n_wq_logpack_); /* debug */
+
+	atomic_dec(&n_task_submit_logpack_list_); /* debug */
 }
 
 /**
@@ -1948,6 +1963,8 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 	struct list_head wpack_list;
 	int n_pack;
 
+	atomic_inc(&n_task_wait_for_logpack_list_); /* debug */
+	
 	destroy_pack_work(pwork);
 	pwork = NULL;
 	
@@ -1993,6 +2010,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 	enqueue_gc_task_if_necessary(wdev);
 
 	atomic_dec(&n_wq_logpack_); /* debug */
+	atomic_dec(&n_task_wait_for_logpack_list_); /* debug */
 }
 
 /**
@@ -2033,6 +2051,26 @@ static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list)
 					pdata->logpack_wait_queue_n,
 					pdata->datapack_submit_queue_n,
 					pdata->logpack_gc_queue_n); /* debug */
+
+#ifdef WALB_OVERLAPPING_SERIALIZE
+				LOGn("tasks: lsubmit %d lwait %d dsubmit %d ol %d dwait %d lgc %d rwait %d\n",
+					atomic_read(&n_task_submit_logpack_list_),
+					atomic_read(&n_task_wait_for_logpack_list_),
+					atomic_read(&n_task_submit_bio_wrapper_list_),
+					atomic_read(&n_task_submit_write_bio_wrapper_),
+					atomic_read(&n_task_wait_for_write_bio_wrapper_),
+					atomic_read(&n_task_gc_logpack_list_),
+					atomic_read(&n_task_wait_and_gc_read_bio_wrapper_));
+#else
+				LOGn("tasks: lsubmit %d lwait %d dsubmit %d dwait %d lgc %d rwait %d\n",
+					atomic_read(&n_task_submit_logpack_list_),
+					atomic_read(&n_task_wait_for_logpack_list_),
+					atomic_read(&n_task_submit_bio_wrapper_list_),
+					atomic_read(&n_task_wait_for_write_bio_wrapper_),
+					atomic_read(&n_task_gc_logpack_list_),
+					atomic_read(&n_task_wait_and_gc_read_bio_wrapper_));
+#endif
+
 				
 				c++;
 				goto retry;
@@ -2083,6 +2121,8 @@ static void task_gc_logpack_list(struct work_struct *work)
 	struct list_head wpack_list;
 	int n_pack, iter;
 
+	atomic_inc(&n_task_gc_logpack_list_); /* debug */
+	
 	destroy_pack_work(pwork);
 	pwork = NULL;
 
@@ -2116,7 +2156,8 @@ static void task_gc_logpack_list(struct work_struct *work)
 		/* LOGn("end %p %d\n", work, iter++); */
 	}
 
-	atomic_dec(&n_wq_unbound_); /* debug */
+	atomic_dec(&n_wq_logpack_); /* debug */
+	atomic_dec(&n_task_gc_logpack_list_); /* debug */
 }
 
 /**
@@ -2128,6 +2169,8 @@ static void task_submit_write_bio_wrapper(struct work_struct *work)
 	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
 	const bool is_plugging = true;
 
+	atomic_inc(&n_task_submit_write_bio_wrapper_); /* debug */
+	
 	/* Submit related bios. */
 	submit_write_bio_wrapper(biow, is_plugging);
 
@@ -2136,6 +2179,7 @@ static void task_submit_write_bio_wrapper(struct work_struct *work)
 	queue_work(wq_io_, &biow->work);
 	atomic_inc(&n_wq_io_); /* debug */
 	atomic_dec(&n_wq_ol_); /* debug */
+	atomic_dec(&n_task_submit_write_bio_wrapper_); /* debug */
 }
 #endif
 
@@ -2149,6 +2193,8 @@ static void task_wait_for_write_bio_wrapper(struct work_struct *work)
 
 	ASSERT(wdev);
 
+	atomic_inc(&n_task_wait_for_write_bio_wrapper_); /* debug */
+
 	atomic_inc(&biow->waiter);/* debug */
 	wait_for_write_bio_wrapper(wdev, biow);
 	atomic_inc(&biow->waiter);/* debug */
@@ -2156,6 +2202,8 @@ static void task_wait_for_write_bio_wrapper(struct work_struct *work)
 	atomic_inc(&biow->waiter);/* debug */
 
 	atomic_dec(&n_wq_io_); /* debug */
+
+	atomic_dec(&n_task_wait_for_write_bio_wrapper_); /* debug */
 }
 
 /**
@@ -2270,12 +2318,14 @@ static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
 	const bool is_endio = true;
 	const bool is_delete = true;
 
+	atomic_inc(&n_task_wait_and_gc_read_bio_wrapper_); /* debug */
 	ASSERT(biow);
 
 	wait_for_bio_wrapper(biow, is_endio, is_delete);
 	destroy_bio_wrapper(biow);
 
 	atomic_dec(&n_wq_io_); /* debug */
+	atomic_dec(&n_task_wait_and_gc_read_bio_wrapper_); /* debug */
 }
 
 /**
@@ -2298,6 +2348,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 #if 0
 	LOGn("begin %p\n", pwork); /* debug */
 #endif
+	atomic_inc(&n_task_submit_bio_wrapper_list_); /* debug */
 	
 	destroy_pack_work(pwork);
 	pwork = NULL;
@@ -2364,6 +2415,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 	LOGd_("end.\n");
 
 	atomic_dec(&n_wq_logpack_); /* debug */
+	atomic_dec(&n_task_submit_bio_wrapper_list_); /* debug */
 }
 
 /**
@@ -3548,12 +3600,12 @@ static void enqueue_gc_task_if_necessary(struct wrapper_blk_dev *wdev)
 	pwork = enqueue_task_if_necessary(
 		wdev,
 		PDATA_STATE_GC_TASK_WORKING,
-		wq_unbound_, -1,
+		wq_logpack_, -1,
 		task_gc_logpack_list);
 #endif
 
 	if (pwork) {
-		atomic_inc(&n_wq_unbound_); /* debug */
+		atomic_inc(&n_wq_logpack_); /* debug */
 	}
 
 #if 0
