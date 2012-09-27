@@ -160,10 +160,10 @@ struct pdata
 
 	/* chunk sectors.
 	   if chunk_sectors > 0:
-	     (1) bio size must not exceed the size.
-	     (2) bio must not cross over multiple chunks.
+	   (1) bio size must not exceed the size.
+	   (2) bio must not cross over multiple chunks.
 	   else:
-	     no limitation. */
+	   no limitation. */
 	unsigned int ldev_chunk_sectors;
 	unsigned int ddev_chunk_sectors;
 
@@ -1722,10 +1722,11 @@ static void wait_for_logpack_and_submit_datapack(
 			/* Create all related bio(s) by copying IO data. */
 		retry_create:
 #ifdef WALB_FAST_ALGORITHM
-			if (!create_bio_entry_list_by_copy(biow, pdata->ddev)) {
+			ret = create_bio_entry_list_by_copy(biow, pdata->ddev);
 #else
-			if (!create_bio_entry_list(biow, pdata->ddev)) {
+			ret = create_bio_entry_list(biow, pdata->ddev);
 #endif
+			if (!ret) {
 				schedule();
 				goto retry_create;
 			}
@@ -2411,23 +2412,23 @@ static void logpack_calc_checksum(
 	struct walb_logpack_header *logh,
 	unsigned int pbs, struct list_head *biow_list)
 {
-        int i;
+	int i;
 	struct bio_wrapper *biow;
-        int n_padding;
+	int n_padding;
 
 	ASSERT(logh);
 	ASSERT(logh->n_records > 0);
 	ASSERT(logh->n_records > logh->n_padding);
 	
-        n_padding = 0;
-        i = 0;
+	n_padding = 0;
+	i = 0;
 	list_for_each_entry(biow, biow_list, list) {
 
-                if (logh->record[i].is_padding) {
-                        n_padding ++;
-                        i ++;
+		if (logh->record[i].is_padding) {
+			n_padding ++;
+			i ++;
 			/* A padding record is not the last in the logpack header. */
-                }
+		}
 		
 		ASSERT(biow);
 		ASSERT(biow->bio);
@@ -2438,16 +2439,16 @@ static void logpack_calc_checksum(
 			continue;
 		}
 
-                logh->record[i].checksum = biow->csum;
-                i ++;
+		logh->record[i].checksum = biow->csum;
+		i ++;
 	}
 	
-        ASSERT(n_padding <= 1);
-        ASSERT(n_padding == logh->n_padding);
-        ASSERT(i == logh->n_records);
-        ASSERT(logh->checksum == 0);
-        logh->checksum = checksum((u8 *)logh, pbs);
-        ASSERT(checksum((u8 *)logh, pbs) == 0);
+	ASSERT(n_padding <= 1);
+	ASSERT(n_padding == logh->n_padding);
+	ASSERT(i == logh->n_records);
+	ASSERT(logh->checksum == 0);
+	logh->checksum = checksum((u8 *)logh, pbs);
+	ASSERT(checksum((u8 *)logh, pbs) == 0);
 }
 
 /**
@@ -3591,17 +3592,17 @@ static int __init wrapper_blk_init(void)
 		goto error0;
 	}
 
-        if (!pre_register()) {
+	if (!pre_register()) {
 		LOGe("pre_register failed.\n");
 		goto error0;
 	}
         
-        if (!register_dev()) {
-                goto error1;
-        }
-        if (!start_dev()) {
-                goto error2;
-        }
+	if (!register_dev()) {
+		goto error1;
+	}
+	if (!start_dev()) {
+		goto error2;
+	}
 
 #if 0
 	/* debug */
@@ -3612,15 +3613,15 @@ static int __init wrapper_blk_init(void)
 	return 0;
 #if 0
 error3:
-        stop_dev();
+	stop_dev();
 #endif
 error2:
 	pre_unregister();
-        unregister_dev();
+	unregister_dev();
 error1:
 	post_unregister();
 error0:
-        return -1;
+	return -1;
 }
 
 static void wrapper_blk_exit(void)
@@ -3630,10 +3631,10 @@ static void wrapper_blk_exit(void)
 	cancel_delayed_work_sync(&shared_dwork);
 #endif
 	
-        stop_dev();
+	stop_dev();
 	pre_unregister();
-        unregister_dev();
-        post_unregister();
+	unregister_dev();
+	post_unregister();
 }
 
 module_init(wrapper_blk_init);
