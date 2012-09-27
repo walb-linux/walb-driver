@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/kthread.h>
 
 #include "walb/walb.h"
 #include "walb/block_size.h"
@@ -25,6 +26,7 @@
 #include "bio_util.h"
 #include "bio_entry.h"
 #include "bio_wrapper.h"
+#include "worker.h"
 
 /*******************************************************************************
  * Module variables definition.
@@ -92,6 +94,9 @@ static atomic_t n_wq_logpack_ = ATOMIC_INIT(0);
 static atomic_t n_wq_io_ = ATOMIC_INIT(0);
 static atomic_t n_wq_ol_ = ATOMIC_INIT(0);
 static atomic_t n_wq_unbound_ = ATOMIC_INIT(0);
+
+/* GC worker name. */
+#define WORKER_NAME_GC "walb_gc"
 
 /**
  * Writepack work.
@@ -195,6 +200,8 @@ struct pdata
 					      logpack_gc_queue_lock
 					      must be held. */
 	unsigned int logpack_gc_queue_n; /* debug */
+
+	struct worker_data gc_worker_data_; /* for gc worker. */
 
 	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
 					This will be used for logpack size
@@ -329,6 +336,10 @@ static void task_submit_bio_wrapper_list(struct work_struct *work);
 static void task_restart_queue(struct work_struct *work);
 #endif
 #endif
+
+/* Worker runners. */
+static void run_gc_logpack_list(void *data);
+
 
 /* Helper functions for bio_entry list. */
 static bool create_bio_entry_list(
@@ -704,6 +715,10 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->logpack_wait_queue_n = 0;
 	pdata->datapack_submit_queue_n = 0;
 	pdata->logpack_gc_queue_n = 0;
+
+	/* Prepare GC worker. */
+	initialize_worker(&pdata->gc_worker_data_,
+			run_gc_logpack_list, (void *)wdev, WORKER_NAME_GC);
 	
         return true;
 
@@ -739,6 +754,11 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 	pdata = wdev->private_data;
 	if (!pdata) { return; }
 	ASSERT(pdata);
+
+	/* Finalize worker. */
+	LOGn("logpack_gc_queue_n: %u\n", pdata->logpack_gc_queue_n); /* debug */
+	finalize_worker(&pdata->gc_worker_data_);
+	LOGn("logpack_gc_queue_n: %u\n", pdata->logpack_gc_queue_n); /* debug */
 
 	/* sync super block.
 	   The locks are not required because
@@ -2006,8 +2026,12 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		}
 		spin_unlock(&pdata->logpack_gc_queue_lock);
 	}
+#if 0
 	/* Enqueue a gc task. */
 	enqueue_gc_task_if_necessary(wdev);
+#else
+	wakeup_worker(&pdata->gc_worker_data_);
+#endif
 
 	atomic_dec(&n_wq_logpack_); /* debug */
 	atomic_dec(&n_task_wait_for_logpack_list_); /* debug */
@@ -2097,36 +2121,17 @@ static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list)
 }
 
 /**
- * Wait all related write requests done and
- * free all related resources.
- *
- * @work work in a pack_work.
- *
- * CONTEXT:
- *   Workqueue task.
- *   Works will be executed in parallel.
+ * Get logpack(s) from the gc queue and execute gc for them.
  */
-static void task_gc_logpack_list(struct work_struct *work)
+static void dequeue_and_gc_logpack_list(struct pdata *pdata)
 {
-#if 0
-	struct delayed_work *dwork = container_of(work, struct delayed_work, work);
-	struct pack_work *pwork = container_of(dwork, struct pack_work, dwork);
-#else
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
-#endif
-	struct wrapper_blk_dev *wdev = pwork->wdev;
-	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	bool is_empty, is_working;
 	struct list_head wpack_list;
-	int n_pack, iter;
-
-	atomic_inc(&n_task_gc_logpack_list_); /* debug */
+	int n_pack;
 	
-	destroy_pack_work(pwork);
-	pwork = NULL;
+	ASSERT(pdata);
 
-	iter = 0;
 	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
 		/* Dequeue logpack list */
@@ -2149,12 +2154,39 @@ static void task_gc_logpack_list(struct work_struct *work)
 		spin_unlock(&pdata->logpack_gc_queue_lock);
 		if (is_empty) { break; }
 
-		/* LOGn("begin %p %d\n", work, iter); */
 		/* Gc */
 		gc_logpack_list(pdata, &wpack_list);
 		ASSERT(list_empty(&wpack_list));
-		/* LOGn("end %p %d\n", work, iter++); */
 	}
+}
+
+/**
+ * Wait all related write requests done and
+ * free all related resources.
+ *
+ * @work work in a pack_work.
+ *
+ * CONTEXT:
+ *   Workqueue task.
+ *   Works will be executed in parallel.
+ */
+static void task_gc_logpack_list(struct work_struct *work)
+{
+#if 0
+	struct delayed_work *dwork = container_of(work, struct delayed_work, work);
+	struct pack_work *pwork = container_of(dwork, struct pack_work, dwork);
+#else
+	struct pack_work *pwork = container_of(work, struct pack_work, work);
+#endif
+	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
+
+	atomic_inc(&n_task_gc_logpack_list_); /* debug */
+	
+	destroy_pack_work(pwork);
+	pwork = NULL;
+
+	dequeue_and_gc_logpack_list(pdata);
 
 	atomic_dec(&n_wq_logpack_); /* debug */
 	atomic_dec(&n_task_gc_logpack_list_); /* debug */
@@ -2438,6 +2470,17 @@ static void task_restart_queue(struct work_struct *work)
 }
 #endif
 #endif
+
+/**
+ * Run gc logpack list.
+ */
+static void run_gc_logpack_list(void *data)
+{
+	struct wrapper_blk_dev *wdev = (struct wrapper_blk_dev *)data;
+	ASSERT(wdev);
+	
+	dequeue_and_gc_logpack_list(get_pdata_from_wdev(wdev));
+}
 
 /**
  * Check whether pack is valid.
@@ -3711,7 +3754,7 @@ static void flush_all_wq(void)
 
 	while (atomic_read(&n_pending_bio_) > 0) {
 		LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio_));
-		msleep(1000);
+		msleep(100);
 	}
 
 	flush_workqueue(wq_logpack_);

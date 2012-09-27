@@ -73,7 +73,7 @@ WRAPPER_BLK_WALB_REQ_OBJS = wrapper_blk_walb_req.o \
 sector_io.o bio_entry.o req_entry.o logpack.o treemap.o
 wrapper-blk-walb-req-mod-objs := $(WRAPPER_BLK_WALB_REQ_OBJS)
 WRAPPER_BLK_WALB_BIO_OBJS = wrapper_blk_walb_bio.o \
-sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o
+sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o worker.o
 wrapper-blk-walb-bio-mod-objs := $(WRAPPER_BLK_WALB_BIO_OBJS)
 
 obj-m := \
