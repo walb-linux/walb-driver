@@ -1682,13 +1682,13 @@ static void wait_for_logpack_and_submit_datapack(
 	struct bio_wrapper *biow, *biow_next;
 	bool is_failed = false;
 	struct pdata *pdata;
+	bool ret;
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	bool is_overlapping_insert_succeeded;
 #endif
 #ifdef WALB_FAST_ALGORITHM
 	bool is_pending_insert_succeeded;
 	bool is_stop_queue = false;
-	bool ret;
 #if 0
 	struct pack_work *pwork;
 #endif
