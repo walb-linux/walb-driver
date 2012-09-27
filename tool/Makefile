@@ -62,22 +62,102 @@ test_super: test_super.o util.o
 test_logpack: test_logpack.o logpack.o util.o
 	$(CC) -o $@ $(CFLAGS) test_logpack.o logpack.o util.o
 
-test_bitmap.o: test_bitmap.c ../include/walb/bitmap.h
-test_sector.o: test_sector.c ../include/walb/sector.h util.h
-test_super.o: test_super.c ../include/walb/super.h util.h
-test_snapshot.o: test_snapshot.c
-test_logpack.o: test_logpack.c
-util.o: util.c util.h $(HEADER_FILES)
-logpack.o: logpack.c logpack.h util.h $(HEADER_FILES)
-test_rw.o: test_rw.c util.h random.h $(HEADER_FILES)
-walbctl.o: walbctl.c walblog_format.h $(HEADER_FILES)
-snapshot.o: snapshot.c snapshot.h util.h $(HEADER_FILES)
-trim.o: trim.c util.h $(HEADER_FILES)
+SRCS=test_bitmap.c test_sector.c test_super.c test_snapshot.c test_logpack.c util.c logpack.c test_rw.c walbctl.c snapshot.c trim.c
 
 .c.o:
 	$(CC) -c $< -o $@ $(CFLAGS)
 
-
 # Test
 test: $(TEST_BINARIES)
 	./run_unit_test.sh $(TEST_BINARIES)
+
+depend: Makefile
+	sed -e '/^# DO NOT DELETE/,$$d' Makefile > Makefile.new
+	echo '# DO NOT DELETE' >> Makefile.new
+	g++ -MM $(SRCS) $(CFLAGS) >> Makefile.new
+	mv Makefile Makefile.org
+	mv Makefile.new Makefile
+
+# DO NOT DELETE
+test_bitmap.o: test_bitmap.c ../include/walb/bitmap.h \
+ ../include/walb/common.h ../include/walb/userland.h
+test_sector.o: test_sector.c ../include/walb/sector.h \
+ ../include/walb/walb.h ../include/walb/common.h \
+ ../include/walb/userland.h ../include/walb/disk_name.h random.h \
+ check_userland.h ../include/walb/userland.h util.h \
+ ../include/walb/walb.h ../include/walb/log_device.h \
+ ../include/walb/log_record.h ../include/walb/util.h \
+ ../include/walb/checksum.h ../include/walb/super.h \
+ ../include/walb/sector.h ../include/walb/snapshot.h \
+ ../include/walb/u64bits.h
+test_super.o: test_super.c util.h check_userland.h ../include/walb/walb.h \
+ ../include/walb/common.h ../include/walb/userland.h \
+ ../include/walb/disk_name.h ../include/walb/log_device.h \
+ ../include/walb/log_record.h ../include/walb/walb.h \
+ ../include/walb/util.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/snapshot.h ../include/walb/u64bits.h \
+ ../include/walb/super.h
+test_snapshot.o: test_snapshot.c util.h check_userland.h \
+ ../include/walb/walb.h ../include/walb/common.h \
+ ../include/walb/userland.h ../include/walb/disk_name.h \
+ ../include/walb/log_device.h ../include/walb/log_record.h \
+ ../include/walb/walb.h ../include/walb/util.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/snapshot.h ../include/walb/u64bits.h snapshot.h \
+ ../include/walb/log_record.h ../include/walb/snapshot.h
+test_logpack.o: test_logpack.c ../include/walb/block_size.h \
+ ../include/walb/common.h ../include/walb/userland.h util.h \
+ check_userland.h ../include/walb/walb.h ../include/walb/disk_name.h \
+ ../include/walb/log_device.h ../include/walb/log_record.h \
+ ../include/walb/walb.h ../include/walb/util.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/snapshot.h ../include/walb/u64bits.h logpack.h \
+ ../include/walb/log_record.h ../include/walb/sector.h
+util.o: util.c ../include/walb/walb.h ../include/walb/common.h \
+ ../include/walb/userland.h ../include/walb/disk_name.h random.h \
+ check_userland.h ../include/walb/userland.h util.h \
+ ../include/walb/log_device.h ../include/walb/log_record.h \
+ ../include/walb/walb.h ../include/walb/util.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/snapshot.h ../include/walb/u64bits.h
+logpack.o: logpack.c ../include/walb/block_size.h \
+ ../include/walb/common.h ../include/walb/userland.h util.h \
+ check_userland.h ../include/walb/walb.h ../include/walb/disk_name.h \
+ ../include/walb/log_device.h ../include/walb/log_record.h \
+ ../include/walb/walb.h ../include/walb/util.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/snapshot.h ../include/walb/u64bits.h logpack.h \
+ ../include/walb/log_record.h ../include/walb/sector.h
+test_rw.o: test_rw.c random.h check_userland.h ../include/walb/userland.h \
+ util.h ../include/walb/walb.h ../include/walb/common.h \
+ ../include/walb/userland.h ../include/walb/disk_name.h \
+ ../include/walb/log_device.h ../include/walb/log_record.h \
+ ../include/walb/walb.h ../include/walb/util.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/snapshot.h ../include/walb/u64bits.h
+walbctl.o: walbctl.c ../include/walb/walb.h ../include/walb/common.h \
+ ../include/walb/userland.h ../include/walb/disk_name.h \
+ ../include/walb/log_device.h ../include/walb/log_record.h \
+ ../include/walb/walb.h ../include/walb/util.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/snapshot.h ../include/walb/u64bits.h \
+ ../include/walb/log_record.h ../include/walb/ioctl.h random.h \
+ check_userland.h ../include/walb/userland.h util.h logpack.h \
+ ../include/walb/sector.h snapshot.h ../include/walb/snapshot.h \
+ walblog_format.h
+snapshot.o: snapshot.c util.h check_userland.h ../include/walb/walb.h \
+ ../include/walb/common.h ../include/walb/userland.h \
+ ../include/walb/disk_name.h ../include/walb/log_device.h \
+ ../include/walb/log_record.h ../include/walb/walb.h \
+ ../include/walb/util.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/snapshot.h ../include/walb/u64bits.h snapshot.h \
+ ../include/walb/log_record.h ../include/walb/snapshot.h
+trim.o: trim.c ../include/walb/common.h ../include/walb/userland.h util.h \
+ check_userland.h ../include/walb/walb.h ../include/walb/common.h \
+ ../include/walb/disk_name.h ../include/walb/log_device.h \
+ ../include/walb/log_record.h ../include/walb/walb.h \
+ ../include/walb/util.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/snapshot.h ../include/walb/u64bits.h
