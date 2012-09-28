@@ -58,16 +58,17 @@ mem-bio-mod-objs := $(BASE_BIO_OBJS) $(MEMBLK_DATA_OBJS) mem_bio.o
 mem-req-mod-objs := $(BASE_REQ_OBJS) $(MEMBLK_DATA_OBJS) mem_req.o
 
 wrapper-blk-mod-objs := wrapper_blk.o
-WRAPPER_BLK_SIMPLE_REQ_OBJS = wrapper_blk_simple_req.o
-wrapper-blk-simple-req-mod-objs := $(WRAPPER_BLK_SIMPLE_REQ_OBJS)
-WRAPPER_BLK_SIMPLE_BIO_OBJS = wrapper_blk_simple_bio.o bio_entry.o
-wrapper-blk-simple-bio-mod-objs := $(WRAPPER_BLK_SIMPLE_BIO_OBJS)
-WRAPPER_BLK_WALB_REQ_OBJS = wrapper_blk_walb_req.o \
+
+WRAP_REQ_OBJS = wrap_req.o
+wrap-req-mod-objs := $(WRAP_REQ_OBJS)
+WRAP_BIO_OBJS = wrap_bio.o bio_entry.o
+wrap-bio-mod-objs := $(WRAP_BIO_OBJS)
+WALB_PROTO_REQ_OBJS = walb_proto_req.o \
 sector_io.o bio_entry.o req_entry.o logpack.o treemap.o
-wrapper-blk-walb-req-mod-objs := $(WRAPPER_BLK_WALB_REQ_OBJS)
-WRAPPER_BLK_WALB_BIO_OBJS = wrapper_blk_walb_bio.o \
+walb-proto-req-mod-objs := $(WALB_PROTO_REQ_OBJS)
+WALB_PROTO_BIO_OBJS = walb_proto_bio.o \
 sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o worker.o
-wrapper-blk-walb-bio-mod-objs := $(WRAPPER_BLK_WALB_BIO_OBJS)
+walb-proto-bio-mod-objs := $(WALB_PROTO_BIO_OBJS)
 
 obj-m := \
 test-hashtbl-mod.o \
@@ -88,10 +89,10 @@ none-req-mod.o \
 mem-bio-mod.o \
 mem-req-mod.o \
 wrapper-blk-mod.o \
-wrapper-blk-simple-req-mod.o \
-wrapper-blk-simple-bio-mod.o \
-wrapper-blk-walb-req-mod.o \
-wrapper-blk-walb-bio-mod.o \
+wrap-req-mod.o \
+wrap-bio-mod.o \
+walb-proto-req-mod.o \
+walb-proto-bio-mod.o \
 walb-mod.o \
 
 else

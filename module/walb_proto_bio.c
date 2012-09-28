@@ -1,5 +1,5 @@
 /**
- * wrapper_blk_walb_bio.c - WalB block device with bio-interface for test.
+ * walb_proto_bio.c - WalB block device with bio-interface for test.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -3654,6 +3654,4 @@ module_init(wrapper_blk_init);
 module_exit(wrapper_blk_exit);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("Walb block bio device for Test");
-MODULE_ALIAS("wrapper_blk_walb_bio");
-
-/* end of file. */
+MODULE_ALIAS("walb_proto_bio");

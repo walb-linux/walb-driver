@@ -1,5 +1,5 @@
 /**
- * wrapper_blk_simple_req.c - Simple wrapper block device with request interface.
+ * wrap_req.c - Simple wrapper block device with request interface.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -976,4 +976,4 @@ module_init(wrapper_blk_init);
 module_exit(wrapper_blk_exit);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("Simple block req device for Test");
-MODULE_ALIAS("wrapper_blk_simple_req");
+MODULE_ALIAS("wrap_req");
