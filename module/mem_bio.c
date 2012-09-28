@@ -1,14 +1,15 @@
 /**
- * simple_blk_bio_mem.c - make_request_fn which do memory read/write.
+ * mem_bio.c - make_request_fn which do memory read/write.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #include "check_kernel.h"
+#include <linux/module.h>
 #include <linux/blkdev.h>
 
 #include "walb/block_size.h"
-#include "simple_blk_bio.h"
+#include "base_bio.h"
 #include "memblk_data.h"
 
 /*******************************************************************************
@@ -179,4 +180,4 @@ void post_unregister(void)
 	mdata_exit();
 }
 
-/* end of file. */
+MODULE_LICENSE("Dual BSD/GPL");

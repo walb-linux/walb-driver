@@ -1,10 +1,10 @@
 /**
- * simple_blk_req.h - Definition for simple_blk_req operations.
+ * base_req.h - Definition for base_req operations.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef WALB_SIMPLE_BLK_REQ_H_KERNEL
-#define WALB_SIMPLE_BLK_REQ_H_KERNEL
+#ifndef WALB_BASE_REQ_H_KERNEL
+#define WALB_BASE_REQ_H_KERNEL
 
 #include "check_kernel.h"
 #include <linux/blkdev.h>
@@ -35,4 +35,4 @@ void customize_sdev(struct simple_blk_dev *sdev);
 /* Workqueue type. */
 enum workqueue_type get_workqueue_type(void);
 
-#endif /* WALB_SIMPLE_BLK_REQ_H_KERNEL */
+#endif /* WALB_BASE_REQ_H_KERNEL */
