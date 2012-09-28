@@ -1,5 +1,5 @@
 /**
- * wrapper_blk_simple_bio.c - Simple wrapper block device with bio interface.
+ * wrap_bio.c - Simple wrapper block device with bio interface.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -342,4 +342,4 @@ module_init(wrapper_blk_init);
 module_exit(wrapper_blk_exit);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("Simple block bio device for Test");
-MODULE_ALIAS("wrapper_blk_simple_bio");
+MODULE_ALIAS("wrap_bio");

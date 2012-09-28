@@ -1,12 +1,13 @@
 /**
- * simple_blk_bio_none.c - make_request_fn which do nothing.
+ * none_bio.c - make_request_fn which do nothing.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #include "check_kernel.h"
+#include <linux/module.h>
 #include <linux/blkdev.h>
-#include "simple_blk_bio.h"
+#include "base_bio.h"
 
 /**
  * Make request that do nothing.
@@ -54,4 +55,4 @@ void post_unregister(void)
 {
 }
 
-/* end of file. */
+MODULE_LICENSE("Dual BSD/GPL");

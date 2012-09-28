@@ -1,10 +1,10 @@
 /**
- * simple_blk_bio.h - Definition for simple_blk_bio operations.
+ * base_bio.h - Definition for base_bio operations.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
-#ifndef WALB_SIMPLE_BLK_BIO_H_KERNEL
-#define WALB_SIMPLE_BLK_BIO_H_KERNEL
+#ifndef WALB_BASE_BIO_H_KERNEL
+#define WALB_BASE_BIO_H_KERNEL
 
 #include "check_kernel.h"
 #include <linux/blkdev.h>
@@ -32,4 +32,4 @@ void customize_sdev(struct simple_blk_dev *sdev);
 /* Workqueue type. */
 enum workqueue_type get_workqueue_type(void);
 
-#endif /* WALB_SIMPLE_BLK_BIO_H_KERNEL */
+#endif /* WALB_BASE_BIO_H_KERNEL */

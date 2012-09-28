@@ -16,20 +16,19 @@
 #include "walb/log_device.h"
 #include "walb/sector.h"
 #include "util.h"
-#include "io.h"
 
 /**
  * Walb device major.
  */
-extern int walb_major;
+extern int walb_major_;
 
-/*
- * The different "request modes" we can use.
+/**
+ * Workqueues.
  */
-enum {
-	RM_FULL    = 0,	/* The full-blown version */
-	RM_NOQUEUE = 1,	/* Use make_request */
-};
+extern struct workqueue_struct *wq_logpack_;
+extern struct workqueue_struct *wq_io_;
+extern struct workqueue_struct *wq_ol_;
+extern struct workqueue_struct *wq_misc_;
 
 /*
  * Minor number and partition management.
@@ -37,43 +36,6 @@ enum {
 #define WALB_MINORS	  16
 #define WALB_MINORS_SHIFT  4
 #define DEVNUM(kdevnum)	(MINOR(kdev_t_to_nr(kdevnum)) >> MINOR_SHIFT
-
-/**
- * Workqueue name.
- */
-#define WALB_WORKQUEUE_SINGLE_NAME "walb_wqs"
-#define WALB_WORKQUEUE_MULTI_NAME "walb_wqm"
-
-/*
- * Default checkpoint interval [ms]
- */
-#define WALB_DEFAULT_CHECKPOINT_INTERVAL 10000
-#define WALB_MAX_CHECKPOINT_INTERVAL (24 * 60 * 60 * 1000) /* 1 day */
-
-/*
- * We can tweak our hardware sector size, but the kernel talks to us
- * in terms of small sectors, always.
- */
-/* #define KERNEL_SECTOR_SIZE	512 */
-
-/**
- * Checkpointing state.
- *
- * Permitted state transition:
- *   stoppped -> waiting @start_checkpionting()
- *   waiting -> running  @do_checkpointing()
- *   running -> waiting  @do_checkpointing()
- *   waiting -> stopped  @do_checkpointing()
- *   waiting -> stopping @stop_checkpointing()
- *   running -> stopping @stop_checkpointing()
- *   stopping -> stopped @stop_checkpointing()
- */
-enum {
-        CP_STOPPED = 0,
-        CP_STOPPING,
-        CP_WAITING,
-        CP_RUNNING,
-};
 
 /**
  * The internal representation of walb and walblog device.

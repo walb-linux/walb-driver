@@ -6,12 +6,12 @@
 #ifndef WALB_LOGPACK_H_KERNEL
 #define WALB_LOGPACK_H_KERNEL
 
+#include "check_kernel.h"
 #include <linux/blkdev.h>
 #include <linux/bio.h>
 #include <linux/workqueue.h>
 #include <linux/list.h>
-
-#include "check_kernel.h"
+#include "walb/block_size.h"
 #include "kern.h"
 
 /*******************************************************************************

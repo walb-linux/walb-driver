@@ -1,11 +1,11 @@
 /**
- * simple_blk_req_mem.c -
- * request_fn which do memory read/write.
+ * mem_req.c - request_fn which do memory read/write.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #include "check_kernel.h"
+#include <linux/module.h>
 #include <linux/blkdev.h>
 #include <linux/workqueue.h>
 #include <linux/slab.h>
@@ -14,7 +14,7 @@
 #include <linux/delay.h>
 #include <linux/list.h>
 #include "walb/block_size.h"
-#include "simple_blk_req.h"
+#include "base_req.h"
 #include "memblk_data.h"
 
 /* #define PERFORMANCE_DEBUG */
@@ -495,4 +495,4 @@ void post_unregister(void)
         kmem_cache_destroy(req_list_work_cache_);
 }
 
-/* end of file. */
+MODULE_LICENSE("Dual BSD/GPL");

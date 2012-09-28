@@ -1,5 +1,5 @@
 /**
- * wrapper_blk_walb_req.c - WalB block device with request base for test.
+ * walb_proto_req.c - WalB block device with request base for test.
  *
  * Copyright(C) 2012, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
@@ -3493,6 +3493,4 @@ module_init(wrapper_blk_init);
 module_exit(wrapper_blk_exit);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("Walb block req device for Test");
-MODULE_ALIAS("wrapper_blk_walb_req");
-
-/* end of file. */
+MODULE_ALIAS("walb_proto_req");

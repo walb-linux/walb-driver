@@ -4,6 +4,7 @@
  * Copyright(C) 2010, Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
+#include <linux/module.h>
 #include <linux/list.h>
 #include <linux/rwsem.h>
 
@@ -143,7 +144,7 @@ struct walb_dev* search_wdev_with_minor(unsigned int minor)
         /* odd -> even */
         if (minor % 2 == 1) { -- minor; }
 
-        wdevt = MKDEV(walb_major, minor);
+        wdevt = MKDEV(walb_major_, minor);
 
         list_for_each_entry_safe(wdev, wdev_next, &all_wdevs_, list) {
                 

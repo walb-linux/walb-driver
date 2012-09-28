@@ -242,7 +242,7 @@ static int ioctl_dev_start(struct walb_ctl *ctl)
         alldevs_write_unlock();
 
         /* Return values to userland. */
-        ctl->k2u.wmajor = walb_major;
+        ctl->k2u.wmajor = walb_major_;
         ctl->k2u.wminor = wminor;
         strncpy(ctl->k2u.__buf, get_super_sector(wdev->lsuper0)->name,
                 DISK_NAME_LEN);
@@ -285,7 +285,7 @@ static int ioctl_dev_stop(struct walb_ctl *ctl)
         /* Input */
         wmajor = ctl->u2k.wmajor;
         wminor = ctl->u2k.wminor;
-        if (wmajor != walb_major) {
+        if (wmajor != walb_major_) {
                 LOGe("Device major id is invalid.\n");
                 goto error0;
         }

@@ -7,10 +7,9 @@
 #define WALB_ALLDEVS_H_KERNEL
 
 #include "check_kernel.h"
-
 #include <linux/rwsem.h>
-
 #include "kern.h"
+#include "sector_io.h"
 
 /**
  * Prototypes.

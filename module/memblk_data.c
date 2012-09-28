@@ -441,7 +441,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         
         /* First block */
         addr = 0;
-        fill_random(data1, PAGE_SIZE);
+        get_random_bytes(data1, PAGE_SIZE);
         mdata_write_block(mdata, addr, data1);
         mdata_read_block(mdata, addr, data2);
 
@@ -454,7 +454,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 
         /* Last block */
         addr = capacity - 1;
-        fill_random(data1, PAGE_SIZE);
+        get_random_bytes(data1, PAGE_SIZE);
         mdata_write_block(mdata, addr, data1);
         mdata_read_block(mdata, addr, data2);
         WALB_CHECK(memcmp(data1, data2, block_size) == 0);
@@ -462,7 +462,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         /* First two blocks */
         if (block_size * 2 <= PAGE_SIZE) {
                 addr = 0;
-                fill_random(data1, PAGE_SIZE);
+                get_random_bytes(data1, PAGE_SIZE);
                 mdata_write_blocks(mdata, 0, 2, data1);
                 mdata_read_blocks(mdata, 0, 2, data2);
                 WALB_CHECK(memcmp(data1, data2, block_size * 2) == 0);
@@ -472,7 +472,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         for (i = 0; i < 10; i ++) {
                 
                 addr = get_random_addr(capacity - 4);
-                fill_random(data1, PAGE_SIZE);
+                get_random_bytes(data1, PAGE_SIZE);
 
                 size = get_random_u32_max(4) + 1;
                 size = min(size, (u32)(PAGE_SIZE / block_size));

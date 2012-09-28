@@ -33,7 +33,8 @@ EXTRA_CFLAGS += -I$(obj)/../include
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 
-walb-mod-objs := walb.o control.o alldevs.o snapshot.o io.o hashtbl.o treemap.o datapack.o logpack.o
+walb-mod-objs := walb.o control.o alldevs.o snapshot.o hashtbl.o treemap.o logpack.o checkpoint.o super.o io.o sector_io.o
+
 test-hashtbl-mod-objs := test_hashtbl.o hashtbl.o
 test-treemap-mod-objs := test_treemap.o treemap.o
 test-memblk-data-mod-objs := test_memblk_data.o treemap.o memblk_data.o
@@ -46,49 +47,31 @@ test-kthread-mod-objs := test_kthread.o
 test-deadlock-mod-objs := test_deadlock.o
 test-serialized-task-mod-objs := test_serialized_task.o
 test-completion-mod-objs := test_completion.o
-#wrapblk-mod-objs := wrapblk.o
-#memblk-none-mod-objs := memblk.o treemap.o memblk_io_none.o
-#memblk-simple-mod-objs := memblk.o treemap.o memblk_io_simple.o
+
 simple-blk-mod-objs := simple_blk.o
-SIMPLE_BLK_BIO_OBJS = simple_blk_bio.o size_list.o
-SIMPLE_BLK_REQ_OBJS = simple_blk_req.o size_list.o
-simple-blk-bio-none-mod-objs := $(SIMPLE_BLK_BIO_OBJS) simple_blk_bio_none.o
+BASE_BIO_OBJS = base_bio.o size_list.o
+BASE_REQ_OBJS = base_req.o size_list.o
+none-bio-mod-objs := $(BASE_BIO_OBJS) none_bio.o
+none-req-mod-objs := $(BASE_REQ_OBJS) none_req.o
 MEMBLK_DATA_OBJS = memblk_data.o treemap.o
-simple-blk-bio-mem-mod-objs := \
-$(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem.o 
-simple-blk-bio-mem-barrier-mod-objs := \
-$(SIMPLE_BLK_BIO_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_bio_mem_barrier.o
-simple-blk-req-mem-mod-objs := \
-$(SIMPLE_BLK_REQ_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_req_mem.o
-simple-blk-req-mem-barrier-mod-objs := \
-$(SIMPLE_BLK_REQ_OBJS) $(MEMBLK_DATA_OBJS) simple_blk_req_mem_barrier.o
-simple-blk-req-none-mod-objs := \
-$(SIMPLE_BLK_REQ_OBJS) simple_blk_req_none.o
-#SIMPLE_BLK_WRAP_OBJS = simple_blk_wrapper.o size_list.o
-#simple-blk-wrap-mod-objs := $(SIMPLE_BLK_WRAP_OBJS)
+mem-bio-mod-objs := $(BASE_BIO_OBJS) $(MEMBLK_DATA_OBJS) mem_bio.o
+mem-req-mod-objs := $(BASE_REQ_OBJS) $(MEMBLK_DATA_OBJS) mem_req.o
 
 wrapper-blk-mod-objs := wrapper_blk.o
-WRAPPER_BLK_SIMPLE_REQ_OBJS = wrapper_blk_simple_req.o
-wrapper-blk-simple-req-mod-objs := $(WRAPPER_BLK_SIMPLE_REQ_OBJS)
-WRAPPER_BLK_SIMPLE_BIO_OBJS = wrapper_blk_simple_bio.o bio_entry.o
-wrapper-blk-simple-bio-mod-objs := $(WRAPPER_BLK_SIMPLE_BIO_OBJS)
-WRAPPER_BLK_WALB_REQ_OBJS = wrapper_blk_walb_req.o \
-sector_io.o bio_entry.o req_entry.o logpack.o treemap.o
-wrapper-blk-walb-req-mod-objs := $(WRAPPER_BLK_WALB_REQ_OBJS)
-WRAPPER_BLK_WALB_BIO_OBJS = wrapper_blk_walb_bio.o \
-sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o worker.o
-wrapper-blk-walb-bio-mod-objs := $(WRAPPER_BLK_WALB_BIO_OBJS)
 
-#obj-m := walb-mod.o \
-#test-hashtbl-mod.o \
-#test-treemap-mod.o \
-#wrapblk-mod.o \
-#memblk-none-mod.o \
-#test-memblk-data-mod.o \
-#test-sg-util-mod.o \
-#memblk-simple-mod.o
+WRAP_REQ_OBJS = wrap_req.o
+wrap-req-mod-objs := $(WRAP_REQ_OBJS)
+WRAP_BIO_OBJS = wrap_bio.o bio_entry.o
+wrap-bio-mod-objs := $(WRAP_BIO_OBJS)
+WALB_PROTO_REQ_OBJS = walb_proto_req.o \
+sector_io.o bio_entry.o req_entry.o logpack.o treemap.o
+walb-proto-req-mod-objs := $(WALB_PROTO_REQ_OBJS)
+WALB_PROTO_BIO_OBJS = walb_proto_bio.o \
+sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o worker.o
+walb-proto-bio-mod-objs := $(WALB_PROTO_BIO_OBJS)
 
 obj-m := \
+test-hashtbl-mod.o \
 test-treemap-mod.o \
 test-memblk-data-mod.o \
 test-memblk-data-perf-mod.o \
@@ -101,17 +84,16 @@ test-workqueue-mod.o \
 test-serialized-task-mod.o \
 test-completion-mod.o \
 simple-blk-mod.o \
-simple-blk-bio-none-mod.o \
-simple-blk-bio-mem-mod.o \
-simple-blk-bio-mem-barrier-mod.o \
-simple-blk-req-none-mod.o \
-simple-blk-req-mem-mod.o \
-simple-blk-req-mem-barrier-mod.o \
+none-bio-mod.o \
+none-req-mod.o \
+mem-bio-mod.o \
+mem-req-mod.o \
 wrapper-blk-mod.o \
-wrapper-blk-simple-req-mod.o \
-wrapper-blk-simple-bio-mod.o \
-wrapper-blk-walb-req-mod.o \
-wrapper-blk-walb-bio-mod.o \
+wrap-req-mod.o \
+wrap-bio-mod.o \
+walb-proto-req-mod.o \
+walb-proto-bio-mod.o \
+walb-mod.o \
 
 else
 
