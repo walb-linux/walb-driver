@@ -195,6 +195,9 @@ struct pdata
 					This will avoid decrease of
 					sequential write performance. */
 
+	atomic_t n_pending_bio; /* Number of pending bio(s).
+				   This is used for device exit. */
+
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	/**
 	 * All req_entry data may not keep reqe->bioe_list.
@@ -255,19 +258,14 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 
 /* Module helper functions. */
 
-/* Called before register. */
+/* Called before/after register. */
 static bool pre_register(void);
-/* Called before unregister */
-static void pre_unregister(void);
-static void flush_all_wq(void);
-/* Called just before destroy_private_data. */
-static void pre_destroy_private_data(void);
-/* Called after unregister. */
 static void post_unregister(void);
-/* Create private data for wdev. */
+
+/* For wdev->private_data as pdata. */
 static bool create_private_data(struct wrapper_blk_dev *wdev);
-/* Destroy private data for ssev. */
 static void destroy_private_data(struct wrapper_blk_dev *wdev);
+
 /* Customize wdev after register before start. */
 static void customize_wdev(struct wrapper_blk_dev *wdev);
 static unsigned int get_minor(unsigned int id);
@@ -276,6 +274,7 @@ static void unregister_dev(void);
 static bool start_dev(void);
 static void stop_dev(void);
 
+static void flush_all_wq(void);
 
 /* Print functions for debug. */
 UNUSED static void print_bio_flags(struct bio *bio);
@@ -355,7 +354,6 @@ static struct bio_entry* submit_flush(struct block_device *bdev);
 static void enqueue_submit_task_if_necessary(struct wrapper_blk_dev *wdev);
 static void enqueue_wait_task_if_necessary(struct wrapper_blk_dev *wdev);
 static void enqueue_submit_data_task_if_necessary(struct wrapper_blk_dev *wdev);
-
 static struct pack_work* enqueue_task_if_necessary(
 	struct wrapper_blk_dev *wdev,
 	int nr, struct workqueue_struct *wq,
@@ -367,6 +365,8 @@ static struct pack_work* enqueue_delayed_task_if_necessary(
 	void (*task)(struct work_struct *), unsigned int delay);
 #endif
 static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging);
+static struct bio_wrapper* alloc_bio_wrapper_inc(struct pdata *pdata, gfp_t gfp_mask);
+static void destroy_bio_wrapper_dec(struct pdata *pdata, struct bio_wrapper *biow);
 
 /* Overlapping data functions. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -436,8 +436,6 @@ static inline bool should_start_queue(struct pdata *pdata, struct bio_wrapper *b
  * For debug.
  *******************************************************************************/
 
-static atomic_t n_pending_bio_ = ATOMIC_INIT(0);
-
 #if 0
 struct delayed_work shared_dwork;
 static atomic_t wbiow_n_pending = ATOMIC_INIT(0);
@@ -446,8 +444,7 @@ static void task_periodic_print(struct work_struct *work)
 {
 	struct delayed_work *dwork = container_of(work, struct delayed_work, work);
 
-	LOGn("n_pending_bio %d wbiow_n_pending %d\n",
-		atomic_read(&n_pending_bio_),
+	LOGn("wbiow_n_pending %d\n",
 		atomic_read(&wbiow_n_pending));
 	
 	/* self-recursive call. */
@@ -680,6 +677,9 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	INIT_LIST_HEAD(&pdata->datapack_submit_queue);
 	INIT_LIST_HEAD(&pdata->logpack_gc_queue);
 
+	/* Initialize n_pending_bio. */
+	atomic_set(&pdata->n_pending_bio, 0);
+
 	/* Prepare GC worker. */
 	initialize_worker(&pdata->gc_worker_data_,
 			run_gc_logpack_list, (void *)wdev, WORKER_NAME_GC);
@@ -835,7 +835,6 @@ static void unregister_dev(void)
         wdev = wdev_get(get_minor(i));
         wdev_unregister(get_minor(i));
         if (wdev) {
-		pre_destroy_private_data();
                 destroy_private_data(wdev);
 		FREE(wdev);
         }
@@ -874,7 +873,13 @@ static void stop_dev(void)
 
 	/* Flush all pending IOs. */
 	set_bit(PDATA_STATE_FAILURE, &pdata->flags);
+	LOGn("n_pending_bio %d\n", atomic_read(&pdata->n_pending_bio));
+	while (atomic_read(&pdata->n_pending_bio) > 0) {
+		LOGn("n_pending_bio %d\n", atomic_read(&pdata->n_pending_bio));
+		msleep(100);
+	}
 	flush_all_wq();
+	LOGn("n_pending_bio %d\n", atomic_read(&pdata->n_pending_bio));
 
 	/* Print status. */
 	LOGn("latest_lsid %"PRIu64"\n"
@@ -1228,7 +1233,9 @@ static void destroy_pack(struct pack *pack)
 	
 	list_for_each_entry_safe(biow, biow_next, &pack->biow_list, list) {
 		list_del(&biow->list);
-		destroy_bio_wrapper(biow);
+		destroy_bio_wrapper_dec(
+			get_pdata_from_wdev(
+				(struct wrapper_blk_dev *)biow->private_data), biow);
 	}
 	if (pack->logpack_header_sector) {
 		sector_free(pack->logpack_header_sector);
@@ -1575,7 +1582,6 @@ static void wait_for_bio_wrapper(
 
 	if (is_endio) {
 		ASSERT(biow->bio);
-		atomic_dec(&n_pending_bio_);
 		bio_endio(biow->bio, biow->error);
 		biow->bio = NULL;
 	}
@@ -1715,9 +1721,8 @@ static void wait_for_logpack_and_submit_datapack(
 			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
 			/* Already the corresponding logpack is permanent. */
 			list_del(&biow->list);
-			atomic_dec(&n_pending_bio_);
 			bio_endio(biow->bio, 0);
-			destroy_bio_wrapper(biow);
+			destroy_bio_wrapper_dec(pdata, biow);
 		} else {
 			/* Create all related bio(s) by copying IO data. */
 		retry_create:
@@ -1816,10 +1821,9 @@ static void wait_for_logpack_and_submit_datapack(
 		is_failed = true;
 		set_read_only_mode(pdata);
 		LOGe("WalB changes device minor:%u to read-only mode.\n", wdev->minor);
-		atomic_dec(&n_pending_bio_);
 		bio_endio(biow->bio, -EIO);
 		list_del(&biow->list);
-		destroy_bio_wrapper(biow);
+		destroy_bio_wrapper_dec(pdata, biow);
 	}
 }
 
@@ -1993,8 +1997,7 @@ static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list)
 				c++;
 				goto retry;
 			}
-			destroy_bio_wrapper(biow);
-			atomic_dec(&n_pending_bio_);
+			destroy_bio_wrapper_dec(pdata, biow);
 		}
 		ASSERT(list_empty(&wpack->biow_list));
 		ASSERT(list_empty(&wpack->bioe_list));
@@ -2118,6 +2121,36 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 }
 
 /**
+ * Allocate a bio wrapper and increment n_pending_bio.
+ */
+static struct bio_wrapper* alloc_bio_wrapper_inc(struct pdata *pdata, gfp_t gfp_mask)
+{
+	struct bio_wrapper *biow;
+	ASSERT(pdata);
+	
+	biow = alloc_bio_wrapper(gfp_mask);
+	if (!biow) {
+		goto error0;
+	}
+	atomic_inc(&pdata->n_pending_bio);
+	return biow;
+error0:
+	return NULL;
+}
+
+/**
+ * Destroy a bio wrapper and decrement n_pending_bio.
+ */
+static void destroy_bio_wrapper_dec(struct pdata *pdata, struct bio_wrapper *biow)
+{
+	ASSERT(pdata);
+	ASSERT(biow);
+	
+	destroy_bio_wrapper(biow);
+	atomic_dec(&pdata->n_pending_bio);
+}
+
+/**
  * Wait for completion of datapack IO.
  */
 static void wait_for_write_bio_wrapper(
@@ -2182,13 +2215,19 @@ static void wait_for_write_bio_wrapper(
 static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
 {
 	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
+	struct wrapper_blk_dev *wdev;
+	struct pdata *pdata;
 	const bool is_endio = true;
 	const bool is_delete = true;
 
 	ASSERT(biow);
+	wdev = (struct wrapper_blk_dev *)biow->private_data;
+	ASSERT(wdev);
+	pdata = get_pdata_from_wdev(wdev);
+	ASSERT(pdata);
 
 	wait_for_bio_wrapper(biow, is_endio, is_delete);
-	destroy_bio_wrapper(biow);
+	destroy_bio_wrapper_dec(pdata, biow);
 }
 
 /**
@@ -2239,7 +2278,6 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		blk_start_plug(&plug);
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
 			list_del(&biow->list2);
-			biow->private_data = wdev;
 #ifdef WALB_OVERLAPPING_SERIALIZE
 			if (biow->n_overlapping > 0) {
 				/* Enqueue submit task. */
@@ -3221,10 +3259,9 @@ static void submit_read_bio_wrapper(
 error1:
 	destroy_bio_entry_list(&biow->bioe_list);
 error0:
-	atomic_dec(&n_pending_bio_);
 	bio_endio(biow->bio, -ENOMEM);
 	ASSERT(list_empty(&biow->bioe_list));
-	destroy_bio_wrapper(biow);
+	destroy_bio_wrapper_dec(pdata, biow);
 }
 
 /**
@@ -3250,16 +3287,14 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 		return;
 	}
 
-	/* Countup. */
-	atomic_inc(&n_pending_bio_);
-
 	/* Create bio wrapper. */
-	biow = alloc_bio_wrapper(GFP_NOIO);
+	biow = alloc_bio_wrapper_inc(pdata, GFP_NOIO);
 	if (!biow) {
 		error = -ENOMEM;
 		goto error0;
 	}
 	init_bio_wrapper(biow, bio);
+	biow->private_data = wdev;
 
 	if (biow->bio->bi_rw & REQ_WRITE) {
 		/* Calculate checksum. */
@@ -3282,10 +3317,9 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 	return;
 #if 0
 error1:
-	destroy_bio_wrapper(biow);
+	destroy_bio_wrapper_dec(pdata, biow);
 #endif
 error0:
-	atomic_dec(&n_pending_bio_);
 	bio_endio(bio, error);
 }
 
@@ -3521,28 +3555,9 @@ error0:
 
 static void flush_all_wq(void)
 {
-	LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio_));
-
-	while (atomic_read(&n_pending_bio_) > 0) {
-		LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio_));
-		msleep(100);
-	}
-
 	flush_workqueue(wq_logpack_);
 	flush_workqueue(wq_io_);
 	flush_workqueue(wq_ol_);
-
-	LOGn("n_pending_bio %d\n", atomic_read(&n_pending_bio_));
-}
-
-/* Called before unregister. */
-static void pre_unregister(void)
-{
-}
-
-/* Called before destroy_private_data. */
-static void pre_destroy_private_data(void)
-{
 }
 
 /* Called after unregister. */
@@ -3616,7 +3631,6 @@ error3:
 	stop_dev();
 #endif
 error2:
-	pre_unregister();
 	unregister_dev();
 error1:
 	post_unregister();
@@ -3632,7 +3646,6 @@ static void wrapper_blk_exit(void)
 #endif
 	
 	stop_dev();
-	pre_unregister();
 	unregister_dev();
 	post_unregister();
 }
