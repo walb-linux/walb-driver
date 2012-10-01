@@ -1787,7 +1787,7 @@ static void wait_for_logpack_and_submit_datapack(
 
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
-				LOGn("stop queue.\n");
+				LOGd_("stop queue.\n");
 #if 0
 			retry_pack_work:
 				pwork = create_pack_work(wdev, GFP_NOIO);
@@ -2207,7 +2207,7 @@ static void wait_for_write_bio_wrapper(
 	spin_unlock(&pdata->pending_data_lock);
 
 	if (is_start_queue) {
-		LOGn("restart queue.\n");
+		LOGd_("restart queue.\n");
 		enqueue_submit_task_if_necessary(wdev);
 	}
 
