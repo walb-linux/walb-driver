@@ -49,7 +49,7 @@ struct snapshot_data_u
  * Iterative over snapshot records in the whole snapshot_data_u.
  *
  * @rec_i record index inside sector.
- * @rec pointer to snapshot_record_t.
+ * @rec pointer to struct walb_snapshot_record.
  * @sect_i sector index.
  * @sect pointer to sector_data.
  * @snapd pointer to snapshot_data_u.
@@ -62,12 +62,12 @@ struct snapshot_data_u
 /*
  * Prototypes for utility functions.
  */
-void print_snapshot_record(const walb_snapshot_record_t* snap_rec);
-void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_size);
+void print_snapshot_record(const struct walb_snapshot_record* snap_rec);
+void print_snapshot_sector(const struct walb_snapshot_sector* snap_sect, u32 sector_size);
 bool write_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
-                           walb_snapshot_sector_t* snap_sect, u32 idx);
+			struct walb_snapshot_sector* snap_sect, u32 idx);
 bool read_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
-                          walb_snapshot_sector_t* snap_sect, u32 idx);
+			struct walb_snapshot_sector* snap_sect, u32 idx);
 
 /*
  * Prototypes for struct snapshot_data_u.

@@ -346,7 +346,7 @@ static u32 record_alloc(struct snapshot_data *snapd,
         set_alloc_snapshot_record(i, ctl->sector);
 
         /* Initialize and asssign snapshot_id. */
-        rec = get_snapshot_record_by_idx(ctl->sector, i);
+        rec = get_snapshot_record_by_idx_in_sector(ctl->sector, i);
         snapshot_record_init(rec);
         rec->snapshot_id = snapd->next_snapshot_id ++;
 
@@ -408,7 +408,7 @@ static int record_free(struct snapshot_data *snapd, u32 snapshot_id)
         clear_alloc_snapshot_record(idx, ctl->sector);
 
         /* Initialize record. */
-        rec = get_snapshot_record_by_idx(ctl->sector, idx);
+        rec = get_snapshot_record_by_idx_in_sector(ctl->sector, idx);
         snapshot_record_init(rec);
 
         /* Change state of control. */
