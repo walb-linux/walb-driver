@@ -247,6 +247,11 @@ static inline int is_valid_snapshot_name(const char *name)
         size_t len, i;
         char n;
 
+	/* Null check. */
+	if (!name) {
+		return 0;
+	}
+
         /* Length check. */
         len = strnlen(name, SNAPSHOT_NAME_MAX_LEN);
         if (len == SNAPSHOT_NAME_MAX_LEN) {

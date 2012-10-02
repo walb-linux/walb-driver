@@ -20,7 +20,7 @@
 /**
  * DOC: Snapshot operations.
  *
- * Snapshot operations must not be called by interrupted context.
+ * Snapshot operations must not be called by atomic context.
  */
 
 /**
@@ -100,17 +100,16 @@ struct snapshot_data
 /**
  * Iterative over snapshot sectors.
  *
- * @off snapshot sector offset.
- * @ctl snapshot sector control.
- * @snapd snapshot data.
+ * @off snapshot sector offset (u64).
+ * @ctl pointer to snapshot sector control.
+ * @snapd pointer to snapshot data.
  */
-#define for_each_snapshot_sector(off, ctl, snapd)                       \
-        for (off = snapd->start_offset;                                 \
-             off < snapd->end_offset &&                                 \
-                     ({ ctl = get_sector_control_with_offset            \
-                                     (snapd, off); 1; });               \
-             off ++)
-
+#define for_each_snapshot_sector(off, ctl, snapd)		\
+        for (off = snapd->start_offset;				\
+             off < snapd->end_offset &&				\
+                     ({ ctl = get_control_by_offset		\
+                                     (snapd, off); 1; });	\
+             off++)
 
 /**
  * Prototypes.
@@ -138,9 +137,9 @@ int snapshot_del_range_nolock(struct snapshot_data *snapd,
 int snapshot_del_range(struct snapshot_data *snapd, u64 lsid0, u64 lsid1);
 
 int snapshot_get_nolock(struct snapshot_data *snapd, const char *name,
-                        struct walb_snapshot_record *rec);
+                        struct walb_snapshot_record **rec);
 int snapshot_get(struct snapshot_data *snapd, const char *name,
-                 struct walb_snapshot_record *rec);
+                 struct walb_snapshot_record **rec);
 
 int snapshot_n_records_range_nolock(struct snapshot_data *snapd,
                                     u64 lsid0, u64 lsid1);
@@ -149,12 +148,13 @@ int snapshot_n_records_range(struct snapshot_data *snapd,
 int snapshot_n_records(struct snapshot_data *snapd);
 
 int snapshot_list_range_nolock(struct snapshot_data *snapd,
-                               u8 *buf, size_t buf_size,
-                               u64 lsid0, u64 lsid1);
+			struct walb_snapshot_record *buf, size_t buf_size,
+			u64 lsid0, u64 lsid1);
 int snapshot_list_range(struct snapshot_data *snapd,
-                        u8 *buf, size_t buf_size,
+			struct walb_snapshot_record *buf, size_t buf_size,
                         u64 lsid0, u64 lsid1);
-int snapshot_list(struct snapshot_data *snapd, u8 *buf, size_t buf_size);
+int snapshot_list(struct snapshot_data *snapd,
+		struct walb_snapshot_record *buf, size_t buf_size);
 
 /* Lock operations. We use a big lock. */
 void snapshot_read_lock(struct snapshot_data *snapd);
