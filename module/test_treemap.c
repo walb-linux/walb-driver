@@ -10,12 +10,31 @@
 
 #include "treemap.h"
 
+
+struct treemap_memory_manager mmgr_;
+
+static bool initialize(void)
+{
+	bool ret;
+	ret = initialize_treemap_memory_manager(
+		&mmgr_, 1,
+		"test_node_cache",
+		"test_cell_head_cache",
+		"test_cell_cache");
+	return ret;
+}
+
+static void finalize(void)
+{
+	finalize_treemap_memory_manager(&mmgr_);
+}
+
 static int __init test_treemap_init(void)
 {
         printk(KERN_INFO "test_treemap_init begin\n");
 
-	if (!treemap_init()) {
-		printk(KERN_ERR "treemap_init() failed.\n");
+	if (!initialize()) {
+		printk(KERN_ERR "initialize() failed.\n");
 		goto error;
 	}
         
@@ -37,7 +56,7 @@ static int __init test_treemap_init(void)
                 goto error;
         }
 	
-	treemap_exit();
+	finalize();
         printk(KERN_INFO "test_treemap_init end\n");
 	
 error:

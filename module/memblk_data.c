@@ -7,6 +7,7 @@
 #include "check_kernel.h"
 
 #include <linux/mm.h>
+#include <linux/module.h>
 #include "walb/common.h"
 #include "treemap.h"
 #include "memblk_data.h"
@@ -178,7 +179,8 @@ static void __memblk_data_block_io(struct memblk_data *mdata, u64 block_id, u8 *
 /**
  * Allocate memblk data.
  */
-struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask)
+struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask,
+				struct treemap_memory_manager *mgr)
 {
         struct memblk_data *mdata;
         u64 ui, n_pages;
@@ -186,6 +188,7 @@ struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask)
 
         mdata_assert_block_size(block_size);
         ASSERT(capacity > 0);
+	ASSERT(mgr);
 
         /* Allocate mdata */
         mdata = ZALLOC(sizeof(struct memblk_data), gfp_mask);
@@ -197,7 +200,7 @@ struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask)
         mdata->capacity = capacity;
 
         /* Allocate index */
-        mdata->index = map_create(gfp_mask);
+        mdata->index = map_create(gfp_mask, mgr);
         if (!mdata->index) {
                 LOGe("map_create failed.\n");
                 goto error1;
@@ -386,14 +389,19 @@ bool test_memblk_data_simple(u64 capacity, const u32 block_size)
         struct memblk_data *mdata = NULL;
         u64 b_id;
         UNUSED u8 *data;
+	struct treemap_memory_manager mmgr;
         
         ASSERT(capacity > 0);
         mdata_assert_block_size(block_size);
 
-        mdata = mdata_create(capacity, block_size, GFP_KERNEL);
+	if (!initialize_treemap_memory_manager_kmalloc(&mmgr, 1)) {
+		goto error0;
+	}
+	
+        mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr);
         if (!mdata) {
                 LOGe("create_memblk_data failed.\n");
-                goto error0;
+                goto error1;
         }
         for (b_id = 0; b_id < mdata->capacity; b_id ++) {
                 data = mdata_get_block(mdata, b_id);
@@ -401,8 +409,12 @@ bool test_memblk_data_simple(u64 capacity, const u32 block_size)
                      b_id, mdata->capacity, data);
         }
         return true;
-/* error1: */
-/*         destroy_memblk_data(mdata); */
+#if 0
+error2:
+	destroy_memblk_data(mdata);
+#endif
+error1:
+	finalize_treemap_memory_manager(&mmgr);
 error0:
         return false;
 }
@@ -418,6 +430,8 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         int i;
         u32 size;
         char *strbuf = NULL;
+	struct treemap_memory_manager mmgr;
+	bool ret;
 
         LOGd("test_memblk_data start.\n");
         strbuf = (char *)__get_free_page(GFP_KERNEL); CNT_INC();
@@ -426,7 +440,11 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         if (capacity == 0) {
                 capacity = get_random_capacity(block_size) + 4;
         }
-        mdata = mdata_create(capacity, block_size, GFP_KERNEL);
+
+	ret = initialize_treemap_memory_manager_kmalloc(&mmgr, 1);
+	ASSERT(ret);
+	
+        mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr);
         WALB_CHECK(mdata);
 
         data1 = (u8 *)__get_free_page(GFP_KERNEL); CNT_INC();
@@ -489,6 +507,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
         free_page((unsigned long)data2); CNT_DEC();
         free_page((unsigned long)data1); CNT_DEC();
         mdata_destroy(mdata);
+	finalize_treemap_memory_manager(&mmgr);
 
         LOGd("test_memblk_data succeeded.\n");
         LOGd("count_: %d\n", CNT());
@@ -505,24 +524,9 @@ error:
                 free_page((unsigned long)data1); CNT_DEC();
         }
         mdata_destroy(mdata);
+	finalize_treemap_memory_manager(&mmgr);
         LOGe("test_memblk_data failed..\n");
         return false;
 }
 
-/**
- * Initialize.
- */
-bool mdata_init(void)
-{
-	return treemap_init();
-}
-
-/**
- * Finalize.
- */
-void mdata_exit(void)
-{
-	treemap_exit();
-}
-
-/* end of file */
+MODULE_LICENSE("Dual BSD/GPL");

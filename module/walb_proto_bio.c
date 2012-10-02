@@ -232,6 +232,14 @@ struct pdata
 #endif
 };
 
+/* All treemap(s) in this module will share a treemap memory manager. */
+static atomic_t n_users_of_memory_manager_ = ATOMIC_INIT(0);
+static struct treemap_memory_manager mmgr_;
+#define TREE_NODE_CACHE_NAME "walb_proto_bio_node_cache"
+#define TREE_CELL_HEAD_CACHE_NAME "walb_proto_bio_cell_head_cache"
+#define TREE_CELL_CACHE_NAME "walb_proto_bio_cell_cache"
+#define N_ITEMS_IN_MEMPOOL (128 * 2) /* for pending data and overlapping data. */
+
 /*******************************************************************************
  * Macros definition.
  *******************************************************************************/
@@ -432,6 +440,10 @@ static inline bool should_stop_queue(struct pdata *pdata, struct bio_wrapper *bi
 static inline bool should_start_queue(struct pdata *pdata, struct bio_wrapper *biow);
 #endif
 
+/* For treemap memory manager. */
+static bool treemap_memory_manager_inc(void);
+static void treemap_memory_manager_dec(void);
+
 /*******************************************************************************
  * For debug.
  *******************************************************************************/
@@ -515,7 +527,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	spin_lock_init(&pdata->overlapping_data_lock);
-	pdata->overlapping_data = multimap_create(GFP_KERNEL);
+	pdata->overlapping_data = multimap_create(GFP_KERNEL, &mmgr_);
 	if (!pdata->overlapping_data) {
 		LOGe("multimap creation failed.\n");
 		goto error01;
@@ -524,7 +536,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 #endif
 #ifdef WALB_FAST_ALGORITHM
 	spin_lock_init(&pdata->pending_data_lock);
-	pdata->pending_data = multimap_create(GFP_KERNEL);
+	pdata->pending_data = multimap_create(GFP_KERNEL, &mmgr_);
 	if (!pdata->pending_data) {
 		LOGe("multimap creation failed.\n");
 		goto error02;
@@ -3514,7 +3526,7 @@ static bool pre_register(void)
 		goto error6;
 	}
 
-	if (!treemap_init()) {
+	if (!treemap_memory_manager_inc()) {
 		goto error7;
 	}
 
@@ -3533,7 +3545,7 @@ static bool pre_register(void)
 
 #if 0
 error8:
-	treemap_exit();
+	treemap_memory_manager_dec();
 #endif
 error7:
 	destroy_workqueue(wq_ol_);
@@ -3565,7 +3577,7 @@ static void post_unregister(void)
 {
 	LOGd_("begin\n");
 
-	treemap_exit();
+	treemap_memory_manager_dec();
 	
 	/* finalize workqueue data. */
 	destroy_workqueue(wq_ol_);
@@ -3586,6 +3598,41 @@ static void post_unregister(void)
 	LOGd_("end\n");
 }
 
+/**
+ * Increment n_users of treemap memory manager and
+ * iniitialize mmgr_ if necessary.
+ */
+static bool treemap_memory_manager_inc(void)
+{
+	bool ret;
+	
+	if (atomic_inc_return(&n_users_of_memory_manager_) == 1) {
+		ret = initialize_treemap_memory_manager(
+			&mmgr_, N_ITEMS_IN_MEMPOOL,
+			TREE_NODE_CACHE_NAME,
+			TREE_CELL_HEAD_CACHE_NAME,
+			TREE_CELL_CACHE_NAME);
+		if (!ret) {
+			atomic_dec(&n_users_of_memory_manager_);
+			goto error;
+		}
+	}
+	return true;
+error:
+	return false;
+}
+
+/**
+ * Decrement n_users of treemap memory manager and
+ * finalize mmgr_ if necessary.
+ */
+static void treemap_memory_manager_dec(void)
+{
+	if (atomic_dec_return(&n_users_of_memory_manager_) == 0) {
+		finalize_treemap_memory_manager(&mmgr_);
+	}
+}
+					
 /*******************************************************************************
  * Init/exit definition.
  *******************************************************************************/

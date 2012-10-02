@@ -13,6 +13,15 @@
 #include "memblk_data.h"
 
 /*******************************************************************************
+ * Static data definition.
+ *******************************************************************************/
+
+struct treemap_memory_manager mmgr_;
+#define TREE_NODE_CACHE_NAME "mem_bio_node_cache"
+#define TREE_CELL_HEAD_CACHE_NAME "mem_bio_cell_head_cache"
+#define TREE_CELL_CACHE_NAME "mem_bio_cell_cache"
+
+/*******************************************************************************
  * Static functions prototype.
  *******************************************************************************/
 
@@ -128,7 +137,7 @@ bool create_private_data(struct simple_blk_dev *sdev)
 
         capacity = sdev->capacity;
         block_size = LOGICAL_BLOCK_SIZE;
-        mdata = mdata_create(capacity, block_size, GFP_KERNEL);
+        mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr_);
         
         if (!mdata) {
                 goto error0;
@@ -169,7 +178,11 @@ void customize_sdev(struct simple_blk_dev *sdev)
  */
 bool pre_register(void)
 {
-	return mdata_init();
+	return initialize_treemap_memory_manager(
+		&mmgr_, 1,
+		TREE_NODE_CACHE_NAME,
+		TREE_CELL_HEAD_CACHE_NAME,
+		TREE_CELL_CACHE_NAME);
 }
 
 /**
@@ -177,7 +190,7 @@ bool pre_register(void)
  */
 void post_unregister(void)
 {
-	mdata_exit();
+	finalize_treemap_memory_manager(&mmgr_);
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

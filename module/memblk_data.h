@@ -61,7 +61,8 @@ static inline u32 mdata_get_page_offset(u64 addr, u32 block_size)
 }
 
 /* Create/destroy. */
-struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask);
+struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask,
+				struct treemap_memory_manager *mgr);
 void mdata_destroy(struct memblk_data *memblk_data);
 
 /* Get pointer to the block data. */
@@ -91,10 +92,5 @@ UNUSED
 bool test_memblk_data(u64 capacity, const u32 block_size);
 UNUSED
 bool test_memblk_data_simple(u64 capacity, const u32 block_size);
-
-/** Init/exit. */
-bool mdata_init(void);
-void mdata_exit(void);
-
 
 #endif /* WALB_MEMBLK_DATA_H_KERNEL */

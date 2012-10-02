@@ -18,8 +18,25 @@
 #include "snapshot.h"
 
 /*******************************************************************************
+ * Static data.
+ *******************************************************************************/
+
+/* All treemap(s) in this module will share a treemap memory manager. */
+static atomic_t n_users_of_memory_manager_ = ATOMIC_INIT(0);
+static struct treemap_memory_manager mmgr_;
+#define TREE_NODE_CACHE_NAME "walb_snap_node_cache"
+#define TREE_CELL_HEAD_CACHE_NAME "walb_snap_cell_head_cache"
+#define TREE_CELL_CACHE_NAME "walb_snap_cell_cache"
+#define N_SNAPSHOT_POOL (32 * 3) /* for snapd->sectors,
+				    snapd->id_idx, and snapd->lsid_idx. */
+
+/*******************************************************************************
  * Prototypes of static functions.
  *******************************************************************************/
+
+/* For treemap memory manager. */
+static bool treemap_memory_manager_inc(void);
+static void treemap_memory_manager_dec(void);
 
 /* Sector operations */
 static int sector_load(struct snapshot_data *snapd, u64 off);
@@ -90,6 +107,41 @@ static int is_valid_snapshot_id_appearance(const struct snapshot_data *snapd);
  * Static functions.
  *******************************************************************************/
 
+/**
+ * Increment n_users of treemap memory manager and
+ * iniitialize mmgr_ if necessary.
+ */
+static bool treemap_memory_manager_inc(void)
+{
+	bool ret;
+	
+	if (atomic_inc_return(&n_users_of_memory_manager_) == 1) {
+		ret = initialize_treemap_memory_manager(
+			&mmgr_, N_SNAPSHOT_POOL,
+			TREE_NODE_CACHE_NAME,
+			TREE_CELL_HEAD_CACHE_NAME,
+			TREE_CELL_CACHE_NAME);
+		if (!ret) {
+			atomic_dec(&n_users_of_memory_manager_);
+			goto error;
+		}
+	}
+	return true;
+error:
+	return false;
+}
+
+/**
+ * Decrement n_users of treemap memory manager and
+ * finalize mmgr_ if necessary.
+ */
+static void treemap_memory_manager_dec(void)
+{
+	if (atomic_dec_return(&n_users_of_memory_manager_) == 0) {
+		finalize_treemap_memory_manager(&mmgr_);
+	}
+}
+					
 /**
  * Load sector from storage into memory.
  *
@@ -834,7 +886,7 @@ static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
         u32 snapshot_id;
         int ret;
 
-        smap = map_create(GFP_KERNEL);
+        smap = map_create(GFP_KERNEL, &mmgr_);
         if (smap == NULL) {
                 LOGe("map_create failed.\n");
                 goto error;
@@ -859,6 +911,7 @@ static int is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
         ASSERT(hashtbl_cursor_is_end(cur));
         map_destroy(smap);
         return (count == 0);
+
 error:
         if (smap) { map_destroy(smap); }
         return 0;
@@ -880,7 +933,7 @@ static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
         u32 snapshot_id;
         int ret;
 
-        smap = map_create(GFP_KERNEL);
+        smap = map_create(GFP_KERNEL, &mmgr_);
         if (smap == NULL) {
                 LOGe("map_create failed.\n");
                 goto error;
@@ -905,6 +958,7 @@ static int is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
         ASSERT(multimap_cursor_is_end(cur));
         map_destroy(smap);
         return (count == 0);
+
 error:
         if (smap) { map_destroy(smap); }
         return 0;
@@ -949,6 +1003,11 @@ struct snapshot_data* snapshot_data_create(
 
         ASSERT(start_offset < end_offset);
 
+	/* Initialize memory manager if necessary. */
+	if (!treemap_memory_manager_inc()) {
+		goto error0;
+	}
+
         /* Allocate snapshot data. */
         snapd = kmalloc(sizeof(struct snapshot_data), gfp_mask);
         if (snapd == NULL) { goto nomem; }
@@ -961,7 +1020,7 @@ struct snapshot_data* snapshot_data_create(
         snapd->sector_size = bdev_physical_block_size(bdev);
 
         /* Create sector controls. */
-        snapd->sectors = map_create(GFP_KERNEL);
+        snapd->sectors = map_create(GFP_KERNEL, &mmgr_);
         if (snapd->sectors == NULL) { goto nomem; }
 
         /* Allocate each snapshot sector control data. */
@@ -980,19 +1039,20 @@ struct snapshot_data* snapshot_data_create(
         }
 
         /* Create indexes. */
-        snapd->id_idx = map_create(GFP_KERNEL);
+        snapd->id_idx = map_create(GFP_KERNEL, &mmgr_);
         if (snapd->id_idx == NULL) { goto nomem; }
 
         snapd->name_idx = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
         if (snapd->name_idx == NULL) { goto nomem; }
         
-        snapd->lsid_idx = multimap_create(GFP_KERNEL);
+        snapd->lsid_idx = multimap_create(GFP_KERNEL, &mmgr_);
         if (snapd->lsid_idx == NULL) { goto nomem; }
         
         return snapd;
 
 nomem:
         snapshot_data_destroy(snapd);
+error0:
         return NULL;
 }
 
@@ -1041,6 +1101,9 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
 
         /* Deallocate snapshot_data. */
         kfree(snapd);
+
+	/* Finalize memory manager if necessary. */
+	treemap_memory_manager_dec();
 }
 
 /**

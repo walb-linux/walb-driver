@@ -30,6 +30,11 @@ extern int sleep_ms_;
  * Static data definition.
  *******************************************************************************/
 
+struct treemap_memory_manager mmgr_;
+#define TREE_NODE_CACHE_NAME "mem_req_node_cache"
+#define TREE_CELL_HEAD_CACHE_NAME "mem_req_cell_head_cache"
+#define TREE_CELL_CACHE_NAME "mem_req_cell_cache"
+
 /**
  * Reuqest list work struct.
  */
@@ -376,7 +381,7 @@ bool create_private_data(struct simple_blk_dev *sdev)
         
         capacity = sdev->capacity;
         block_size = LOGICAL_BLOCK_SIZE;
-        mdata = mdata_create(capacity, block_size, GFP_KERNEL);
+        mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr_);
         
         if (!mdata) {
                 goto error0;
@@ -456,7 +461,11 @@ bool pre_register(void)
                 goto error2;
         }
 
-	if (!mdata_init()) {
+	if (!initialize_treemap_memory_manager(
+			&mmgr_, 1,
+			TREE_NODE_CACHE_NAME,
+			TREE_CELL_HEAD_CACHE_NAME,
+			TREE_CELL_CACHE_NAME)) {
 		goto error3;
 	}
 	
@@ -464,7 +473,7 @@ bool pre_register(void)
 	
 #if 0
 error4:
-	mdata_exit();
+	finalize_treemap_memory_manager(&mmgr_);
 #endif
 error3:
         destroy_workqueue(wq_io_);
@@ -490,7 +499,7 @@ void pre_unregister(void)
 void post_unregister(void)
 {
         destroy_workqueue(wq_io_);
-	mdata_exit();
+	finalize_treemap_memory_manager(&mmgr_);
         kmem_cache_destroy(req_entry_cache_);
         kmem_cache_destroy(req_list_work_cache_);
 }
