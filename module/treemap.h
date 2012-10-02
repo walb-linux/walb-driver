@@ -10,6 +10,7 @@
 
 #include <linux/rbtree.h>
 #include <linux/list.h>
+#include <linux/mempool.h>
 
 /**
  * DOC: map and multimap using tree structure.
@@ -36,13 +37,6 @@ struct tree_node {
 };
 
 /**
- * Map and multimap data structure.
- * Data type is different but the contents are the same.
- */
-struct map { struct rb_root root; };
-struct multimap { struct rb_root root; };
-
-/**
  * Tree cell head for multimap.
  */
 struct tree_cell_head {
@@ -58,10 +52,42 @@ struct tree_cell_head {
  * and deleted by @multimap_del() or @multimap_del_key().
  * Do not allocate/deallocate by yourself.
  */
-struct tree_cell {
-        
+struct tree_cell
+{
         struct hlist_node list;
         unsigned long val;
+};
+
+/**
+ * Memory manager.
+ */
+struct treemap_memory_manager
+{
+	bool is_kmem_cache;
+	
+	mempool_t* node_pool;
+	mempool_t* cell_head_pool;
+	mempool_t* cell_pool;
+
+	struct kmem_cache *node_cache;
+	struct kmem_cache *cell_head_cache;
+	struct kmem_cache *cell_cache;
+};
+
+
+/**
+ * Map and multimap data structure.
+ * Data type is different but the contents are the same.
+ */
+struct map
+{
+	struct rb_root root;
+	struct treemap_memory_manager *mmgr;
+};
+struct multimap
+{
+	struct rb_root root;
+	struct treemap_memory_manager *mmgr;
 };
 
 /**
@@ -109,9 +135,19 @@ struct multimap_cursor
 
         struct tree_cell_head *head;
         struct tree_cell *cell;
-        
 };
 
+/**
+ * Memroy manager helper functions.
+ */
+bool initialize_treemap_memory_manager(
+	struct treemap_memory_manager *mmgr, int min_nr,
+	const char *node_cache_name,
+	const char *cell_head_cache_name,
+	const char *cell_cache_name);
+bool initialize_treemap_memory_manager_kmalloc(
+	struct treemap_memory_manager *mmgr, int min_nr);
+void finalize_treemap_memory_manager(struct treemap_memory_manager *mmgr);
 
 /**
  * Prototypes of map operations.
@@ -120,8 +156,8 @@ struct multimap_cursor
  * val: unsigned long value that can be a pointer.
  *      Do not use TREEMAP_INVALID_VAL.
  */
-struct map* map_create(gfp_t gfp_mask);
-void map_init(struct map *tmap);
+struct map* map_create(gfp_t gfp_mask, struct treemap_memory_manager *mmgr);
+void map_init(struct map *tmap, struct treemap_memory_manager *mmgr);
 void map_destroy(struct map *map);
 
 int map_add(struct map *map, u64 key, unsigned long val, gfp_t gfp_mask);
@@ -161,8 +197,8 @@ int map_cursor_test(void); /* For unit test. */
  * key: u64 value.
  * val: pointer to tree_cell_head.
  */
-struct multimap* multimap_create(gfp_t gfp_mask);
-void multimap_init(struct multimap *tmap);
+struct multimap* multimap_create(gfp_t gfp_mask, struct treemap_memory_manager *mmgr);
+void multimap_init(struct multimap *tmap, struct treemap_memory_manager *mmgr);
 void multimap_destroy(struct multimap *map);
 
 int multimap_add(struct multimap *map, u64 key, unsigned long val, gfp_t gfp_mask);
@@ -196,10 +232,5 @@ unsigned long multimap_cursor_val(const struct multimap_cursor *cursor);
 u64 multimap_cursor_key(const struct multimap_cursor *cursor);
 
 int multimap_cursor_test(void); /* For unit test. */
-
-/* Init/exit functions. */
-bool treemap_init(void);
-void treemap_exit(void);
-
 
 #endif /* TREEMAP_H_KERNEL */

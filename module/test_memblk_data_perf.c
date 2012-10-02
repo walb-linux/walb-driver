@@ -40,19 +40,24 @@ struct thread_data
 };
 
 
-
 #define BLOCK_SIZE 512
 struct memblk_data *mdata_ = NULL;
 #define MAX_N_THREADS 16
 u8 *buffer_[MAX_N_THREADS];
 struct thread_data tdata_[MAX_N_THREADS];
 
+struct treemap_memory_manager mmgr_;
 
 static void create_test_data(u64 capacity)
 {
         unsigned int i;
+	bool ret;
         ASSERT(capacity > 0);
-        mdata_ = mdata_create(capacity, BLOCK_SIZE, GFP_KERNEL);
+
+	ret =initialize_treemap_memory_manager_kmalloc(&mmgr_, 1);
+	ASSERT(ret);
+	
+        mdata_ = mdata_create(capacity, BLOCK_SIZE, GFP_KERNEL, &mmgr_);
         ASSERT(mdata_);
 
         for (i = 0; i < MAX_N_THREADS; i ++) {
@@ -73,6 +78,8 @@ static void destroy_test_data(void)
         ASSERT(mdata_);
         mdata_destroy(mdata_);
         mdata_ = NULL;
+
+	finalize_treemap_memory_manager(&mmgr_);
 }
 
 
@@ -179,8 +186,7 @@ static int __init test_init(void)
         int i, j;
         LOGe("BUILD_DATE %s\n", BUILD_DATE);
 
-	mdata_init();
-        create_test_data(1048576);
+	create_test_data(1048576);
         for (j = 0; j < 5; j ++) {
                 for (i = 1; i <= 8; i ++) {
                         run_benchmark(i,  1000000, IO_READ);
@@ -193,7 +199,6 @@ static int __init test_init(void)
                 }
         }
         destroy_test_data();
-	mdata_exit();
         
         return -1;
 }

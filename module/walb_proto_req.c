@@ -221,6 +221,14 @@ struct pdata
 #endif
 };
 
+/* All treemap(s) in this module will share a treemap memory manager. */
+static atomic_t n_users_of_memory_manager_ = ATOMIC_INIT(0);
+static struct treemap_memory_manager mmgr_;
+#define TREE_NODE_CACHE_NAME "walb_proto_req_node_cache"
+#define TREE_CELL_HEAD_CACHE_NAME "walb_proto_req_cell_head_cache"
+#define TREE_CELL_CACHE_NAME "walb_proto_req_cell_cache"
+#define N_ITEMS_IN_MEMPOOL (128 * 2) /* for pending data and overlapping data. */
+
 /*******************************************************************************
  * Macros definition.
  *******************************************************************************/
@@ -404,6 +412,10 @@ static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entr
 
 static void flush_all_wq(void);
 
+/* For treemap memory manager. */
+static bool treemap_memory_manager_inc(void);
+static void treemap_memory_manager_dec(void);
+
 /*******************************************************************************
  * Utility functions.
  *******************************************************************************/
@@ -478,19 +490,19 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	spin_lock_init(&pdata->overlapping_data_lock);
-	pdata->overlapping_data = multimap_create(GFP_KERNEL);
+	pdata->overlapping_data = multimap_create(GFP_KERNEL, &mmgr_);
 	if (!pdata->overlapping_data) {
 		LOGe("multimap creation failed.\n");
-		goto error01;
+		goto error11;
 	}
 	pdata->max_req_sectors_in_overlapping = 0;
 #endif
 #ifdef WALB_FAST_ALGORITHM
 	spin_lock_init(&pdata->pending_data_lock);
-	pdata->pending_data = multimap_create(GFP_KERNEL);
+	pdata->pending_data = multimap_create(GFP_KERNEL, &mmgr_);
 	if (!pdata->pending_data) {
 		LOGe("multimap creation failed.\n");
-		goto error02;
+		goto error12;
 	}
 	pdata->max_req_sectors_in_pending = 0;
 	
@@ -513,7 +525,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
                 create_private_data);
         if (IS_ERR(ldev)) {
                 LOGe("open %s failed.", log_device_str_);
-                goto error1;
+                goto error2;
         }
 	LOGn("ldev (%d,%d) %d\n", MAJOR(ldev->bd_dev), MINOR(ldev->bd_dev),
 		ldev->bd_contains == ldev);
@@ -524,7 +536,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
                 create_private_data);
 	if (IS_ERR(ddev)) {
 		LOGe("open %s failed.", data_device_str_);
-		goto error2;
+		goto error3;
 	}
 	LOGn("ddev (%d,%d) %d\n", MAJOR(ddev->bd_dev), MINOR(ddev->bd_dev),
 		ddev->bd_contains == ddev);
@@ -537,13 +549,13 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
         if (lbs != LOGICAL_BLOCK_SIZE) {
 		LOGe("logical block size must be %u but %u.\n",
 			LOGICAL_BLOCK_SIZE, lbs);
-                goto error3;
+                goto error4;
         }
 	ASSERT(bdev_logical_block_size(ldev) == lbs);
 	if (bdev_physical_block_size(ldev) != pbs) {
 		LOGe("physical block size is different (ldev: %u, ddev: %u).\n",
 			bdev_physical_block_size(ldev), pbs);
-		goto error3;
+		goto error4;
 	}
 	wdev->pbs = pbs;
 	blk_set_default_limits(&wdev->queue->limits);
@@ -567,11 +579,11 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	/* Load super block. */
 	pdata->lsuper0 = sector_alloc(pbs, GFP_KERNEL);
 	if (!pdata->lsuper0) {
-		goto error3;
+		goto error4;
 	}
 	if (!walb_read_super_sector(pdata->ldev, pdata->lsuper0)) {
 		LOGe("read super sector 0 failed.\n");
-		goto error4;
+		goto error5;
 	}
 	ssect = get_super_sector(pdata->lsuper0);
 	pdata->written_lsid = ssect->written_lsid;
@@ -638,19 +650,19 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	
         return true;
 
-error4:
+error5:
 	sector_free(pdata->lsuper0);
-error3:
+error4:
         blkdev_put(ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
-error2:
+error3:
         blkdev_put(ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
-error1:
+error2:
 #ifdef WALB_FAST_ALGORITHM
-error02:
+error12:
 	multimap_destroy(pdata->pending_data);
 #endif
 #ifdef WALB_OVERLAPPING_SERIALIZE
-error01:
+error11:
 	multimap_destroy(pdata->overlapping_data);
 #endif
 	kfree(pdata);
@@ -3344,7 +3356,8 @@ static bool pre_register(void)
 		goto error6;
 	}
 
-	if (!treemap_init()) {
+	if (!treemap_memory_manager_inc()) {
+		LOGe("memory manager inc failed.\n");
 		goto error7;
 	}
 
@@ -3363,7 +3376,7 @@ static bool pre_register(void)
 
 #if 0
 error8:
-	treemap_exit();
+	treemap_memory_manager_dec();
 #endif
 error7:
 	destroy_workqueue(wq_read_);
@@ -3413,7 +3426,7 @@ static void post_unregister(void)
 {
 	LOGd_("begin\n");
 
-	treemap_exit();
+	treemap_memory_manager_dec();
 	
 	/* finalize workqueue data. */
 	destroy_workqueue(wq_read_);
@@ -3434,6 +3447,41 @@ static void post_unregister(void)
 	LOGd_("end\n");
 }
 
+/**
+ * Increment n_users of treemap memory manager and
+ * iniitialize mmgr_ if necessary.
+ */
+static bool treemap_memory_manager_inc(void)
+{
+	bool ret;
+	
+	if (atomic_inc_return(&n_users_of_memory_manager_) == 1) {
+		ret = initialize_treemap_memory_manager(
+			&mmgr_, N_ITEMS_IN_MEMPOOL,
+			TREE_NODE_CACHE_NAME,
+			TREE_CELL_HEAD_CACHE_NAME,
+			TREE_CELL_CACHE_NAME);
+		if (!ret) {
+			atomic_dec(&n_users_of_memory_manager_);
+			goto error;
+		}
+	}
+	return true;
+error:
+	return false;
+}
+
+/**
+ * Decrement n_users of treemap memory manager and
+ * finalize mmgr_ if necessary.
+ */
+static void treemap_memory_manager_dec(void)
+{
+	if (atomic_dec_return(&n_users_of_memory_manager_) == 0) {
+		finalize_treemap_memory_manager(&mmgr_);
+	}
+}
+					
 /*******************************************************************************
  * Init/exit definition.
  *******************************************************************************/
