@@ -17,17 +17,17 @@
 /**
  * Assertions.
  */
-#define ASSERT_TREEMAP_MEMORY_MANAGER(mmgr) \
+#define ASSERT_TREEMAP_MEMORY_MANAGER(mmgr)		\
 	ASSERT(is_valid_treemap_memory_manager(mmgr))
 
-#define ASSERT_TREEMAP(tmap) \
+#define ASSERT_TREEMAP(tmap)						\
 	ASSERT(tmap && is_valid_treemap_memory_manager(tmap->mmgr))
 
 #define ASSERT_TREENODE(tnode) ASSERT((tnode) != NULL &&                \
-                                      (tnode)->val != TREEMAP_INVALID_VAL)
+					(tnode)->val != TREEMAP_INVALID_VAL)
 
 #define ASSERT_TREECELL(tcell) ASSERT((tcell) != NULL &&                \
-                                      (tcell)->val != TREEMAP_INVALID_VAL)
+					(tcell)->val != TREEMAP_INVALID_VAL)
 
 #define ASSERT_MAP_CURSOR(cursor) ASSERT(is_valid_map_cursor(cursor))
 #define ASSERT_MULTIMAP_CURSOR(cursor) ASSERT(is_valid_multimap_cursor(cursor))
@@ -46,13 +46,13 @@ static struct tree_node* map_prev(const struct tree_node *t);
 
 static void make_map_cursor_invalid(struct map_cursor *cursor);
 
-static int is_valid_map_cursor(const struct map_cursor *cursor);
-static int is_valid_multimap_cursor(const struct multimap_cursor *cursor);
-static bool is_valid_treemap_memory_manager(struct treemap_memory_manager *mmgr);
+UNUSED static int is_valid_map_cursor(const struct map_cursor *cursor);
+UNUSED static int is_valid_multimap_cursor(const struct multimap_cursor *cursor);
+UNUSED static bool is_valid_treemap_memory_manager(struct treemap_memory_manager *mmgr);
 
 static int hlist_len(const struct hlist_head *head);
 static struct hlist_node* hlist_prev(const struct hlist_head *head,
-                                     const struct hlist_node *node);
+				const struct hlist_node *node);
 
 static int multimap_add_newkey(
 	struct multimap *tmap, u64 key, struct tree_cell *newcell, gfp_t gfp_mask);
@@ -63,6 +63,11 @@ static struct tree_cell* get_tree_cell_end(struct tree_cell_head *head);
 static struct tree_cell* get_tree_cell_next(struct tree_cell *cell);
 static struct tree_cell* get_tree_cell_prev(
 	struct tree_cell_head *head, struct tree_cell *cell);
+
+UNUSED static void print_map_cursor(
+	const char *level, struct map_cursor *cursor);
+UNUSED static void print_multimap_cursor(
+	const char *level, struct multimap_cursor *cursor);
 
 /**
  * Macros.
@@ -105,7 +110,7 @@ static struct tree_node* map_lookup_node_detail(const struct map *tmap, u64 key,
         ASSERT_TREEMAP(tmap);
 
         if (search_flag == MAP_SEARCH_BEGIN ||
-            search_flag == MAP_SEARCH_END) { return NULL; }
+		search_flag == MAP_SEARCH_END) { return NULL; }
 
         /* Travserse tree. */
         while (node) {
@@ -118,8 +123,8 @@ static struct tree_node* map_lookup_node_detail(const struct map *tmap, u64 key,
                 } else {
                         ASSERT(key == t->key);
                         if (search_flag == MAP_SEARCH_EQ ||
-                            search_flag == MAP_SEARCH_LE ||
-                            search_flag == MAP_SEARCH_GE) {
+				search_flag == MAP_SEARCH_LE ||
+				search_flag == MAP_SEARCH_GE) {
                                 return t;
                         } else {
                                 break;
@@ -247,20 +252,19 @@ static void make_map_cursor_invalid(struct map_cursor *cursor)
  *
  * @return non-zero if valid, or 0.
  */
-__attribute__((unused))
 static int is_valid_map_cursor(const struct map_cursor *cursor)
 {
         return ((cursor) != NULL &&
                 (cursor)->map != NULL &&
                 (((cursor)->state == MAP_CURSOR_BEGIN &&
-                  (cursor)->prev == NULL &&
-                  (cursor)->curr == NULL) ||
-                 ((cursor)->state == MAP_CURSOR_END &&
-                  (cursor)->curr == NULL &&
-                  (cursor)->next == NULL) ||
-                 ((cursor)->state == MAP_CURSOR_DATA &&
-                  (cursor)->curr != NULL) ||
-                 ((cursor)->state == MAP_CURSOR_INVALID)));
+			(cursor)->prev == NULL &&
+			(cursor)->curr == NULL) ||
+			((cursor)->state == MAP_CURSOR_END &&
+				(cursor)->curr == NULL &&
+				(cursor)->next == NULL) ||
+			((cursor)->state == MAP_CURSOR_DATA &&
+				(cursor)->curr != NULL) ||
+			((cursor)->state == MAP_CURSOR_INVALID)));
 }
 
 /**
@@ -268,7 +272,6 @@ static int is_valid_map_cursor(const struct map_cursor *cursor)
  *
  * @return non-zero if valid, or 0.
  */
-__attribute__((unused))
 static int is_valid_multimap_cursor(const struct multimap_cursor *cursor)
 {
         const struct map_cursor *cur;
@@ -278,21 +281,20 @@ static int is_valid_multimap_cursor(const struct multimap_cursor *cursor)
         
         return (is_valid_map_cursor(cur) &&
                 ((cur->state == MAP_CURSOR_BEGIN &&
-                  cursor->head == NULL &&
-                  cursor->cell == NULL) ||
-                 (cur->state == MAP_CURSOR_END &&
-                  cursor->head == NULL &&
-                  cursor->cell == NULL) ||
-                 (cur->state == MAP_CURSOR_DATA &&
-                  cursor->head != NULL &&
-                  cursor->cell != NULL) ||
-                 (cur->state == MAP_CURSOR_INVALID)));
+			cursor->head == NULL &&
+			cursor->cell == NULL) ||
+			(cur->state == MAP_CURSOR_END &&
+				cursor->head == NULL &&
+				cursor->cell == NULL) ||
+			(cur->state == MAP_CURSOR_DATA &&
+				cursor->head != NULL &&
+				cursor->cell != NULL) ||
+			(cur->state == MAP_CURSOR_INVALID)));
 }
 
 /**
  * Check validness of treemap memory manager.
  */
-__attribute__((unused))
 static bool is_valid_treemap_memory_manager(struct treemap_memory_manager *mmgr)
 {
 	bool ret1, ret2;
@@ -336,7 +338,7 @@ static int hlist_len(const struct hlist_head *head)
  * @return pointer to previous node if found, or NULL.
  */
 static struct hlist_node* hlist_prev(const struct hlist_head *head,
-                                     const struct hlist_node *node)
+				const struct hlist_node *node)
 {
         struct hlist_head *tmp_head;
 
@@ -363,7 +365,7 @@ static struct hlist_node* hlist_prev(const struct hlist_head *head,
  */
 static int
 multimap_add_newkey(struct multimap *tmap, u64 key,
-                    struct tree_cell *newcell, gfp_t gfp_mask)
+		struct tree_cell *newcell, gfp_t gfp_mask)
 {
         int ret;
         struct tree_cell_head *newhead;
@@ -488,6 +490,31 @@ static struct tree_cell* get_tree_cell_prev(struct tree_cell_head *head, struct 
 
 not_found:
         return NULL;
+}
+
+/**
+ * Print multimap cursor.
+ */
+static void print_map_cursor(const char *level, struct map_cursor *cursor)
+{
+	ASSERT(cursor);
+	printk("%s"
+		"map %p, state %d prev %p curr %p next %p\n",
+		level, cursor->map, cursor->state,
+		cursor->prev, cursor->curr, cursor->next);
+}
+
+/**
+ * Print multimap cursor.
+ */
+static void print_multimap_cursor(const char *level, struct multimap_cursor *cursor)
+{
+	ASSERT(cursor);
+	printk("%s"
+		"multimap %p, state %d prev %p curr %p next %p head %p cell %p\n",
+		level, cursor->curt.map, cursor->curt.state,
+		cursor->curt.prev, cursor->curt.curr, cursor->curt.next,
+		cursor->head, cursor->cell);
 }
 
 /*******************************************************************************
@@ -840,9 +867,9 @@ int map_test(void)
         
         LOGd("map_test begin\n");
         LOGd("tree_map: %zu\n"
-             "tree_node: %zu\n",
-             sizeof(struct map),
-             sizeof(struct tree_node));
+		"tree_node: %zu\n",
+		sizeof(struct map),
+		sizeof(struct tree_node));
 
 	/* Initialize memory manager. */
 	ret = initialize_treemap_memory_manager_kmalloc(&mmgr, 1);
@@ -1148,9 +1175,24 @@ int map_cursor_is_end(struct map_cursor *cursor)
 int map_cursor_is_valid(struct map_cursor *cursor)
 {
         return ((cursor != NULL &&
-                 (cursor->state == MAP_CURSOR_BEGIN ||
-                  cursor->state == MAP_CURSOR_END   ||
-                  cursor->state == MAP_CURSOR_DATA)) ? 1 : 0);
+			(cursor->state == MAP_CURSOR_BEGIN ||
+				cursor->state == MAP_CURSOR_END   ||
+				cursor->state == MAP_CURSOR_DATA)) ? 1 : 0);
+}
+
+/**
+ * Copy map cursor.
+ */
+void map_cursor_copy(struct map_cursor *dst, struct map_cursor *src)
+{
+	ASSERT(dst);
+	ASSERT(map_cursor_is_valid(src));
+
+	dst->map = src->map;
+	dst->state = src->state;
+	dst->prev = src->prev;
+	dst->curr = src->curr;
+	dst->next = src->next;
 }
 
 /**
@@ -1179,6 +1221,46 @@ invalid:
 void map_cursor_destroy(struct map_cursor *cursor)
 {
 	kfree(cursor);
+}
+
+/**
+ * Delete the item at the cursor.
+ * The cursor will indicate the next.
+ *
+ * RETURN:
+ *   Non-zero if deletion succeeded, or 0.
+ */
+int map_cursor_del(struct map_cursor *cursor)
+{
+	struct tree_node *t;
+	struct tree_node *prev;
+
+	ASSERT_MAP_CURSOR(cursor);
+	
+	if (cursor->state != MAP_CURSOR_DATA) {
+		goto error0;
+	}
+
+	/* Backup */
+	t = cursor->curr;
+	ASSERT_TREENODE(t);
+	prev = cursor->prev;
+
+	/* Goto next. */
+	map_cursor_next(cursor);
+	ASSERT(cursor->state == MAP_CURSOR_DATA || cursor->state == MAP_CURSOR_END);
+
+	/* Restore previous node information. */
+	cursor->prev = prev;
+
+	/* Delete the node. */
+	rb_erase(&t->node, &cursor->map->root);
+	free_node(cursor->map->mmgr, t);
+
+	return 1;
+
+error0:
+	return 0;
 }
 
 /**
@@ -1320,6 +1402,65 @@ int map_cursor_test(void)
         /* Destroy map. */
         LOGd("Destroy map.\n");
         map_destroy(map);
+
+	/* Create map. */
+        LOGd("Create map.\n");
+        map = map_create(GFP_KERNEL, &mmgr);
+        WALB_CHECK(map != NULL);
+
+	/* Prepare map data. */
+        map_add(map, 10, 10, GFP_KERNEL);
+        map_add(map, 20, 20, GFP_KERNEL);
+        map_add(map, 30, 30, GFP_KERNEL);
+        map_add(map, 40, 40, GFP_KERNEL);
+
+	/* Map delete continuously. */
+	map_cursor_search(&curt, 10, MAP_SEARCH_EQ);
+	WALB_CHECK(map_cursor_val(&curt) == 10);
+	map_cursor_del(&curt);
+	WALB_CHECK(map_cursor_val(&curt) == 20);
+	map_cursor_del(&curt);
+	WALB_CHECK(map_cursor_val(&curt) == 30);
+	map_cursor_del(&curt);
+	WALB_CHECK(map_cursor_val(&curt) == 40);
+	map_cursor_del(&curt);
+	WALB_CHECK(map_cursor_is_end(&curt));
+
+	/* Prepare map data. */
+        map_add(map, 10, 10, GFP_KERNEL);
+        map_add(map, 20, 20, GFP_KERNEL);
+        map_add(map, 30, 30, GFP_KERNEL);
+        map_add(map, 40, 40, GFP_KERNEL);
+
+	/* Delete middle and check. */
+	map_cursor_search(&curt, 20, MAP_SEARCH_EQ);
+	WALB_CHECK(map_cursor_val(&curt) == 20);
+	map_cursor_del(&curt);
+	WALB_CHECK(map_cursor_val(&curt) == 30);
+	map_cursor_prev(&curt);
+	WALB_CHECK(map_cursor_val(&curt) == 10);
+
+	/* Delete last and check. */
+	map_cursor_search(&curt, 40, MAP_SEARCH_EQ);
+	WALB_CHECK(map_cursor_val(&curt) == 40);
+	map_cursor_del(&curt);
+	WALB_CHECK(map_cursor_is_end(&curt));
+	map_cursor_prev(&curt);
+	WALB_CHECK(map_cursor_val(&curt) == 30);
+
+	/* Delete first and check. */
+	map_cursor_search(&curt, 10, MAP_SEARCH_EQ);
+	WALB_CHECK(map_cursor_val(&curt) == 10);
+	map_cursor_del(&curt);
+	WALB_CHECK(map_cursor_val(&curt) == 30);
+	map_cursor_prev(&curt);
+	WALB_CHECK(map_cursor_is_begin(&curt));
+
+        /* Destroy map. */
+        LOGd("Destroy map.\n");
+        map_destroy(map);
+	
+	/* Finalize memory manager. */
 	finalize_treemap_memory_manager(&mmgr);
         
         LOGd("map_cursor_test end.\n");
@@ -1671,13 +1812,13 @@ int multimap_test(void)
         
         LOGd("multimap_test begin\n");
         LOGd("hlist_head: %zu "
-             "unsigned long: %zu "
-             "tree_cell_head: %zu "
-             "tree_cell: %zu\n",
-             sizeof(struct hlist_head),
-             sizeof(unsigned long),
-             sizeof(struct tree_cell_head),
-             sizeof(struct tree_cell));
+		"unsigned long: %zu "
+		"tree_cell_head: %zu "
+		"tree_cell: %zu\n",
+		sizeof(struct hlist_head),
+		sizeof(unsigned long),
+		sizeof(struct tree_cell_head),
+		sizeof(struct tree_cell));
         
 	/* Initialize memory manager. */
 	ret = initialize_treemap_memory_manager_kmalloc(&mmgr, 1);
@@ -1686,6 +1827,7 @@ int multimap_test(void)
         /* Create. */
         LOGd("Create.\n");
         tm = multimap_create(GFP_KERNEL, &mmgr);
+	ASSERT(tm);
 
         n = multimap_n_items(tm);
         WALB_CHECK(n == 0);
@@ -1803,6 +1945,8 @@ int multimap_test(void)
         /* Empty and destroy. */
         LOGd("Empty and destroy.\n");
         multimap_destroy(tm);
+
+	/* Finalize memory manager. */
 	finalize_treemap_memory_manager(&mmgr);
         
         LOGd("multimap_test end\n");
@@ -2082,6 +2226,20 @@ int multimap_cursor_is_valid(struct multimap_cursor *cursor)
 }
 
 /**
+ * Copy multimap cursor.
+ */
+void multimap_cursor_copy(
+	struct multimap_cursor *dst, struct multimap_cursor *src)
+{
+	ASSERT(dst);
+	ASSERT(multimap_cursor_is_valid(src));
+
+	map_cursor_copy(&dst->curt, &src->curt);
+	dst->head = src->head;
+	dst->cell = src->cell;
+}
+
+/**
  * Get valud of the cursor.
  *
  * @return value if cursor points data, or TREEMAP_INVALID_VAL.
@@ -2120,6 +2278,57 @@ invalid:
 }
 
 /**
+ * Delete a key-value pair from the multimap.
+ * cursor will indicate the next item of the deleted item.
+ *
+ * RETURN:
+ *   Non-zero when the deletion succeeded, or 0.
+ */
+int multimap_cursor_del(struct multimap_cursor *cursor)
+{
+	struct multimap *mmap;
+	struct multimap_cursor cur;
+	int len;
+
+	ASSERT_MULTIMAP_CURSOR(cursor);
+	
+	if (cursor->curt.state != MAP_CURSOR_DATA) {
+		goto error0;
+	}
+	
+	mmap = (struct multimap *)cursor->curt.map;
+	ASSERT(mmap);
+
+	len = hlist_len(&cursor->head->head);
+#if 0
+	print_multimap_cursor(KERN_NOTICE, cursor);
+	LOGn("len: %d\n", len);
+#endif
+	if (len == 1) {
+		multimap_cursor_copy(&cur, cursor);
+		multimap_cursor_next(cursor);
+		map_cursor_del(&cur.curt); /* &cur.curt will indicate the next. */
+		free_cell(mmap->mmgr, cur.cell);
+		free_cell_head(mmap->mmgr, cur.head);
+		map_cursor_copy(&cursor->curt, &cur.curt);
+	} else {
+		ASSERT(len > 1);
+		multimap_cursor_copy(&cur, cursor);
+		multimap_cursor_next(cursor);
+		hlist_del(&cur.cell->list);
+		free_cell(mmap->mmgr, cur.cell);
+	}
+#if 0
+	print_multimap_cursor(KERN_NOTICE, cursor);
+#endif
+	ASSERT(is_valid_multimap_cursor(cursor));
+	return 1;
+	
+error0:
+	return 0;
+}
+
+/**
  * Test multimap cursor for debug.
  *
  * @return 0 in success, or -1.
@@ -2141,6 +2350,7 @@ int __init multimap_cursor_test(void)
 	WALB_CHECK(ret);
 	
         /* Create multimap. */
+        LOGd("Create multimap.\n");
         map = multimap_create(GFP_KERNEL, &mmgr);
         WALB_CHECK(map != NULL);
         
@@ -2231,6 +2441,95 @@ int __init multimap_cursor_test(void)
         /* Destroy multimap. */
         LOGd("Destroy multimap.\n");
         multimap_destroy(map);
+
+        /* Create multimap. */
+        LOGd("Create multimap.\n");
+        map = multimap_create(GFP_KERNEL, &mmgr);
+        WALB_CHECK(map != NULL);
+
+	/*
+	 * Cursor deletion test.
+	 */
+	LOGn("multimap cursor delete test 1.\n");
+	multimap_add(map, 10, 12, GFP_KERNEL);
+	multimap_add(map, 10, 11, GFP_KERNEL);
+	multimap_add(map, 10, 10, GFP_KERNEL);
+	/* the order is (10,10), (10,11), (10,12) inside the hlist. */
+	
+	multimap_cursor_search(&curt, 10, MAP_SEARCH_EQ, 0);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 10);
+	WALB_CHECK(multimap_cursor_val(&curt) == 10);
+	multimap_cursor_del(&curt);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 10);
+	WALB_CHECK(multimap_cursor_val(&curt) == 11);
+	multimap_cursor_prev(&curt);
+	WALB_CHECK(multimap_cursor_is_begin(&curt));
+	
+	multimap_cursor_search(&curt, 10, MAP_SEARCH_EQ, 1);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 10);
+	WALB_CHECK(multimap_cursor_val(&curt) == 12);
+	multimap_cursor_del(&curt);
+	WALB_CHECK(multimap_cursor_is_end(&curt));
+	multimap_cursor_prev(&curt);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 10);
+	WALB_CHECK(multimap_cursor_val(&curt) == 11);
+	multimap_cursor_del(&curt);
+
+	WALB_CHECK(multimap_is_empty(map));
+	LOGn("multimap cursor delete test 2.\n");
+
+	multimap_add(map,  0,  0, GFP_KERNEL);
+	multimap_add(map, 10, 12, GFP_KERNEL);
+	multimap_add(map, 10, 11, GFP_KERNEL);
+	multimap_add(map, 10, 10, GFP_KERNEL);
+	multimap_add(map, 20, 20, GFP_KERNEL);
+
+	multimap_cursor_search(&curt, 10, MAP_SEARCH_EQ, 0);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 10);
+	WALB_CHECK(multimap_cursor_val(&curt) == 10);
+	multimap_cursor_del(&curt);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 10);
+	WALB_CHECK(multimap_cursor_val(&curt) == 11);
+	multimap_cursor_prev(&curt);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 0);
+	WALB_CHECK(multimap_cursor_val(&curt) == 0);
+	
+	multimap_cursor_search(&curt, 10, MAP_SEARCH_EQ, 1);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 10);
+	WALB_CHECK(multimap_cursor_val(&curt) == 12);
+	multimap_cursor_del(&curt);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 20);
+	WALB_CHECK(multimap_cursor_val(&curt) == 20);
+	multimap_cursor_prev(&curt);
+	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
+	WALB_CHECK(multimap_cursor_key(&curt) == 10);
+	WALB_CHECK(multimap_cursor_val(&curt) == 11);
+
+	
+        /* Destroy multimap. */
+        LOGd("Destroy multimap.\n");
+        multimap_destroy(map);
+
+	/* Finalize memory manager. */
 	finalize_treemap_memory_manager(&mmgr);
         
         LOGd("multimap_cursor_test end.\n");

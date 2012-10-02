@@ -77,7 +77,7 @@ struct treemap_memory_manager
 
 /**
  * Map and multimap data structure.
- * Data type is different but the contents are the same.
+ * Data type is different but the contents must be the same.
  */
 struct map
 {
@@ -115,6 +115,9 @@ enum {
 
 /**
  * Map cursor structure.
+ *
+ * Calling map_add() or map_del() may invalidate the cursor.
+ * For deletion, use map_cursor_del() instead.
  */
 struct map_cursor
 {
@@ -123,11 +126,13 @@ struct map_cursor
         struct tree_node *prev;
         struct tree_node *curr;
         struct tree_node *next;
-        
 };
 
 /**
  * Multimap cursor structure.
+ *
+ * Calling multimap_add() or multimap_del() may invalidate the cursor.
+ * For deletion, use multimap_cursor_del() instead.
  */
 struct multimap_cursor
 {
@@ -183,9 +188,10 @@ int map_cursor_end(struct map_cursor *cursor);
 int map_cursor_is_begin(struct map_cursor *cursor);
 int map_cursor_is_end(struct map_cursor *cursor);
 int map_cursor_is_valid(struct map_cursor *cursor);
+void map_cursor_copy(struct map_cursor *dst, struct map_cursor *src);
 unsigned long map_cursor_val(const struct map_cursor *cursor);
 /* int map_cursor_update(struct map_cursor *cursor); */
-/* int map_cursor_delete(struct map_cursor *cursor); */
+int map_cursor_del(struct map_cursor *cursor);
 void map_cursor_destroy(struct map_cursor *cursor);
 
 int map_cursor_test(void); /* For unit test. */
@@ -220,7 +226,7 @@ int multimap_test(void); /* For unit test. */
  */
 void multimap_cursor_init(struct multimap *map, struct multimap_cursor *cursor);
 int multimap_cursor_search(struct multimap_cursor *cursor, u64 key,
-                           int search_flag, int is_end);
+			int search_flag, int is_end);
 int multimap_cursor_next(struct multimap_cursor *cursor);
 int multimap_cursor_prev(struct multimap_cursor *cursor);
 int multimap_cursor_begin(struct multimap_cursor *cursor);
@@ -228,8 +234,11 @@ int multimap_cursor_end(struct multimap_cursor *cursor);
 int multimap_cursor_is_begin(struct multimap_cursor *cursor);
 int multimap_cursor_is_end(struct multimap_cursor *cursor);
 int multimap_cursor_is_valid(struct multimap_cursor *cursor);
+void multimap_cursor_copy(
+	struct multimap_cursor *dst, struct multimap_cursor *src);
 unsigned long multimap_cursor_val(const struct multimap_cursor *cursor);
 u64 multimap_cursor_key(const struct multimap_cursor *cursor);
+int multimap_cursor_del(struct multimap_cursor *cursor);
 
 int multimap_cursor_test(void); /* For unit test. */
 
