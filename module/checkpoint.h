@@ -20,9 +20,9 @@
  *
  * Permitted state transition:
  *   stoppped -> waiting @start_checkpionting()
- *   waiting -> running  @do_checkpointing()
- *   running -> waiting  @do_checkpointing()
- *   waiting -> stopped  @do_checkpointing()
+ *   waiting -> running  @task_do_checkpointing()
+ *   running -> waiting  @task_do_checkpointing()
+ *   waiting -> stopped  @task_do_checkpointing()
  *   waiting -> stopping @stop_checkpointing()
  *   running -> stopping @stop_checkpointing()
  *   stopping -> stopped @stop_checkpointing()
@@ -34,11 +34,54 @@ enum {
         CP_RUNNING,
 };
 
-void init_checkpointing(struct walb_dev *wdev);
+/**
+ * For checkpointing.
+ */
+struct checkpoint_data
+{
+        /*
+         * checkpoint_lock is used to access 
+         *   checkpoint_interval,
+         *   checkpoint_state.
+         */
+        struct rw_semaphore lock;
+
+	/*
+	 * Checkpointing interval [ms].
+	 * 0 means the device does not do checkpointing.
+	 */
+        u32 interval;
+
+	/*
+	 * CP_XXX
+	 */
+        u8 state;
+
+	/*
+	 * checkpoint_work accesses are automatically
+         * serialized by checkpoint_state.
+         */
+	struct delayed_work dwork;
+
+	/*
+	 * Checkpointing updates written_lsid
+	 * where log and data has been already persistent
+	 * for all lsid < written_lsid.
+	 *
+	 * Checkpointing functionality will not sync superblock
+	 * when written_lsid == prev_written_lsid
+	 * that means any write IO did not occur from previous checkpointing.
+	 */
+	spinlock_t written_lsid_lock;
+	u64 written_lsid;
+	u64 prev_written_lsid;
+};
+
+void init_checkpointing(struct checkpoint_data *cpd, u64 written_lsid);
 void task_do_checkpointing(struct work_struct *work);
-void start_checkpointing(struct walb_dev *wdev);
-void stop_checkpointing(struct walb_dev *wdev);
-u32 get_checkpoint_interval(struct walb_dev *wdev);
-void set_checkpoint_interval(struct walb_dev *wdev, u32 val);
+void start_checkpointing(struct checkpoint_data *cpd);
+void stop_checkpointing(struct checkpoint_data *cpd);
+u32 get_checkpoint_interval(struct checkpoint_data *cpd);
+void set_checkpoint_interval(struct checkpoint_data *cpd, u32 val);
 
 #endif /* WALB_CHECKPOINT_H_KERNEL */

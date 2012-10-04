@@ -59,7 +59,7 @@ static int is_sync_superblock_ = 1;
 module_param_named(is_sync_superblock, is_sync_superblock_, int, S_IRUGO|S_IWUSR);
 
 /*******************************************************************************
- * Static data definition.
+ * Shared data definition.
  *******************************************************************************/
 
 /**
@@ -73,6 +73,10 @@ struct workqueue_struct *wq_io_ = NULL;
 struct workqueue_struct *wq_ol_ = NULL;
 #define WQ_MISC_NAME "wq_misc"
 struct workqueue_struct *wq_misc_ = NULL;
+
+/*******************************************************************************
+ * Static data definition.
+ *******************************************************************************/
 
 /*******************************************************************************
  * Prototypes of local functions.
@@ -301,7 +305,7 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
         case WALB_IOCTL_CHECKPOINT_INTERVAL_GET:
 
                 LOGn("WALB_IOCTL_CHECKPOINT_INTERVAL_GET\n");
-                ctl->val_u32 = get_checkpoint_interval(wdev);
+                ctl->val_u32 = get_checkpoint_interval(&wdev->cpd);
                 ret = 0;
                 break;
                 
@@ -310,7 +314,7 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
                 LOGn("WALB_IOCTL_CHECKPOINT_INTERVAL_SET\n");
                 interval = ctl->val_u32;
                 if (interval <= WALB_MAX_CHECKPOINT_INTERVAL) {
-                        set_checkpoint_interval(wdev, interval);
+                        set_checkpoint_interval(&wdev->cpd, interval);
                         ret = 0;
                 } else {
                         LOGe("Checkpoint interval is too big.\n");
@@ -483,12 +487,14 @@ static struct block_device_operations walblog_ops = {
 static u64 get_written_lsid(struct walb_dev *wdev)
 {
         u64 ret;
+	struct checkpoint_data *cpd;
 
-        ASSERT(wdev != NULL);
+        ASSERT(wdev);
+	cpd = &wdev->cpd;
 
-        spin_lock(&wdev->datapack_list_lock);
-        ret = wdev->written_lsid;
-        spin_unlock(&wdev->datapack_list_lock);
+        spin_lock(&cpd->written_lsid_lock);
+        ret = cpd->written_lsid;
+        spin_unlock(&cpd->written_lsid_lock);
         
         return ret;
 }
@@ -1008,6 +1014,7 @@ struct walb_dev* prepare_wdev(unsigned int minor,
         struct walb_dev *wdev;
         u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
         char *dev_name;
+	struct checkpoint_data *cpd;
 
         /* Minor id check. */
         if (minor == WALB_DYNAMIC_MINOR) {
@@ -1023,13 +1030,12 @@ struct walb_dev* prepare_wdev(unsigned int minor,
                 LOGe("kmalloc failed.\n");
                 goto out;
         }
+	cpd = &wdev->cpd;
 	spin_lock_init(&wdev->lock);
         spin_lock_init(&wdev->latest_lsid_lock);
         spin_lock_init(&wdev->lsuper0_lock);
         /* spin_lock_init(&wdev->logpack_list_lock); */
         /* INIT_LIST_HEAD(&wdev->logpack_list); */
-        spin_lock_init(&wdev->datapack_list_lock);
-        INIT_LIST_HEAD(&wdev->datapack_list);
         atomic_set(&wdev->is_read_only, 0);
 	
         /*
@@ -1084,8 +1090,7 @@ struct walb_dev* prepare_wdev(unsigned int minor,
                 LOGe("ldev init failed.\n");
                 goto out_ddev;
         }
-        wdev->written_lsid = get_super_sector(wdev->lsuper0)->written_lsid;
-        wdev->prev_written_lsid = wdev->written_lsid;
+	init_checkpointing(cpd, get_super_sector(wdev->lsuper0)->written_lsid);
         wdev->oldest_lsid = get_super_sector(wdev->lsuper0)->oldest_lsid;
 
         /* Set device name. */
@@ -1096,8 +1101,6 @@ struct walb_dev* prepare_wdev(unsigned int minor,
         ASSERT_SECTOR_DATA(wdev->lsuper0);
         dev_name = get_super_sector(wdev->lsuper0)->name;
 
-        /* For checkpoint */
-	init_checkpointing(wdev);
         
         /*
          * Redo
@@ -1110,7 +1113,7 @@ struct walb_dev* prepare_wdev(unsigned int minor,
 
 
         /* latest_lsid is written_lsid after redo. */
-        wdev->latest_lsid = wdev->written_lsid;
+        wdev->latest_lsid = cpd->written_lsid;
         
         /* For padding test in the end of ring buffer. */
         /* 64KB ring buffer */
@@ -1194,7 +1197,7 @@ void register_wdev(struct walb_dev *wdev)
         ASSERT(wdev->gd != NULL);
         ASSERT(wdev->log_gd != NULL);
 
-        start_checkpointing(wdev);
+        start_checkpointing(&wdev->cpd);
 
         walblog_register_device(wdev);
         walb_register_device(wdev);
@@ -1208,7 +1211,7 @@ void unregister_wdev(struct walb_dev *wdev)
 {
         ASSERT(wdev != NULL);
 
-        stop_checkpointing(wdev);
+        stop_checkpointing(&wdev->cpd);
         
         walblog_unregister_device(wdev);
         walb_unregister_device(wdev);

@@ -19,14 +19,17 @@
 int walb_sync_super_block(struct walb_dev *wdev)
 {
         u64 written_lsid, oldest_lsid;
-
         struct sector_data *lsuper_tmp;
         struct walb_super_sector *sect, *sect_tmp;
+	struct checkpoint_data *cpd;
+
+	ASSERT(wdev);
+	cpd = &wdev->cpd;
 
         /* Get written lsid. */
-        spin_lock(&wdev->datapack_list_lock);
-        written_lsid = wdev->written_lsid;
-        spin_unlock(&wdev->datapack_list_lock);
+        spin_lock(&cpd->written_lsid_lock);
+        written_lsid = cpd->written_lsid;
+        spin_unlock(&cpd->written_lsid_lock);
 
         /* Get oldest lsid. */
         spin_lock(&wdev->oldest_lsid_lock);
@@ -59,9 +62,9 @@ int walb_sync_super_block(struct walb_dev *wdev)
         sector_free(lsuper_tmp);
 
         /* Update previously written lsid. */
-        spin_lock(&wdev->datapack_list_lock);
-        wdev->prev_written_lsid = written_lsid;
-        spin_unlock(&wdev->datapack_list_lock);
+        spin_lock(&cpd->written_lsid_lock);
+        cpd->prev_written_lsid = written_lsid;
+        spin_unlock(&cpd->written_lsid_lock);
         
         return 0;
 
@@ -87,14 +90,15 @@ int walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
          */
         
         u64 latest_lsid;
+	struct checkpoint_data *cpd = &wdev->cpd;
 
         spin_lock(&wdev->latest_lsid_lock);
         latest_lsid = wdev->latest_lsid;
         spin_unlock(&wdev->latest_lsid_lock);
         
-        spin_lock(&wdev->datapack_list_lock);
-        wdev->written_lsid = latest_lsid;
-        spin_unlock(&wdev->datapack_list_lock);
+        spin_lock(&cpd->written_lsid_lock);
+        cpd->written_lsid = latest_lsid;
+        spin_unlock(&cpd->written_lsid_lock);
 
         if (is_superblock_sync) {
                 LOGn("is_superblock_sync is on\n");
