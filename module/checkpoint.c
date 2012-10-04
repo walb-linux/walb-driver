@@ -13,12 +13,18 @@
 /**
  * Initialize checkpointing.
  */
-void init_checkpointing(struct walb_dev *wdev)
+void init_checkpointing(struct checkpoint_data *cpd, u64 written_lsid)
 {
-	ASSERT(wdev);
-        init_rwsem(&wdev->checkpoint_lock);
-        wdev->checkpoint_interval = WALB_DEFAULT_CHECKPOINT_INTERVAL;
-        wdev->checkpoint_state = CP_STOPPED;
+	ASSERT(cpd);
+	ASSERT(written_lsid != INVALID_LSID);
+	
+        init_rwsem(&cpd->lock);
+        cpd->interval = WALB_DEFAULT_CHECKPOINT_INTERVAL;
+        cpd->state = CP_STOPPED;
+
+	spin_lock_init(&cpd->written_lsid_lock);
+	cpd->written_lsid = written_lsid;
+	cpd->prev_written_lsid = written_lsid;
 }
 
 /**
@@ -34,34 +40,36 @@ void task_do_checkpointing(struct work_struct *work)
         
         struct delayed_work *dwork =
                 container_of(work, struct delayed_work, work);
-        struct walb_dev *wdev =
-                container_of(dwork, struct walb_dev, checkpoint_work);
+        struct checkpoint_data *cpd =
+                container_of(dwork, struct checkpoint_data, dwork);
+	struct walb_dev *wdev =
+		container_of(cpd, struct walb_dev, cpd);
 
-        LOGd("do_checkpointing called.\n");
+        LOGd("called.\n");
 
         /* Get written_lsid and prev_written_lsid. */
-        spin_lock(&wdev->datapack_list_lock);
-        written_lsid = wdev->written_lsid;
-        prev_written_lsid = wdev->prev_written_lsid;
-        spin_unlock(&wdev->datapack_list_lock);
+        spin_lock(&cpd->written_lsid_lock);
+        written_lsid = cpd->written_lsid;
+        prev_written_lsid = cpd->prev_written_lsid;
+        spin_unlock(&cpd->written_lsid_lock);
 
         /* Lock */
-        down_write(&wdev->checkpoint_lock);
-        interval = wdev->checkpoint_interval;
+        down_write(&cpd->lock);
+        interval = cpd->interval;
 
         ASSERT(interval > 0);
-        switch (wdev->checkpoint_state) {
+        switch (cpd->state) {
         case CP_STOPPING:
                 LOGd("do_checkpointing should stop.\n");
-                up_write(&wdev->checkpoint_lock);
+                up_write(&cpd->lock);
                 return;
         case CP_WAITING:
-                wdev->checkpoint_state = CP_RUNNING;
+                cpd->state = CP_RUNNING;
                 break;
         default:
                 BUG();
         }
-        up_write(&wdev->checkpoint_lock);
+        up_write(&cpd->lock);
 
         /* Write superblock */
         j0 = jiffies;
@@ -74,9 +82,9 @@ void task_do_checkpointing(struct work_struct *work)
                         atomic_set(&wdev->is_read_only, 1);
                         LOGe("superblock sync failed.\n");
 
-                        down_write(&wdev->checkpoint_lock);
-                        wdev->checkpoint_state = CP_STOPPED;
-                        up_write(&wdev->checkpoint_lock);
+                        down_write(&cpd->lock);
+                        cpd->state = CP_STOPPED;
+                        up_write(&cpd->lock);
                         return;
                 }
         }
@@ -96,104 +104,99 @@ void task_do_checkpointing(struct work_struct *work)
         }
         ASSERT(next_delay > 0);
         
-        down_write(&wdev->checkpoint_lock);
-        if (wdev->checkpoint_state == CP_RUNNING) {
+        down_write(&cpd->lock);
+        if (cpd->state == CP_RUNNING) {
                 /* Register delayed work for next time */
-                INIT_DELAYED_WORK(&wdev->checkpoint_work, task_do_checkpointing);
-                ret = queue_delayed_work(wq_misc_, &wdev->checkpoint_work, next_delay);
+                INIT_DELAYED_WORK(&cpd->dwork, task_do_checkpointing);
+                ret = queue_delayed_work(wq_misc_, &cpd->dwork, next_delay);
                 ASSERT(ret);
-                wdev->checkpoint_state = CP_WAITING;
+                cpd->state = CP_WAITING;
         } else {
                 /* Do nothing */
-                ASSERT(wdev->checkpoint_state == CP_STOPPING);
+                ASSERT(cpd->state == CP_STOPPING);
         }
-        up_write(&wdev->checkpoint_lock);
+        up_write(&cpd->lock);
 }
 
 /**
  * Start checkpointing.
  *
  * Do nothing if
- *   wdev->is_checkpoint_running is 1 or
- *   wdev->checkpoint_interval is 0.
+ *   cpd->interval is 0.
  */
-void start_checkpointing(struct walb_dev *wdev)
+void start_checkpointing(struct checkpoint_data *cpd)
 {
         unsigned long delay;
         unsigned long interval;
 
-        down_write(&wdev->checkpoint_lock);
-        if (wdev->checkpoint_state != CP_STOPPED) {
+        down_write(&cpd->lock);
+        if (cpd->state != CP_STOPPED) {
                 LOGw("Checkpoint state is not stopped.\n");
-                up_write(&wdev->checkpoint_lock);
+                up_write(&cpd->lock);
                 return;
         }
 
-        interval = wdev->checkpoint_interval;
+        interval = cpd->interval;
         if (interval == 0) { /* This is not error. */
                 LOGn("checkpoint_interval is 0.\n");
-                up_write(&wdev->checkpoint_lock);
+                up_write(&cpd->lock);
                 return;
         }
         ASSERT(interval > 0);
         
         delay = msecs_to_jiffies(interval);
         ASSERT(delay > 0);
-        INIT_DELAYED_WORK(&wdev->checkpoint_work, task_do_checkpointing);
+        INIT_DELAYED_WORK(&cpd->dwork, task_do_checkpointing);
 
-        queue_delayed_work(wq_misc_, &wdev->checkpoint_work, delay);
-        wdev->checkpoint_state = CP_WAITING;
+        queue_delayed_work(wq_misc_, &cpd->dwork, delay);
+        cpd->state = CP_WAITING;
         LOGd("state change to CP_WAITING\n");
-        up_write(&wdev->checkpoint_lock);
+        up_write(&cpd->lock);
 }
 
 /**
  * Stop checkpointing.
- *
- * Do nothing if 
- *   wdev->is_checkpoint_running is not 1 or
- *   wdev->should_checkpoint_stop is not 0.
  */
-void stop_checkpointing(struct walb_dev *wdev)
+void stop_checkpointing(struct checkpoint_data *cpd)
 {
         int ret;
         u8 state;
 
-        down_write(&wdev->checkpoint_lock);
-        state = wdev->checkpoint_state;
+        down_write(&cpd->lock);
+        state = cpd->state;
         if (state != CP_WAITING && state != CP_RUNNING) {
                 LOGw("Checkpointing is not running.\n");
-                up_write(&wdev->checkpoint_lock);
+                up_write(&cpd->lock);
                 return;
         }
-        wdev->checkpoint_state = CP_STOPPING;
+        cpd->state = CP_STOPPING;
         LOGd("state change to CP_STOPPING\n");
-        up_write(&wdev->checkpoint_lock);
+        up_write(&cpd->lock);
 
         /* We must unlock before calling this to avoid deadlock. */
-        ret = cancel_delayed_work_sync(&wdev->checkpoint_work);
+        ret = cancel_delayed_work_sync(&cpd->dwork);
         LOGd("cancel_delayed_work_sync: %d\n", ret);
 
-        down_write(&wdev->checkpoint_lock);
-        wdev->checkpoint_state = CP_STOPPED;
+        down_write(&cpd->lock);
+        cpd->state = CP_STOPPED;
         LOGd("state change to CP_STOPPED\n");
-        up_write(&wdev->checkpoint_lock);
+        up_write(&cpd->lock);
 }
 
 /**
  * Get checkpoint interval
  *
- * @wdev walb device.
+ * @cpd checkpoint data.
  *
  * @return current checkpoint interval.
  */
-u32 get_checkpoint_interval(struct walb_dev *wdev)
+u32 get_checkpoint_interval(struct checkpoint_data *cpd)
 {
         u32 interval;
         
-        down_read(&wdev->checkpoint_lock);
-        interval = wdev->checkpoint_interval;
-        up_read(&wdev->checkpoint_lock);
+        down_read(&cpd->lock);
+        interval = cpd->interval;
+        up_read(&cpd->lock);
 
         return interval;
 }
@@ -201,17 +204,17 @@ u32 get_checkpoint_interval(struct walb_dev *wdev)
 /**
  * Set checkpoint interval.
  *
- * @wdev walb device.
+ * @cpd checkpoint data.
  * @val new checkpoint interval.
  */
-void set_checkpoint_interval(struct walb_dev *wdev, u32 val)
+void set_checkpoint_interval(struct checkpoint_data *cpd, u32 interval)
 {
-        down_write(&wdev->checkpoint_lock);
-        wdev->checkpoint_interval = val;
-        up_write(&wdev->checkpoint_lock);
+        down_write(&cpd->lock);
+        cpd->interval = interval;
+        up_write(&cpd->lock);
         
-        stop_checkpointing(wdev);
-        start_checkpointing(wdev);
+        stop_checkpointing(cpd);
+        start_checkpointing(cpd);
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

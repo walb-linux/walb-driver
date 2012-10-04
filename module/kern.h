@@ -12,9 +12,11 @@
 #include <linux/bio.h>
 #include <linux/spinlock.h>
 #include <linux/kernel.h>
+#include <linux/blkdev.h>
 
 #include "walb/log_device.h"
 #include "walb/sector.h"
+#include "checkpoint.h"
 #include "util.h"
 
 /**
@@ -35,12 +37,13 @@ extern struct workqueue_struct *wq_misc_;
  */
 #define WALB_MINORS	  16
 #define WALB_MINORS_SHIFT  4
-#define DEVNUM(kdevnum)	(MINOR(kdev_t_to_nr(kdevnum)) >> MINOR_SHIFT
+#define DEVNUM(kdevnum) ((MINOR(kdev_t_to_nr(kdevnum)) >> MINOR_SHIFT)
 
 /**
  * The internal representation of walb and walblog device.
  */
-struct walb_dev {
+struct walb_dev
+{
         u64 size;                       /* Device size in bytes */
         u8 *data;                       /* The data array */
         int users;                      /* How many users */
@@ -84,23 +87,12 @@ struct walb_dev {
         /* Spinlock for lsuper0 access.
            Irq handler must not lock this.
            Use spin_lock().
-         */
+	*/
         spinlock_t lsuper0_lock;
         /* Super sector of log device. */
         struct sector_data *lsuper0;
 
-        /* Log pack list.
-           Use spin_lock_irqsave(). */
-        /* spinlock_t logpack_list_lock; */
-        /* struct list_head logpack_list; */
-
-        /* Data pack list.
-           Use spin_lock() */
-        spinlock_t datapack_list_lock;
-        struct list_head datapack_list;
-        u64 written_lsid;
-        u64 prev_written_lsid; /* previously sync down lsid. */
-
+	/* Oldest lsid to manage log area overflow. */
         spinlock_t oldest_lsid_lock;
         u64 oldest_lsid;
 
@@ -111,38 +103,44 @@ struct walb_dev {
         struct request_queue *log_queue;
         struct gendisk *log_gd;
 
-        /*
-         * For checkpointing.
-         *
-         * start_checkpointing(): register handler.
-         * stop_checkpointing():  unregister handler.
-         * do_checkpointing():    checkpoint handler.
-         *
-         * checkpoint_lock is used to access 
-         *   checkpoint_interval,
-         *   checkpoint_state.
-         *
-         * checkpoint_work accesses are automatically
-         * serialized by checkpoint_state.
-         */
-        struct rw_semaphore checkpoint_lock;
-        u32 checkpoint_interval; /* [ms]. 0 means never do checkpointing. */
-        u8 checkpoint_state;
-        struct delayed_work checkpoint_work;
-
-
+	/*
+	 * For checkpointing.
+	 */
+	struct checkpoint_data cpd;
+	
         /*
          * For snapshotting.
          */
         struct snapshot_data *snapd;
+
+	/*
+	 * IO driver can use this.
+	 */
+	void *private_data;
 };
+
+/*******************************************************************************
+ * Static inline functions.
+ *******************************************************************************/
+
+/**
+ * Get walb device from request queue.
+ */
+static inline struct walb_dev* get_wdev_from_queue(struct request_queue *q)
+{
+	struct walb_dev *wdev;
+	
+	ASSERT(q);
+	wdev = (struct walb_dev *)q->queuedata;
+	return wdev;
+}
 
 /*******************************************************************************
  * Prototypes defined in walb.c
  *******************************************************************************/
 
 struct walb_dev* prepare_wdev(unsigned int minor,
-                              dev_t ldevt, dev_t ddevt, const char* name);
+			dev_t ldevt, dev_t ddevt, const char* name);
 void destroy_wdev(struct walb_dev *wdev);
 void register_wdev(struct walb_dev *wdev);
 void unregister_wdev(struct walb_dev *wdev);

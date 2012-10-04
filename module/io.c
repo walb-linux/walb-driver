@@ -13,6 +13,8 @@
  */
 void walb_make_request(struct request_queue *q, struct bio *bio)
 {
+	UNUSED struct walb_dev *wdev = get_wdev_from_queue(q);
+	
 	/* now editing */
 	bio_endio(bio, 0);
 }
@@ -28,7 +30,7 @@ void walb_make_request(struct request_queue *q, struct bio *bio)
  */
 void walblog_make_request(struct request_queue *q, struct bio *bio)
 {
-        struct walb_dev *wdev = q->queuedata;
+        struct walb_dev *wdev = get_wdev_from_queue(q);
         
         if (bio->bi_rw & WRITE) {
                 bio_endio(bio, -EIO);
