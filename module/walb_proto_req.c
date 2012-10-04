@@ -187,6 +187,9 @@ struct pdata
 					This will avoid decrease of
 					sequential write performance. */
 
+	atomic_t n_pending_req; /* Number of pending request(s).
+				   This will be used for exit. */
+
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	/**
 	 * All req_entry data may not keep reqe->bio_ent_list.
@@ -237,6 +240,9 @@ static struct treemap_memory_manager mmgr_;
 #define PDATA_STATE_READ_ONLY            0
 #define PDATA_STATE_SUBMIT_TASK_WORKING 1
 #define PDATA_STATE_WAIT_TASK_WORKING   2
+#define PDATA_STATE_FAILURE              3
+
+#define get_pdata_from_wdev(wdev) ((struct pdata *)wdev->private_data)
 
 /*******************************************************************************
  * Static functions prototype.
@@ -306,6 +312,9 @@ static bool writepack_add_req(
 	u64 ring_buffer_size, unsigned int max_logpack_pb, u64 *latest_lsidp,
 	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
 static bool is_flush_first_req_entry(struct list_head *req_ent_list);
+static struct req_entry* create_req_entry_inc(
+	struct request *req, struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
+static void destroy_req_entry_dec(struct req_entry *reqe);
 
 /* Workqueue tasks. */
 static void logpack_list_submit_task(struct work_struct *work);
@@ -647,6 +656,9 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	spin_lock_init(&pdata->logpack_wait_queue_lock);
 	INIT_LIST_HEAD(&pdata->logpack_submit_queue);
 	INIT_LIST_HEAD(&pdata->logpack_wait_queue);
+
+	/* Initialize n_pending_req. */
+	atomic_set(&pdata->n_pending_req, 0);
 	
         return true;
 
@@ -820,8 +832,26 @@ error:
 static void stop_dev(void)
 {
         unsigned int i = 0;
-        
-        wdev_stop(get_minor(i));
+	unsigned int minor;
+	struct wrapper_blk_dev *wdev;
+	struct pdata *pdata;
+
+	minor = get_minor(i);
+        wdev_stop(minor);
+	wdev = wdev_get(minor);
+	ASSERT(wdev);
+	pdata = get_pdata_from_wdev(wdev);
+	ASSERT(pdata);
+
+	/* Flush all pending IOs. */
+	set_bit(PDATA_STATE_FAILURE, &pdata->flags);
+	LOGn("n_pending_req %d\n", atomic_read(&pdata->n_pending_req));
+	while (atomic_read(&pdata->n_pending_req) > 0) {
+		LOGn("n_pending_req %d\n", atomic_read(&pdata->n_pending_req));
+		msleep(100);
+	}
+	flush_all_wq();
+	LOGn("n_pending_req %d\n", atomic_read(&pdata->n_pending_req));
 }
 
 /**
@@ -1174,7 +1204,7 @@ static void destroy_pack(struct pack *pack)
 	
 	list_for_each_entry_safe(reqe, next, &pack->req_ent_list, list) {
 		list_del(&reqe->list);
-		destroy_req_entry(reqe);
+		destroy_req_entry_dec(reqe);
 	}
 	if (pack->logpack_header_sector) {
 		sector_free(pack->logpack_header_sector);
@@ -1300,8 +1330,7 @@ static bool writepack_add_req(
 	ASSERT_PBS(pbs);
 	
 	pack = *wpackp;
-	
-	reqe = create_req_entry(req, wdev, gfp_mask);
+	reqe = create_req_entry_inc(req, wdev, gfp_mask);
 	if (!reqe) { goto error0; }
 
 	if (!pack) {
@@ -1364,7 +1393,7 @@ newpack:
 	goto fin;
 	
 error1:
-	destroy_req_entry(reqe);
+	destroy_req_entry_dec(reqe);
 error0:
 	LOGd_("failure end\n");
 	return false;
@@ -1391,6 +1420,37 @@ static bool is_flush_first_req_entry(struct list_head *req_ent_list)
 	} else {
 		return false;
 	}
+}
+
+/**
+ * Create a request entry and increment n_pending_req.
+ */
+static struct req_entry* create_req_entry_inc(
+	struct request *req, struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
+{
+	struct req_entry *reqe;
+
+	reqe = create_req_entry(req, wdev, gfp_mask);
+	if (!reqe) {
+		goto error0;
+	}
+	atomic_inc(&get_pdata_from_wdev(wdev)->n_pending_req);
+	return reqe;
+	
+error0:
+	return NULL;
+}
+
+/**
+ * Destroy a request entry and decrement n_pending_req.
+ */
+static void destroy_req_entry_dec(struct req_entry *reqe)
+{
+	struct pdata *pdata = get_pdata_from_wdev(reqe->wdev);
+
+	ASSERT(pdata);
+	destroy_req_entry(reqe);
+	atomic_dec(&pdata->n_pending_req);
 }
 
 /**
@@ -1776,7 +1836,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			/* Already the corresponding logpack is permanent. */
 			list_del(&reqe->list);
 			blk_end_request_all(req, 0);
-			destroy_req_entry(reqe);
+			destroy_req_entry_dec(reqe);
 		} else {
 			/* Create all related bio(s) by copying IO data. */
 			if (!create_bio_entry_list_copy(reqe, pdata->ddev)) {
@@ -1853,7 +1913,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 		LOGe("WalB changes device minor:%u to read-only mode.\n", wdev->minor);
 		blk_end_request_all(req, -EIO);
 		list_del(&reqe->list);
-		destroy_req_entry(reqe);
+		destroy_req_entry_dec(reqe);
 	}
 }
 #else /* WALB_FAST_ALGORITHM */
@@ -1894,7 +1954,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 			/* Already the corresponding logpack is permanent. */
 			list_del(&reqe->list);
 			blk_end_request_all(req, 0);
-			destroy_req_entry(reqe);
+			destroy_req_entry_dec(reqe);
 		} else {
 			/* Create all related bio(s). */
 			if (!create_bio_entry_list(reqe, pdata->ddev)) { goto failed0; }
@@ -1930,7 +1990,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 		set_read_only_mode(pdata);
 		blk_end_request_all(req, -EIO);
 		list_del(&reqe->list);
-		destroy_req_entry(reqe);
+		destroy_req_entry_dec(reqe);
 	}
 }
 #endif /* WALB_FAST_ALGORITHM */
@@ -2031,7 +2091,7 @@ static void logpack_list_gc_task(struct work_struct *work)
 				c++;
 				goto retry;
 			}
-			destroy_req_entry(reqe);
+			destroy_req_entry_dec(reqe);
 		}
 		ASSERT(list_empty(&wpack->req_ent_list));
 		ASSERT(list_empty(&wpack->bio_ent_list));
@@ -2282,7 +2342,7 @@ error0:
 	blk_end_request_all(reqe->req, -EIO);
 fin:
 	ASSERT(list_empty(&reqe->bio_ent_list));
-	destroy_req_entry(reqe);
+	destroy_req_entry_dec(reqe);
 }
 #else /* WALB_FAST_ALGORITHM */
 /**
@@ -2323,7 +2383,7 @@ error0:
 	blk_end_request_all(reqe->req, -EIO);
 fin:
 	ASSERT(list_empty(&reqe->bio_ent_list));
-	destroy_req_entry(reqe);
+	destroy_req_entry_dec(reqe);
 }
 #endif /* WALB_FAST_ALGORITHM */
 
@@ -3204,6 +3264,9 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	if (!test_bit(0, &wdev->is_started)) {
 		goto error0;
 	}
+	if (test_bit(PDATA_STATE_FAILURE, &pdata->flags)) {
+		goto error0;
+	}
 
 	INIT_LIST_HEAD(&wpack_list);
 	
@@ -3237,7 +3300,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 			if (!ret) { goto req_error; }
 		} else {
 			/* Read request */
-			reqe = create_req_entry(req, wdev, GFP_ATOMIC);
+			reqe = create_req_entry_inc(req, wdev, GFP_ATOMIC);
 			if (!reqe) { goto req_error; }
 			INIT_WORK(&reqe->work, read_req_task);
 			queue_work(wq_read_, &reqe->work);
