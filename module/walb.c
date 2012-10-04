@@ -806,7 +806,7 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
         LOGd("snapshot offset range: [%"PRIu64",%"PRIu64").\n",
                  snapshot_begin_pb, snapshot_end_pb);
         wdev->snapd = snapshot_data_create
-                (wdev->ldev, snapshot_begin_pb, snapshot_end_pb, GFP_KERNEL);
+                (wdev->ldev, snapshot_begin_pb, snapshot_end_pb);
         if (wdev->snapd == NULL) {
                 LOGe("snapshot_data_create() failed.\n");
                 goto error2;

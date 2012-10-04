@@ -64,17 +64,17 @@
  */
 #define for_each_snapshot_record(i, rec, sect)                          \
         for (i = 0;                                                     \
-             i < get_max_n_records_in_snapshot_sector((sect)->size) &&             \
+             i < get_max_n_records_in_snapshot_sector((sect)->size) &&	\
                      ({ rec = &get_snapshot_sector                      \
                                      (sect)->record[i]; 1; });          \
-             i ++)
+             i++)
 
 #define for_each_snapshot_record_const(i, rec, sect)                    \
         for (i = 0;                                                     \
-             i < get_max_n_records_in_snapshot_sector((sect)->size) &&             \
+             i < get_max_n_records_in_snapshot_sector((sect)->size) &&	\
                      ({ rec = &get_snapshot_sector_const                \
                                      (sect)->record[i]; 1; });          \
-             i ++)
+             i++)
 
 
 /*******************************************************************************
@@ -378,7 +378,8 @@ static inline int is_alloc_snapshot_record(
         int nr, const struct sector_data *sect)
 {
         ASSERT(sect);
-        ASSERT(0 <= nr && nr < 64);
+        ASSERT(0 <= nr);
+	ASSERT(nr < 64);
         
         return test_u64bits(nr, &get_snapshot_sector_const(sect)->bitmap);
 }

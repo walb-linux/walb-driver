@@ -50,21 +50,22 @@ struct snapshot_sector_control
         int state;
 
         /* Raw image of snapshot sector.
-           If state is SNAPSHOT_SECTOR_CONTROL_FREE,
+           If the state is SNAPSHOT_SECTOR_CONTROL_FREE,
            this must be NULL, else this must be not NULL. */
         struct sector_data *sector;
 };
 
 /**
  * Records and indexes of all snapshots for a walb device
- * can be accessible from this data.
+ * can be accessed from this data.
  */
 struct snapshot_data
 {
         /* Lock to access all data in the struct. */
         struct rw_semaphore lock;
         
-        /* All sectors exist in start_offset <= offset < end_offset. */
+        /* All sectors exist in start_offset <= offset < end_offset.
+	   [physical block]. */
         u64 start_offset;
         u64 end_offset;
 
@@ -74,7 +75,8 @@ struct snapshot_data
         /* Sector size (physical block size). */
         u32 sector_size;
 
-        /* Next snapshot id for record allocation. */
+        /* Next snapshot id for record allocation.
+	   This will be simply incremented per allocation. */
         u32 next_snapshot_id;
         
         /* Image of sectors.
@@ -101,7 +103,8 @@ struct snapshot_data
  * Iterative over snapshot sectors.
  *
  * @off snapshot sector offset (u64).
- * @ctl pointer to snapshot sector control.
+ * @ctl pointer to snapshot sector control
+ *   (struct snapshot_sector_control *).
  * @snapd pointer to snapshot data.
  */
 #define for_each_snapshot_sector(off, ctl, snapd)		\
@@ -116,8 +119,7 @@ struct snapshot_data
  */
 /* Create/destroy snapshot data structure. */
 struct snapshot_data* snapshot_data_create(
-        struct block_device *bdev,
-        u64 start_offset, u64 end_offset, gfp_t gfp_mask);
+        struct block_device *bdev, u64 start_offset, u64 end_offset);
 void snapshot_data_destroy(struct snapshot_data *snapd);
 
 /* Initialize/finalize snapshot data structure. */
