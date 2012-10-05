@@ -158,10 +158,49 @@ int snapshot_list_range(struct snapshot_data *snapd,
 int snapshot_list(struct snapshot_data *snapd,
 		struct walb_snapshot_record *buf, size_t buf_size);
 
-/* Lock operations. We use a big lock. */
-void snapshot_read_lock(struct snapshot_data *snapd);
-void snapshot_read_unlock(struct snapshot_data *snapd);
-void snapshot_write_lock(struct snapshot_data *snapd);
-void snapshot_write_unlock(struct snapshot_data *snapd);
+/*******************************************************************************
+ * Lock operations. We use a big lock.
+ *******************************************************************************/
+
+/**
+ * Big read lock of snapshot data.
+ */
+static inline void snapshot_read_lock(struct snapshot_data *snapd)
+{
+	ASSERT(snapd);
+	might_sleep();
+	down_read(&snapd->lock);
+}
+
+/**
+ * Big read unlock of snapshot data.
+ */
+static inline void snapshot_read_unlock(struct snapshot_data *snapd)
+{
+	ASSERT(snapd);
+	might_sleep();
+	up_read(&snapd->lock);
+}
+
+/**
+ * Big write lock of snapshot data.
+ */
+static inline void snapshot_write_lock(struct snapshot_data *snapd)
+{
+	ASSERT(snapd);
+	might_sleep();
+	down_write(&snapd->lock);
+}
+
+/**
+ * Big write unlock of snapshot data.
+ */
+static inline void snapshot_write_unlock(struct snapshot_data *snapd)
+{
+	ASSERT(snapd);
+	might_sleep();
+	up_write(&snapd->lock);
+}
+
 
 #endif /* WALB_SNAPSHOT_H_KERNEL */
