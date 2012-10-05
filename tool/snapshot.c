@@ -54,7 +54,7 @@ static struct sector_data* get_sector_snapshot_data_u(
 /**
  * Print snapshot record for debug.
  */
-void print_snapshot_record(const walb_snapshot_record_t* snap_rec)
+void print_snapshot_record(const struct walb_snapshot_record* snap_rec)
 {
         ASSERT(snap_rec != NULL);
         PRINT_D_SNAPSHOT_RECORD(snap_rec);
@@ -63,7 +63,7 @@ void print_snapshot_record(const walb_snapshot_record_t* snap_rec)
 /**
  * print snapshot sector for debug.
  */
-void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_size)
+void print_snapshot_sector(const struct walb_snapshot_sector* snap_sect, u32 sector_size)
 {
         printf("checksum: %u\n", snap_sect->checksum);
 
@@ -93,7 +93,7 @@ void print_snapshot_sector(const walb_snapshot_sector_t* snap_sect, u32 sector_s
  * @return true in success, or false.
  */
 bool write_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
-                           walb_snapshot_sector_t* snap_sect, u32 idx)
+			struct walb_snapshot_sector* snap_sect, u32 idx)
 {
         ASSERT(fd >= 0);
         ASSERT(super_sect != NULL);
@@ -133,7 +133,7 @@ bool write_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
  * @return true in success, or false.
  */
 bool read_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
-                          walb_snapshot_sector_t* snap_sect, u32 idx)
+			struct walb_snapshot_sector* snap_sect, u32 idx)
 {
         ASSERT(fd >= 0);
         ASSERT(super_sect != NULL);
@@ -151,7 +151,7 @@ bool read_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
         u8 *sector_buf = (u8 *)snap_sect;
         u64 off = get_metadata_offset_2(super_sect) + idx;
         if (! read_sector(fd, sector_buf, sect_sz, off) ||
-            checksum(sector_buf, sect_sz) != 0) {
+		checksum(sector_buf, sect_sz) != 0) {
                 return false;
         }
         return true;
@@ -226,7 +226,7 @@ void initialize_snapshot_data_u(struct snapshot_data_u *snapd)
         
         int sect_i, rec_i;
         struct sector_data *sect;
-        walb_snapshot_record_t *rec;
+        struct walb_snapshot_record *rec;
 
         for_each_snapshot_record_in_snapd(rec_i, rec, sect_i, sect, snapd) {
 
@@ -253,7 +253,7 @@ void clear_snapshot_data_u(struct snapshot_data_u *snapd)
         ASSERT(snapd);
 
         int rec_i, sect_i;
-        walb_snapshot_record_t *rec;
+        struct walb_snapshot_record *rec;
         struct sector_data *sect;
 
         for_each_snapshot_sector(sect_i, sect, snapd) {
@@ -273,8 +273,8 @@ bool is_valid_snaphsot_data_u(struct snapshot_data_u* snapd)
         struct sector_data *sect;
 
         if (! (snapd &&
-               snapd->fd > 0 &&
-               __is_valid_super_sector(snapd->super, get_sector_size(snapd)))) {
+			snapd->fd > 0 &&
+			__is_valid_super_sector(snapd->super, get_sector_size(snapd)))) {
                 return false;
         }
 
@@ -304,8 +304,8 @@ bool read_sector_snapshot_data_u(struct snapshot_data_u *snapd, int idx)
         
         return read_snapshot_sector
                 (snapd->fd, snapd->super,
-                 get_snapshot_sector(get_sector_snapshot_data_u(snapd, idx)),
-                 idx);
+			get_snapshot_sector(get_sector_snapshot_data_u(snapd, idx)),
+			idx);
 }
 
 /**
@@ -346,8 +346,8 @@ bool write_sector_snapshot_data_u(struct snapshot_data_u *snapd, int idx)
         
         return write_snapshot_sector
                 (snapd->fd, snapd->super,
-                 get_snapshot_sector(get_sector_snapshot_data_u(snapd, idx)),
-                 idx);
+			get_snapshot_sector(get_sector_snapshot_data_u(snapd, idx)),
+			idx);
 }
 
 /**
@@ -380,7 +380,7 @@ bool write_all_sectors_snapshot_data_u(struct snapshot_data_u *snapd)
  *
  */
 bool snapshot_add(struct snapshot_data_u *snapd,
-                  const char *name, u64 lsid, u64 timestamp)
+		const char *name, u64 lsid, u64 timestamp)
 {
         /* not yet implemented. */
         return false;
@@ -418,7 +418,7 @@ struct walb_snapshot_record* snapshot_get(
  *
  */
 int snapshot_n_records_range(const struct snapshot_data_u *snapd,
-                             u64 lsid0, u64 lsid1)
+			u64 lsid0, u64 lsid1)
 {
         /* not yet implemented */
         return -1;
@@ -448,7 +448,7 @@ int snapshot_list_range(const struct snapshot_data_u *snapd,
  *
  */
 int snapshot_list(const struct snapshot_data_u *snapd,
-                  struct walb_snapshot_record **rec_ary_p, size_t ary_size)
+		struct walb_snapshot_record **rec_ary_p, size_t ary_size)
 {
         /* not yet implemented */
         return -1;

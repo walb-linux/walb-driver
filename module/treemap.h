@@ -29,8 +29,8 @@
 /**
  * Tree node.
  */
-struct tree_node {
-
+struct tree_node
+{
         struct rb_node node;
         u64 key;
         unsigned long val;
@@ -39,8 +39,8 @@ struct tree_node {
 /**
  * Tree cell head for multimap.
  */
-struct tree_cell_head {
-
+struct tree_cell_head
+{
         struct hlist_head head;
         u64 key;
 };
@@ -49,7 +49,8 @@ struct tree_cell_head {
  * Tree cell for multimap.
  *
  * This data structre is created by @multimap_add()
- * and deleted by @multimap_del() or @multimap_del_key().
+ * and deleted by @multimap_del(), @multimap_del_key(),
+ * or @multimap_cursor_del().
  * Do not allocate/deallocate by yourself.
  */
 struct tree_cell
@@ -93,7 +94,8 @@ struct multimap
 /**
  * Map cursor state.
  */
-enum {
+enum
+{
         MAP_CURSOR_BEGIN = 1,
         MAP_CURSOR_END,
         MAP_CURSOR_DATA, /* Cursor indicate a key-value pair. */
@@ -103,7 +105,8 @@ enum {
 /**
  * Map search flag.
  */
-enum {
+enum
+{
         MAP_SEARCH_BEGIN = 1, /* Begin, ignore the key. */
         MAP_SEARCH_END, /* End, ignore the key. */
         MAP_SEARCH_EQ, /* Equal to the key. */
@@ -187,6 +190,7 @@ int map_cursor_begin(struct map_cursor *cursor);
 int map_cursor_end(struct map_cursor *cursor);
 int map_cursor_is_begin(struct map_cursor *cursor);
 int map_cursor_is_end(struct map_cursor *cursor);
+int map_cursor_is_data(struct map_cursor *cursor);
 int map_cursor_is_valid(struct map_cursor *cursor);
 void map_cursor_copy(struct map_cursor *dst, struct map_cursor *src);
 unsigned long map_cursor_val(const struct map_cursor *cursor);
@@ -233,6 +237,7 @@ int multimap_cursor_begin(struct multimap_cursor *cursor);
 int multimap_cursor_end(struct multimap_cursor *cursor);
 int multimap_cursor_is_begin(struct multimap_cursor *cursor);
 int multimap_cursor_is_end(struct multimap_cursor *cursor);
+int multimap_cursor_is_data(struct multimap_cursor *cursor);
 int multimap_cursor_is_valid(struct multimap_cursor *cursor);
 void multimap_cursor_copy(
 	struct multimap_cursor *dst, struct multimap_cursor *src);

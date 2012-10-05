@@ -318,10 +318,10 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
 
         /* Prepare snapshot sectors
            Bitmap data will be all 0. */
-        walb_snapshot_sector_t *snap_sectp;
+        struct walb_snapshot_sector *snap_sectp;
         ASSERT(sizeof(*snap_sectp) <= (size_t)physical_bs);
 
-        snap_sectp = (walb_snapshot_sector_t *)alloc_sector_zero(physical_bs);
+        snap_sectp = (struct walb_snapshot_sector *)alloc_sector_zero(physical_bs);
         if (snap_sectp == NULL) {
                 goto error0;
         }
@@ -728,7 +728,7 @@ bool do_create_snapshot(const config_t *cfg)
         LOGd("name: %s\n", name);
         
         /* Prepare control data. */
-        walb_snapshot_record_t record;
+        struct walb_snapshot_record record;
         record.lsid = INVALID_LSID;
         record.timestamp = (u64)timestamp;
         record.snapshot_id = INVALID_SNAPSHOT_ID;
@@ -736,7 +736,7 @@ bool do_create_snapshot(const config_t *cfg)
         
         struct walb_ctl ctl = {
                 .command = WALB_IOCTL_SNAPSHOT_CREATE,
-                .u2k = { .buf_size = sizeof(walb_snapshot_record_t),
+                .u2k = { .buf_size = sizeof(struct walb_snapshot_record),
                          .buf = (u8 *)&record },
                 .k2u = { .buf_size = 0 },
         };

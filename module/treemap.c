@@ -1170,14 +1170,19 @@ int map_cursor_is_end(struct map_cursor *cursor)
 }
 
 /**
+ * Check cursor is data.
+ */
+int map_cursor_is_data(struct map_cursor *cursor)
+{
+	return (cursor && cursor->state == MAP_CURSOR_DATA);
+}
+
+/**
  * Check cursor is valid.
  */
 int map_cursor_is_valid(struct map_cursor *cursor)
 {
-        return ((cursor != NULL &&
-			(cursor->state == MAP_CURSOR_BEGIN ||
-				cursor->state == MAP_CURSOR_END   ||
-				cursor->state == MAP_CURSOR_DATA)) ? 1 : 0);
+	return is_valid_map_cursor(cursor);
 }
 
 /**
@@ -2195,23 +2200,34 @@ int multimap_cursor_end(struct multimap_cursor *cursor)
 }
 
 /**
- * Check cursor is begin.
+ * Check cursor indicates begin.
  *
  * @return Non-zero if begin, or 0.
  */
 int multimap_cursor_is_begin(struct multimap_cursor *cursor)
 {
-        return (cursor != NULL && map_cursor_is_begin(&cursor->curt));
+        return (cursor && map_cursor_is_begin(&cursor->curt));
 }
 
 /**
- * Check cursor is end.
+ * Check cursor indicates end.
  *
  * @return Non-zero if end, or 0.
  */
 int multimap_cursor_is_end(struct multimap_cursor *cursor)
 {
-        return (cursor != NULL && map_cursor_is_end(&cursor->curt));
+        return (cursor && map_cursor_is_end(&cursor->curt));
+}
+
+/**
+ * Check cursor indicates data.
+ *
+ * RETURN:
+ *   Non-zero if data, or 0.
+ */
+int multimap_cursor_is_data(struct multimap_cursor *cursor)
+{
+	return (cursor && map_cursor_is_data(&cursor->curt));
 }
 
 /**
@@ -2221,8 +2237,7 @@ int multimap_cursor_is_end(struct multimap_cursor *cursor)
  */
 int multimap_cursor_is_valid(struct multimap_cursor *cursor)
 {
-        ASSERT_MULTIMAP_CURSOR(cursor);
-        return map_cursor_is_valid(&cursor->curt);
+	return is_valid_multimap_cursor(cursor);
 }
 
 /**
