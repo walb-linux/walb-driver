@@ -17,16 +17,16 @@
 
 void simple_blk_req_request_fn(struct request_queue *q)
 {
-        struct request *req;
-        
-        while ((req = blk_fetch_request(q)) != NULL) {
-                __blk_end_request_all(req, 0);
-        }
+	struct request *req;
+	
+	while ((req = blk_fetch_request(q)) != NULL) {
+		__blk_end_request_all(req, 0);
+	}
 }
 
 bool pre_register(void)
 {
-        return true;
+	return true;
 }
 
 void pre_unregister(void)
@@ -39,7 +39,7 @@ void post_unregister(void)
 
 bool create_private_data(struct simple_blk_dev *sdev)
 {
-        return true;
+	return true;
 }
 void destroy_private_data(struct simple_blk_dev *sdev)
 {

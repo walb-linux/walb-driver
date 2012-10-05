@@ -22,14 +22,14 @@
  */
 void TEST_capacity_pb()
 {
-    ASSERT(capacity_pb(512, 0) == 0);
-    ASSERT(capacity_pb(4096, 0) == 0);
-    ASSERT(capacity_pb(512, 3) == 3);
-    ASSERT(capacity_pb(512, 4) == 4);
-    ASSERT(capacity_pb(512, 5) == 5);
-    ASSERT(capacity_pb(4096, 23) == 3);
-    ASSERT(capacity_pb(4096, 24) == 3);
-    ASSERT(capacity_pb(4096, 25) == 4);
+	ASSERT(capacity_pb(512, 0) == 0);
+	ASSERT(capacity_pb(4096, 0) == 0);
+	ASSERT(capacity_pb(512, 3) == 3);
+	ASSERT(capacity_pb(512, 4) == 4);
+	ASSERT(capacity_pb(512, 5) == 5);
+	ASSERT(capacity_pb(4096, 23) == 3);
+	ASSERT(capacity_pb(4096, 24) == 3);
+	ASSERT(capacity_pb(4096, 25) == 4);
 }
 
 /**
@@ -39,21 +39,21 @@ void TEST_capacity_pb()
  */
 void test(int pbs)
 {
-    int fd = open(LOG_DEV_FILE, O_RDWR | O_TRUNC | O_CREAT, 0755);
-    ASSERT(fd > 0);
+	int fd = open(LOG_DEV_FILE, O_RDWR | O_TRUNC | O_CREAT, 0755);
+	ASSERT(fd > 0);
 
-    logpack_t *logpack = alloc_logpack(pbs, 1);
-    ASSERT(logpack);
+	logpack_t *logpack = alloc_logpack(pbs, 1);
+	ASSERT(logpack);
     
-    /* now editing */
+	/* now editing */
 }
 
 int main()
 {
-    TEST_capacity_pb();
+	TEST_capacity_pb();
     
-    test(512);
-    test(4096);
-    test(4096);
-    return 0;
+	test(512);
+	test(4096);
+	test(4096);
+	return 0;
 }

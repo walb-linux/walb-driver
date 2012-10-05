@@ -14,10 +14,10 @@
 
 static int __init test_init(void)
 {
-        LOGe("BUILD_DATE %s\n", BUILD_DATE);
-        
-        test_sizlist();
-        return -1;
+	LOGe("BUILD_DATE %s\n", BUILD_DATE);
+	
+	test_sizlist();
+	return -1;
 }
 
 static void test_exit(void)

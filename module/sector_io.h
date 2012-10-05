@@ -21,19 +21,19 @@
 /**
  * BIO wrapper flag.
  */
-#define WALB_BIO_INIT    0
-#define WALB_BIO_END     1
-#define WALB_BIO_ERROR   2
+#define WALB_BIO_INIT	 0
+#define WALB_BIO_END	 1
+#define WALB_BIO_ERROR	 2
 
 /**
  * Bio wrapper with completion.
  */
 struct walb_bio_with_completion
 {
-        struct bio *bio;
-        struct completion wait;
-        int status;
-        struct list_head list;
+	struct bio *bio;
+	struct completion wait;
+	int status;
+	struct list_head list;
 };
 
 /*******************************************************************************
@@ -64,8 +64,8 @@ bool walb_write_super_sector(
 static inline struct walb_super_sector*
 get_super_sector(struct sector_data *sect)
 {
-        ASSERT_SECTOR_DATA(sect);
-        return (struct walb_super_sector *)(sect->data);
+	ASSERT_SECTOR_DATA(sect);
+	return (struct walb_super_sector *)(sect->data);
 }
 
 /**
@@ -74,8 +74,8 @@ get_super_sector(struct sector_data *sect)
 static inline struct walb_logpack_header*
 get_logpack_header(struct sector_data *sect)
 {
-        ASSERT_SECTOR_DATA(sect);
-        return (struct walb_logpack_header *)(sect->data);
+	ASSERT_SECTOR_DATA(sect);
+	return (struct walb_logpack_header *)(sect->data);
 }
 
 #endif /* WALB_SECTOR_IO_H_KERNEL */

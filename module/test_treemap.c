@@ -31,36 +31,36 @@ static void finalize(void)
 
 static int __init test_treemap_init(void)
 {
-        printk(KERN_INFO "test_treemap_init begin\n");
+	printk(KERN_INFO "test_treemap_init begin\n");
 
 	if (!initialize()) {
 		printk(KERN_ERR "initialize() failed.\n");
 		goto error;
 	}
-        
-        /* Treemap test for debug. */
-        if (map_test()) {
-                printk(KERN_ERR "map_test() failed.\n");
-                goto error;
-        }
-        if (map_cursor_test()) {
-                printk(KERN_ERR "map_cursor_test() failed.\n");
-                goto error;
-        }
-        if (multimap_test()) {
-                printk(KERN_ERR "multimap_test() failed.\n");
-                goto error;
-        }
-        if (multimap_cursor_test()) {
-                printk(KERN_ERR "multimap_cursor_test() failed.\n");
-                goto error;
-        }
+	
+	/* Treemap test for debug. */
+	if (map_test()) {
+		printk(KERN_ERR "map_test() failed.\n");
+		goto error;
+	}
+	if (map_cursor_test()) {
+		printk(KERN_ERR "map_cursor_test() failed.\n");
+		goto error;
+	}
+	if (multimap_test()) {
+		printk(KERN_ERR "multimap_test() failed.\n");
+		goto error;
+	}
+	if (multimap_cursor_test()) {
+		printk(KERN_ERR "multimap_cursor_test() failed.\n");
+		goto error;
+	}
 	
 	finalize();
-        printk(KERN_INFO "test_treemap_init end\n");
+	printk(KERN_INFO "test_treemap_init end\n");
 	
 error:
-        return -1;
+	return -1;
 }
 
 static void test_treemap_exit(void)

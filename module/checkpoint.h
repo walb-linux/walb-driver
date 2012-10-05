@@ -20,18 +20,18 @@
  *
  * Permitted state transition:
  *   stoppped -> waiting @start_checkpionting()
- *   waiting -> running  @task_do_checkpointing()
- *   running -> waiting  @task_do_checkpointing()
- *   waiting -> stopped  @task_do_checkpointing()
+ *   waiting -> running	 @task_do_checkpointing()
+ *   running -> waiting	 @task_do_checkpointing()
+ *   waiting -> stopped	 @task_do_checkpointing()
  *   waiting -> stopping @stop_checkpointing()
  *   running -> stopping @stop_checkpointing()
  *   stopping -> stopped @stop_checkpointing()
  */
 enum {
-        CP_STOPPED = 0,
-        CP_STOPPING,
-        CP_WAITING,
-        CP_RUNNING,
+	CP_STOPPED = 0,
+	CP_STOPPING,
+	CP_WAITING,
+	CP_RUNNING,
 };
 
 /**
@@ -39,28 +39,28 @@ enum {
  */
 struct checkpoint_data
 {
-        /*
-         * checkpoint_lock is used to access 
-         *   checkpoint_interval,
-         *   checkpoint_state.
-         */
-        struct rw_semaphore lock;
+	/*
+	 * checkpoint_lock is used to access 
+	 *   checkpoint_interval,
+	 *   checkpoint_state.
+	 */
+	struct rw_semaphore lock;
 
 	/*
 	 * Checkpointing interval [ms].
 	 * 0 means the device does not do checkpointing.
 	 */
-        u32 interval;
+	u32 interval;
 
 	/*
 	 * CP_XXX
 	 */
-        u8 state;
+	u8 state;
 
 	/*
 	 * checkpoint_work accesses are automatically
-         * serialized by checkpoint_state.
-         */
+	 * serialized by checkpoint_state.
+	 */
 	struct delayed_work dwork;
 
 	/*

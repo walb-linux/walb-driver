@@ -14,9 +14,9 @@
 
 struct worker_data
 {
-        struct task_struct *tsk; /* kthread task_struct. */
-        wait_queue_head_t wait_q; /* Wait queue. */
-        unsigned long flags;
+	struct task_struct *tsk; /* kthread task_struct. */
+	wait_queue_head_t wait_q; /* Wait queue. */
+	unsigned long flags;
 	struct completion done;
 
 	void (*run)(void *data); /* task pointer. */

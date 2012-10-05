@@ -47,7 +47,7 @@ static int __init test_init(void)
 	struct completion done;
 	struct my_work mwork0, mwork1;
 
-        LOGn("BUILD_DATE %s\n", BUILD_DATE);
+	LOGn("BUILD_DATE %s\n", BUILD_DATE);
 	
 	init_completion(&done);
 	mwork0.id = 0;
@@ -63,7 +63,7 @@ static int __init test_init(void)
 	
 	flush_workqueue(system_wq);
 	
-        return -1;
+	return -1;
 }
 
 static void test_exit(void)

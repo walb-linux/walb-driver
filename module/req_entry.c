@@ -68,7 +68,7 @@ struct req_entry* create_req_entry(
 	reqe->req = req;
 	INIT_LIST_HEAD(&reqe->bio_ent_list);
 	init_completion(&reqe->done);
-        
+	
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	init_completion(&reqe->overlapping_done);
 	reqe->n_overlapping = -1;

@@ -956,7 +956,7 @@ void destroy_bio_entry(struct bio_entry *bioe)
 	struct bio *bio = NULL;
 	
 	LOGd_("destroy_bio_entry() begin.\n");
-        
+	
 	if (!bioe) {
 		return;
 	}

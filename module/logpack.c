@@ -15,41 +15,41 @@
  *
  */
 void walb_logpack_header_print(const char *level,
-                               struct walb_logpack_header *lhead)
+			struct walb_logpack_header *lhead)
 {
-        int i;
-        printk("%s*****logpack header*****\n"
-               "checksum: %08x\n"
-               "n_records: %u\n"
-               "n_padding: %u\n"
-               "total_io_size: %u\n"
-               "logpack_lsid: %llu",
-               level,
-               lhead->checksum,
-               lhead->n_records,
-               lhead->n_padding,
-               lhead->total_io_size,
-               lhead->logpack_lsid);
-        for (i = 0; i < lhead->n_records; i ++) {
-                printk("%srecord %d\n"
-                       "  checksum: %08x\n"
-                       "  lsid: %llu\n"
-                       "  lsid_local: %u\n"
-                       "  is_padding: %u\n"
-                       "  io_size: %u\n"
-                       "  is_exist: %u\n"
-                       "  offset: %llu\n",
-                       level, i,
-                       lhead->record[i].checksum,
-                       lhead->record[i].lsid,
-                       lhead->record[i].lsid_local,
-                       lhead->record[i].is_padding,
-                       lhead->record[i].io_size,
-                       lhead->record[i].is_exist,
-                       lhead->record[i].offset);
-                printk("%slogpack lsid: %llu\n", level,
-                       lhead->record[i].lsid - lhead->record[i].lsid_local);
-        }
+	int i;
+	printk("%s*****logpack header*****\n"
+		"checksum: %08x\n"
+		"n_records: %u\n"
+		"n_padding: %u\n"
+		"total_io_size: %u\n"
+		"logpack_lsid: %llu",
+		level,
+		lhead->checksum,
+		lhead->n_records,
+		lhead->n_padding,
+		lhead->total_io_size,
+		lhead->logpack_lsid);
+	for (i = 0; i < lhead->n_records; i ++) {
+		printk("%srecord %d\n"
+			"  checksum: %08x\n"
+			"  lsid: %llu\n"
+			"  lsid_local: %u\n"
+			"  is_padding: %u\n"
+			"  io_size: %u\n"
+			"  is_exist: %u\n"
+			"  offset: %llu\n",
+			level, i,
+			lhead->record[i].checksum,
+			lhead->record[i].lsid,
+			lhead->record[i].lsid_local,
+			lhead->record[i].is_padding,
+			lhead->record[i].io_size,
+			lhead->record[i].is_exist,
+			lhead->record[i].offset);
+		printk("%slogpack lsid: %llu\n", level,
+			lhead->record[i].lsid - lhead->record[i].lsid_local);
+	}
 }
 
 /**
@@ -61,7 +61,7 @@ void walb_logpack_header_print(const char *level,
  *   lhead->sector_type must be set correctly.
  * @logpack_lsid lsid of the log pack.
  * @req request to add. must be write and its size >= 0.
- *      size == 0 is permitted with flush requests only.
+ *	size == 0 is permitted with flush requests only.
  * @pbs physical block size.
  * @ring_buffer_size ring buffer size [physical block]
  *
@@ -174,7 +174,7 @@ error0:
  *   lhead->sector_type must be set correctly.
  * @logpack_lsid lsid of the log pack.
  * @bio bio to add. must be write and its size >= 0.
- *      size == 0 is permitted with flush requests only.
+ *	size == 0 is permitted with flush requests only.
  * @pbs physical block size.
  * @ring_buffer_size ring buffer size [physical block]
  *

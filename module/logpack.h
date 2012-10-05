@@ -23,7 +23,7 @@
  *******************************************************************************/
 
 void walb_logpack_header_print(const char *level,
-                               struct walb_logpack_header *lhead);
+			struct walb_logpack_header *lhead);
 bool walb_logpack_header_add_req(
 	struct walb_logpack_header *lhead,
 	struct request *req,

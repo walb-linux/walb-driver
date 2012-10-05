@@ -22,43 +22,43 @@
  * @n_snapshots number of snapshots to manage.
  */
 void test(int lbs, int pbs, u64 ddev_lb, u64 ldev_lb,
-          int n_snapshots, const char *name)
+	int n_snapshots, const char *name)
 {
-        struct sector_data *super_sect = sector_alloc(pbs);
-        ASSERT(super_sect);
-        init_super_sector(super_sect,
-                          lbs, pbs,
-                          ddev_lb, ldev_lb, n_snapshots,
-                          name);
-        ASSERT_SUPER_SECTOR(super_sect);
-        print_super_sector(super_sect);
+	struct sector_data *super_sect = sector_alloc(pbs);
+	ASSERT(super_sect);
+	init_super_sector(super_sect,
+			lbs, pbs,
+			ddev_lb, ldev_lb, n_snapshots,
+			name);
+	ASSERT_SUPER_SECTOR(super_sect);
+	print_super_sector(super_sect);
 
-        int fd = open(LOG_DEV_FILE, O_RDWR | O_CREAT | O_TRUNC, 00775);
-        ASSERT(fd > 0);
+	int fd = open(LOG_DEV_FILE, O_RDWR | O_CREAT | O_TRUNC, 00775);
+	ASSERT(fd > 0);
 
-        bool ret;
-        ret = write_super_sector(fd, super_sect);
-        ASSERT(ret);
-        print_super_sector(super_sect);
+	bool ret;
+	ret = write_super_sector(fd, super_sect);
+	ASSERT(ret);
+	print_super_sector(super_sect);
 
-        ret = read_super_sector(fd, super_sect);
-        ASSERT(ret);
-        print_super_sector(super_sect);
+	ret = read_super_sector(fd, super_sect);
+	ASSERT(ret);
+	print_super_sector(super_sect);
 
-        close(fd);
+	close(fd);
 }
 
 int main()
 {
-        int ddev_lb = DATA_DEV_SIZE / 512;
-        int ldev_lb = LOG_DEV_SIZE / 512;
-        
-        test(512, 512, ddev_lb, ldev_lb, 1000, "");
-        test(512, 4096, ddev_lb, ldev_lb, 1000, NULL);
-        test(4096, 4096, ddev_lb, ldev_lb, 1000, "");
-        test(512, 512, ddev_lb, ldev_lb, 10000, "test_name");
+	int ddev_lb = DATA_DEV_SIZE / 512;
+	int ldev_lb = LOG_DEV_SIZE / 512;
+	
+	test(512, 512, ddev_lb, ldev_lb, 1000, "");
+	test(512, 4096, ddev_lb, ldev_lb, 1000, NULL);
+	test(4096, 4096, ddev_lb, ldev_lb, 1000, "");
+	test(512, 512, ddev_lb, ldev_lb, 10000, "test_name");
 
-        return 0;
+	return 0;
 }
 
 /* end of file. */

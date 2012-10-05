@@ -35,22 +35,22 @@
  */
 static inline int sprint_hex(char *str, int str_size, const void* data, int size)
 {
-        int i;
-        char tmp[4];
+	int i;
+	char tmp[4];
 
-        ASSERT(data);
-        ASSERT(size >= 0);        
-        ASSERT(str);
-        ASSERT(str_size > 0);
-        ASSERT(str_size >= size * 3 + 1);
+	ASSERT(data);
+	ASSERT(size >= 0);	  
+	ASSERT(str);
+	ASSERT(str_size > 0);
+	ASSERT(str_size >= size * 3 + 1);
 
-        str[0] = '\0';
-        for (i = 0; i < size; i ++ ) {
-                if (str_size < (i + 1) * 3 + 1) { return 0; }
-                sprintf(tmp, "%02X ", ((u8 *)data)[i]);
-                strcat(str, tmp);
-        }
-        return 1;
+	str[0] = '\0';
+	for (i = 0; i < size; i ++ ) {
+		if (str_size < (i + 1) * 3 + 1) { return 0; }
+		sprintf(tmp, "%02X ", ((u8 *)data)[i]);
+		strcat(str, tmp);
+	}
+	return 1;
 }
 
 /**
@@ -62,7 +62,7 @@ static inline int sprint_hex(char *str, int str_size, const void* data, int size
  */
 static inline void sprint_uuid(char *str, int str_size, const u8 *uuid)
 {
-        sprint_hex(str, str_size, uuid, 16);
+	sprint_hex(str, str_size, uuid, 16);
 }
 
 #endif /* WALB_UTIL_H */

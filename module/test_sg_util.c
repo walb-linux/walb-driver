@@ -16,26 +16,26 @@
 
 static int __init test_init(void)
 {
-        int i;
-        
-        LOGe("BUILD_DATE %s\n", BUILD_DATE);
-        
-        test_scatterlist(8, 32);
-        test_scatterlist(8, 4096);
-        test_scatterlist(128, 32);
-        test_scatterlist(128, 4096);
-        test_scatterlist(256, 4096);
-        test_scatterlist(1024, 4096);
+	int i;
+	
+	LOGe("BUILD_DATE %s\n", BUILD_DATE);
+	
+	test_scatterlist(8, 32);
+	test_scatterlist(8, 4096);
+	test_scatterlist(128, 32);
+	test_scatterlist(128, 4096);
+	test_scatterlist(256, 4096);
+	test_scatterlist(1024, 4096);
 
-        for (i = 0; i < 100; i ++) {
-                test_sg_pos();
-        }
-        
-        for (i = 0; i < 100; i ++) {
-                test_sg_util();
-        }
-        
-        return -1;
+	for (i = 0; i < 100; i ++) {
+		test_sg_pos();
+	}
+	
+	for (i = 0; i < 100; i ++) {
+		test_sg_util();
+	}
+	
+	return -1;
 }
 
 static void test_exit(void)

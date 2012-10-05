@@ -296,7 +296,7 @@ static struct test_work* create_test_work(gfp_t gfp_mask)
 
 static void destroy_test_work(struct test_work *test_work)
 {
-        FREE(test_work);
+	FREE(test_work);
 }
 
 
@@ -323,7 +323,7 @@ static int __init test_init(void)
 	unsigned int n_threads = 4;
 	unsigned int n_tasks = 1000000 / n_threads;
 	
-        init_workqueue();
+	init_workqueue();
 
 	run_benchmark(n_threads, "single", benchmark_single, n_tasks);
 	run_benchmark(n_threads, "normal", benchmark_normal, n_tasks);
@@ -331,9 +331,9 @@ static int __init test_init(void)
 	run_benchmark(n_threads, "normal_m", benchmark_normal_mutex, n_tasks);
 	malloc_and_free(n_tasks);
 	
-        fin_workqueue();
+	fin_workqueue();
 
-        return -1;
+	return -1;
 }
 
 static void test_exit(void)

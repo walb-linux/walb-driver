@@ -28,7 +28,7 @@
  * Maximum length of the device name.
  * This must include WALB_DIR_NAME, "/" and '\0' terminator.
  *
- * walb device file:    ("%s/%s",  WALB_DIR_NAME, name)
+ * walb device file:	("%s/%s",  WALB_DIR_NAME, name)
  * walblog device file: ("%s/L%s", WALB_DIR_NAME, name)
  */
 #define WALB_DEV_NAME_MAX_LEN (DISK_NAME_LEN - sizeof(WALB_DIR_NAME) - 3)
@@ -36,9 +36,9 @@
 /**
  * Identification to confirm sector type (u16).
  */
-#define SECTOR_TYPE_SUPER           0x0001
-#define SECTOR_TYPE_SNAPSHOT        0x0002
-#define SECTOR_TYPE_LOGPACK         0x0003
+#define SECTOR_TYPE_SUPER	     0x0001
+#define SECTOR_TYPE_SNAPSHOT	     0x0002
+#define SECTOR_TYPE_LOGPACK	     0x0003
 #define SECTOR_TYPE_WALBLOG_HEADER  0x0004
 
 /**

@@ -31,9 +31,9 @@
  */
 struct tree_node
 {
-        struct rb_node node;
-        u64 key;
-        unsigned long val;
+	struct rb_node node;
+	u64 key;
+	unsigned long val;
 };
 
 /**
@@ -41,8 +41,8 @@ struct tree_node
  */
 struct tree_cell_head
 {
-        struct hlist_head head;
-        u64 key;
+	struct hlist_head head;
+	u64 key;
 };
 
 /**
@@ -55,8 +55,8 @@ struct tree_cell_head
  */
 struct tree_cell
 {
-        struct hlist_node list;
-        unsigned long val;
+	struct hlist_node list;
+	unsigned long val;
 };
 
 /**
@@ -96,10 +96,10 @@ struct multimap
  */
 enum
 {
-        MAP_CURSOR_BEGIN = 1,
-        MAP_CURSOR_END,
-        MAP_CURSOR_DATA, /* Cursor indicate a key-value pair. */
-        MAP_CURSOR_INVALID,
+	MAP_CURSOR_BEGIN = 1,
+	MAP_CURSOR_END,
+	MAP_CURSOR_DATA, /* Cursor indicate a key-value pair. */
+	MAP_CURSOR_INVALID,
 };
 
 /**
@@ -107,13 +107,13 @@ enum
  */
 enum
 {
-        MAP_SEARCH_BEGIN = 1, /* Begin, ignore the key. */
-        MAP_SEARCH_END, /* End, ignore the key. */
-        MAP_SEARCH_EQ, /* Equal to the key. */
-        MAP_SEARCH_LT, /* Biggest one less than key. */
-        MAP_SEARCH_LE, /* Biggest one less than or equal to the key. */
-        MAP_SEARCH_GT, /* Smallest one grater than the key. */
-        MAP_SEARCH_GE, /* Smallest one grater than or equal to the key. */
+	MAP_SEARCH_BEGIN = 1, /* Begin, ignore the key. */
+	MAP_SEARCH_END, /* End, ignore the key. */
+	MAP_SEARCH_EQ, /* Equal to the key. */
+	MAP_SEARCH_LT, /* Biggest one less than key. */
+	MAP_SEARCH_LE, /* Biggest one less than or equal to the key. */
+	MAP_SEARCH_GT, /* Smallest one grater than the key. */
+	MAP_SEARCH_GE, /* Smallest one grater than or equal to the key. */
 };
 
 /**
@@ -124,11 +124,11 @@ enum
  */
 struct map_cursor
 {
-        struct map *map;
-        int state;
-        struct tree_node *prev;
-        struct tree_node *curr;
-        struct tree_node *next;
+	struct map *map;
+	int state;
+	struct tree_node *prev;
+	struct tree_node *curr;
+	struct tree_node *next;
 };
 
 /**
@@ -139,10 +139,10 @@ struct map_cursor
  */
 struct multimap_cursor
 {
-        struct map_cursor curt;
+	struct map_cursor curt;
 
-        struct tree_cell_head *head;
-        struct tree_cell *cell;
+	struct tree_cell_head *head;
+	struct tree_cell *cell;
 };
 
 /**
@@ -162,7 +162,7 @@ void finalize_treemap_memory_manager(struct treemap_memory_manager *mmgr);
  *
  * key: u64 value. Key must be unique in the tree.
  * val: unsigned long value that can be a pointer.
- *      Do not use TREEMAP_INVALID_VAL.
+ *	Do not use TREEMAP_INVALID_VAL.
  */
 struct map* map_create(gfp_t gfp_mask, struct treemap_memory_manager *mmgr);
 void map_init(struct map *tmap, struct treemap_memory_manager *mmgr);

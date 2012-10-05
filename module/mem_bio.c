@@ -38,14 +38,14 @@ static struct memblk_data* get_mdata_from_queue(struct request_queue *q);
  */
 static void log_bi_rw_flag(struct bio *bio)
 {
-        LOGd("bio bi_sector %"PRIu64" bi_rw %0lx bi_size %u bi_vcnt %hu\n",
-             (u64)bio->bi_sector, bio->bi_rw, bio->bi_size, bio->bi_vcnt);
-        LOGd("bi_rw: %s %s %s %s %s.\n",
-             (bio->bi_rw & REQ_WRITE ? "REQ_WRITE" : ""),
-             (bio->bi_rw & REQ_RAHEAD? "REQ_RAHEAD" : "") ,
-             (bio->bi_rw & REQ_FLUSH ? "REQ_FLUSH" : ""),
-             (bio->bi_rw & REQ_FUA ? "REQ_FUA" : ""),
-             (bio->bi_rw & REQ_DISCARD ? "REQ_DISCARD" : ""));
+	LOGd("bio bi_sector %"PRIu64" bi_rw %0lx bi_size %u bi_vcnt %hu\n",
+		(u64)bio->bi_sector, bio->bi_rw, bio->bi_size, bio->bi_vcnt);
+	LOGd("bi_rw: %s %s %s %s %s.\n",
+		(bio->bi_rw & REQ_WRITE ? "REQ_WRITE" : ""),
+		(bio->bi_rw & REQ_RAHEAD? "REQ_RAHEAD" : "") ,
+		(bio->bi_rw & REQ_FLUSH ? "REQ_FLUSH" : ""),
+		(bio->bi_rw & REQ_FUA ? "REQ_FUA" : ""),
+		(bio->bi_rw & REQ_DISCARD ? "REQ_DISCARD" : ""));
 }
 
 /**
@@ -55,36 +55,36 @@ static void log_bi_rw_flag(struct bio *bio)
  */
 static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
 {
-        int i;
-        sector_t sector;
-        u64 block_id;
-        UNUSED struct bio_vec *bvec;
-        u8 *buf;
-        unsigned int is_write;
-        unsigned int n_blk;
+	int i;
+	sector_t sector;
+	u64 block_id;
+	UNUSED struct bio_vec *bvec;
+	u8 *buf;
+	unsigned int is_write;
+	unsigned int n_blk;
 	unsigned long flags;
 
-        ASSERT(bio);
+	ASSERT(bio);
 
-        sector = bio->bi_sector;
-        block_id = (u64)sector;
+	sector = bio->bi_sector;
+	block_id = (u64)sector;
 
-        is_write = bio->bi_rw & REQ_WRITE;
-        
-        bio_for_each_segment(bvec, bio, i) {
-                ASSERT(bvec->bv_len % mdata->block_size == 0);
-                n_blk = bvec->bv_len / mdata->block_size;
+	is_write = bio->bi_rw & REQ_WRITE;
+	
+	bio_for_each_segment(bvec, bio, i) {
+		ASSERT(bvec->bv_len % mdata->block_size == 0);
+		n_blk = bvec->bv_len / mdata->block_size;
 
-                buf = (u8 *)bvec_kmap_irq(bvec, &flags);
-                if (is_write) {
-                        mdata_write_blocks(mdata, block_id, n_blk, buf);
-                } else {
-                        mdata_read_blocks(mdata, block_id, n_blk, buf);
-                }
-                block_id += n_blk;
-                flush_kernel_dcache_page(bvec->bv_page);
+		buf = (u8 *)bvec_kmap_irq(bvec, &flags);
+		if (is_write) {
+			mdata_write_blocks(mdata, block_id, n_blk, buf);
+		} else {
+			mdata_read_blocks(mdata, block_id, n_blk, buf);
+		}
+		block_id += n_blk;
+		flush_kernel_dcache_page(bvec->bv_page);
 		bvec_kunmap_irq((char *)buf, &flags);
-        }
+	}
 }
 
 /**
@@ -92,7 +92,7 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
  */
 static struct memblk_data* get_mdata_from_queue(struct request_queue *q)
 {
-        return (struct memblk_data *)sdev_get_from_queue(q)->private_data;
+	return (struct memblk_data *)sdev_get_from_queue(q)->private_data;
 }
 
 /*******************************************************************************
@@ -107,16 +107,16 @@ static struct memblk_data* get_mdata_from_queue(struct request_queue *q)
  */
 void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
 {
-        ASSERT(bio);
+	ASSERT(bio);
 #if 0
 	LOGn("bio %p rw %lu pos %"PRIu64" size %u\n",
 		bio, bio->bi_rw, (u64)bio->bi_sector, bio->bi_size);
 #endif
-        mdata_exec_bio(get_mdata_from_queue(q), bio);
+	mdata_exec_bio(get_mdata_from_queue(q), bio);
 #if 0
 	LOGn("bio_endio %p\n", bio);
 #endif
-        bio_endio(bio, 0);
+	bio_endio(bio, 0);
 }
 
 /**
@@ -129,27 +129,27 @@ void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
  */
 bool create_private_data(struct simple_blk_dev *sdev)
 {
-        struct memblk_data *mdata = NULL;
-        u64 capacity;
-        unsigned int block_size;
+	struct memblk_data *mdata = NULL;
+	u64 capacity;
+	unsigned int block_size;
 
-        ASSERT(sdev);
+	ASSERT(sdev);
 
-        capacity = sdev->capacity;
-        block_size = LOGICAL_BLOCK_SIZE;
-        mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr_);
-        
-        if (!mdata) {
-                goto error0;
-        }
-        sdev->private_data = (void *)mdata;
-        return true;
+	capacity = sdev->capacity;
+	block_size = LOGICAL_BLOCK_SIZE;
+	mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr_);
+	
+	if (!mdata) {
+		goto error0;
+	}
+	sdev->private_data = (void *)mdata;
+	return true;
 #if 0
 error1:
-        mdata_destroy(mdata);
+	mdata_destroy(mdata);
 #endif
 error0:
-        return false;
+	return false;
 }
 
 /**
@@ -162,8 +162,8 @@ error0:
  */
 void destroy_private_data(struct simple_blk_dev *sdev)
 {
-        ASSERT(sdev);
-        mdata_destroy(sdev->private_data);
+	ASSERT(sdev);
+	mdata_destroy(sdev->private_data);
 }
 
 /**

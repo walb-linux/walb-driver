@@ -63,11 +63,11 @@ static inline int is_valid_pbs(unsigned int pbs)
  */
 static inline unsigned int n_lb_in_pb(unsigned int pbs)
 {
-        unsigned int ret;
-        ASSERT_PBS(pbs);
-        ret = pbs / LOGICAL_BLOCK_SIZE;
-        ASSERT(ret > 0);
-        return ret;
+	unsigned int ret;
+	ASSERT_PBS(pbs);
+	ret = pbs / LOGICAL_BLOCK_SIZE;
+	ASSERT(ret > 0);
+	return ret;
 }
 
 /**
@@ -81,10 +81,10 @@ static inline unsigned int n_lb_in_pb(unsigned int pbs)
  */
 static inline u64 capacity_pb(unsigned int pbs, u64 capacity_lb)
 {
-        unsigned int n_lb;
-        ASSERT_PBS(pbs);
-        n_lb = n_lb_in_pb(pbs);
-        return ((capacity_lb + n_lb - 1) / n_lb);
+	unsigned int n_lb;
+	ASSERT_PBS(pbs);
+	n_lb = n_lb_in_pb(pbs);
+	return ((capacity_lb + n_lb - 1) / n_lb);
 }
 
 /**
@@ -92,8 +92,8 @@ static inline u64 capacity_pb(unsigned int pbs, u64 capacity_lb)
  */
 static inline u64 addr_pb(unsigned int pbs, u64 addr_lb)
 {
-        ASSERT_PBS(pbs);
-        return (addr_lb / (u64)n_lb_in_pb(pbs));
+	ASSERT_PBS(pbs);
+	return (addr_lb / (u64)n_lb_in_pb(pbs));
 }
 
 /**
@@ -101,7 +101,7 @@ static inline u64 addr_pb(unsigned int pbs, u64 addr_lb)
  */
 static inline u64 off_in_pb(unsigned int pbs, u64 addr_lb)
 {
-        ASSERT_PBS(pbs);
+	ASSERT_PBS(pbs);
 	return (addr_lb % (u64)n_lb_in_pb(pbs));
 }
 
@@ -110,8 +110,8 @@ static inline u64 off_in_pb(unsigned int pbs, u64 addr_lb)
  */
 static inline u64 addr_lb(unsigned int pbs, u64 addr_pb)
 {
-        ASSERT_PBS(pbs);
-        return (addr_pb * (u64)n_lb_in_pb(pbs));
+	ASSERT_PBS(pbs);
+	return (addr_pb * (u64)n_lb_in_pb(pbs));
 }
 
 /**

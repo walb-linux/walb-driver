@@ -23,18 +23,18 @@ void sg_free_pages(struct sg_table *sgt);
 
 /* Copy data of a scatterlist to another. */
 bool sg_copy_to_sg_offset(
-        struct sg_table *dst, unsigned int dst_offset,
-        const struct sg_table *src, unsigned int src_offset,
-        unsigned int size);
+	struct sg_table *dst, unsigned int dst_offset,
+	const struct sg_table *src, unsigned int src_offset,
+	unsigned int size);
 #define sg_copy_to_sg(dst, src, size) sg_copy_to_sg_offset(dst, 0, src, 0, size)
 
 /* Copy from/to a buffer to/from a scatterlist. */
 bool sg_copy_to_buffer_offset(
-        const struct sg_table *sgt, unsigned int offset, 
-        u8 *buf, unsigned int size);
+	const struct sg_table *sgt, unsigned int offset, 
+	u8 *buf, unsigned int size);
 bool sg_copy_from_buffer_offset(
-        struct sg_table *sgt, unsigned int offset, 
-        const u8 *buf, unsigned int size);
+	struct sg_table *sgt, unsigned int offset, 
+	const u8 *buf, unsigned int size);
 
 /* Test original scatterlist functionalities. */
 UNUSED
