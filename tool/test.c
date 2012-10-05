@@ -4,10 +4,10 @@
 
 int main()
 {
-        bool a;
-        
-        printf("%d\n", getpagesize());
-        printf("%d %d %d\n", true, false, a);
-        
-        return 0;
+	bool a;
+	
+	printf("%d\n", getpagesize());
+	printf("%d %d %d\n", true, false, a);
+	
+	return 0;
 }

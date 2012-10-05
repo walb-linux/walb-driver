@@ -27,11 +27,11 @@ struct bio_entry
 	struct bio *bio; /* must be NULL if bio->bi_cnt is 0 (and deallocated). */
 	sector_t pos; /* [logical block] */
 	unsigned int len; /* keep (bi_size << 9) at initialization,
-				 because bio->bi_size will be 0 after endio. */
+			     because bio->bi_size will be 0 after endio. */
 	int error; /* bio error status. */
 	struct completion done; /* If is_splitted is true and bio_orig is NULL,
 				   this completion never be called. */
-	bool is_splitted; /* If true, the bio is splitted one.  */
+	bool is_splitted; /* If true, the bio is splitted one.	*/
 	struct bio *bio_orig; /* If non-NULL, is_splitted is always true and
 				 this is the original bio
 				 while bio member is the first splitted one.

@@ -14,35 +14,35 @@
 
 
 bool read_logpack_header_from_wldev(int fd,
-                                    const struct walb_super_sector* super_sectp,
-                                    u64 lsid, struct walb_logpack_header* lhead);
+				const struct walb_super_sector* super_sectp,
+				u64 lsid, struct walb_logpack_header* lhead);
 
 bool read_logpack_data_from_wldev(int fd,
-                                  const struct walb_super_sector* super_sectp,
-                                  const struct walb_logpack_header* lhead,
-                                  u8* buf, size_t bufsize);
+				const struct walb_super_sector* super_sectp,
+				const struct walb_logpack_header* lhead,
+				u8* buf, size_t bufsize);
 
 void print_logpack_header(const struct walb_logpack_header* lhead);
 bool is_valid_logpack_header_with_checksum(
-        const struct walb_logpack_header* lhead, int physical_bs);
+	const struct walb_logpack_header* lhead, int physical_bs);
 
 bool read_logpack_header(int fd, int physical_bs,
-                         struct walb_logpack_header* lhead);
+			struct walb_logpack_header* lhead);
 bool read_logpack_data(int fd,
-                       int logical_bs, int physical_bs,
-                       const struct walb_logpack_header* lhead,
-                       u8* buf, size_t bufsize);
+		int logical_bs, int physical_bs,
+		const struct walb_logpack_header* lhead,
+		u8* buf, size_t bufsize);
 bool write_logpack_header(int fd, int physical_bs,
-                          const struct walb_logpack_header* lhead);
+			const struct walb_logpack_header* lhead);
 
 bool redo_logpack(int fd,
-                  int logical_bs, int physical_bs,
-                  const struct walb_logpack_header* lhead,
-                  const u8* buf);
+		int logical_bs, int physical_bs,
+		const struct walb_logpack_header* lhead,
+		const u8* buf);
 
 bool write_invalid_logpack_header(int fd,
-                                  const struct walb_super_sector* super_sectp,
-                                  int physical_bs, u64 lsid);
+				const struct walb_super_sector* super_sectp,
+				int physical_bs, u64 lsid);
 
 /*******************************************************************************
  * New logpack interface.
@@ -55,11 +55,11 @@ bool write_invalid_logpack_header(int fd,
  */
 typedef struct logpack {
 
-    struct sector_data *head_sect;
-    struct sector_data_array* data_sects;
+	struct sector_data *head_sect;
+	struct sector_data_array* data_sects;
 
-    int logical_bs;
-    int physical_bs;
+	int logical_bs;
+	int physical_bs;
 
 } logpack_t;
 
@@ -82,8 +82,8 @@ static inline u64 logpack_get_lsid(logpack_t* logpack);
  */
 struct walb_logpack_header* create_random_logpack(int logical_bs, int physical_bs, const u8* buf);
 bool logpack_add_io_request(logpack_t* logpack,
-                            u64 offset, const u8* data, int size,
-                            bool is_padding);
+			u64 offset, const u8* data, int size,
+			bool is_padding);
 
 
 /**
@@ -91,11 +91,11 @@ bool logpack_add_io_request(logpack_t* logpack,
  */
 static inline struct walb_logpack_header* logpack_get_header(logpack_t* logpack)
 {
-    ASSERT(logpack != NULL);
-    ASSERT(logpack->head_sect != NULL);
-    ASSERT(logpack->head_sect->data != NULL);
+	ASSERT(logpack != NULL);
+	ASSERT(logpack->head_sect != NULL);
+	ASSERT(logpack->head_sect->data != NULL);
 
-    return (struct walb_logpack_header *)logpack->head_sect->data;
+	return (struct walb_logpack_header *)logpack->head_sect->data;
 }
 
 /**
@@ -103,8 +103,8 @@ static inline struct walb_logpack_header* logpack_get_header(logpack_t* logpack)
  */
 static inline u64 logpack_get_lsid(logpack_t* logpack)
 {
-    ASSERT_LOGPACK(logpack, false);
-    return logpack_get_header(logpack)->logpack_lsid;
+	ASSERT_LOGPACK(logpack, false);
+	return logpack_get_header(logpack)->logpack_lsid;
 }
 
 #endif /* WALB_LOGPACK_USER_H */

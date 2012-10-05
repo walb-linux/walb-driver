@@ -55,27 +55,27 @@ bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset);
 bool sector_read(int fd, u64 offset, struct sector_data *sect);
 bool sector_write(int fd, u64 offset, const struct sector_data *sect);
 bool sector_array_read(int fd, u64 offset,
-                       struct sector_data_array *sect_ary,
-                       int start_idx, int n_sectors);
+		struct sector_data_array *sect_ary,
+		int start_idx, int n_sectors);
 bool sector_array_write(int fd, u64 offset,
-                        const struct sector_data_array *sect_ary,
-                        int start_idx, int n_sectors);
+			const struct sector_data_array *sect_ary,
+			int start_idx, int n_sectors);
 
 /* Obsolute super sector operations. */
 void __init_super_sector(struct walb_super_sector* super_sect,
-                         int physical_bs, int logical_bs,
-                         u64 ddev_lb, u64 ldev_lb, int n_snapshots,
-                         const char *name);
+			int physical_bs, int logical_bs,
+			u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+			const char *name);
 void __print_super_sector(const struct walb_super_sector* super_sect);
 bool __read_super_sector(int fd, struct walb_super_sector* super_sect,
-                         u32 sector_size, u32 n_snapshots);
+			u32 sector_size, u32 n_snapshots);
 bool __write_super_sector(int fd, const struct walb_super_sector* super_sect);
 
 /* New super sector operations. */
 void init_super_sector(struct sector_data *sect,
-                       int physical_bs, int logical_bs,
-                       u64 ddev_lb, u64 ldev_lb, int n_snapshots,
-                       const char *name);
+		int physical_bs, int logical_bs,
+		u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+		const char *name);
 void print_super_sector(const struct sector_data *sect);
 bool read_super_sector(int fd, struct sector_data *sect);
 bool write_super_sector(int fd, const struct sector_data *sect);

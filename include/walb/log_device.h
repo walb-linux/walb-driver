@@ -31,7 +31,7 @@
  *   }
  *   for i in [0...N_LOG_RECORD_IN_SECTOR] {
  *     if (header[i].is_exist) {
- *       DATA u8 io_data[header[i].size * SECTOR_SIZE]
+ *	 DATA u8 io_data[header[i].size * SECTOR_SIZE]
  *     }
  *   }
  * }
@@ -40,11 +40,11 @@
  * PROPERTY2: sizeof(log_header) is SECTOR_SIZE.
  * PROPERTY3: offset of i'th io_data is walb_lsid_to_offset(header[i].lsid).
  * PROPERTY4: offset of log_pack is
- *            walb_lsid_to_offset(header[i].lsid - header[i].lsid_local) for all i.
+ *	      walb_lsid_to_offset(header[i].lsid - header[i].lsid_local) for all i.
  * PROPERTY5: sizeof(log_pack)
- *            log_pack_size = 1 + sum(header[i].size for all i).
+ *	      log_pack_size = 1 + sum(header[i].size for all i).
  * PROPERTY6: next lsid.
- *            next_lsid = lsid + log_pack_size + 1.
+ *	      next_lsid = lsid + log_pack_size + 1.
  */
 
 /*
@@ -63,12 +63,12 @@
  *
  *
  * PROPERTY1: Offset of super0
- *            n_sector_in_page = PAGE_SIZE / SECTOR_SIZE.
- *            offset_super0 = n_sector_in_page.
+ *	      n_sector_in_page = PAGE_SIZE / SECTOR_SIZE.
+ *	      offset_super0 = n_sector_in_page.
  * PROPERTY2: Offset of super1
- *            offset_super1 = offset_super0 + n_sector_in_page + super0.snapshot_metadata_size.
+ *	      offset_super1 = offset_super0 + n_sector_in_page + super0.snapshot_metadata_size.
  * PROPERTY3: sizeof(log_device_meta_data)
- *            offset_super1 + n_sector_in_page.
+ *	      offset_super1 + n_sector_in_page.
  */
 
 /*
@@ -82,15 +82,15 @@
  * }
  *
  * PROPERTY1: Offset of ring_buffer
- *            offset_ring_buffer = sizeof(log_device_meta_data).
+ *	      offset_ring_buffer = sizeof(log_device_meta_data).
  * PROPERTY2: Offset of of a given lsid is walb_lsid_to_offset(lsid).
  *
  *   u64 walb_lsid_to_offset(u64 lsid) {
- *       return offset_ring_buffer + (lsid % super0.ring_buffer_size);
+ *	 return offset_ring_buffer + (lsid % super0.ring_buffer_size);
  *   }
  *
  * PROPERTY3: Offset of log_pack of a given lsid and lsid_local.
- *            offset_log_pack = walb_lsid_to_offset(lsid) - lsid_local.
+ *	      offset_log_pack = walb_lsid_to_offset(lsid) - lsid_local.
  */
 
 /**
@@ -103,15 +103,15 @@
  */
 static inline int get_metadata_size(int sector_size, int n_snapshots)
 {
-        int n_sectors;
-        int t;
-        
-        ASSERT(PAGE_SIZE % sector_size == 0 &&
-               PAGE_SIZE >= sector_size);
-        
-        t = get_max_n_records_in_snapshot_sector(sector_size);
-        n_sectors = (n_snapshots + t - 1) / t;
-        return n_sectors;
+	int n_sectors;
+	int t;
+	
+	ASSERT(PAGE_SIZE % sector_size == 0 &&
+		PAGE_SIZE >= sector_size);
+	
+	t = get_max_n_records_in_snapshot_sector(sector_size);
+	n_sectors = (n_snapshots + t - 1) / t;
+	return n_sectors;
 }
 
 /**
@@ -123,13 +123,13 @@ static inline int get_metadata_size(int sector_size, int n_snapshots)
 static inline u64 get_super_sector0_offset(int sector_size)
 {
 #ifdef __KERNEL__
-        if (PAGE_SIZE % sector_size != 0) {
-                printk(KERN_ERR "PAGE_SIZE: %lu sector_size %d\n",
-                       PAGE_SIZE, sector_size);
-        }
+	if (PAGE_SIZE % sector_size != 0) {
+		printk(KERN_ERR "PAGE_SIZE: %lu sector_size %d\n",
+			PAGE_SIZE, sector_size);
+	}
 #endif
-        ASSERT(PAGE_SIZE % sector_size == 0);
-        return PAGE_SIZE/sector_size; /* skip reserved page */
+	ASSERT(PAGE_SIZE % sector_size == 0);
+	return PAGE_SIZE/sector_size; /* skip reserved page */
 }
 
 /**
@@ -140,7 +140,7 @@ static inline u64 get_super_sector0_offset(int sector_size)
  */
 static inline u64 get_metadata_offset(int sector_size)
 {
-        return get_super_sector0_offset(sector_size) + 1;
+	return get_super_sector0_offset(sector_size) + 1;
 }
 
 /**
@@ -152,8 +152,8 @@ static inline u64 get_metadata_offset(int sector_size)
  */
 static inline u64 get_super_sector1_offset(int sector_size, int n_snapshots)
 {
-        return  get_metadata_offset(sector_size) +
-                get_metadata_size(sector_size, n_snapshots);
+	return	get_metadata_offset(sector_size) +
+		get_metadata_size(sector_size, n_snapshots);
 }
 
 /**
@@ -166,7 +166,7 @@ static inline u64 get_super_sector1_offset(int sector_size, int n_snapshots)
  */
 static inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
 {
-        return  get_super_sector1_offset(sector_size, n_snapshots) + 1;
+	return	get_super_sector1_offset(sector_size, n_snapshots) + 1;
 }
 
 
@@ -175,8 +175,8 @@ static inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
  */
 static inline u64 get_super_sector0_offset_2(const struct walb_super_sector* super_sect)
 {
-        ASSERT(super_sect != NULL);
-        return get_super_sector0_offset(super_sect->physical_bs);
+	ASSERT(super_sect != NULL);
+	return get_super_sector0_offset(super_sect->physical_bs);
 }
 
 /**
@@ -184,8 +184,8 @@ static inline u64 get_super_sector0_offset_2(const struct walb_super_sector* sup
  */
 static inline u64 get_metadata_offset_2(const struct walb_super_sector* super_sect)
 {
-        ASSERT(super_sect != NULL);
-        return get_metadata_offset(super_sect->physical_bs);
+	ASSERT(super_sect != NULL);
+	return get_metadata_offset(super_sect->physical_bs);
 }
 
 /**
@@ -193,9 +193,9 @@ static inline u64 get_metadata_offset_2(const struct walb_super_sector* super_se
  */
 static inline u64 get_super_sector1_offset_2(const struct walb_super_sector* super_sect)
 {
-        ASSERT(super_sect != NULL);
-        return  get_metadata_offset(super_sect->physical_bs) +
-                super_sect->snapshot_metadata_size;
+	ASSERT(super_sect != NULL);
+	return	get_metadata_offset(super_sect->physical_bs) +
+		super_sect->snapshot_metadata_size;
 }
 
 /**
@@ -205,8 +205,8 @@ static inline u64 get_super_sector1_offset_2(const struct walb_super_sector* sup
  */
 static inline u64 get_ring_buffer_offset_2(const struct walb_super_sector* super_sect)
 {
-        ASSERT(super_sect != NULL);
-        return  get_super_sector1_offset_2(super_sect) + 1;
+	ASSERT(super_sect != NULL);
+	return	get_super_sector1_offset_2(super_sect) + 1;
 }
 
 
@@ -218,8 +218,8 @@ static inline u64 get_ring_buffer_offset_2(const struct walb_super_sector* super
 static inline u64 get_offset_of_lsid_2
 (const struct walb_super_sector* super_sect, u64 lsid)
 {
-        return  get_ring_buffer_offset_2(super_sect) +
-                (lsid % super_sect->ring_buffer_size);
+	return	get_ring_buffer_offset_2(super_sect) +
+		(lsid % super_sect->ring_buffer_size);
 }
 
 #endif /* WALB_LOG_DEVICE_H */

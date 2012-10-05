@@ -15,7 +15,7 @@
  */
 void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
 {
-        bio_endio(bio, 0); /* do nothing */
+	bio_endio(bio, 0); /* do nothing */
 }
 
 /**
@@ -23,7 +23,7 @@ void simple_blk_bio_make_request(struct request_queue *q, struct bio *bio)
  */
 bool create_private_data(struct simple_blk_dev *sdev)
 {
-        return true;
+	return true;
 }
 
 /**
@@ -45,7 +45,7 @@ void customize_sdev(struct simple_blk_dev *sdev)
  */
 bool pre_register(void)
 {
-        return true;
+	return true;
 }
 
 /**

@@ -18,8 +18,8 @@
  */
 static inline int test_u64bits(int nr, const u64 *bits)
 {
-        ASSERT(0 <= nr && nr < 64);
-        return (((*bits) & ((u64)(1) << nr)) != 0);
+	ASSERT(0 <= nr && nr < 64);
+	return (((*bits) & ((u64)(1) << nr)) != 0);
 }
 
 /**
@@ -27,8 +27,8 @@ static inline int test_u64bits(int nr, const u64 *bits)
  */
 static inline void set_u64bits(int nr, u64 *bits)
 {
-        ASSERT(0 <= nr && nr < 64);
-        (*bits) |= ((u64)(1) << nr);
+	ASSERT(0 <= nr && nr < 64);
+	(*bits) |= ((u64)(1) << nr);
 }
 
 /**
@@ -36,8 +36,8 @@ static inline void set_u64bits(int nr, u64 *bits)
  */
 static inline void clear_u64bits(int nr, u64 *bits)
 {
-        ASSERT(0 <= nr && nr < 64);
-        (*bits) &= ~((u64)(1) << nr);
+	ASSERT(0 <= nr && nr < 64);
+	(*bits) &= ~((u64)(1) << nr);
 }
 
 #endif /* WALB_U64BITS_H */

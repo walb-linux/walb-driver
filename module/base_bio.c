@@ -70,81 +70,82 @@ static void set_workqueue_type(void);
 
 static unsigned int get_minor(unsigned int id)
 {
-        return (unsigned int)start_minor_ + id;
+	return (unsigned int)start_minor_ + id;
 }
 
 static bool register_alldevs(void)
 {
-        unsigned int i;
-        u64 capacity;
-        bool ret;
-        struct simple_blk_dev *sdev;
+	unsigned int i;
+	u64 capacity;
+	bool ret;
+	struct simple_blk_dev *sdev;
 
-        for (i = 0; i < n_devices_; i ++) {
-                capacity = sizlist_nth_size(device_size_list_str_, i)
-                        / LOGICAL_BLOCK_SIZE;
-                ASSERT(capacity > 0);
+	for (i = 0; i < n_devices_; i ++) {
+		capacity = sizlist_nth_size(device_size_list_str_, i)
+			/ LOGICAL_BLOCK_SIZE;
+		ASSERT(capacity > 0);
 
-                ret = sdev_register_with_bio(get_minor(i), capacity, physical_block_size_,
-					simple_blk_bio_make_request);
+		ret = sdev_register_with_bio(
+			get_minor(i), capacity, physical_block_size_,
+			simple_blk_bio_make_request);
 
-                if (!ret) {
-                        goto error;
-                }
-                sdev = sdev_get(get_minor(i));
-                if (!create_private_data(sdev)) {
-                        goto error;
-                }
-                customize_sdev(sdev);
-        }
-        return true;
+		if (!ret) {
+			goto error;
+		}
+		sdev = sdev_get(get_minor(i));
+		if (!create_private_data(sdev)) {
+			goto error;
+		}
+		customize_sdev(sdev);
+	}
+	return true;
 error:
-        unregister_alldevs();
-        return false;
+	unregister_alldevs();
+	return false;
 }
 
 static void unregister_alldevs(void)
 {
-        unsigned int i;
-        struct simple_blk_dev *sdev;
-        
-        ASSERT(n_devices_ > 0);
-        
-        for (i = 0; i < n_devices_; i ++) {
+	unsigned int i;
+	struct simple_blk_dev *sdev;
+	
+	ASSERT(n_devices_ > 0);
+	
+	for (i = 0; i < n_devices_; i ++) {
 
-                sdev = sdev_get(get_minor(i));
-                if (sdev) {
-                        destroy_private_data(sdev);
-                }
-                sdev_unregister(get_minor(i));
-        }
+		sdev = sdev_get(get_minor(i));
+		if (sdev) {
+			destroy_private_data(sdev);
+		}
+		sdev_unregister(get_minor(i));
+	}
 }
 
 static bool start_alldevs(void)
 {
-        unsigned int i;
+	unsigned int i;
 
-        ASSERT(n_devices_ > 0);
-        for (i = 0; i < n_devices_; i ++) {
-                if (!sdev_start(get_minor(i))) {
-                        goto error;
-                }
-        }
-        return true;
+	ASSERT(n_devices_ > 0);
+	for (i = 0; i < n_devices_; i ++) {
+		if (!sdev_start(get_minor(i))) {
+			goto error;
+		}
+	}
+	return true;
 error:
-        stop_alldevs();
-        return false;
+	stop_alldevs();
+	return false;
 }
 
 
 static void stop_alldevs(void)
 {
-        unsigned int i;
-        ASSERT(n_devices_ > 0);
-        
-        for (i = 0; i < n_devices_; i ++) {
-                sdev_stop(get_minor(i));
-        }
+	unsigned int i;
+	ASSERT(n_devices_ > 0);
+	
+	for (i = 0; i < n_devices_; i ++) {
+		sdev_stop(get_minor(i));
+	}
 }
 
 static void set_workqueue_type(void)
@@ -182,35 +183,35 @@ static int __init simple_blk_init(void)
 		goto error0;
 	}
 	
-        n_devices_ = sizlist_length(device_size_list_str_);
-        ASSERT(n_devices_ > 0);
-        ASSERT(start_minor_ >= 0);
+	n_devices_ = sizlist_length(device_size_list_str_);
+	ASSERT(n_devices_ > 0);
+	ASSERT(start_minor_ >= 0);
 
-        pre_register();
-        
-        if (!register_alldevs()) {
-                goto error0;
-        }
-        if (!start_alldevs()) {
-                goto error1;
-        }
+	pre_register();
+	
+	if (!register_alldevs()) {
+		goto error0;
+	}
+	if (!start_alldevs()) {
+		goto error1;
+	}
 
-        return 0;
+	return 0;
 #if 0
 error2:
-        stop_alldevs();
+	stop_alldevs();
 #endif
 error1:
-        unregister_alldevs();
+	unregister_alldevs();
 error0:
-        return -1;
+	return -1;
 }
 
 static void simple_blk_exit(void)
 {
-        stop_alldevs();
-        unregister_alldevs();
-        post_unregister();
+	stop_alldevs();
+	unregister_alldevs();
+	post_unregister();
 }
 
 module_init(simple_blk_init);

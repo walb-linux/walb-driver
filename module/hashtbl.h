@@ -31,12 +31,12 @@
  * Hash cell.
  */
 struct hash_cell {
-        struct hlist_node list;
-        
-        int key_size;
-        u8 *key;
-        
-        unsigned long val;
+	struct hlist_node list;
+	
+	int key_size;
+	u8 *key;
+	
+	unsigned long val;
 };
 
 /**
@@ -44,12 +44,12 @@ struct hash_cell {
  */
 struct hash_tbl {
 
-        int bucket_size;
-        struct hlist_head *bucket; /* managed memory */
-        /* buckets[i] must be hlist head of hash_cell. */
+	int bucket_size;
+	struct hlist_head *bucket; /* managed memory */
+	/* buckets[i] must be hlist head of hash_cell. */
 
-        /* n_bits to store 0 to bucket_size - 1. */
-        unsigned int n_bits;
+	/* n_bits to store 0 to bucket_size - 1. */
+	unsigned int n_bits;
 };
 
 /**
@@ -59,7 +59,7 @@ struct hash_tbl* hashtbl_create(int bucket_size, gfp_t gfp_mask);
 void hashtbl_destroy(struct hash_tbl *htbl);
 
 int hashtbl_add(struct hash_tbl *htbl,
-                const u8* key, int key_size, unsigned long val, gfp_t gfp_mask);
+		const u8* key, int key_size, unsigned long val, gfp_t gfp_mask);
 unsigned long hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size);
 unsigned long hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size);
 void hashtbl_empty(struct hash_tbl *htbl);
@@ -74,11 +74,11 @@ int hashtbl_test(void); /* For test. */
  * Cursor state for hash table.
  */
 enum {
-        HASHTBL_CURSOR_BEGIN = 1,
-        HASHTBL_CURSOR_END,
-        HASHTBL_CURSOR_DATA, /* curr points an item. */
-        HASHTBL_CURSOR_DELETED, /* after call hashtbl_cursor_del(). */
-        HASHTBL_CURSOR_INVALID,
+	HASHTBL_CURSOR_BEGIN = 1,
+	HASHTBL_CURSOR_END,
+	HASHTBL_CURSOR_DATA, /* curr points an item. */
+	HASHTBL_CURSOR_DELETED, /* after call hashtbl_cursor_del(). */
+	HASHTBL_CURSOR_INVALID,
 };
 
 /**
@@ -86,17 +86,17 @@ enum {
  */
 typedef struct
 {
-        struct hash_tbl *htbl;
-        int state; /* Cursor state */
+	struct hash_tbl *htbl;
+	int state; /* Cursor state */
 
-        int bucket_idx; /* Head index in the bucket array. */
-        struct hlist_head *curr_head; /* Head of the list
-                                         which current item belongs to. */
-        struct hlist_node *curr; /* Current pointer. */
+	int bucket_idx; /* Head index in the bucket array. */
+	struct hlist_head *curr_head; /* Head of the list
+					 which current item belongs to. */
+	struct hlist_node *curr; /* Current pointer. */
 
-        struct hlist_head *next_head; /* Head of the list
-                                         which next item belongs to. */
-        struct hlist_node *next; /* Next pointer */
+	struct hlist_head *next_head; /* Head of the list
+					 which next item belongs to. */
+	struct hlist_node *next; /* Next pointer */
 
 } hashtbl_cursor_t;
 

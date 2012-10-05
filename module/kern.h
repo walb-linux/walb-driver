@@ -44,74 +44,74 @@ extern struct workqueue_struct *wq_misc_;
  */
 struct walb_dev
 {
-        u64 size;                       /* Device size in bytes */
-        u8 *data;                       /* The data array */
-        int users;                      /* How many users */
-        spinlock_t lock;                /* For queue access. */
-        struct request_queue *queue;    /* The device request queue */
-        struct gendisk *gd;             /* The gendisk structure */
+	u64 size;			/* Device size in bytes */
+	u8 *data;			/* The data array */
+	int users;			/* How many users */
+	spinlock_t lock;		/* For queue access. */
+	struct request_queue *queue;	/* The device request queue */
+	struct gendisk *gd;		/* The gendisk structure */
 
-        atomic_t is_read_only;          /* Write always fails if true */
+	atomic_t is_read_only;		/* Write always fails if true */
 
-        struct list_head list; /* member of all_wdevs_ */
-        
-        /* Max number of snapshots.
-           This is const after log device is initialized. */
-        u32 n_snapshots;
-        
-        /* Size of underlying devices. [logical block] */
-        u64 ldev_size;
-        u64 ddev_size;
-        
-        /* You can get sector size with
-           bdev_logical_block_size(bdev) and
-           bdev_physical_block_size(bdev).
+	struct list_head list; /* member of all_wdevs_ */
+	
+	/* Max number of snapshots.
+	   This is const after log device is initialized. */
+	u32 n_snapshots;
+	
+	/* Size of underlying devices. [logical block] */
+	u64 ldev_size;
+	u64 ddev_size;
+	
+	/* You can get sector size with
+	   bdev_logical_block_size(bdev) and
+	   bdev_physical_block_size(bdev).
 
-           Those of underlying log device and data device
-           must be same.
-        */
-        u16 logical_bs;
-        u16 physical_bs;
-
-        /* Wrapper device id. */
-        dev_t devt;
-        
-        /* Underlying block devices */
-        struct block_device *ldev;
-        struct block_device *ddev;
-
-        /* Latest lsid and its lock. */
-        spinlock_t latest_lsid_lock;
-        u64 latest_lsid;
-
-        /* Spinlock for lsuper0 access.
-           Irq handler must not lock this.
-           Use spin_lock().
+	   Those of underlying log device and data device
+	   must be same.
 	*/
-        spinlock_t lsuper0_lock;
-        /* Super sector of log device. */
-        struct sector_data *lsuper0;
+	u16 logical_bs;
+	u16 physical_bs;
+
+	/* Wrapper device id. */
+	dev_t devt;
+	
+	/* Underlying block devices */
+	struct block_device *ldev;
+	struct block_device *ddev;
+
+	/* Latest lsid and its lock. */
+	spinlock_t latest_lsid_lock;
+	u64 latest_lsid;
+
+	/* Spinlock for lsuper0 access.
+	   Irq handler must not lock this.
+	   Use spin_lock().
+	*/
+	spinlock_t lsuper0_lock;
+	/* Super sector of log device. */
+	struct sector_data *lsuper0;
 
 	/* Oldest lsid to manage log area overflow. */
-        spinlock_t oldest_lsid_lock;
-        u64 oldest_lsid;
+	spinlock_t oldest_lsid_lock;
+	u64 oldest_lsid;
 
-        /*
-         * For wrapper log device.
-         */
-        /* spinlock_t log_queue_lock; */
-        struct request_queue *log_queue;
-        struct gendisk *log_gd;
+	/*
+	 * For wrapper log device.
+	 */
+	/* spinlock_t log_queue_lock; */
+	struct request_queue *log_queue;
+	struct gendisk *log_gd;
 
 	/*
 	 * For checkpointing.
 	 */
 	struct checkpoint_data cpd;
 	
-        /*
-         * For snapshotting.
-         */
-        struct snapshot_data *snapd;
+	/*
+	 * For snapshotting.
+	 */
+	struct snapshot_data *snapd;
 
 	/*
 	 * IO driver can use this.

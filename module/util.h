@@ -15,9 +15,9 @@
  */
 static inline u32 get_random_u32(void)
 {
-        u32 ret;
-        get_random_bytes(&ret, sizeof(u32));
-        return ret;
+	u32 ret;
+	get_random_bytes(&ret, sizeof(u32));
+	return ret;
 }
 
 /**
@@ -26,11 +26,11 @@ static inline u32 get_random_u32(void)
  */
 static inline u32 get_random_u32_max(u32 max)
 {
-        if (max == 0) {
-                return 0;
-        } else {
-                return get_random_u32() % max;
-        }
+	if (max == 0) {
+		return 0;
+	} else {
+		return get_random_u32() % max;
+	}
 }
 
 #endif /* WALB_UTIL_H_KERNEL */

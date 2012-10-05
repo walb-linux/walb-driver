@@ -47,8 +47,8 @@
 #define PRINTV_W(fmt, args...) PRINT_W("walb(%s) " fmt, __func__, ##args)
 #define PRINTV_N(fmt, args...) PRINT_N("walb(%s) " fmt, __func__, ##args)
 #define PRINTV_I(fmt, args...) PRINT_I("walb(%s) " fmt, __func__, ##args)
-#define PRINTV_D(fmt, args...) PRINT_D(                                 \
-                "walb(%s:%d:%s) " fmt, SRC_FILE, __LINE__, __func__, ##args)
+#define PRINTV_D(fmt, args...) PRINT_D(					\
+		"walb(%s:%d:%s) " fmt, SRC_FILE, __LINE__, __func__, ##args)
 #else /* __KERNEL__ */
 #include <stdio.h>
 #ifdef WALB_DEBUG
@@ -65,8 +65,8 @@
 #define PRINTV_W(fmt, args...) PRINT_W("WARNING(%s) " fmt, __func__, ##args)
 #define PRINTV_N(fmt, args...) PRINT_N("NOTICE(%s) " fmt, __func__, ##args)
 #define PRINTV_I(fmt, args...) PRINT_I("INFO(%s) " fmt, __func__, ##args)
-#define PRINTV_D(fmt, args...) PRINT_D(                                 \
-                "DEBUG(%s:%d:%s) " fmt, SRC_FILE, __LINE__, __func__, ##args)
+#define PRINTV_D(fmt, args...) PRINT_D(					\
+		"DEBUG(%s:%d:%s) " fmt, SRC_FILE, __LINE__, __func__, ##args)
 #endif /* __KERNEL__ */
 #define PRINT_D_(fmt, args...)
 #define PRINTV_D_(fmt, args...)
@@ -103,7 +103,7 @@
 #define REALLOC(p, size, mask) realloc(p, size)
 static inline void* amalloc(size_t size, size_t align)
 {
-        void *p; return (posix_memalign(&p, align, size) == 0 ? p : NULL);
+	void *p; return (posix_memalign(&p, align, size) == 0 ? p : NULL);
 }
 #define AMALLOC(size, align, mask) amalloc(size, align)
 #define FREE(p) free(p)

@@ -507,12 +507,12 @@ static inline void clear_read_only_mode(struct pdata *pdata)
 static bool create_private_data(struct wrapper_blk_dev *wdev)
 {
 	struct pdata *pdata;
-        struct block_device *ldev, *ddev;
-        unsigned int lbs, pbs;
+	struct block_device *ldev, *ddev;
+	unsigned int lbs, pbs;
 	struct walb_super_sector *ssect;
 	struct request_queue *lq, *dq;
-        
-        LOGd("create_private_data called");
+	
+	LOGd("create_private_data called");
 
 	/* Allocate pdata. */
 	pdata = kmalloc(sizeof(struct pdata), GFP_KERNEL);
@@ -556,21 +556,21 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	
 	pdata->is_queue_stopped = false;
 #endif
-        /* open underlying log device. */
-        ldev = blkdev_get_by_path(
-                log_device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
-                create_private_data);
-        if (IS_ERR(ldev)) {
-                LOGe("open %s failed.", log_device_str_);
-                goto error1;
-        }
+	/* open underlying log device. */
+	ldev = blkdev_get_by_path(
+		log_device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
+		create_private_data);
+	if (IS_ERR(ldev)) {
+		LOGe("open %s failed.", log_device_str_);
+		goto error1;
+	}
 	LOGn("ldev (%d,%d) %d\n", MAJOR(ldev->bd_dev), MINOR(ldev->bd_dev),
 		ldev->bd_contains == ldev);
 
-        /* open underlying data device. */
+	/* open underlying data device. */
 	ddev = blkdev_get_by_path(
 		data_device_str_, FMODE_READ|FMODE_WRITE|FMODE_EXCL,
-                create_private_data);
+		create_private_data);
 	if (IS_ERR(ddev)) {
 		LOGe("open %s failed.", data_device_str_);
 		goto error2;
@@ -578,16 +578,16 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	LOGn("ddev (%d,%d) %d\n", MAJOR(ddev->bd_dev), MINOR(ddev->bd_dev),
 		ddev->bd_contains == ddev);
 
-        /* Block size */
-        lbs = bdev_logical_block_size(ddev);
-        pbs = bdev_physical_block_size(ddev);
+	/* Block size */
+	lbs = bdev_logical_block_size(ddev);
+	pbs = bdev_physical_block_size(ddev);
 	LOGn("pbs: %u lbs: %u\n", pbs, lbs);
-        
-        if (lbs != LOGICAL_BLOCK_SIZE) {
+	
+	if (lbs != LOGICAL_BLOCK_SIZE) {
 		LOGe("logical block size must be %u but %u.\n",
 			LOGICAL_BLOCK_SIZE, lbs);
-                goto error3;
-        }
+		goto error3;
+	}
 	ASSERT(bdev_logical_block_size(ldev) == lbs);
 	if (bdev_physical_block_size(ldev) != pbs) {
 		LOGe("physical block size is different (ldev: %u, ddev: %u).\n",
@@ -596,8 +596,8 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	}
 	wdev->pbs = pbs;
 	blk_set_default_limits(&wdev->queue->limits);
-        blk_queue_logical_block_size(wdev->queue, lbs);
-        blk_queue_physical_block_size(wdev->queue, pbs);
+	blk_queue_logical_block_size(wdev->queue, lbs);
+	blk_queue_physical_block_size(wdev->queue, pbs);
 	/* blk_queue_io_min(wdev->queue, pbs); */
 	/* blk_queue_io_opt(wdev->queue, pbs); */
 
@@ -611,7 +611,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	/* Set underlying devices. */
 	pdata->ldev = ldev;
 	pdata->ddev = ddev;
-        wdev->private_data = pdata;
+	wdev->private_data = pdata;
 
 	/* Load super block. */
 	pdata->lsuper0 = sector_alloc(pbs, GFP_KERNEL);
@@ -630,16 +630,16 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->ring_buffer_off = get_ring_buffer_offset_2(ssect);
 	pdata->flags = 0;
 	
-        /* capacity */
-        wdev->capacity = ddev->bd_part->nr_sects;
-        set_capacity(wdev->gd, wdev->capacity);
+	/* capacity */
+	wdev->capacity = ddev->bd_part->nr_sects;
+	set_capacity(wdev->gd, wdev->capacity);
 	LOGn("capacity %"PRIu64"\n", wdev->capacity);
 
 	/* Set limit. */
 	lq = bdev_get_queue(ldev);
 	dq = bdev_get_queue(ddev);
-        blk_queue_stack_limits(wdev->queue, lq);
-        blk_queue_stack_limits(wdev->queue, dq);
+	blk_queue_stack_limits(wdev->queue, lq);
+	blk_queue_stack_limits(wdev->queue, dq);
 	LOGn("ldev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
 		lq->limits.logical_block_size,
 		lq->limits.physical_block_size,
@@ -696,14 +696,14 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	initialize_worker(&pdata->gc_worker_data_,
 			run_gc_logpack_list, (void *)wdev, WORKER_NAME_GC);
 	
-        return true;
+	return true;
 
 error4:
 	sector_free(pdata->lsuper0);
 error3:
-        blkdev_put(ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+	blkdev_put(ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 error2:
-        blkdev_put(ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+	blkdev_put(ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 error1:
 #ifdef WALB_FAST_ALGORITHM
 error02:
@@ -716,7 +716,7 @@ error01:
 	kfree(pdata);
 	wdev->private_data = NULL;
 error0:
-        return false;
+	return false;
 }
 
 /* Destroy private data for ssev. */
@@ -725,7 +725,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 	struct pdata *pdata;
 	struct walb_super_sector *ssect;
 
-        LOGd("destoroy_private_data called.");
+	LOGd("destoroy_private_data called.");
 	
 	pdata = wdev->private_data;
 	if (!pdata) { return; }
@@ -744,9 +744,9 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 		LOGe("super block write failed.\n");
 	}
 	
-        /* close underlying devices. */
-        blkdev_put(pdata->ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
-        blkdev_put(pdata->ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+	/* close underlying devices. */
+	blkdev_put(pdata->ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+	blkdev_put(pdata->ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 
 	sector_free(pdata->lsuper0);
 #ifdef WALB_FAST_ALGORITHM
@@ -762,121 +762,121 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 /* Customize wdev after register before start. */
 static void customize_wdev(struct wrapper_blk_dev *wdev)
 {
-        struct request_queue *q, *lq, *dq;
+	struct request_queue *q, *lq, *dq;
 	struct pdata *pdata;
-        ASSERT(wdev);
-        q = wdev->queue;
+	ASSERT(wdev);
+	q = wdev->queue;
 	pdata = wdev->private_data;
 	ASSERT(pdata);
 
 	lq = bdev_get_queue(pdata->ldev);
-        dq = bdev_get_queue(pdata->ddev);
-        /* Accept REQ_FLUSH and REQ_FUA. */
-        if (lq->flush_flags & REQ_FLUSH && dq->flush_flags & REQ_FLUSH) {
-                if (lq->flush_flags & REQ_FUA && dq->flush_flags & REQ_FUA) {
-                        LOGn("Supports REQ_FLUSH | REQ_FUA.");
-                        blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
-                } else {
-                        LOGn("Supports REQ_FLUSH.");
-                        blk_queue_flush(q, REQ_FLUSH);
-                }
+	dq = bdev_get_queue(pdata->ddev);
+	/* Accept REQ_FLUSH and REQ_FUA. */
+	if (lq->flush_flags & REQ_FLUSH && dq->flush_flags & REQ_FLUSH) {
+		if (lq->flush_flags & REQ_FUA && dq->flush_flags & REQ_FUA) {
+			LOGn("Supports REQ_FLUSH | REQ_FUA.");
+			blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
+		} else {
+			LOGn("Supports REQ_FLUSH.");
+			blk_queue_flush(q, REQ_FLUSH);
+		}
 		blk_queue_flush_queueable(q, true);
-        } else {
-                LOGn("Supports neither REQ_FLUSH nor REQ_FUA.");
-        }
+	} else {
+		LOGn("Supports neither REQ_FLUSH nor REQ_FUA.");
+	}
 
 #if 0
-        if (blk_queue_discard(dq)) {
-                /* Accept REQ_DISCARD. */
-                LOGn("Supports REQ_DISCARD.");
-                q->limits.discard_granularity = PAGE_SIZE;
-                q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
-                q->limits.max_discard_sectors = UINT_MAX;
-                q->limits.discard_zeroes_data = 1;
-                queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
-                /* queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q); */
-        } else {
-                LOGn("Not support REQ_DISCARD.");
-        }
+	if (blk_queue_discard(dq)) {
+		/* Accept REQ_DISCARD. */
+		LOGn("Supports REQ_DISCARD.");
+		q->limits.discard_granularity = PAGE_SIZE;
+		q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
+		q->limits.max_discard_sectors = UINT_MAX;
+		q->limits.discard_zeroes_data = 1;
+		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+		/* queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q); */
+	} else {
+		LOGn("Not support REQ_DISCARD.");
+	}
 #endif 
 }
 
 static unsigned int get_minor(unsigned int id)
 {
-        return (unsigned int)start_minor_ + id;
+	return (unsigned int)start_minor_ + id;
 }
 
 static bool register_dev(void)
 {
-        unsigned int i = 0;
-        u64 capacity = 0;
-        bool ret;
-        struct wrapper_blk_dev *wdev;
+	unsigned int i = 0;
+	u64 capacity = 0;
+	bool ret;
+	struct wrapper_blk_dev *wdev;
 
-        LOGn("begin\n");
-        
-        /* capacity must be set lator. */
+	LOGn("begin\n");
+	
+	/* capacity must be set lator. */
 	ret = wdev_register_with_bio(get_minor(i), capacity,
 				physical_block_size_,
 				wrapper_blk_make_request_fn);
-                
-        if (!ret) {
-                goto error;
-        }
-        wdev = wdev_get(get_minor(i));
-        if (!create_private_data(wdev)) {
-                goto error;
-        }
-        customize_wdev(wdev);
+		
+	if (!ret) {
+		goto error;
+	}
+	wdev = wdev_get(get_minor(i));
+	if (!create_private_data(wdev)) {
+		goto error;
+	}
+	customize_wdev(wdev);
 
-        LOGn("end\n");
+	LOGn("end\n");
 
-        return true;
+	return true;
 error:
-        unregister_dev();
-        return false;
+	unregister_dev();
+	return false;
 }
 
 static void unregister_dev(void)
 {
-        unsigned int i = 0;
-        struct wrapper_blk_dev *wdev;
+	unsigned int i = 0;
+	struct wrapper_blk_dev *wdev;
 
 	LOGn("begin\n");
 	
-        wdev = wdev_get(get_minor(i));
-        wdev_unregister(get_minor(i));
-        if (wdev) {
-                destroy_private_data(wdev);
+	wdev = wdev_get(get_minor(i));
+	wdev_unregister(get_minor(i));
+	if (wdev) {
+		destroy_private_data(wdev);
 		FREE(wdev);
-        }
+	}
 	
 	LOGn("end\n");
 }
 
 static bool start_dev(void)
 {
-        unsigned int i = 0;
+	unsigned int i = 0;
 
-        if (!wdev_start(get_minor(i))) {
-                goto error;
-        }
-        return true;
+	if (!wdev_start(get_minor(i))) {
+		goto error;
+	}
+	return true;
 error:
-        stop_dev();
-        return false;
+	stop_dev();
+	return false;
 }
 
 
 static void stop_dev(void)
 {
-        unsigned int i = 0;
+	unsigned int i = 0;
 	unsigned int minor;
 	struct wrapper_blk_dev *wdev;
 	struct pdata *pdata;
 
 	minor = get_minor(i);
-        wdev_stop(minor);
+	wdev_stop(minor);
 
 	wdev = wdev_get(minor);
 	ASSERT(wdev);
@@ -914,35 +914,35 @@ static void print_bio_flags(struct bio *bio)
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
 		"%s%s%s%s\n", 
-		((bio->bi_rw & REQ_WRITE) ?              "REQ_WRITE" : ""),
-		((bio->bi_rw & REQ_FAILFAST_DEV) ?       " REQ_FAILFAST_DEV" : ""),
+		((bio->bi_rw & REQ_WRITE) ?		 "REQ_WRITE" : ""),
+		((bio->bi_rw & REQ_FAILFAST_DEV) ?	 " REQ_FAILFAST_DEV" : ""),
 		((bio->bi_rw & REQ_FAILFAST_TRANSPORT) ? " REQ_FAILFAST_TRANSPORT" : ""),
-		((bio->bi_rw & REQ_FAILFAST_DRIVER) ?    " REQ_FAILFAST_DRIVER" : ""),
-		((bio->bi_rw & REQ_SYNC) ?               " REQ_SYNC" : ""),
-		((bio->bi_rw & REQ_META) ?               " REQ_META" : ""),
-		((bio->bi_rw & REQ_PRIO) ?               " REQ_PRIO" : ""),
-		((bio->bi_rw & REQ_DISCARD) ?            " REQ_DISCARD" : ""),
-		((bio->bi_rw & REQ_NOIDLE) ?             " REQ_NOIDLE" : ""),
-		((bio->bi_rw & REQ_RAHEAD) ?             " REQ_RAHEAD" : ""),
-		((bio->bi_rw & REQ_THROTTLED) ?          " REQ_THROTTLED" : ""),
-		((bio->bi_rw & REQ_SORTED) ?             " REQ_SORTED" : ""),
-		((bio->bi_rw & REQ_SOFTBARRIER) ?        " REQ_SOFTBARRIER" : ""),
-		((bio->bi_rw & REQ_FUA) ?                " REQ_FUA" : ""),
-		((bio->bi_rw & REQ_NOMERGE) ?            " REQ_NOMERGE" : ""),
-		((bio->bi_rw & REQ_STARTED) ?            " REQ_STARTED" : ""),
-		((bio->bi_rw & REQ_DONTPREP) ?           " REQ_DONTPREP" : ""),
-		((bio->bi_rw & REQ_QUEUED) ?             " REQ_QUEUED" : ""),
-		((bio->bi_rw & REQ_ELVPRIV) ?            " REQ_ELVPRIV" : ""),
-		((bio->bi_rw & REQ_FAILED) ?             " REQ_FAILED" : ""),
-		((bio->bi_rw & REQ_QUIET) ?              " REQ_QUIET" : ""),
-		((bio->bi_rw & REQ_PREEMPT) ?            " REQ_PREEMPT" : ""),
-		((bio->bi_rw & REQ_ALLOCED) ?            " REQ_ALLOCED" : ""),
-		((bio->bi_rw & REQ_COPY_USER) ?          " REQ_COPY_USER" : ""),
-		((bio->bi_rw & REQ_FLUSH) ?              " REQ_FLUSH" : ""),
-		((bio->bi_rw & REQ_FLUSH_SEQ) ?          " REQ_FLUSH_SEQ" : ""),
-		((bio->bi_rw & REQ_IO_STAT) ?            " REQ_IO_STAT" : ""),
-		((bio->bi_rw & REQ_MIXED_MERGE) ?        " REQ_MIXED_MERGE" : ""),
-		((bio->bi_rw & REQ_SECURE) ?             " REQ_SECURE" : ""));
+		((bio->bi_rw & REQ_FAILFAST_DRIVER) ?	 " REQ_FAILFAST_DRIVER" : ""),
+		((bio->bi_rw & REQ_SYNC) ?		 " REQ_SYNC" : ""),
+		((bio->bi_rw & REQ_META) ?		 " REQ_META" : ""),
+		((bio->bi_rw & REQ_PRIO) ?		 " REQ_PRIO" : ""),
+		((bio->bi_rw & REQ_DISCARD) ?		 " REQ_DISCARD" : ""),
+		((bio->bi_rw & REQ_NOIDLE) ?		 " REQ_NOIDLE" : ""),
+		((bio->bi_rw & REQ_RAHEAD) ?		 " REQ_RAHEAD" : ""),
+		((bio->bi_rw & REQ_THROTTLED) ?		 " REQ_THROTTLED" : ""),
+		((bio->bi_rw & REQ_SORTED) ?		 " REQ_SORTED" : ""),
+		((bio->bi_rw & REQ_SOFTBARRIER) ?	 " REQ_SOFTBARRIER" : ""),
+		((bio->bi_rw & REQ_FUA) ?		 " REQ_FUA" : ""),
+		((bio->bi_rw & REQ_NOMERGE) ?		 " REQ_NOMERGE" : ""),
+		((bio->bi_rw & REQ_STARTED) ?		 " REQ_STARTED" : ""),
+		((bio->bi_rw & REQ_DONTPREP) ?		 " REQ_DONTPREP" : ""),
+		((bio->bi_rw & REQ_QUEUED) ?		 " REQ_QUEUED" : ""),
+		((bio->bi_rw & REQ_ELVPRIV) ?		 " REQ_ELVPRIV" : ""),
+		((bio->bi_rw & REQ_FAILED) ?		 " REQ_FAILED" : ""),
+		((bio->bi_rw & REQ_QUIET) ?		 " REQ_QUIET" : ""),
+		((bio->bi_rw & REQ_PREEMPT) ?		 " REQ_PREEMPT" : ""),
+		((bio->bi_rw & REQ_ALLOCED) ?		 " REQ_ALLOCED" : ""),
+		((bio->bi_rw & REQ_COPY_USER) ?		 " REQ_COPY_USER" : ""),
+		((bio->bi_rw & REQ_FLUSH) ?		 " REQ_FLUSH" : ""),
+		((bio->bi_rw & REQ_FLUSH_SEQ) ?		 " REQ_FLUSH_SEQ" : ""),
+		((bio->bi_rw & REQ_IO_STAT) ?		 " REQ_IO_STAT" : ""),
+		((bio->bi_rw & REQ_MIXED_MERGE) ?	 " REQ_MIXED_MERGE" : ""),
+		((bio->bi_rw & REQ_SECURE) ?		 " REQ_SECURE" : ""));
 }
 
 /**
@@ -1030,7 +1030,7 @@ static struct pack_work* create_pack_work(
 		goto error0;
 	}
 	pwork->wdev = wdev;
-        
+	
 	return pwork;
 error0:
 	return NULL;
@@ -1069,7 +1069,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 		LOGn("BIO_UPTODATE is false (rw %lu pos %"PRIu64" len %u).\n",
 			bioe->bio->bi_rw, (u64)bioe->pos, bioe->len);
 	}
-        
+	
 	/* LOGd("bio_entry_end_io() begin.\n"); */
 	bioe->error = error;
 	bi_cnt = atomic_read(&bio->bi_cnt);
@@ -1125,7 +1125,7 @@ static struct bio_entry* create_bio_entry_by_clone(
 	biotmp->bi_private = bioe;
 
 	init_bio_entry(bioe, biotmp);
-        
+	
 	/* LOGd("create_bio_entry() end.\n"); */
 	return bioe;
 
@@ -1453,11 +1453,11 @@ static void writepack_check_and_set_flush(struct pack *wpack)
 static bool create_bio_entry_list(struct bio_wrapper *biow, struct block_device *bdev)
 {
 	struct bio_entry *bioe;
-        
+	
 	ASSERT(biow);
 	ASSERT(biow->bio);;
 	ASSERT(list_empty(&biow->bioe_list));
-        
+	
 	/* clone bio. */
 	bioe = create_bio_entry_by_clone(biow->bio, bdev, GFP_NOIO);
 	if (!bioe) {
@@ -1570,7 +1570,7 @@ static void wait_for_bio_wrapper(
 	
 	ASSERT(biow);
 	ASSERT(biow->error == 0);
-        
+	
 	remaining = biow->len;
 	list_for_each_entry(bioe, &biow->bioe_list, list) {
 		if (bio_entry_should_wait_completion(bioe)) {
@@ -3658,7 +3658,7 @@ static int __init wrapper_blk_init(void)
 		LOGe("pre_register failed.\n");
 		goto error0;
 	}
-        
+	
 	if (!register_dev()) {
 		goto error1;
 	}

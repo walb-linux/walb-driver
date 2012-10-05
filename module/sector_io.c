@@ -18,18 +18,18 @@
  */
 void walb_end_io_with_completion(struct bio *bio, int error)
 {
-        struct walb_bio_with_completion *bioc;
-        bioc = bio->bi_private;
+	struct walb_bio_with_completion *bioc;
+	bioc = bio->bi_private;
 
-        ASSERT(bioc->status == WALB_BIO_INIT);
-        if (error || ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
-                LOGe("walb_end_io_with_completion: error %d bi_flags %lu\n",
+	ASSERT(bioc->status == WALB_BIO_INIT);
+	if (error || ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
+		LOGe("walb_end_io_with_completion: error %d bi_flags %lu\n",
 			error, bio->bi_flags);
-                bioc->status = WALB_BIO_ERROR;
-        } else {
-                bioc->status = WALB_BIO_END;
-        }
-        complete(&bioc->wait);
+		bioc->status = WALB_BIO_ERROR;
+	} else {
+		bioc->status = WALB_BIO_END;
+	}
+	complete(&bioc->wait);
 }
 
 /**
@@ -47,78 +47,78 @@ void walb_end_io_with_completion(struct bio *bio, int error)
 bool sector_io(int rw, struct block_device *bdev,
 	u64 addr, struct sector_data *sect)
 {
-        struct bio *bio;
-        int pbs, lbs;
-        struct page *page;
-        struct walb_bio_with_completion *bioc;
-        u8 *buf;
+	struct bio *bio;
+	int pbs, lbs;
+	struct page *page;
+	struct walb_bio_with_completion *bioc;
+	u8 *buf;
 
-        LOGd("walb_sector_io begin\n");
+	LOGd("walb_sector_io begin\n");
 
-        ASSERT(rw == READ || rw == WRITE);
-        ASSERT_SECTOR_DATA(sect);
-        buf = sect->data;
-        ASSERT(buf != NULL);
-        
-        lbs = bdev_logical_block_size(bdev);
-        pbs = bdev_physical_block_size(bdev);
-        
-        if (sect->size != pbs) {
-                LOGe("Sector size is invalid %d %d.\n", sect->size, pbs);
-                goto error0;
-        }
+	ASSERT(rw == READ || rw == WRITE);
+	ASSERT_SECTOR_DATA(sect);
+	buf = sect->data;
+	ASSERT(buf != NULL);
+	
+	lbs = bdev_logical_block_size(bdev);
+	pbs = bdev_physical_block_size(bdev);
+	
+	if (sect->size != pbs) {
+		LOGe("Sector size is invalid %d %d.\n", sect->size, pbs);
+		goto error0;
+	}
 
-        bioc = kmalloc(sizeof(struct walb_bio_with_completion), GFP_NOIO);
-        if (bioc == NULL) {
-                goto error0;
-        }
-        init_completion(&bioc->wait);
-        bioc->status = WALB_BIO_INIT;
-        
-        /* Alloc bio */
-        bio = bio_alloc(GFP_NOIO, 1);
-        if (bio == NULL) {
-                LOGe("bio_alloc failed.\n");
-                goto error1;
-        }
-        ASSERT(virt_addr_valid(buf));
-        page = virt_to_page(buf);
+	bioc = kmalloc(sizeof(struct walb_bio_with_completion), GFP_NOIO);
+	if (bioc == NULL) {
+		goto error0;
+	}
+	init_completion(&bioc->wait);
+	bioc->status = WALB_BIO_INIT;
+	
+	/* Alloc bio */
+	bio = bio_alloc(GFP_NOIO, 1);
+	if (bio == NULL) {
+		LOGe("bio_alloc failed.\n");
+		goto error1;
+	}
+	ASSERT(virt_addr_valid(buf));
+	page = virt_to_page(buf);
 
-        LOGd("sector %lu "
+	LOGd("sector %lu "
 		"page %p buf %p sectorsize %d offset %lu rw %d\n",
 		(unsigned long)(addr * (pbs / lbs)),
 		virt_to_page(buf), buf,
 		pbs, offset_in_page(buf), rw);
 
-        bio->bi_bdev = bdev;
-        bio->bi_sector = addr * (pbs / lbs);
-        bio->bi_end_io = walb_end_io_with_completion;
-        bio->bi_private = bioc;
-        bio_add_page(bio, page, pbs, offset_in_page(buf));
+	bio->bi_bdev = bdev;
+	bio->bi_sector = addr * (pbs / lbs);
+	bio->bi_end_io = walb_end_io_with_completion;
+	bio->bi_private = bioc;
+	bio_add_page(bio, page, pbs, offset_in_page(buf));
 
-        /* Submit and wait to complete. */
-        submit_bio(rw, bio);
-        wait_for_completion(&bioc->wait);
+	/* Submit and wait to complete. */
+	submit_bio(rw, bio);
+	wait_for_completion(&bioc->wait);
 
-        /* Check result. */
-        if (bioc->status != WALB_BIO_END) {
-                LOGe("sector io failed.\n");
-                goto error2;
-        }
+	/* Check result. */
+	if (bioc->status != WALB_BIO_END) {
+		LOGe("sector io failed.\n");
+		goto error2;
+	}
 
-        /* Cleanup allocated bio and memory. */
-        bio_put(bio);
-        kfree(bioc);
+	/* Cleanup allocated bio and memory. */
+	bio_put(bio);
+	kfree(bioc);
 
-        LOGd("walb_sector_io end\n");
-        return true;
+	LOGd("walb_sector_io end\n");
+	return true;
 
 error2:
-        bio_put(bio);
+	bio_put(bio);
 error1:
-        kfree(bioc);
+	kfree(bioc);
 error0:
-        return false;
+	return false;
 }
 
 /**
@@ -129,11 +129,11 @@ error0:
 void walb_print_super_sector(struct walb_super_sector *lsuper0)
 {
 #ifdef WALB_DEBUG
-        const int str_size = 16 * 3 + 1;
-        char uuidstr[str_size];
-        sprint_uuid(uuidstr, str_size, lsuper0->uuid);
-        
-        LOGd("-----super block------\n"
+	const int str_size = 16 * 3 + 1;
+	char uuidstr[str_size];
+	sprint_uuid(uuidstr, str_size, lsuper0->uuid);
+	
+	LOGd("-----super block------\n"
 		"checksum %08x\n"
 		"logical_bs %u\n"
 		"physical_bs %u\n"
@@ -170,45 +170,45 @@ void walb_print_super_sector(struct walb_super_sector *lsuper0)
 bool walb_read_super_sector(
 	struct block_device *ldev, struct sector_data *lsuper)
 {
-        u64 off0;
-        struct walb_super_sector *sect;
+	u64 off0;
+	struct walb_super_sector *sect;
 	unsigned int pbs;
 
-        LOGd("walb_read_super_sector begin\n");
+	LOGd("walb_read_super_sector begin\n");
 
-        ASSERT_SECTOR_DATA(lsuper);
+	ASSERT_SECTOR_DATA(lsuper);
 	pbs = lsuper->size;
-        sect = get_super_sector(lsuper);
+	sect = get_super_sector(lsuper);
 
-        /* Really read. */
-        off0 = get_super_sector0_offset(pbs);
-        /* off1 = get_super_sector1_offset(wdev->physical_bs, wdev->n_snapshots); */
-        if (!sector_io(READ, ldev, off0, lsuper)) {
-                LOGe("read super sector0 failed\n");
-                goto error0;
-        }
+	/* Really read. */
+	off0 = get_super_sector0_offset(pbs);
+	/* off1 = get_super_sector1_offset(wdev->physical_bs, wdev->n_snapshots); */
+	if (!sector_io(READ, ldev, off0, lsuper)) {
+		LOGe("read super sector0 failed\n");
+		goto error0;
+	}
 
-        /* Validate checksum. */
-        if (checksum((u8 *)sect, lsuper->size) != 0) {
-                LOGe("walb_read_super_sector: checksum check failed.\n");
-                goto error0;
-        }
+	/* Validate checksum. */
+	if (checksum((u8 *)sect, lsuper->size) != 0) {
+		LOGe("walb_read_super_sector: checksum check failed.\n");
+		goto error0;
+	}
 
-        /* Validate sector type */
-        if (sect->sector_type != SECTOR_TYPE_SUPER) {
-                LOGe("walb_read_super_sector: sector type check failed.\n");
-                goto error0;
-        }
+	/* Validate sector type */
+	if (sect->sector_type != SECTOR_TYPE_SUPER) {
+		LOGe("walb_read_super_sector: sector type check failed.\n");
+		goto error0;
+	}
 
 #ifdef WALB_DEBUG
-        walb_print_super_sector(sect);
+	walb_print_super_sector(sect);
 #endif
-        
-        LOGd("walb_read_super_sector end\n");
-        return true;
+	
+	LOGd("walb_read_super_sector end\n");
+	return true;
 
 error0:
-        return false;
+	return false;
 }
 
 /**
@@ -223,39 +223,39 @@ error0:
 bool walb_write_super_sector(
 	struct block_device *ldev, struct sector_data *lsuper)
 {
-        u64 off0;
-        u32 csum;
-        struct walb_super_sector *sect;
+	u64 off0;
+	u32 csum;
+	struct walb_super_sector *sect;
 	unsigned int pbs;
 
-        LOGd("walb_write_super_sector begin\n");
+	LOGd("walb_write_super_sector begin\n");
 
-        ASSERT(ldev != NULL);
-        ASSERT_SECTOR_DATA(lsuper);
-        sect = get_super_sector(lsuper);
+	ASSERT(ldev != NULL);
+	ASSERT_SECTOR_DATA(lsuper);
+	sect = get_super_sector(lsuper);
 	pbs = lsuper->size;
 	ASSERT_PBS(pbs);
-        
-        /* Set sector_type. */
-        sect->sector_type = SECTOR_TYPE_SUPER;
-        
-        /* Generate checksum. */
-        sect->checksum = 0;
-        csum = checksum((u8 *)sect, pbs);
-        sect->checksum = csum;
-
-        /* Really write. */
-        off0 = get_super_sector0_offset(pbs);
-        if (!sector_io(WRITE, ldev, off0, lsuper)) {
-                LOGe("write super sector0 failed\n");
-                goto error0;
-        }
 	
-        LOGd("walb_write_super_sector end\n");
-        return true;
+	/* Set sector_type. */
+	sect->sector_type = SECTOR_TYPE_SUPER;
+	
+	/* Generate checksum. */
+	sect->checksum = 0;
+	csum = checksum((u8 *)sect, pbs);
+	sect->checksum = csum;
+
+	/* Really write. */
+	off0 = get_super_sector0_offset(pbs);
+	if (!sector_io(WRITE, ldev, off0, lsuper)) {
+		LOGe("write super sector0 failed\n");
+		goto error0;
+	}
+	
+	LOGd("walb_write_super_sector end\n");
+	return true;
 	
 error0:
-        return false;
+	return false;
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

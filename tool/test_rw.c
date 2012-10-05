@@ -37,16 +37,16 @@ int main(int argc, char* argv[])
 {
 	int i;
 	
-        if (argc != 3) {
-                printf("usage: test_rw [walb device] [num of blocks]\n");
-                exit(1);
-        }
-        const char *walb_dev = argv[1];
-        const char *nblocks_str = argv[2];
+	if (argc != 3) {
+		printf("usage: test_rw [walb device] [num of blocks]\n");
+		exit(1);
+	}
+	const char *walb_dev = argv[1];
+	const char *nblocks_str = argv[2];
 
-        init_random();
+	init_random();
 	const int n_blocks = 3;
-        u8 *block[n_blocks];
+	u8 *block[n_blocks];
 	int ret;
 	for (i = 0; i < n_blocks; i++) {
 		ret = posix_memalign((void **)&block[i], 512, BLOCK_SIZE);
@@ -54,28 +54,28 @@ int main(int argc, char* argv[])
 			printf("malloc error\n");
 			exit(1);
 		}
-        }
+	}
 
-        int fd = open(walb_dev, O_RDWR | O_DIRECT);
-        if (fd < 0) {
-                printf("open error\n");
-                exit(1);
-        }
+	int fd = open(walb_dev, O_RDWR | O_DIRECT);
+	if (fd < 0) {
+		printf("open error\n");
+		exit(1);
+	}
 
-        int num = atoi(nblocks_str);
-        for (i = 0; i < num; i ++) {
-                memset_random(block[0], BLOCK_SIZE);
+	int num = atoi(nblocks_str);
+	for (i = 0; i < num; i ++) {
+		memset_random(block[0], BLOCK_SIZE);
 		memcpy(block[2], block[0], BLOCK_SIZE);
 		memset(block[1], 0, BLOCK_SIZE);
 		
-                write_sector(fd, block[0], BLOCK_SIZE, i);
+		write_sector(fd, block[0], BLOCK_SIZE, i);
 #if 1
 		memset_random(block[0], BLOCK_SIZE);
 #endif
-                read_sector(fd, block[1], BLOCK_SIZE, i);
+		read_sector(fd, block[1], BLOCK_SIZE, i);
 
-                int c = memcmp(block[1], block[2], BLOCK_SIZE);
-                printf("%d %s\n", i, (c == 0 ? "OK" : "NG"));
+		int c = memcmp(block[1], block[2], BLOCK_SIZE);
+		printf("%d %s\n", i, (c == 0 ? "OK" : "NG"));
 #if 0
 		if (c) {
 			dump_memory(block[0], BLOCK_SIZE);
@@ -83,11 +83,11 @@ int main(int argc, char* argv[])
 			dump_memory(block[2], BLOCK_SIZE);
 		}
 #endif
-        }
+	}
 
-        close(fd);
+	close(fd);
 	for (i = 0; i < 3; i ++) {
 		free(block[i]);
-	}        
-        return 0;
+	}	 
+	return 0;
 }

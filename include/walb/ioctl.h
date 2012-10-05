@@ -26,22 +26,22 @@
  */
 struct walb_ctl_data {
 
-        unsigned int wmajor; /* walb device major. */
-        unsigned int wminor; /* walb device minor.
-                                walblog device minor is (wminor + 1). */
-        unsigned int lmajor;  /* log device major. */
-        unsigned int lminor;  /* log device minor. */
-        unsigned int dmajor;  /* data device major. */
-        unsigned int dminor;  /* data device minor. */
-        
-        /* These are used for other struct for each control command. */
-        size_t buf_size; /* buffer size. */
+	unsigned int wmajor; /* walb device major. */
+	unsigned int wminor; /* walb device minor.
+				walblog device minor is (wminor + 1). */
+	unsigned int lmajor;  /* log device major. */
+	unsigned int lminor;  /* log device minor. */
+	unsigned int dmajor;  /* data device major. */
+	unsigned int dminor;  /* data device minor. */
+	
+	/* These are used for other struct for each control command. */
+	size_t buf_size; /* buffer size. */
 #ifdef __KERNEL__
-        void __user *buf;
+	void __user *buf;
 #else
-        void *buf; /* buffer pointer if data_size > 0. */
+	void *buf; /* buffer pointer if data_size > 0. */
 #endif
-        void *__buf; /* used inside kernel. */
+	void *__buf; /* used inside kernel. */
 } __attribute__((packed));
 
 /**
@@ -49,61 +49,61 @@ struct walb_ctl_data {
  */
 struct walb_ctl {
 
-        /* Command id. */
-        int command;
+	/* Command id. */
+	int command;
 
-        /* Used for integer value transfer. */
-        int val_int;
-        u32 val_u32;
-        u64 val_u64;
+	/* Used for integer value transfer. */
+	int val_int;
+	u32 val_u32;
+	u64 val_u64;
 
-        int error; /* error no. */
-        
-        /* For userland --> kernel. */
-        struct walb_ctl_data u2k;
+	int error; /* error no. */
+	
+	/* For userland --> kernel. */
+	struct walb_ctl_data u2k;
 
-        /* For kernel --> userland. */
-        struct walb_ctl_data k2u;
+	/* For kernel --> userland. */
+	struct walb_ctl_data k2u;
 } __attribute__((packed));
 
 /**
  * Print walb_ctl data for debug.
  */
 static inline void print_walb_ctl(
-        __attribute__((unused)) const struct walb_ctl *ctl)
+	__attribute__((unused)) const struct walb_ctl *ctl)
 {
-        PRINT(KERN_DEBUG,
-              "***** walb_ctl *****\n"
-              "command: %d\n"
-              "val_int: %d\n"
-              "val_u32: %u\n"
-              "val_u64: %"PRIu64"\n"
-              "error: %d\n"
-                 
-              "u2k.wdevt: (%u:%u)\n"
-              "u2k.ldevt: (%u:%u)\n"
-              "u2k.ddevt: (%u:%u)\n"
-              "u2k.buf_size: %zu\n"
-                 
-              "k2u.wdevt: (%u:%u)\n"
-              "k2u.ldevt: (%u:%u)\n"
-              "k2u.ddevt: (%u:%u)\n"
-              "k2u.buf_size: %zu\n",
-              ctl->command,
-              ctl->val_int,
-              ctl->val_u32,
-              ctl->val_u64,
-              ctl->error,
-                 
-              ctl->u2k.wmajor, ctl->u2k.wminor,
-              ctl->u2k.lmajor, ctl->u2k.lminor,
-              ctl->u2k.dmajor, ctl->u2k.dminor,
-              ctl->u2k.buf_size,
-                 
-              ctl->k2u.wmajor, ctl->k2u.wminor,
-              ctl->k2u.lmajor, ctl->k2u.lminor,
-              ctl->k2u.dmajor, ctl->k2u.dminor,
-              ctl->k2u.buf_size);
+	PRINT(KERN_DEBUG,
+		"***** walb_ctl *****\n"
+		"command: %d\n"
+		"val_int: %d\n"
+		"val_u32: %u\n"
+		"val_u64: %"PRIu64"\n"
+		"error: %d\n"
+		 
+		"u2k.wdevt: (%u:%u)\n"
+		"u2k.ldevt: (%u:%u)\n"
+		"u2k.ddevt: (%u:%u)\n"
+		"u2k.buf_size: %zu\n"
+		 
+		"k2u.wdevt: (%u:%u)\n"
+		"k2u.ldevt: (%u:%u)\n"
+		"k2u.ddevt: (%u:%u)\n"
+		"k2u.buf_size: %zu\n",
+		ctl->command,
+		ctl->val_int,
+		ctl->val_u32,
+		ctl->val_u64,
+		ctl->error,
+		 
+		ctl->u2k.wmajor, ctl->u2k.wminor,
+		ctl->u2k.lmajor, ctl->u2k.lminor,
+		ctl->u2k.dmajor, ctl->u2k.dminor,
+		ctl->u2k.buf_size,
+		 
+		ctl->k2u.wmajor, ctl->k2u.wminor,
+		ctl->k2u.lmajor, ctl->k2u.lminor,
+		ctl->k2u.dmajor, ctl->k2u.dminor,
+		ctl->k2u.buf_size);
 }
 
 /**
@@ -115,9 +115,9 @@ static inline void print_walb_ctl(
  * Ioctl command id.
  */
 enum {
-        WALB_IOCTL_VERSION_CMD = 0,
-        WALB_IOCTL_CONTROL_CMD,
-        WALB_IOCTL_WDEV_CMD,
+	WALB_IOCTL_VERSION_CMD = 0,
+	WALB_IOCTL_CONTROL_CMD,
+	WALB_IOCTL_WDEV_CMD,
 };
 
 /**
@@ -128,44 +128,44 @@ enum {
  * WALB_IOCTL_VERSION is for both. (currently each walb device only.)
  */
 #define WALB_IOCTL_CONTROL _IOWR(WALB_IOCTL_ID, WALB_IOCTL_CONTROL_CMD, struct walb_ctl)
-#define WALB_IOCTL_WDEV    _IOWR(WALB_IOCTL_ID, WALB_IOCTL_WDEV_CMD,    struct walb_ctl)
+#define WALB_IOCTL_WDEV	   _IOWR(WALB_IOCTL_ID, WALB_IOCTL_WDEV_CMD,	struct walb_ctl)
 #define WALB_IOCTL_VERSION  _IOR(WALB_IOCTL_ID, WALB_IOCTL_VERSION_CMD, u32)
 
 /**
  * For walb_ctl.command.
  */
 enum {
-        WALB_IOCTL_DUMMY = 0,
+	WALB_IOCTL_DUMMY = 0,
 
-        /*
-         * For WALB_IOCTL_CONTROL
-         */
-        WALB_IOCTL_DEV_START,
-        WALB_IOCTL_DEV_STOP,
-        WALB_IOCTL_DEV_LIST, /* NIY */
-        WALB_IOCTL_NUM_DEV_GET, /* NIY */
+	/*
+	 * For WALB_IOCTL_CONTROL
+	 */
+	WALB_IOCTL_DEV_START,
+	WALB_IOCTL_DEV_STOP,
+	WALB_IOCTL_DEV_LIST, /* NIY */
+	WALB_IOCTL_NUM_DEV_GET, /* NIY */
 
-        /*
-         * For WALB_IOCTL_WDEV
-         */
-        WALB_IOCTL_OLDEST_LSID_GET,
-        WALB_IOCTL_OLDEST_LSID_SET,
-        WALB_IOCTL_LSID_SEARCH, /* NIY */
-        WALB_IOCTL_STATUS_GET, /* NIY */
+	/*
+	 * For WALB_IOCTL_WDEV
+	 */
+	WALB_IOCTL_OLDEST_LSID_GET,
+	WALB_IOCTL_OLDEST_LSID_SET,
+	WALB_IOCTL_LSID_SEARCH, /* NIY */
+	WALB_IOCTL_STATUS_GET, /* NIY */
 
-        WALB_IOCTL_SNAPSHOT_CREATE, /* NIY */
-        WALB_IOCTL_SNAPSHOT_DELETE, /* NIY */
-        WALB_IOCTL_SNAPSHOT_GET, /* NIY */
-        WALB_IOCTL_SNAPSHOT_NUM, /* NIY */
-        WALB_IOCTL_SNAPSHOT_LIST, /* NIY */
+	WALB_IOCTL_SNAPSHOT_CREATE, /* NIY */
+	WALB_IOCTL_SNAPSHOT_DELETE, /* NIY */
+	WALB_IOCTL_SNAPSHOT_GET, /* NIY */
+	WALB_IOCTL_SNAPSHOT_NUM, /* NIY */
+	WALB_IOCTL_SNAPSHOT_LIST, /* NIY */
 
-        WALB_IOCTL_CHECKPOINT_INTERVAL_GET,
-        WALB_IOCTL_CHECKPOINT_INTERVAL_SET,
+	WALB_IOCTL_CHECKPOINT_INTERVAL_GET,
+	WALB_IOCTL_CHECKPOINT_INTERVAL_SET,
 
-        WALB_IOCTL_WRITTEN_LSID_GET,
-        WALB_IOCTL_LOG_CAPACITY_GET,
+	WALB_IOCTL_WRITTEN_LSID_GET,
+	WALB_IOCTL_LOG_CAPACITY_GET,
 
-        /* NIY means [N]ot [I]mplemented [Y]et. */
+	/* NIY means [N]ot [I]mplemented [Y]et. */
 };
 
 

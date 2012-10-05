@@ -30,9 +30,9 @@ int simple_blk_major_ = 0;
 #define MAX_N_DEVICES 32
 struct sdev_devices
 {
-        struct simple_blk_dev *sdev[MAX_N_DEVICES];
-        unsigned int n_active_devices; /* Number of active devices. */
-        spinlock_t lock; /* Lock for access to devices_. */
+	struct simple_blk_dev *sdev[MAX_N_DEVICES];
+	unsigned int n_active_devices; /* Number of active devices. */
+	spinlock_t lock; /* Lock for access to devices_. */
 
 } devices_;
 
@@ -56,7 +56,7 @@ module_param_named(simple_blk_major, simple_blk_major_, int, S_IRUGO);
 static int simple_blk_open(struct block_device *bdev, fmode_t mode);
 static int simple_blk_release(struct gendisk *gd, fmode_t mode);
 static int simple_blk_ioctl(struct block_device *bdev, fmode_t mode,
-                            unsigned int cmd, unsigned long arg);
+			unsigned int cmd, unsigned long arg);
 
 /* Operations with devices_. */
 static void init_devices(void);
@@ -66,11 +66,11 @@ static struct simple_blk_dev* get_from_devices(unsigned int minor);
 
 /* Utilities */
 static bool sdev_register_detail(
-        unsigned int minor, u64 capacity, unsigned int pbs,
-        make_request_fn *make_request_fn,
-        request_fn_proc *request_fn_proc);
+	unsigned int minor, u64 capacity, unsigned int pbs,
+	make_request_fn *make_request_fn,
+	request_fn_proc *request_fn_proc);
 static struct simple_blk_dev* alloc_and_partial_init_sdev(
-        unsigned int minor, u64 capacity, unsigned int pbs);
+	unsigned int minor, u64 capacity, unsigned int pbs);
 
 static bool init_queue_and_disk(struct simple_blk_dev *sdev);
 static void fin_queue_and_disk(struct simple_blk_dev *sdev);
@@ -87,10 +87,10 @@ static void stop_and_unregister_all_devices(void);
  * The device operations structure.
  */
 static struct block_device_operations simple_blk_ops_ = {
-	.owner           = THIS_MODULE,
-	.open 	         = simple_blk_open,
-	.release 	 = simple_blk_release,
-	.ioctl	         = simple_blk_ioctl
+	.owner		 = THIS_MODULE,
+	.open		 = simple_blk_open,
+	.release	 = simple_blk_release,
+	.ioctl		 = simple_blk_ioctl
 };
 
 /*******************************************************************************
@@ -101,9 +101,9 @@ static struct block_device_operations simple_blk_ops_ = {
  * Register new block device with bio interface.
  */
 bool sdev_register_with_bio(unsigned int minor, u64 capacity, unsigned int pbs,
-                            make_request_fn *make_request_fn)
+			make_request_fn *make_request_fn)
 {
-        return sdev_register_detail(minor, capacity, pbs, make_request_fn, NULL);
+	return sdev_register_detail(minor, capacity, pbs, make_request_fn, NULL);
 }
 EXPORT_SYMBOL_GPL(sdev_register_with_bio);
 
@@ -111,9 +111,9 @@ EXPORT_SYMBOL_GPL(sdev_register_with_bio);
  * Register new block device with request interface.
  */
 bool sdev_register_with_req(unsigned int minor, u64 capacity, unsigned int pbs,
-                            request_fn_proc *request_fn_proc)
+			request_fn_proc *request_fn_proc)
 {
-        return sdev_register_detail(minor, capacity, pbs, NULL, request_fn_proc);
+	return sdev_register_detail(minor, capacity, pbs, NULL, request_fn_proc);
 }
 EXPORT_SYMBOL_GPL(sdev_register_with_req);
 
@@ -122,16 +122,16 @@ EXPORT_SYMBOL_GPL(sdev_register_with_req);
  */
 bool sdev_unregister(unsigned int minor)
 {
-        struct simple_blk_dev *sdev;
+	struct simple_blk_dev *sdev;
 
-        sdev = del_from_devices(minor);
-        if (!sdev) {
-                LOGe("Not found device with minor %u.\n", minor);
-                return false;
-        }        
-        fin_queue_and_disk(sdev);
-        FREE(sdev);
-        return true;
+	sdev = del_from_devices(minor);
+	if (!sdev) {
+		LOGe("Not found device with minor %u.\n", minor);
+		return false;
+	}	 
+	fin_queue_and_disk(sdev);
+	FREE(sdev);
+	return true;
 }
 EXPORT_SYMBOL_GPL(sdev_unregister);
 
@@ -141,25 +141,25 @@ EXPORT_SYMBOL_GPL(sdev_unregister);
  */
 bool sdev_start(unsigned int minor)
 {
-        struct simple_blk_dev *sdev;
-        
-        sdev = get_from_devices(minor);
-        if (!sdev) {
-                LOGe("Not found device with minor %u.\n", minor);
-                goto error0;
-        }
-        ASSERT_SIMPLE_BLK_DEV(sdev);
+	struct simple_blk_dev *sdev;
+	
+	sdev = get_from_devices(minor);
+	if (!sdev) {
+		LOGe("Not found device with minor %u.\n", minor);
+		goto error0;
+	}
+	ASSERT_SIMPLE_BLK_DEV(sdev);
 
 	if (test_and_set_bit(0, &sdev->is_started)) {
-                LOGe("Device with minor %u already started.\n", minor);
-                goto error0;
-        } else {
-                add_disk(sdev->gd);
-                LOGi("Start device with minor %u.\n", minor);
-        }
-        return true;
+		LOGe("Device with minor %u already started.\n", minor);
+		goto error0;
+	} else {
+		add_disk(sdev->gd);
+		LOGi("Start device with minor %u.\n", minor);
+	}
+	return true;
 error0:
-        return false;
+	return false;
 }
 EXPORT_SYMBOL_GPL(sdev_start);
 
@@ -169,16 +169,16 @@ EXPORT_SYMBOL_GPL(sdev_start);
  */
 bool sdev_stop(unsigned int minor)
 {
-        struct simple_blk_dev *sdev;
-        
-        sdev = get_from_devices(minor);
-        if (!sdev) {
-                LOGe("Not found device with minor %u.\n", minor);
-                goto error0;
-        }
+	struct simple_blk_dev *sdev;
+	
+	sdev = get_from_devices(minor);
+	if (!sdev) {
+		LOGe("Not found device with minor %u.\n", minor);
+		goto error0;
+	}
 
-        ASSERT_SIMPLE_BLK_DEV(sdev);
-        
+	ASSERT_SIMPLE_BLK_DEV(sdev);
+	
 	if (test_and_clear_bit(0, &sdev->is_started)) {
 		ASSERT(sdev->gd);
 		del_gendisk(sdev->gd);
@@ -187,9 +187,9 @@ bool sdev_stop(unsigned int minor)
 		LOGe("Device wit minor %u is already stopped.\n", minor);
 		goto error0;
 	}
-        return true;
+	return true;
 error0:
-        return false;
+	return false;
 }
 EXPORT_SYMBOL_GPL(sdev_stop);
 
@@ -198,7 +198,7 @@ EXPORT_SYMBOL_GPL(sdev_stop);
  */
 struct simple_blk_dev* sdev_get(unsigned int minor)
 {
-        return get_from_devices(minor);
+	return get_from_devices(minor);
 }
 EXPORT_SYMBOL_GPL(sdev_get);
 
@@ -207,12 +207,12 @@ EXPORT_SYMBOL_GPL(sdev_get);
  */
 struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q)
 {
-        struct simple_blk_dev* sdev;
+	struct simple_blk_dev* sdev;
 
-        ASSERT(q);
-        sdev = (struct simple_blk_dev *)q->queuedata;
-        ASSERT_SIMPLE_BLK_DEV(sdev);
-        return sdev;
+	ASSERT(q);
+	sdev = (struct simple_blk_dev *)q->queuedata;
+	ASSERT_SIMPLE_BLK_DEV(sdev);
+	return sdev;
 }
 EXPORT_SYMBOL_GPL(sdev_get_from_queue);
 
@@ -257,7 +257,7 @@ EXPORT_SYMBOL_GPL(create_wq_io);
  */
 static int simple_blk_open(struct block_device *bdev, fmode_t mode)
 {
-        return 0;
+	return 0;
 }
 
 /**
@@ -265,16 +265,16 @@ static int simple_blk_open(struct block_device *bdev, fmode_t mode)
  */
 static int simple_blk_release(struct gendisk *gd, fmode_t mode)
 {
-        return 0;
+	return 0;
 }
 
 /**
  * Device operation.
  */
 static int simple_blk_ioctl(struct block_device *bdev, fmode_t mode,
-                        unsigned int cmd, unsigned long arg)
+			unsigned int cmd, unsigned long arg)
 {
-        return -ENOTTY;
+	return -ENOTTY;
 }
 
 /**
@@ -282,13 +282,13 @@ static int simple_blk_ioctl(struct block_device *bdev, fmode_t mode,
  */
 static void init_devices(void)
 {
-        int i;
-        
-        for (i = 0; i < MAX_N_DEVICES; i ++) {
-                devices_.sdev[i] = NULL;
-        }
-        devices_.n_active_devices = 0;
-        spin_lock_init(&devices_.lock);
+	int i;
+	
+	for (i = 0; i < MAX_N_DEVICES; i ++) {
+		devices_.sdev[i] = NULL;
+	}
+	devices_.n_active_devices = 0;
+	spin_lock_init(&devices_.lock);
 }
 
 /**
@@ -296,18 +296,18 @@ static void init_devices(void)
  */
 static bool add_to_devices(struct simple_blk_dev *sdev)
 {
-        ASSERT(sdev);
+	ASSERT(sdev);
 
-        if (get_from_devices(sdev->minor)) {
-                return false;
-        }
+	if (get_from_devices(sdev->minor)) {
+		return false;
+	}
 
-        spin_lock(&devices_.lock);
-        devices_.sdev[sdev->minor] = sdev;
-        devices_.n_active_devices ++;
-        ASSERT(devices_.n_active_devices >= 0);
-        spin_unlock(&devices_.lock);
-        return true;
+	spin_lock(&devices_.lock);
+	devices_.sdev[sdev->minor] = sdev;
+	devices_.n_active_devices ++;
+	ASSERT(devices_.n_active_devices >= 0);
+	spin_unlock(&devices_.lock);
+	return true;
 }
 
 /**
@@ -315,19 +315,19 @@ static bool add_to_devices(struct simple_blk_dev *sdev)
  */
 static struct simple_blk_dev* del_from_devices(unsigned int minor)
 {
-        struct simple_blk_dev *sdev;
+	struct simple_blk_dev *sdev;
 
-        ASSERT(minor < MAX_N_DEVICES);
+	ASSERT(minor < MAX_N_DEVICES);
 
-        spin_lock(&devices_.lock);
-        sdev = devices_.sdev[minor];
-        if (sdev) {
-                devices_.sdev[minor] = NULL;
-                devices_.n_active_devices --;
-                ASSERT(devices_.n_active_devices >= 0);
-        }
-        spin_unlock(&devices_.lock);
-        return sdev;
+	spin_lock(&devices_.lock);
+	sdev = devices_.sdev[minor];
+	if (sdev) {
+		devices_.sdev[minor] = NULL;
+		devices_.n_active_devices --;
+		ASSERT(devices_.n_active_devices >= 0);
+	}
+	spin_unlock(&devices_.lock);
+	return sdev;
 }
 
 /**
@@ -338,15 +338,15 @@ static struct simple_blk_dev* del_from_devices(unsigned int minor)
  */
 static struct simple_blk_dev* get_from_devices(unsigned int minor)
 {
-        struct simple_blk_dev *sdev;
-        
-        if (minor >= MAX_N_DEVICES) {
-                return NULL;
-        }
-        spin_lock(&devices_.lock);
-        sdev = devices_.sdev[minor];
-        spin_unlock(&devices_.lock);
-        return sdev;
+	struct simple_blk_dev *sdev;
+	
+	if (minor >= MAX_N_DEVICES) {
+		return NULL;
+	}
+	spin_lock(&devices_.lock);
+	sdev = devices_.sdev[minor];
+	spin_unlock(&devices_.lock);
+	return sdev;
 }
 
 /**
@@ -360,34 +360,34 @@ static struct simple_blk_dev* get_from_devices(unsigned int minor)
  * Call this before @register_sdev();
  */
 static struct simple_blk_dev* alloc_and_partial_init_sdev(
-        unsigned int minor, u64 capacity, unsigned int pbs)
+	unsigned int minor, u64 capacity, unsigned int pbs)
 {
-        struct simple_blk_dev *sdev;
-        
-         /* Allocate */
-        sdev = ZALLOC(sizeof(struct simple_blk_dev), GFP_KERNEL);
-        if (sdev == NULL) {
-                LOGe("memory allocation failed.\n");
-                goto error0;
-        }
-        
-        /* Initialize */
-        sdev->minor = minor;
-        sdev->capacity = capacity;
-        snprintf(sdev->name, SIMPLE_BLK_DEV_NAME_MAX_LEN, "%d", minor);
+	struct simple_blk_dev *sdev;
+	
+	/* Allocate */
+	sdev = ZALLOC(sizeof(struct simple_blk_dev), GFP_KERNEL);
+	if (sdev == NULL) {
+		LOGe("memory allocation failed.\n");
+		goto error0;
+	}
+	
+	/* Initialize */
+	sdev->minor = minor;
+	sdev->capacity = capacity;
+	snprintf(sdev->name, SIMPLE_BLK_DEV_NAME_MAX_LEN, "%d", minor);
 	sdev->pbs = pbs;
 
-        spin_lock_init(&sdev->lock);
-        sdev->queue = NULL;
-        /* use_make_request_fn is not initialized here. */
-        /* make_request_fn and request_fn_proc is not initialized here. */
-        sdev->gd = NULL;
-        sdev->is_started = 0;
-        sdev->private_data = NULL;
+	spin_lock_init(&sdev->lock);
+	sdev->queue = NULL;
+	/* use_make_request_fn is not initialized here. */
+	/* make_request_fn and request_fn_proc is not initialized here. */
+	sdev->gd = NULL;
+	sdev->is_started = 0;
+	sdev->private_data = NULL;
 
-        return sdev;
+	return sdev;
 error0:
-        return NULL;
+	return NULL;
 }
 
 /**
@@ -407,43 +407,43 @@ static bool sdev_register_detail(unsigned int minor, u64 capacity,
 				make_request_fn *make_request_fn,
 				request_fn_proc *request_fn_proc)
 {
-        struct simple_blk_dev *sdev;
+	struct simple_blk_dev *sdev;
 
-        /* Allocate and initialize partially. */
-        sdev = alloc_and_partial_init_sdev(minor, capacity, pbs);
-        if (!sdev) {
-                LOGe("Memory allocation failed.\n");
-                goto error0;
-        }
+	/* Allocate and initialize partially. */
+	sdev = alloc_and_partial_init_sdev(minor, capacity, pbs);
+	if (!sdev) {
+		LOGe("Memory allocation failed.\n");
+		goto error0;
+	}
 
-        /* Set request callback. */
-        if (make_request_fn) {
-                sdev->use_make_request_fn = true;
-                sdev->make_request_fn = make_request_fn;
-        } else {
-                sdev->use_make_request_fn = false;
-                sdev->request_fn_proc = request_fn_proc;
-        }
+	/* Set request callback. */
+	if (make_request_fn) {
+		sdev->use_make_request_fn = true;
+		sdev->make_request_fn = make_request_fn;
+	} else {
+		sdev->use_make_request_fn = false;
+		sdev->request_fn_proc = request_fn_proc;
+	}
 
-        /* Init quene and disk. */
-        if (!init_queue_and_disk(sdev)) {
-                LOGe("init_queue_and_disk() failed.\n");
-                goto error1;
-        }
+	/* Init quene and disk. */
+	if (!init_queue_and_disk(sdev)) {
+		LOGe("init_queue_and_disk() failed.\n");
+		goto error1;
+	}
 
-        /* Add the device to global variables. */
-        if (!add_to_devices(sdev)) {
-                LOGe("Already device with minor %u registered.\n", sdev->minor);
-                goto error2;
-        }
-        return true;
+	/* Add the device to global variables. */
+	if (!add_to_devices(sdev)) {
+		LOGe("Already device with minor %u registered.\n", sdev->minor);
+		goto error2;
+	}
+	return true;
 
 error2:
-        fin_queue_and_disk(sdev);
+	fin_queue_and_disk(sdev);
 error1:
-        FREE(sdev);
+	FREE(sdev);
 error0:
-        return false;
+	return false;
 }
 
 /**
@@ -456,72 +456,72 @@ error0:
  */
 static bool init_queue_and_disk(struct simple_blk_dev *sdev)
 {
-        struct request_queue *q;
-        struct gendisk *gd;
-        
-        ASSERT(sdev);
+	struct request_queue *q;
+	struct gendisk *gd;
+	
+	ASSERT(sdev);
 
-        /* Cleanup */
-        sdev->queue = NULL;
-        sdev->gd = NULL;
+	/* Cleanup */
+	sdev->queue = NULL;
+	sdev->gd = NULL;
 
-        /* Allocate and initialize queue. */
-        if (sdev->use_make_request_fn) {
-                q = blk_alloc_queue(GFP_KERNEL);
-                if (!q) {
-                        LOGe("blk_alloc_queue failed.\n");
-                        goto error0;
-                }
-                blk_queue_make_request(q, sdev->make_request_fn);
-        } else {
-                q = blk_init_queue(sdev->request_fn_proc, &sdev->lock);
-                if (!q) {
-                        LOGe("blk_init_queue failed.\n");
-                        goto error0;
-                }
-                if (elevator_change(q, "noop")) {
-                        LOGe("changing elevator algorithm failed.\n");
-                        blk_cleanup_queue(q);
-                        goto error0;
-                }
-        }
-        blk_queue_physical_block_size(q, sdev->pbs);
-        blk_queue_logical_block_size(q, LOGICAL_BLOCK_SIZE);
-        /* blk_queue_io_min(q, sdev->pbs); */
-        blk_queue_io_opt(q, sdev->pbs);
+	/* Allocate and initialize queue. */
+	if (sdev->use_make_request_fn) {
+		q = blk_alloc_queue(GFP_KERNEL);
+		if (!q) {
+			LOGe("blk_alloc_queue failed.\n");
+			goto error0;
+		}
+		blk_queue_make_request(q, sdev->make_request_fn);
+	} else {
+		q = blk_init_queue(sdev->request_fn_proc, &sdev->lock);
+		if (!q) {
+			LOGe("blk_init_queue failed.\n");
+			goto error0;
+		}
+		if (elevator_change(q, "noop")) {
+			LOGe("changing elevator algorithm failed.\n");
+			blk_cleanup_queue(q);
+			goto error0;
+		}
+	}
+	blk_queue_physical_block_size(q, sdev->pbs);
+	blk_queue_logical_block_size(q, LOGICAL_BLOCK_SIZE);
+	/* blk_queue_io_min(q, sdev->pbs); */
+	blk_queue_io_opt(q, sdev->pbs);
 
-        /* Accept REQ_DISCARD. */
-        /* Do nothing. */
+	/* Accept REQ_DISCARD. */
+	/* Do nothing. */
 
-        /* Accept REQ_FLUSH and REQ_FUA. */
-        /* Do nothing. */
-        
-        q->queuedata = sdev;
-        sdev->queue = q;
+	/* Accept REQ_FLUSH and REQ_FUA. */
+	/* Do nothing. */
+	
+	q->queuedata = sdev;
+	sdev->queue = q;
 
-        /* Allocate and initialize disk. */
-        gd = alloc_disk(1);
-        if (!gd) {
-                LOGe("alloc_disk failed.\n");
-                goto error1;
-        }
-        gd->major = simple_blk_major_;
-        gd->first_minor = sdev->minor;
-        
-        gd->fops = &simple_blk_ops_;
-        gd->queue = sdev->queue;
-        gd->private_data = sdev;
-        set_capacity(gd, sdev->capacity);
-        snprintf(gd->disk_name, DISK_NAME_LEN,
-                 "%s/%s", SIMPLE_BLK_DIR_NAME, sdev->name);
-        sdev->gd = gd;
+	/* Allocate and initialize disk. */
+	gd = alloc_disk(1);
+	if (!gd) {
+		LOGe("alloc_disk failed.\n");
+		goto error1;
+	}
+	gd->major = simple_blk_major_;
+	gd->first_minor = sdev->minor;
+	
+	gd->fops = &simple_blk_ops_;
+	gd->queue = sdev->queue;
+	gd->private_data = sdev;
+	set_capacity(gd, sdev->capacity);
+	snprintf(gd->disk_name, DISK_NAME_LEN,
+		"%s/%s", SIMPLE_BLK_DIR_NAME, sdev->name);
+	sdev->gd = gd;
 
-        return true;
+	return true;
 
 error1:
-        fin_queue_and_disk(sdev);
+	fin_queue_and_disk(sdev);
 error0:
-        return false;
+	return false;
 }
 
 /**
@@ -532,40 +532,40 @@ error0:
  */
 static void fin_queue_and_disk(struct simple_blk_dev *sdev)
 {
-        ASSERT(sdev);
+	ASSERT(sdev);
 
-        if (sdev->gd) {
-                put_disk(sdev->gd);
-                sdev->gd = NULL;
-        }
-        if (sdev->queue) {
-                blk_cleanup_queue(sdev->queue);
-                sdev->queue = NULL;
-        }
+	if (sdev->gd) {
+		put_disk(sdev->gd);
+		sdev->gd = NULL;
+	}
+	if (sdev->queue) {
+		blk_cleanup_queue(sdev->queue);
+		sdev->queue = NULL;
+	}
 }
 
 static void assert_simple_blk_dev(struct simple_blk_dev *sdev)
 {
-        ASSERT(sdev);
-        ASSERT(sdev->capacity > 0);
+	ASSERT(sdev);
+	ASSERT(sdev->capacity > 0);
 	ASSERT_PBS(sdev->pbs);
-        ASSERT(strlen(sdev->name) > 0);
-        ASSERT(sdev->queue);
-        ASSERT(sdev->gd);
+	ASSERT(strlen(sdev->name) > 0);
+	ASSERT(sdev->queue);
+	ASSERT(sdev->gd);
 }
 
 static void stop_and_unregister_all_devices(void)
 {
-        int i;
-        struct simple_blk_dev *sdev;
-        
-        for (i = 0; i < MAX_N_DEVICES; i ++) {
-                sdev = get_from_devices(i);
-                if (sdev) {
-                        sdev_stop(i);
-                        sdev_unregister(i);
-                }
-        }
+	int i;
+	struct simple_blk_dev *sdev;
+	
+	for (i = 0; i < MAX_N_DEVICES; i ++) {
+		sdev = get_from_devices(i);
+		if (sdev) {
+			sdev_stop(i);
+			sdev_unregister(i);
+		}
+	}
 }
 
 /*******************************************************************************
@@ -574,24 +574,24 @@ static void stop_and_unregister_all_devices(void)
 
 static int __init simple_blk_init(void)
 {
-        ASSERT(!in_interrupt());
-        LOGi("Simple-blk module init.\n");
-        
-        /* Register a block device module. */
-        simple_blk_major_ = register_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
-        if (simple_blk_major_ <= 0) {
-                LOGe("unable to get major device number.\n");
+	ASSERT(!in_interrupt());
+	LOGi("Simple-blk module init.\n");
+	
+	/* Register a block device module. */
+	simple_blk_major_ = register_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
+	if (simple_blk_major_ <= 0) {
+		LOGe("unable to get major device number.\n");
 		goto error0;
-        }
+	}
 
-        /* Initialize devices_. */
-        init_devices();
+	/* Initialize devices_. */
+	init_devices();
 
-        return 0;
+	return 0;
 #if 0
 error1:
 	unregister_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
-        return -ENOMEM;
+	return -ENOMEM;
 #endif
 error0:
 	return -EBUSY;
@@ -599,13 +599,13 @@ error0:
 
 static void simple_blk_exit(void)
 {
-        ASSERT(!in_interrupt());
-        LOGd("in_atomic: %u.\n", in_atomic());
-        
-        stop_and_unregister_all_devices();
-        unregister_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
+	ASSERT(!in_interrupt());
+	LOGd("in_atomic: %u.\n", in_atomic());
+	
+	stop_and_unregister_all_devices();
+	unregister_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
 
-        LOGi("Simple-blk module exit.\n");
+	LOGi("Simple-blk module exit.\n");
 }
 
 module_init(simple_blk_init);
