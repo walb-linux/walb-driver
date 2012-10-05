@@ -48,15 +48,15 @@ static bool sector_evict_all(struct snapshot_data *snapd);
 /* Record allocation. */
 static u32 record_alloc(struct snapshot_data *snapd,
 			struct walb_snapshot_record **recp);
-static int record_free(struct snapshot_data *snapd, u32 snapshot_id);
+static bool record_free(struct snapshot_data *snapd, u32 snapshot_id);
 
 /* Issue IO */
-static bool snapshot_sector_read(struct snapshot_data *snapd,
-				u64 offset,
-				struct sector_data *sect);
-static bool snapshot_sector_write(struct snapshot_data *snapd,
-				u64 offset,
-				struct sector_data *sect);
+static bool sector_read(struct snapshot_data *snapd,
+			u64 offset,
+			struct sector_data *sect);
+static bool sector_write(struct snapshot_data *snapd,
+			u64 offset,
+			struct sector_data *sect);
 
 /* Get control/id/record functions. */
 static struct snapshot_sector_control* get_control_by_offset(
@@ -72,10 +72,10 @@ static struct walb_snapshot_record* get_record_by_name(
 	struct snapshot_data *snapd, const char *name);
 
 /* Manipultion of primary index. */
-static int insert_snapshot_id(struct snapshot_data *snapd,
+static bool insert_snapshot_id(struct snapshot_data *snapd,
 			u32 snapshot_id,
 			const struct snapshot_sector_control *ctl);
-static int delete_snapshot_id(struct snapshot_data *snapd,
+static bool delete_snapshot_id(struct snapshot_data *snapd,
 			u32 snapshot_id);
 
 /* Manipulation of secondary indices. */
@@ -85,19 +85,19 @@ static bool insert_to_name_idx(
 static bool insert_to_lsid_idx(
 	struct snapshot_data *snapd,
 	const struct walb_snapshot_record *rec);
-static int insert_snapshot_record_to_index(
+static bool insert_snapshot_record_to_index(
 	struct snapshot_data *snapd,
 	const struct walb_snapshot_record *rec);
 static bool delete_from_name_idx(
 	struct snapshot_data *snapd, const struct walb_snapshot_record *rec);
 static bool delete_from_lsid_idx(
 	struct snapshot_data *snapd, const struct walb_snapshot_record *rec);
-static int delete_snapshot_record_from_index(
+static bool delete_snapshot_record_from_index(
 	struct snapshot_data *snapd,
 	const struct walb_snapshot_record *rec);
 
 /* Helper functions. */
-static int snapshot_data_load_sector_and_insert(
+static bool snapshot_data_load_sector_and_insert(
 	struct snapshot_data *snapd, u32 *next_snapshot_id_p,
 	struct snapshot_sector_control *ctl,
 	struct sector_data *sect);
@@ -195,7 +195,7 @@ static bool sector_load(struct snapshot_data *snapd, u64 off)
 
 	/* Read sector if need. */
 	if (ctl->state == SNAPSHOT_SECTOR_CONTROL_ALLOC) {
-		retb = snapshot_sector_read(snapd, off, ctl->sector);
+		retb = sector_read(snapd, off, ctl->sector);
 		if (!retb) {
 			LOGe("Read snapshot sector %"PRIu64" failed.\n", off);
 			goto error0;
@@ -233,7 +233,7 @@ static bool sector_sync(struct snapshot_data *snapd, u64 off)
 	if (ctl->state == SNAPSHOT_SECTOR_CONTROL_DIRTY) {
 
 		ASSERT_SNAPSHOT_SECTOR(ctl->sector);
-		if (!snapshot_sector_write(snapd, off, ctl->sector)) {
+		if (!sector_write(snapd, off, ctl->sector)) {
 			goto error;
 		}
 		ctl->state = SNAPSHOT_SECTOR_CONTROL_CLEAN;
@@ -355,6 +355,7 @@ static u32 record_alloc(struct snapshot_data *snapd,
 	struct snapshot_sector_control *ctl = NULL;
 	struct walb_snapshot_record *rec;
 	int nr;
+	bool retb;
 	
 	ASSERT(snapd);
 	ASSERT(recp);
@@ -392,7 +393,8 @@ static u32 record_alloc(struct snapshot_data *snapd,
 	ctl->n_free_records--;
 
 	/* Insert to primary index. */
-	if (insert_snapshot_id(snapd, rec->snapshot_id, ctl)) {
+	retb = insert_snapshot_id(snapd, rec->snapshot_id, ctl);
+	if (!retb) {
 		goto error1;
 	}
 	*recp = rec;
@@ -421,14 +423,14 @@ error0:
  * @snapshot_id snapshot id.
  *
  * RETURN:
- *   0 in success, or -1.
+ *   true in success, or false.
  */
-static int record_free(struct snapshot_data *snapd, u32 snapshot_id)
+static bool record_free(struct snapshot_data *snapd, u32 snapshot_id)
 {
 	struct snapshot_sector_control *ctl;
 	struct walb_snapshot_record *rec;
 	int idx;
-	int ret;
+	bool ret;
 
 	/* Get sector control. */
 	ctl = get_control_by_id(snapd, snapshot_id);
@@ -441,7 +443,7 @@ static int record_free(struct snapshot_data *snapd, u32 snapshot_id)
 
 	/* Delete from primary index. */
 	ret = delete_snapshot_id(snapd, snapshot_id);
-	ASSERT(!ret);
+	ASSERT(ret);
 
 	/* Get record index inside snapshot sector. */
 	idx = get_idx_of_snapshot_record(ctl->sector, snapshot_id);
@@ -458,9 +460,10 @@ static int record_free(struct snapshot_data *snapd, u32 snapshot_id)
 	ctl->state = SNAPSHOT_SECTOR_CONTROL_DIRTY;
 	ctl->n_free_records++;
 
-	return 0;
+	return true;
+	
 error:
-	return -1;
+	return false;
 }
 
 /**
@@ -473,9 +476,9 @@ error:
  * RETURN:
  *   true in success, or false.
  */
-static bool snapshot_sector_read(struct snapshot_data *snapd,
-				u64 offset,
-				struct sector_data *sect)
+static bool sector_read(struct snapshot_data *snapd,
+			u64 offset,
+			struct sector_data *sect)
 {
 	ASSERT(snapd);
 	ASSERT_SECTOR_DATA(sect);
@@ -513,7 +516,7 @@ error0:
  * RETURN:
  *   true in success, or false.
  */
-static bool snapshot_sector_write(
+static bool sector_write(
 	struct snapshot_data *snapd, u64 offset,
 	struct sector_data *sect)
 {
@@ -721,9 +724,9 @@ error0:
  * @ctl snapshot control sector.
  *
  * RETURN:
- *   0 in success, or -1.
+ *   true in success, or false.
  */
-static int insert_snapshot_id(
+static bool insert_snapshot_id(
 	struct snapshot_data *snapd, u32 snapshot_id,
 	const struct snapshot_sector_control *ctl)
 {
@@ -740,9 +743,10 @@ static int insert_snapshot_id(
 	if (map_add(snapd->id_idx, key, val, GFP_KERNEL)) {
 		goto error;
 	}
-	return 0;
+	return true;
+	
 error:
-	return -1;
+	return false;
 }
 
 /**
@@ -752,9 +756,9 @@ error:
  * @snapshot_id snapshot id.
  *
  * RETURN:
- *   0 in success, or -1.
+ *   true in success, or false.
  */
-static int delete_snapshot_id(
+static bool delete_snapshot_id(
 	struct snapshot_data *snapd, u32 snapshot_id)
 {
 	u64 key;
@@ -768,9 +772,10 @@ static int delete_snapshot_id(
 	if (ret == TREEMAP_INVALID_VAL) {
 		goto error;
 	}
-	return 0;
+	return true;
+	
 error:
-	return -1;
+	return false;
 }
 			      
 /**
@@ -860,9 +865,9 @@ error0:
  * @rec valid snapshot record to be inserted.
  *
  * RETURN:
- *   0 in success, or -1.
+ *   true in success, or false.
  */
-static int insert_snapshot_record_to_index(
+static bool insert_snapshot_record_to_index(
 	struct snapshot_data *snapd,
 	const struct walb_snapshot_record *rec)
 {
@@ -877,9 +882,9 @@ static int insert_snapshot_record_to_index(
 	ret = insert_to_lsid_idx(snapd, rec);
 	if (!ret) { goto error0; }
 	
-	return 0;
+	return true;
 error0:	       
-	return -1;
+	return false;
 }
 
 /**
@@ -954,9 +959,9 @@ error0:
  * @rec valid snapshot record to be deleted from the indexes.
  *
  * RETURN:
- *   0 in success, or -1.
+ *   true in success, or false.
  */
-static int delete_snapshot_record_from_index(
+static bool delete_snapshot_record_from_index(
 	struct snapshot_data *snapd,
 	const struct walb_snapshot_record *rec)
 {
@@ -971,10 +976,10 @@ static int delete_snapshot_record_from_index(
 	ret = delete_from_lsid_idx(snapd, rec);
 	if (!ret) { goto error0; }
 
-	return 0;
+	return true;
 
 error0:
-	return -1;
+	return false;
 }
 
 /**
@@ -987,16 +992,16 @@ error0:
  * @sect sector data.
  *
  * RETURN:
- *   0 in success, or -1.
+ *   true in success, or false.
  */
-static int snapshot_data_load_sector_and_insert(
+static bool snapshot_data_load_sector_and_insert(
 	struct snapshot_data *snapd, u32 *next_snapshot_id_p,
 	struct snapshot_sector_control *ctl,
 	struct sector_data *sect)
 {
 	int i;
 	struct walb_snapshot_record *rec;
-	int ret;
+	bool ret;
 
 	ASSERT(snapd);
 	ASSERT(next_snapshot_id_p);
@@ -1025,7 +1030,7 @@ static int snapshot_data_load_sector_and_insert(
 		
 		/* Insert to id_idx. */
 		ret = insert_snapshot_id(snapd, rec->snapshot_id, ctl);
-		if (ret) {
+		if (!ret) {
 			LOGe("insert to primary index failed.\n");
 			PRINT_E_SNAPSHOT_RECORD(rec);
 			goto error0;
@@ -1033,16 +1038,16 @@ static int snapshot_data_load_sector_and_insert(
 			
 		/* Insert to name_idx and lsid_idx. */
 		ret = insert_snapshot_record_to_index(snapd, rec);
-		if (ret) {
+		if (!ret) {
 			LOGe("insert to secondary index failed.\n");
 			PRINT_E_SNAPSHOT_RECORD(rec);
 			goto error0;
 		}
 	}
-
-	return 0;
+	return true;
+	
 error0:
-	return -1;
+	return false;
 }
 
 /**
@@ -1402,7 +1407,7 @@ void snapshot_data_destroy(struct snapshot_data *snapd)
  * @snapd snapshot data.
  *
  * RETURN:
- *   0 in success, or -1.
+ *   1 in success, or 0.
  */
 int snapshot_data_initialize(struct snapshot_data *snapd)
 {
@@ -1410,8 +1415,7 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
 	struct snapshot_sector_control *ctl;
 	struct sector_data *sect;
 	u32 next_sid = 0;
-	int ret;
-	bool retb;
+	bool ret;
 
 	sect = sector_alloc(snapd->sector_size, GFP_KERNEL);
 	if (!sect) { goto error0; }
@@ -1423,8 +1427,8 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
 		ctl = get_control_by_offset(snapd, off);
 		
 		/* Load the target sector. */
-		retb = snapshot_sector_read(snapd, off, sect);
-		if (!retb) {
+		ret = sector_read(snapd, off, sect);
+		if (!ret) {
 			LOGe("Read snapshot sector %"PRIu64" failed.\n", off);
 			goto error1;
 		}
@@ -1434,14 +1438,14 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
 		   and insert into indices. */
 		ret = snapshot_data_load_sector_and_insert(
 			snapd, &next_sid, ctl, sect);
-		if (ret) { goto error1; }
+		if (!ret) { goto error1; }
 
 		/* Calculate n_free_records. */
 		ctl->n_free_records = get_n_free_records_in_snapshot_sector(sect);
 		
 		/* Save sector */
-		retb = snapshot_sector_write(snapd, off, sect);
-		if (!retb) {
+		ret = sector_write(snapd, off, sect);
+		if (!ret) {
 			LOGe("Write snapshot sector %"PRIu64" failed.\n", off);
 			goto error1;
 		}
@@ -1455,12 +1459,12 @@ int snapshot_data_initialize(struct snapshot_data *snapd)
 	snapd->next_snapshot_id = next_sid;
 
 	sector_free(sect);
-	return 0;
+	return 1;
 
 error1:
 	sector_free(sect);
 error0:
-	return -1;
+	return 0;
 }
 
 /**
@@ -1471,7 +1475,7 @@ error0:
  * @snapd snapshot data.
  * 
  * RETURN:
- *   0 in success, or -1.
+ *   1 in success, or 0;
  */
 int snapshot_data_finalize(struct snapshot_data *snapd)
 {
@@ -1487,10 +1491,10 @@ int snapshot_data_finalize(struct snapshot_data *snapd)
 	ASSERT(ret);
 	ASSERT(is_all_sectors_free(snapd));
 	
-	return 0;
+	return 1;
 	
 error:
-	return -1;
+	return 0;
 }
 
 /*******************************************************************************
@@ -1517,8 +1521,10 @@ int snapshot_add_nolock(struct snapshot_data *snapd,
 {
 	struct walb_snapshot_record *rec;
 	u32 snapshot_id;
-	struct snapshot_sector_control *ctl;
 	bool ret;
+#if 0
+	struct snapshot_sector_control *ctl;
+#endif
 	
 	/* Check the name is unique. */
 	if (get_id_by_name(snapd, name) != INVALID_SNAPSHOT_ID) {
@@ -1538,20 +1544,25 @@ int snapshot_add_nolock(struct snapshot_data *snapd,
 	}
 
 	/* Insert into indices. */
-	if (insert_snapshot_record_to_index(snapd, rec)) {
+	ret = insert_snapshot_record_to_index(snapd, rec);
+	if (!ret) {
 		LOGe("Insert into secondary indices failed.\n");
 		goto error0;
 	}
 
+	/* Currently sync/evict must be executed by the caller. */
+#if 0 
 	/* Sync and evict all sectors. */
 	ctl = get_control_by_id(snapd, snapshot_id);
 	ASSERT(ctl);
-	if (!sector_sync(snapd, ctl->offset)) {
+	ret = sector_sync(snapd, ctl->offset);
+	if (!ret) {
 		LOGe("Snapshot sector sync failed.\n");
 		goto error0;
 	}
 	ret = sector_evict(snapd, ctl->offset);
 	ASSERT(ret);
+#endif
 	return 0;
 
 error0:
@@ -1586,42 +1597,47 @@ int snapshot_add(struct snapshot_data *snapd,
  * @name snapshot name to delete.
  *
  * RETURN:
- *   0 in success, or -1.
+ *    0 in success.
+ *   -1 if there is no such snapshot record.
  */
 int snapshot_del_nolock(struct snapshot_data *snapd, const char *name)
 {
 	struct walb_snapshot_record *rec;
 	struct snapshot_sector_control *ctl;
 	int ret;
-	bool retb;
 	u32 sid;
+	bool retb;
 
 	ASSERT(snapd);
 	ASSERT(is_valid_snapshot_name(name));
 
 	ret = snapshot_get_nolock(snapd, name, &rec);
-	if (ret) { goto error; }
+	if (!ret) { goto error_not_found; }
 	ASSERT(is_valid_snapshot_record(rec));
 
 	sid = rec->snapshot_id;
 	ASSERT(sid != INVALID_SNAPSHOT_ID);
 	
-	ret = delete_snapshot_record_from_index(snapd, rec);
-	if (ret) { goto error; }
+	retb = delete_snapshot_record_from_index(snapd, rec);
+	ASSERT(retb);
 
 	ctl = get_control_by_id(snapd, sid);
 	ASSERT(ctl);
 	
-	ret = record_free(snapd, sid);
-	if (ret) { goto error; }
+	retb = record_free(snapd, sid);
+	ASSERT(retb);
 
+	/* Currently sync/evict must be executed by caller. */
+#if 0
 	retb = sector_sync(snapd, ctl->offset);
 	if (!retb) { goto error; }
 	retb = sector_evict(snapd, ctl->offset);
 	ASSERT(retb);
+#endif
 	
 	return 0;
-error:
+	
+error_not_found:
 	return -1;
 }
 
@@ -1648,7 +1664,7 @@ int snapshot_del(struct snapshot_data *snapd, const char *name)
  *	  lsid0 <= lsid < lsid1.
  *
  * RETURN:
- *   number of deleted snapshots in success, or -1.
+ *   number of deleted snapshots in success (>= 0), or -1.
  */
 int snapshot_del_range_nolock(struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
 {
@@ -1681,8 +1697,8 @@ int snapshot_del_range_nolock(struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
 		ASSERT(retb);
 		
 		/* Deallocate. */
-		ret = record_free(snapd, sid);
-		ASSERT(!ret);
+		retb = record_free(snapd, sid);
+		ASSERT(retb);
 
 		/* Delete from the lsid_idx and iterate. */
 		ret = multimap_cursor_del(&cur);
@@ -1720,7 +1736,7 @@ int snapshot_del_range(struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
  * @name snapshot name.
  * @record out: pointer to snapshot record with the name.
  *
- * @return 0 in success, or -1.
+ * @return 1 in success, or 0.
  */
 int snapshot_get_nolock(
 	struct snapshot_data *snapd, const char *name,
@@ -1735,10 +1751,10 @@ int snapshot_get_nolock(
 	rec = get_record_by_name(snapd, name);
 	if (!rec) { goto error0; }
 	*recp = rec;
-	return 0;
+	return 1;
 	
 error0:
-	return -1;
+	return 0;
 }
 
 /**
