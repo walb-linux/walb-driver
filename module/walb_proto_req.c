@@ -181,14 +181,17 @@ struct pdata
 	struct list_head logpack_submit_queue; /* writepack list.
 						  logpack_submit_queue_lock
 						  must be held. */
+	atomic_t n_logpack_submit_queue;
 	spinlock_t logpack_wait_queue_lock;
 	struct list_head logpack_wait_queue; /* writepack list.
 						logpack_wait_queue_lock
 						must be held. */
+	atomic_t n_logpack_wait_queue;
 	spinlock_t logpack_gc_queue_lock;
 	struct list_head logpack_gc_queue; /* writepack list.
 					      logpack_gc_lock
 					      must be held. */
+	atomic_t n_logpack_gc_queue;
 	struct worker_data gc_worker_data; /* for gc worker. */
 	
 	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
@@ -327,6 +330,10 @@ static bool is_flush_first_req_entry(struct list_head *req_ent_list);
 static struct req_entry* create_req_entry_inc(
 	struct request *req, struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
 static void destroy_req_entry_dec(struct req_entry *reqe);
+static struct pack_work* enqueue_task_if_necessary(
+	struct wrapper_blk_dev *wdev,
+	int nr, struct workqueue_struct *wq,
+	void (*task)(struct work_struct *));
 
 /* Workqueue tasks. */
 static void logpack_list_submit_task(struct work_struct *work);
@@ -440,6 +447,59 @@ static void flush_all_wq(void);
 /* For treemap memory manager. */
 static bool treemap_memory_manager_inc(void);
 static void treemap_memory_manager_dec(void);
+
+/*******************************************************************************
+ * For debug.
+ *******************************************************************************/
+
+#ifdef PERIODIC_DEBUG
+#error
+#else
+/* #define PERIODIC_DEBUG */
+#endif
+
+#ifdef PERIODIC_DEBUG
+#define PERIODIC_PRINT_INTERVAL_MS 1000
+static struct delayed_work shared_dwork_;
+static struct pdata *pdata_;
+
+static void task_periodic_print(struct work_struct *work)
+{
+	struct delayed_work *dwork = container_of(work, struct delayed_work, work);
+
+	if (!pdata_) {
+		LOGn("pdata_ is not assigned.\n");
+		goto fin;
+	}
+	LOGn("n_pending_req %d\n"
+		"queue length: submit %d wait %d gc %d\n",
+		atomic_read(&pdata_->n_pending_req),
+		atomic_read(&pdata_->n_logpack_submit_queue),
+		atomic_read(&pdata_->n_logpack_wait_queue),
+		atomic_read(&pdata_->n_logpack_gc_queue));
+	
+fin:
+	INIT_DELAYED_WORK(dwork, task_periodic_print);
+	queue_delayed_work(system_wq, dwork,
+			msecs_to_jiffies(PERIODIC_PRINT_INTERVAL_MS));
+}
+
+static void start_periodic_print_for_debug(struct pdata *pdata)
+{
+	ASSERT(pdata);
+	pdata_ = pdata;
+	
+	INIT_DELAYED_WORK(&shared_dwork_, task_periodic_print);
+	queue_delayed_work(system_wq, &shared_dwork_,
+			msecs_to_jiffies(PERIODIC_PRINT_INTERVAL_MS));
+}
+
+static void stop_periodic_print_for_debug(void)
+{
+	cancel_delayed_work_sync(&shared_dwork_);
+	pdata_ = NULL;
+}
+#endif /* PERIODIC_DEBUG */
 
 /*******************************************************************************
  * Utility functions.
@@ -675,6 +735,11 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	INIT_LIST_HEAD(&pdata->logpack_submit_queue);
 	INIT_LIST_HEAD(&pdata->logpack_wait_queue);
 	INIT_LIST_HEAD(&pdata->logpack_gc_queue);
+#ifdef PERIODIC_DEBUG
+	atomic_set(&pdata->n_logpack_submit_queue, 0);
+	atomic_set(&pdata->n_logpack_wait_queue, 0);
+	atomic_set(&pdata->n_logpack_gc_queue, 0);
+#endif
 
 	/* Initialize n_pending_req. */
 	atomic_set(&pdata->n_pending_req, 0);
@@ -850,8 +915,17 @@ static void unregister_dev(void)
 static bool start_dev(void)
 {
 	unsigned int i = 0;
+	unsigned int minor;
+	struct wrapper_blk_dev *wdev;
 
-	if (!wdev_start(get_minor(i))) {
+	minor = get_minor(i);
+	wdev = wdev_get(minor);
+	ASSERT(wdev);
+	
+#ifdef PERIODIC_DEBUG
+	start_periodic_print_for_debug(get_pdata_from_wdev(wdev));
+#endif
+	if (!wdev_start(minor)) {
 		goto error;
 	}
 	return true;
@@ -868,6 +942,10 @@ static void stop_dev(void)
 	struct wrapper_blk_dev *wdev;
 	struct pdata *pdata;
 
+#ifdef PERIODIC_DEBUG
+	stop_periodic_print_for_debug();
+#endif
+	
 	minor = get_minor(i);
 	wdev_stop(minor);
 	wdev = wdev_get(minor);
@@ -1486,6 +1564,49 @@ static void destroy_req_entry_dec(struct req_entry *reqe)
 }
 
 /**
+ * Helper function for tasks.
+ *
+ * @wdev wrapper block device.
+ * @nr flag bit number.
+ * @wq workqueue.
+ * @task task.
+ *
+ * RETURN:
+ *   pack_work if really enqueued, or NULL.
+ */
+static struct pack_work* enqueue_task_if_necessary(
+	struct wrapper_blk_dev *wdev,
+	int nr, struct workqueue_struct *wq,
+	void (*task)(struct work_struct *))
+{
+	struct pack_work *pwork = NULL;
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
+	int ret;
+
+	ASSERT(pdata);
+	ASSERT(task);
+	ASSERT(wq);
+	
+retry:
+	if (!test_and_set_bit(nr, &pdata->flags)) {
+		pwork = create_pack_work(wdev, GFP_NOIO);
+		if (!pwork) {
+			LOGn("memory allocation failed.\n");
+			clear_bit(nr, &pdata->flags);
+			schedule();
+			goto retry;
+		}
+		LOGd_("enqueue task for %d\n", nr);
+		INIT_WORK(&pwork->work, task);
+		ret = queue_work(wq, &pwork->work);
+		if (!ret) {
+			LOGe("work is already on the queue.\n");
+		}
+	}
+	return pwork;
+}
+
+/**
  * Create bio_entry list for a request.
  * This does not copy IO data, bio stubs only.
  *
@@ -1715,8 +1836,10 @@ static void logpack_list_submit_task(struct work_struct *work)
 	struct list_head wpack_list;
 	bool is_empty, is_working;
 
-	while (true) {
+	destroy_pack_work(pwork);
+	pwork = NULL;
 
+	while (true) {
 		/* Dequeue logpack list from the submit queue. */
 		INIT_LIST_HEAD(&wpack_list);
 		spin_lock(&pdata->logpack_submit_queue_lock);
@@ -1741,27 +1864,18 @@ static void logpack_list_submit_task(struct work_struct *work)
 		spin_lock(&pdata->logpack_wait_queue_lock);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			list_move_tail(&wpack->list, &pdata->logpack_wait_queue);
+			atomic_inc(&pdata->n_logpack_wait_queue); /* debug */
 		}
 		ASSERT(list_empty(&wpack_list));
 		spin_unlock(&pdata->logpack_wait_queue_lock);
 
-		if (test_and_set_bit(
-				PDATA_STATE_WAIT_TASK_WORKING,
-				&pdata->flags) == 0) {
-			
-			struct pack_work *pwork2;
-			pwork2 = create_pack_work(wdev, GFP_NOIO);
-			if (!pwork2) {
-				/* You must do error handling. */
-				BUG();
-			}
-			INIT_WORK(&pwork2->work, logpack_list_wait_task);
-			queue_work(wq_logpack_, &pwork2->work);
-		}
+		/* Run task. */
+		enqueue_task_if_necessary(
+			wdev,
+			PDATA_STATE_WAIT_TASK_WORKING,
+			wq_logpack_,
+			logpack_list_wait_task);
 	}
-	LOGd_("destroy_pack_work begin %p\n", pwork);
-	destroy_pack_work(pwork);
-	LOGd_("destroy_pack_work end %p\n", pwork);
 }
 
 /**
@@ -2080,6 +2194,7 @@ static void logpack_list_wait_task(struct work_struct *work)
 		spin_lock(&pdata->logpack_gc_queue_lock);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			list_move_tail(&wpack->list, &pdata->logpack_gc_queue);
+			atomic_inc(&pdata->n_logpack_gc_queue); /* debug */
 		}
 		spin_unlock(&pdata->logpack_gc_queue_lock);
 
@@ -2447,6 +2562,7 @@ static void dequeue_and_gc_logpack_list(struct pdata *pdata)
 					&pdata->logpack_gc_queue, list) {
 			list_move_tail(&wpack->list, &wpack_list);
 			n_pack++;
+			atomic_dec(&pdata->n_logpack_gc_queue); /* debug */
 			if (n_pack >= N_PACK_BULK) { break; }
 		}
 		spin_unlock(&pdata->logpack_gc_queue_lock);
@@ -3323,7 +3439,6 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	struct pdata *pdata = pdata_get_from_wdev(wdev);
 	struct request *req;
 	struct req_entry *reqe;
-	struct pack_work *pwork;
 	struct pack *wpack = NULL, *wpack_next;
 	struct walb_logpack_header *lhead;
 	bool ret;
@@ -3347,10 +3462,6 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	spin_unlock(&pdata->lsid_lock);
 	latest_lsid_old = latest_lsid;
 
-	/* Initialize pack_work. */
-	pwork = create_pack_work(wdev, GFP_ATOMIC);
-	if (!pwork) { goto error0; }
-			
 	/* Fetch requests and create pack list. */
 	while ((req = blk_fetch_request(q)) != NULL) {
 
@@ -3398,12 +3509,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 		ASSERT(!list_empty(&wpack->req_ent_list));
 		list_add_tail(&wpack->list, &wpack_list);
 	}
-	
-	if (list_empty(&wpack_list)) {
-		/* No write request. */
-		destroy_pack_work(pwork);
-		pwork = NULL;
-	} else {
+	if (!list_empty(&wpack_list)) {
 		/* Currently all requests are packed and lsid of all writepacks is defined. */
 		ASSERT(is_valid_pack_list(&wpack_list));
 
@@ -3411,19 +3517,17 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 		spin_lock(&pdata->logpack_submit_queue_lock);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			list_move_tail(&wpack->list, &pdata->logpack_submit_queue);
+			atomic_inc(&pdata->n_logpack_submit_queue); /* debug */
 		}
 		spin_unlock(&pdata->logpack_submit_queue_lock);
-		
-		if (test_and_set_bit(
-				PDATA_STATE_SUBMIT_TASK_WORKING,
-				&pdata->flags) == 0) {
-			INIT_WORK(&pwork->work, logpack_list_submit_task);
-			queue_work(wq_logpack_, &pwork->work);
-		} else {
-			destroy_pack_work(pwork);
-			pwork = NULL;
-		}
 
+		/* Run task. */
+		enqueue_task_if_necessary(
+			wdev,
+			PDATA_STATE_SUBMIT_TASK_WORKING,
+			wq_logpack_,
+			logpack_list_submit_task);
+		
 		/* Store latest_lsid */
 		ASSERT(latest_lsid >= latest_lsid_old);
 		spin_lock(&pdata->lsid_lock);
@@ -3435,10 +3539,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	
 	LOGd_("wrapper_blk_req_request_fn: end.\n");
 	return;
-#if 0
-error1:
-	destroy_pack_work(pwork);
-#endif
+
 error0:
 	while ((req = blk_fetch_request(q)) != NULL) {
 		__blk_end_request_all(req, -EIO);
