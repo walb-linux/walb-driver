@@ -28,7 +28,6 @@ static int generic_worker(void *data);
 static int generic_worker(void *data)
 {
 	struct worker_data *wd = (struct worker_data *)data;
-	int ret;
 	
 	ASSERT(wd);
 
@@ -37,8 +36,7 @@ static int generic_worker(void *data)
 			wd->wait_q,
 			test_bit(THREAD_WAKEUP, &wd->flags) || kthread_should_stop());
 
-		ret = test_and_clear_bit(THREAD_WAKEUP, &wd->flags);
-		ASSERT(ret);
+		clear_bit(THREAD_WAKEUP, &wd->flags);
 		
 		if (!kthread_should_stop()) {
 			wd->run(wd->data);
