@@ -1844,18 +1844,19 @@ static void logpack_list_submit_task(struct work_struct *work)
 		INIT_LIST_HEAD(&wpack_list);
 		spin_lock(&pdata->logpack_submit_queue_lock);
 		is_empty = list_empty(&pdata->logpack_submit_queue);
-		list_for_each_entry_safe(wpack, wpack_next,
-					&pdata->logpack_submit_queue, list) {
-			list_move_tail(&wpack->list, &wpack_list);
-		}
-		spin_unlock(&pdata->logpack_submit_queue_lock);
 		if (is_empty) {
 			is_working =
 				test_and_clear_bit(PDATA_STATE_SUBMIT_TASK_WORKING,
 						&pdata->flags);
 			ASSERT(is_working);
-			break;
 		}
+		list_for_each_entry_safe(wpack, wpack_next,
+					&pdata->logpack_submit_queue, list) {
+			list_move_tail(&wpack->list, &wpack_list);
+			atomic_dec(&pdata->n_logpack_submit_queue); /* debug */
+		}
+		spin_unlock(&pdata->logpack_submit_queue_lock);
+		if (is_empty) { break; }
 
 		/* Submit. */
 		logpack_list_submit(wdev, &wpack_list);
@@ -2172,18 +2173,19 @@ static void logpack_list_wait_task(struct work_struct *work)
 		INIT_LIST_HEAD(&wpack_list);
 		spin_lock(&pdata->logpack_wait_queue_lock);
 		is_empty = list_empty(&pdata->logpack_wait_queue);
-		list_for_each_entry_safe(wpack, wpack_next,
-					&pdata->logpack_wait_queue, list) {
-			list_move_tail(&wpack->list, &wpack_list);
-		}
-		spin_unlock(&pdata->logpack_wait_queue_lock);
 		if (is_empty) {
 			is_working = test_and_clear_bit(
 				PDATA_STATE_WAIT_TASK_WORKING,
 				&pdata->flags);
 			ASSERT(is_working);
-			break;
 		}
+		list_for_each_entry_safe(wpack, wpack_next,
+					&pdata->logpack_wait_queue, list) {
+			list_move_tail(&wpack->list, &wpack_list);
+			atomic_dec(&pdata->n_logpack_wait_queue); /* debug */
+		}
+		spin_unlock(&pdata->logpack_wait_queue_lock);
+		if (is_empty) { break; }
 		
 		/* Wait logpack completion and submit datapacks. */
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
