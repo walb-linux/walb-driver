@@ -90,18 +90,6 @@ struct workqueue_struct *wq_ol_ = NULL;
 #define WORKER_NAME_GC "walb_gc"
 
 /**
- * Writepack work.
- */
-struct pack_work
-{
-	struct work_struct work;
-	struct wrapper_blk_dev *wdev;
-};
-/* kmem_cache for logpack_work. */
-#define KMEM_CACHE_PACK_WORK_NAME "pack_work_cache"
-struct kmem_cache *pack_work_cache_ = NULL;
-
-/**
  * A write pack.
  * There are no overlapping requests in a pack.
  */
@@ -289,11 +277,6 @@ UNUSED static void print_bio_flags(struct bio *bio);
 UNUSED static void print_pack(const char *level, struct pack *pack);
 UNUSED static void print_pack_list(const char *level, struct list_head *wpack_list);
 
-/* pack_work related. */
-static struct pack_work* create_pack_work(
-	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
-static void destroy_pack_work(struct pack_work *work);
-
 /* bio_entry related. */
 static void bio_entry_end_io(struct bio *bio, int error);
 static struct bio_entry* create_bio_entry_by_clone(
@@ -362,16 +345,6 @@ static struct bio_entry* submit_flush(struct block_device *bdev);
 static void enqueue_submit_task_if_necessary(struct wrapper_blk_dev *wdev);
 static void enqueue_wait_task_if_necessary(struct wrapper_blk_dev *wdev);
 static void enqueue_submit_data_task_if_necessary(struct wrapper_blk_dev *wdev);
-static struct pack_work* enqueue_task_if_necessary(
-	struct wrapper_blk_dev *wdev,
-	int nr, struct workqueue_struct *wq,
-	void (*task)(struct work_struct *));
-#if 0
-static struct pack_work* enqueue_delayed_task_if_necessary(
-	struct wrapper_blk_dev *wdev,
-	int nr, struct workqueue_struct *wq,
-	void (*task)(struct work_struct *), unsigned int delay);
-#endif
 static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging);
 static struct bio_wrapper* alloc_bio_wrapper_inc(struct pdata *pdata, gfp_t gfp_mask);
 static void destroy_bio_wrapper_dec(struct pdata *pdata, struct bio_wrapper *biow);
@@ -511,6 +484,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	unsigned int lbs, pbs;
 	struct walb_super_sector *ssect;
 	struct request_queue *lq, *dq;
+	int ret;
 	
 	LOGd("create_private_data called");
 
@@ -693,8 +667,14 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	atomic_set(&pdata->n_pending_bio, 0);
 
 	/* Prepare GC worker. */
+	ret = snprintf(pdata->gc_worker_data_.name, WORKER_NAME_MAX_LEN,
+		"%s/%u", WORKER_NAME_GC, wdev->minor);
+	if (ret >= WORKER_NAME_MAX_LEN) {
+		LOGe("Thread name size too long.\n");
+		goto error4;
+	}
 	initialize_worker(&pdata->gc_worker_data_,
-			run_gc_logpack_list, (void *)wdev, WORKER_NAME_GC);
+			run_gc_logpack_list, (void *)wdev);
 	
 	return true;
 
@@ -1007,45 +987,6 @@ static void print_pack_list(const char *level, struct list_head *wpack_list)
 		i ++;
 	}
 	printk("%s""print_pack_list %p end.\n", level, wpack_list);
-}
-
-/**
- * Create a pack_work.
- *
- * RETURN:
- * NULL if failed.
- * CONTEXT:
- * Any.
- */
-static struct pack_work* create_pack_work(
-	struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
-{
-	struct pack_work *pwork;
-
-	ASSERT(wdev);
-	ASSERT(pack_work_cache_);
-
-	pwork = kmem_cache_alloc(pack_work_cache_, gfp_mask);
-	if (!pwork) {
-		goto error0;
-	}
-	pwork->wdev = wdev;
-	
-	return pwork;
-error0:
-	return NULL;
-}
-
-/**
- * Destory a pack_work.
- */
-static void destroy_pack_work(struct pack_work *work)
-{
-	if (!work) { return; }
-#ifdef WALB_DEBUG
-	work->wdev = NULL;
-#endif
-	kmem_cache_free(pack_work_cache_, work);
 }
 
 /**
@@ -3336,95 +3277,6 @@ error0:
 }
 
 /**
- * Helper function for tasks.
- *
- * @wdev wrapper block device.
- * @nr flag bit number.
- * @wq workqueue.
- * @task task.
- *
- * RETURN:
- *   pack_work if really enqueued, or NULL.
- */
-static struct pack_work* enqueue_task_if_necessary(
-	struct wrapper_blk_dev *wdev,
-	int nr, struct workqueue_struct *wq,
-	void (*task)(struct work_struct *))
-{
-	struct pack_work *pwork = NULL;
-	struct pdata *pdata = get_pdata_from_wdev(wdev);
-	int ret;
-
-	ASSERT(pdata);
-	ASSERT(task);
-	ASSERT(wq);
-	
-retry:
-	if (!test_and_set_bit(nr, &pdata->flags)) {
-		pwork = create_pack_work(wdev, GFP_NOIO);
-		if (!pwork) {
-			LOGn("memory allocation failed.\n");
-			clear_bit(nr, &pdata->flags);
-			schedule();
-			goto retry;
-		}
-		LOGd_("enqueue task for %d\n", nr);
-		INIT_WORK(&pwork->work, task);
-		ret = queue_work(wq, &pwork->work);
-		if (!ret) {
-			LOGe("work is already on the queue.\n");
-		}
-	}
-	return pwork;
-}
-
-/**
- * Helper function for tasks.
- *
- * @wdev wrapper block device.
- * @nr flag bit number.
- * @wq workqueue.
- * @task task.
- * @delay delay [jiffies].
- *
- * RETURN:
- *   pack_work if really enqueued, or NULL.
- */
-#if 0
-static struct pack_work* enqueue_delayed_task_if_necessary(
-	struct wrapper_blk_dev *wdev,
-	int nr, struct workqueue_struct *wq,
-	void (*task)(struct work_struct *), unsigned int delay)
-{
-	struct pack_work *pwork;
-	struct pdata *pdata = get_pdata_from_wdev(wdev);
-	int ret;
-
-	ASSERT(pdata);
-	ASSERT(task);
-	ASSERT(wq);
-	
-retry:
-	if (!test_and_set_bit(nr, &pdata->flags)) {
-		pwork = create_pack_work(wdev, GFP_NOIO);
-		if (!pwork) {
-			LOGn("memory allocation failed.\n");
-			clear_bit(nr, &pdata->flags);
-			schedule();
-			goto retry;
-		}
-		LOGd_("enqueue delayed task for %d\n", nr);
-		INIT_DELAYED_WORK(&pwork->dwork, task);
-		ret = queue_delayed_work(wq, &pwork->dwork, delay);
-		if (!ret) {
-			LOGe("work is already on the queue.\n");
-		}
-	}
-	return pwork;
-}
-#endif
-
-/**
  * Enqueue logpack submit task if necessary.
  */
 static void enqueue_submit_task_if_necessary(struct wrapper_blk_dev *wdev)
@@ -3434,6 +3286,7 @@ static void enqueue_submit_task_if_necessary(struct wrapper_blk_dev *wdev)
 	pwork = enqueue_task_if_necessary(
 		wdev,
 		PDATA_STATE_SUBMIT_TASK_WORKING,
+		&get_pdata_from_wdev(wdev)->flags,
 		wq_logpack_,
 		task_submit_logpack_list);
 #ifdef DEBUG_DETAIL
@@ -3453,6 +3306,7 @@ static void enqueue_wait_task_if_necessary(struct wrapper_blk_dev *wdev)
 	pwork = enqueue_task_if_necessary(
 		wdev,
 		PDATA_STATE_WAIT_TASK_WORKING,
+		&get_pdata_from_wdev(wdev)->flags,
 		wq_logpack_,
 		task_wait_for_logpack_list);
 #ifdef DEBUG_DETAIL
@@ -3472,6 +3326,7 @@ static void enqueue_submit_data_task_if_necessary(struct wrapper_blk_dev *wdev)
 	pwork = enqueue_task_if_necessary(
 		wdev,
 		PDATA_STATE_SUBMIT_DATA_TASK_WORKING,
+		&get_pdata_from_wdev(wdev)->flags,
 		wq_logpack_,
 		task_submit_bio_wrapper_list);
 
@@ -3487,14 +3342,6 @@ static bool pre_register(void)
 {
 	LOGd("pre_register called.");
 
-	/* Prepare kmem_cache data. */
-	pack_work_cache_ = kmem_cache_create(
-		KMEM_CACHE_PACK_WORK_NAME,
-		sizeof(struct pack_work), 0, 0, NULL);
-	if (!pack_work_cache_) {
-		LOGe("failed to create a kmem_cache (pack_work).\n");
-		goto error0;
-	}
 	if (!bio_wrapper_init()) {
 		goto error1;
 	}
@@ -3560,8 +3407,6 @@ error3:
 error2:
 	bio_wrapper_exit();
 error1:
-	kmem_cache_destroy(pack_work_cache_);
-error0:
 	return false;
 }
 
@@ -3592,8 +3437,6 @@ static void post_unregister(void)
 	kmem_cache_destroy(pack_cache_);
 	pack_cache_ = NULL;
 	bio_wrapper_exit();
-	kmem_cache_destroy(pack_work_cache_);
-	pack_work_cache_ = NULL;
 
 	LOGd_("end\n");
 }

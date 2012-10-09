@@ -28,7 +28,6 @@ static int generic_worker(void *data);
 static int generic_worker(void *data)
 {
 	struct worker_data *wd = (struct worker_data *)data;
-	int ret;
 	
 	ASSERT(wd);
 
@@ -37,8 +36,7 @@ static int generic_worker(void *data)
 			wd->wait_q,
 			test_bit(THREAD_WAKEUP, &wd->flags) || kthread_should_stop());
 
-		ret = test_and_clear_bit(THREAD_WAKEUP, &wd->flags);
-		ASSERT(ret);
+		clear_bit(THREAD_WAKEUP, &wd->flags);
 		
 		if (!kthread_should_stop()) {
 			wd->run(wd->data);
@@ -58,17 +56,19 @@ static int generic_worker(void *data)
  * @worker_data
  * @run a function to run when wakeup_worker() is called.
  * @data the agrument of the run().
- * @name kthread name.
  */
 void initialize_worker(
 	struct worker_data *wd,
 	void (*run)(void *data),
-	void *data,
-	const char *name)
+	void *data)
 {
+	size_t len;
+	
 	ASSERT(wd);
 	ASSERT(run);
-	ASSERT(name);
+
+	len = strnlen(wd->name, WORKER_NAME_MAX_LEN);
+	BUG_ON(len >= WORKER_NAME_MAX_LEN);
 
 	wd->flags = 0; /* clear bit */
 	init_waitqueue_head(&wd->wait_q);
@@ -79,7 +79,7 @@ void initialize_worker(
 	wd->count = 0;
 #endif
 	
-	wd->tsk = kthread_run(generic_worker, wd, name);
+	wd->tsk = kthread_run(generic_worker, wd, wd->name);
 	ASSERT(wd->tsk);
 }
 

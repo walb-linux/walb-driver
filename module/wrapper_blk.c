@@ -91,6 +91,12 @@ static struct block_device_operations wrapper_blk_ops_ = {
 	.ioctl		 = wrapper_blk_ioctl
 };
 
+/**
+ * kmem_cache for pack_work.
+ */
+#define KMEM_CACHE_PACK_WORK_NAME "pack_work_cache"
+static struct kmem_cache *pack_work_cache_ = NULL;
+
 /*******************************************************************************
  * Exported Global function definitions.
  *******************************************************************************/
@@ -214,6 +220,137 @@ struct wrapper_blk_dev* wdev_get_from_queue(struct request_queue *q)
 	return wdev;
 }
 EXPORT_SYMBOL_GPL(wdev_get_from_queue);
+
+/**
+ * Create a pack_work.
+ *
+ * RETURN:
+ * NULL if failed.
+ * CONTEXT:
+ * Any.
+ */
+struct pack_work* create_pack_work(
+	struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
+{
+	struct pack_work *pwork;
+
+	ASSERT(wdev);
+	ASSERT(pack_work_cache_);
+
+	pwork = kmem_cache_alloc(pack_work_cache_, gfp_mask);
+	if (!pwork) {
+		goto error0;
+	}
+	pwork->wdev = wdev;
+	
+	return pwork;
+error0:
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(create_pack_work);
+
+/**
+ * Destory a pack_work.
+ */
+void destroy_pack_work(struct pack_work *work)
+{
+	if (!work) { return; }
+#ifdef WALB_DEBUG
+	work->wdev = NULL;
+#endif
+	kmem_cache_free(pack_work_cache_, work);
+}
+EXPORT_SYMBOL_GPL(destroy_pack_work);
+
+/**
+ * Helper function for tasks.
+ *
+ * @wdev wrapper block device.
+ * @nr flag bit number.
+ * @flags_p pointer to flags data.
+ * @wq workqueue.
+ * @task task.
+ *
+ * RETURN:
+ *   pack_work if really enqueued, or NULL.
+ */
+struct pack_work* enqueue_task_if_necessary(
+	struct wrapper_blk_dev *wdev,
+	int nr, unsigned long *flags_p,
+	struct workqueue_struct *wq, void (*task)(struct work_struct *))
+{
+	struct pack_work *pwork = NULL;
+	int ret;
+
+	ASSERT(task);
+	ASSERT(wq);
+	
+retry:
+	if (!test_and_set_bit(nr, flags_p)) {
+		pwork = create_pack_work(wdev, GFP_NOIO);
+		if (!pwork) {
+			LOGn("memory allocation failed.\n");
+			clear_bit(nr, flags_p);
+			schedule();
+			goto retry;
+		}
+		LOGd_("enqueue task for %d\n", nr);
+		INIT_WORK(&pwork->work, task);
+		ret = queue_work(wq, &pwork->work);
+		if (!ret) {
+			LOGe("work is already on the queue.\n");
+		}
+	}
+	return pwork;
+}
+EXPORT_SYMBOL_GPL(enqueue_task_if_necessary);
+
+/**
+ * Helper function for tasks.
+ *
+ * @wdev wrapper block device.
+ * @nr flag bit number.
+ * @flags_p pointer to flags data.
+ * @wq workqueue.
+ * @task task.
+ * @delay delay [jiffies].
+ *
+ * RETURN:
+ *   pack_work if really enqueued, or NULL.
+ */
+#if 0
+struct pack_work* enqueue_delayed_task_if_necessary(
+	struct wrapper_blk_dev *wdev,
+	int nr, unsigned long *flags_p,
+	struct workqueue_struct *wq, void (*task)(struct work_struct *),
+	unsigned int delay)
+{
+	struct pack_work *pwork;
+	int ret;
+
+	ASSERT(task);
+	ASSERT(wq);
+	
+retry:
+	if (!test_and_set_bit(nr, flags_p)) {
+		pwork = create_pack_work(wdev, GFP_NOIO);
+		if (!pwork) {
+			LOGn("memory allocation failed.\n");
+			clear_bit(nr, flags_p);
+			schedule();
+			goto retry;
+		}
+		LOGd_("enqueue delayed task for %d\n", nr);
+		INIT_DELAYED_WORK(&pwork->dwork, task);
+		ret = queue_delayed_work(wq, &pwork->dwork, delay);
+		if (!ret) {
+			LOGe("work is already on the queue.\n");
+		}
+	}
+	return pwork;
+}
+EXPORT_SYMBOL_GPL(enqueue_delayed_task_if_necessary);
+#endif
 
 /*******************************************************************************
  * Static functions definition.
@@ -551,20 +688,33 @@ static int __init wrapper_blk_init(void)
 		return -EBUSY;
 	}
 
+	/* Prepare kmem_cache data. */
+	pack_work_cache_ = kmem_cache_create(
+		KMEM_CACHE_PACK_WORK_NAME,
+		sizeof(struct pack_work), 0, 0, NULL);
+	if (!pack_work_cache_) {
+		LOGe("failed to create a kmem_cache (pack_work).\n");
+		goto error0;
+	}
+
 	/* Initialize devices_. */
 	init_devices();
 
 	return 0;
 #if 0
+error1:
+	kmem_cache_destroy(pack_work_cache_);
+#endif
 error0:
 	unregister_blkdev(wrapper_blk_major_, WRAPPER_BLK_NAME);
-#endif
 	return -ENOMEM;
 }
 
 static void wrapper_blk_exit(void)
 {
 	stop_and_unregister_all_devices();
+	kmem_cache_destroy(pack_work_cache_);
+	pack_work_cache_ = NULL;
 	unregister_blkdev(wrapper_blk_major_, WRAPPER_BLK_NAME);
 
 	LOGi("Wrapper-blk module exit.\n");
