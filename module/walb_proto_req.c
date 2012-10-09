@@ -24,6 +24,7 @@
 #include "treemap.h"
 #include "bio_entry.h"
 #include "req_entry.h"
+#include "worker.h"
 
 /*******************************************************************************
  * Module variables definition.
@@ -91,6 +92,11 @@ struct workqueue_struct *wq_normal_ = NULL;
  */
 #define WQ_READ "wq_read"
 struct workqueue_struct *wq_read_ = NULL;
+
+/**
+ * GC worker name.
+ */
+#define WORKER_NAME_GC "walb_gc"
 
 /**
  * Writepack work.
@@ -175,12 +181,16 @@ struct pdata
 	struct list_head logpack_submit_queue; /* writepack list.
 						  logpack_submit_queue_lock
 						  must be held. */
-	
 	spinlock_t logpack_wait_queue_lock;
 	struct list_head logpack_wait_queue; /* writepack list.
 						logpack_wait_queue_lock
 						must be held. */
-
+	spinlock_t logpack_gc_queue_lock;
+	struct list_head logpack_gc_queue; /* writepack list.
+					      logpack_gc_lock
+					      must be held. */
+	struct worker_data gc_worker_data; /* for gc worker. */
+	
 	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
 					This will be used for logpack size
 					not to be too long
@@ -243,6 +253,8 @@ static struct treemap_memory_manager mmgr_;
 #define PDATA_STATE_FAILURE		 3
 
 #define get_pdata_from_wdev(wdev) ((struct pdata *)wdev->private_data)
+
+#define N_PACK_BULK 32
 
 /*******************************************************************************
  * Static functions prototype.
@@ -319,9 +331,13 @@ static void destroy_req_entry_dec(struct req_entry *reqe);
 /* Workqueue tasks. */
 static void logpack_list_submit_task(struct work_struct *work);
 static void logpack_list_wait_task(struct work_struct *work);
-static void logpack_list_gc_task(struct work_struct *work);
+static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list);
 static void write_req_task(struct work_struct *work);
 static void read_req_task(struct work_struct *work);
+
+/* Thread worer. */
+static void run_gc_logpack_list(void *data);
+static void dequeue_and_gc_logpack_list(struct pdata *pdata);
 
 /* Helper functions for tasks. */
 static void logpack_list_submit(
@@ -483,6 +499,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	unsigned int lbs, pbs;
 	struct walb_super_sector *ssect;
 	struct request_queue *lq, *dq;
+	int ret;
 	
 	LOGd("create_private_data called");
 
@@ -654,11 +671,23 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	/* Prepare logpack submit/wait queue. */
 	spin_lock_init(&pdata->logpack_submit_queue_lock);
 	spin_lock_init(&pdata->logpack_wait_queue_lock);
+	spin_lock_init(&pdata->logpack_gc_queue_lock);
 	INIT_LIST_HEAD(&pdata->logpack_submit_queue);
 	INIT_LIST_HEAD(&pdata->logpack_wait_queue);
+	INIT_LIST_HEAD(&pdata->logpack_gc_queue);
 
 	/* Initialize n_pending_req. */
 	atomic_set(&pdata->n_pending_req, 0);
+
+	/* Prepare GC worker. */
+	ret = snprintf(pdata->gc_worker_data.name, WORKER_NAME_MAX_LEN,
+		"%s/%u", WORKER_NAME_GC, wdev->minor);
+	if (ret >= WORKER_NAME_MAX_LEN) {
+		LOGe("Thread name size too long.\n");
+		goto error5;
+	}
+	initialize_worker(&pdata->gc_worker_data,
+			run_gc_logpack_list, (void *)wdev);
 	
 	return true;
 
@@ -694,6 +723,9 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 	pdata = wdev->private_data;
 	if (!pdata) { return; }
 	ASSERT(pdata);
+
+	/* Finalize worker. */
+	finalize_worker(&pdata->gc_worker_data);
 
 	/* sync super block.
 	   The locks are not required because
@@ -1277,7 +1309,6 @@ static bool is_pack_size_exceeds(
 	unsigned int pbs, unsigned int max_logpack_pb,
 	struct req_entry *reqe)
 {
-	/* now editing */
 	unsigned int pb;
 	ASSERT(lhead);
 	ASSERT(pbs);
@@ -2018,10 +2049,11 @@ static void logpack_list_wait_task(struct work_struct *work)
 	struct pack *wpack, *wpack_next;
 	bool is_empty, is_working;
 	struct list_head wpack_list;
-	struct pack_work *pwork2;
 
-	while (true) {
+	destroy_pack_work(pwork);
+	pwork = NULL;
 	
+	while (true) {
 		/* Dequeue logpack list from the submit queue. */
 		INIT_LIST_HEAD(&wpack_list);
 		spin_lock(&pdata->logpack_wait_queue_lock);
@@ -2039,47 +2071,42 @@ static void logpack_list_wait_task(struct work_struct *work)
 			break;
 		}
 		
-		/* Allocate work struct for gc task. */
-		pwork2 = create_pack_work(wdev, GFP_NOIO);
-		if (!pwork2) {
-			/* We must do error handling. */
-			BUG();
-		}
-		
 		/* Wait logpack completion and submit datapacks. */
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			wait_logpack_and_enqueue_datapack_tasks(wpack, wdev);
-			list_move_tail(&wpack->list, &pwork2->wpack_list);
 		}
-		/* Enqueue logpack list gc task. */
-		INIT_WORK(&pwork2->work, logpack_list_gc_task);
-		queue_work(wq_normal_, &pwork2->work);
+
+		/* Put packs into the gc queue. */
+		spin_lock(&pdata->logpack_gc_queue_lock);
+		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
+			list_move_tail(&wpack->list, &pdata->logpack_gc_queue);
+		}
+		spin_unlock(&pdata->logpack_gc_queue_lock);
+
+		/* Wakeup the gc task. */
+		wakeup_worker(&pdata->gc_worker_data);
 	}
-	LOGd_("destroy_pack_work begin\n");
-	destroy_pack_work(pwork);
-	LOGd_("destroy_pack_work end\n");
 }
 
 /**
  * Wait all related write requests done and
  * free all related resources.
  *
- * @work work in a pack_work.
+ * @pdata pdata.
+ * @wpack_list pack list to gc.
  *
  * CONTEXT:
- *   Workqueue task.
- *   Works will be executed in parallel.
+ *   Called from a thread worker.
  */
-static void logpack_list_gc_task(struct work_struct *work)
+static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct pack *wpack, *next_wpack;
 	struct req_entry *reqe, *next_reqe;
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	int c;
 
-	list_for_each_entry_safe(wpack, next_wpack, &pwork->wpack_list, list) {
+	list_for_each_entry_safe(wpack, next_wpack, wpack_list, list) {
 		list_del(&wpack->list);
 		list_for_each_entry_safe(reqe, next_reqe, &wpack->req_ent_list, list) {
 			list_del(&reqe->list);
@@ -2098,10 +2125,7 @@ static void logpack_list_gc_task(struct work_struct *work)
 		ASSERT(list_empty(&wpack->bio_ent_list));
 		destroy_pack(wpack);
 	}
-	ASSERT(list_empty(&pwork->wpack_list));
-	LOGd_("destroy_pack_work begin\n");
-	destroy_pack_work(pwork);
-	LOGd_("destroy_pack_work end\n");
+	ASSERT(list_empty(wpack_list));
 }
 
 /**
@@ -2387,6 +2411,52 @@ fin:
 	destroy_req_entry_dec(reqe);
 }
 #endif /* WALB_FAST_ALGORITHM */
+
+/**
+ * Run gc logpack list.
+ */
+static void run_gc_logpack_list(void *data)
+{
+	struct wrapper_blk_dev *wdev = (struct wrapper_blk_dev *)data;
+	ASSERT(wdev);
+
+	dequeue_and_gc_logpack_list(get_pdata_from_wdev(wdev));
+}
+
+/**
+ * Get logpack(s) from the gc queue and execute gc for them.
+ *
+ * @pdata pdata.
+ */
+static void dequeue_and_gc_logpack_list(struct pdata *pdata)
+{
+	struct pack *wpack, *wpack_next;
+	bool is_empty;
+	struct list_head wpack_list;
+	int n_pack;
+	
+	ASSERT(pdata);
+
+	INIT_LIST_HEAD(&wpack_list);
+	while (true) {
+		/* Dequeue logpack list */
+		spin_lock(&pdata->logpack_gc_queue_lock);
+		is_empty = list_empty(&pdata->logpack_gc_queue);
+		n_pack = 0;
+		list_for_each_entry_safe(wpack, wpack_next,
+					&pdata->logpack_gc_queue, list) {
+			list_move_tail(&wpack->list, &wpack_list);
+			n_pack++;
+			if (n_pack >= N_PACK_BULK) { break; }
+		}
+		spin_unlock(&pdata->logpack_gc_queue_lock);
+		if (is_empty) { break; }
+
+		/* Gc */
+		gc_logpack_list(pdata, &wpack_list);
+		ASSERT(list_empty(&wpack_list));
+	}
+}
 
 /**
  * Check whether pack is valid.
