@@ -511,6 +511,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	unsigned int lbs, pbs;
 	struct walb_super_sector *ssect;
 	struct request_queue *lq, *dq;
+	int ret;
 	
 	LOGd("create_private_data called");
 
@@ -693,8 +694,14 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	atomic_set(&pdata->n_pending_bio, 0);
 
 	/* Prepare GC worker. */
+	ret = snprintf(pdata->gc_worker_data_.name, WORKER_NAME_MAX_LEN,
+		"%s/%u", WORKER_NAME_GC, wdev->minor);
+	if (ret >= WORKER_NAME_MAX_LEN) {
+		LOGe("Thread name size too long.\n");
+		goto error4;
+	}
 	initialize_worker(&pdata->gc_worker_data_,
-			run_gc_logpack_list, (void *)wdev, WORKER_NAME_GC);
+			run_gc_logpack_list, (void *)wdev);
 	
 	return true;
 

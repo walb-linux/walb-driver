@@ -12,8 +12,11 @@
 
 /* #define WORKER_DEBUG */
 
+#define WORKER_NAME_MAX_LEN 32
+
 struct worker_data
 {
+	char name[WORKER_NAME_MAX_LEN]; /* Thread name. */
 	struct task_struct *tsk; /* kthread task_struct. */
 	wait_queue_head_t wait_q; /* Wait queue. */
 	unsigned long flags;
@@ -32,8 +35,8 @@ enum {
 	THREAD_WAKEUP = 0,
 };
 
-void initialize_worker(struct worker_data *wd,
-		void (*run)(void *data), void *data, const char *name);
+void initialize_worker(
+	struct worker_data *wd, void (*run)(void *data), void *data);
 void wakeup_worker(struct worker_data *wd);
 void finalize_worker(struct worker_data *wd);
 
