@@ -14,7 +14,8 @@ total=0
 for exe in $test_binaries; do
 
     echo -n running $exe ...
-    ./$exe > tmp/$exe.$TS.log 2>&1
+    exefile=$(basename $exe)
+    ./$exe > tmp/$exefile.$TS.log 2>&1
     if [ $? -ne 0 ]; then
 	echo "failed"
     else
