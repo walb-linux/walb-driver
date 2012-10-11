@@ -188,7 +188,7 @@ void stop_checkpointing(struct checkpoint_data *cpd)
  *
  * @cpd checkpoint data.
  *
- * @return current checkpoint interval.
+ * @return current checkpoint interval [ms].
  */
 u32 get_checkpoint_interval(struct checkpoint_data *cpd)
 {
@@ -205,7 +205,7 @@ u32 get_checkpoint_interval(struct checkpoint_data *cpd)
  * Set checkpoint interval.
  *
  * @cpd checkpoint data.
- * @val new checkpoint interval.
+ * @val new checkpoint interval [ms].
  */
 void set_checkpoint_interval(struct checkpoint_data *cpd, u32 interval)
 {

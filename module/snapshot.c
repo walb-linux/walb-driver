@@ -1780,7 +1780,7 @@ int snapshot_get(struct snapshot_data *snapd, const char *name,
  *	  lsid0 <= lsid < lsid1.
  *
  * RETURN:
- *   number of records.
+ *   number of records in success, or -1.
  */
 int snapshot_n_records_range_nolock(
 	struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
@@ -1805,6 +1805,7 @@ int snapshot_n_records_range_nolock(
 		sid = (u32)multimap_cursor_val(&cur);
 		ASSERT(sid != INVALID_SNAPSHOT_ID);
 		rec = get_record_by_id(snapd, sid);
+		if (!rec) { goto error0; }
 		ASSERT(is_valid_snapshot_record(rec));
 
 		/* Iterate. */
@@ -1812,6 +1813,8 @@ int snapshot_n_records_range_nolock(
 		ret = multimap_cursor_next(&cur);
 	}
 	return n_rec;
+error0:
+	return -1;
 }
 
 /**
@@ -1849,7 +1852,7 @@ int snapshot_n_records(struct snapshot_data *snapd)
  *	  lsid0 <= lsid < lsid1.
  *
  * RETURN:
- *   n records stored to @buf. n >= 0.
+ *   n records stored to @buf. n >= 0 in success, or -1.
  */
 int snapshot_list_range_nolock(struct snapshot_data *snapd,
 			struct walb_snapshot_record *buf, size_t buf_size,
@@ -1874,7 +1877,9 @@ int snapshot_list_range_nolock(struct snapshot_data *snapd,
 		sid = (u32)multimap_cursor_val(&cur);
 		ASSERT(sid != INVALID_SNAPSHOT_ID);
 		rec = get_record_by_id(snapd, sid);
-		ASSERT(rec);
+		if (!rec) {
+			goto error0;
+		}
 		ASSERT(is_valid_snapshot_record(rec));
 
 		/* Copy. */
@@ -1885,6 +1890,8 @@ int snapshot_list_range_nolock(struct snapshot_data *snapd,
 		ret = multimap_cursor_next(&cur);
 	}
 	return idx;
+error0:
+	return -1;
 }
 
 /**

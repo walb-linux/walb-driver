@@ -1201,6 +1201,26 @@ void map_cursor_copy(struct map_cursor *dst, struct map_cursor *src)
 }
 
 /**
+ * Get key of the cursor
+ *
+ * RETURN:
+ *   key if cursor points data, or TREEMAP_INVALID_KEY.
+ */
+u64 map_cursor_key(const struct map_cursor *cursor)
+{
+	if (!cursor) { goto invalid; }
+
+	ASSERT_MAP_CURSOR(cursor);
+	if (cursor->state == MAP_CURSOR_DATA) {
+		ASSERT(cursor->curr);
+		return cursor->curr->key;
+	}
+	
+invalid:
+	return TREEMAP_INVALID_KEY;
+}
+
+/**
  * Get value of the cursor.
  *
  * @return value if cursor points data, or TREEMAP_INVALID_VAL.
@@ -2276,7 +2296,7 @@ invalid:
 /**
  * Get key of the cursor.
  *
- * @return key if cursor points data, or (u64)(-1).
+ * @return key if cursor points data, or TREEMAP_INVALID_KEY;
  */
 u64 multimap_cursor_key(const struct multimap_cursor *cursor)
 {
@@ -2289,7 +2309,7 @@ u64 multimap_cursor_key(const struct multimap_cursor *cursor)
 	}
 	
 invalid:
-	return (u64)(-1);
+	return TREEMAP_INVALID_KEY;
 }
 
 /**

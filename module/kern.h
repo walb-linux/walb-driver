@@ -96,6 +96,11 @@ struct walb_dev
 	spinlock_t oldest_lsid_lock;
 	u64 oldest_lsid;
 
+#ifdef WALB_FAST_ALGORITHM
+	spinlock_t completed_lsid_lock;
+	u64 completed_lsid;
+#endif
+	
 	/*
 	 * For wrapper log device.
 	 */
