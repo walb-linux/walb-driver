@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-fPIC -Wall -Wextra -I. -I../include \
+CFLAGS=-fPIC -Wall -Wextra -I. -I./include -I../include \
        -D_FILE_OFFSET_BITS=64 -D_XOPEN_SOURCE=500 -D_GNU_SOURCE
 ifeq ($(DEBUG),1)
 	CFLAGS+=-DWALB_DEBUG -DDEBUG -g --coverage
@@ -10,27 +10,15 @@ endif
 
 BINARIES = walbctl trim test_rw
 TEST_BINARIES = \
-	test_checksum test_bitmap test_u64bits \
-	test_sector test_super test_snapshot test_logpack
+	test/test_checksum test/test_bitmap test/test_u64bits \
+	test/test_sector test/test_super test/test_snapshot test/test_logpack
 
 binaries: $(BINARIES) $(TEST_BINARIES)
 
 clean:
-	rm -f $(BINARIES) $(TEST_BINARIES) *.o
+	rm -f $(BINARIES) $(TEST_BINARIES) *.o lib/*.o test/*.o
 	rm -f *.gcov *.gcda *.gcno # coverage files.
 	rm -rf tmp # test files.
-
-HEADER_FILES = \
-	../include/walb/bitmap.h \
-	../include/walb/inttypes_kernel.h \
-	../include/walb/userland.h \
-	../include/walb/walb.h \
-	../include/walb/ioctl.h \
-	../include/walb/log_device.h \
-	../include/walb/log_record.h \
-	../include/walb/sector.h \
-	../include/walb/snapshot.h \
-	../include/walb/super.h
 
 walbctl: walbctl.o util.o logpack.o snapshot.o
 	$(CC) -o $@ $(CFLAGS) walbctl.o util.o logpack.o snapshot.o
@@ -38,31 +26,37 @@ walbctl: walbctl.o util.o logpack.o snapshot.o
 trim: trim.o util.o
 	$(CC) -o $@ $(CFLAGS) trim.o util.o
 
-test_checksum: test_checksum.o
-	$(CC) -o $@ $(CFLAGS) test_checksum.o
-
-test_bitmap: test_bitmap.o
-	$(CC) -o $@ $(CFLAGS) test_bitmap.o
-
-test_u64bits: test_u64bits.o
-	$(CC) -o $@ $(CFLAGS) test_u64bits.o
-
 test_rw: test_rw.o util.o
 	$(CC) -o $@ $(CFLAGS) test_rw.o util.o
 
-test_snapshot: test_snapshot.o util.o snapshot.o
-	$(CC) -o $@ $(CFLAGS) test_snapshot.o util.o snapshot.o
+test/test_checksum: test/test_checksum.o
+	$(CC) -o $@ $(CFLAGS) test/test_checksum.o
 
-test_sector: test_sector.o util.o
-	$(CC) -o $@ $(CFLAGS) test_sector.o util.o
+test/test_bitmap: test/test_bitmap.o
+	$(CC) -o $@ $(CFLAGS) test/test_bitmap.o
 
-test_super: test_super.o util.o
-	$(CC) -o $@ $(CFLAGS) test_super.o util.o
+test/test_u64bits: test/test_u64bits.o
+	$(CC) -o $@ $(CFLAGS) test/test_u64bits.o
 
-test_logpack: test_logpack.o logpack.o util.o
-	$(CC) -o $@ $(CFLAGS) test_logpack.o logpack.o util.o
+test/test_snapshot: test/test_snapshot.o util.o snapshot.o
+	$(CC) -o $@ $(CFLAGS) test/test_snapshot.o util.o snapshot.o
 
-SRCS=test_bitmap.c test_sector.c test_super.c test_snapshot.c test_logpack.c util.c logpack.c test_rw.c walbctl.c snapshot.c trim.c
+test/test_sector: test/test_sector.o util.o
+	$(CC) -o $@ $(CFLAGS) test/test_sector.o util.o
+
+test/test_super: test/test_super.o util.o
+	$(CC) -o $@ $(CFLAGS) test/test_super.o util.o
+
+test/test_logpack: test/test_logpack.o logpack.o util.o
+	$(CC) -o $@ $(CFLAGS) test/test_logpack.o logpack.o util.o
+
+SRCS= \
+	test/test_bitmap.c \
+	test/test_sector.c \
+	test/test_super.c \
+	test/test_snapshot.c \
+	test/test_logpack.c \
+	util.c logpack.c test_rw.c walbctl.c snapshot.c trim.c
 
 .c.o:
 	$(CC) -c $< -o $@ $(CFLAGS)
@@ -79,9 +73,9 @@ depend: Makefile
 	mv Makefile.new Makefile
 
 # DO NOT DELETE
-test_bitmap.o: test_bitmap.c ../include/walb/bitmap.h \
+test_bitmap.o: test/test_bitmap.c ../include/walb/bitmap.h \
  ../include/walb/common.h ../include/walb/userland.h
-test_sector.o: test_sector.c ../include/walb/sector.h \
+test_sector.o: test/test_sector.c ../include/walb/sector.h \
  ../include/walb/walb.h ../include/walb/common.h \
  ../include/walb/userland.h ../include/walb/disk_name.h random.h \
  check_userland.h ../include/walb/userland.h util.h \
@@ -90,15 +84,15 @@ test_sector.o: test_sector.c ../include/walb/sector.h \
  ../include/walb/checksum.h ../include/walb/super.h \
  ../include/walb/sector.h ../include/walb/snapshot.h \
  ../include/walb/u64bits.h
-test_super.o: test_super.c util.h check_userland.h ../include/walb/walb.h \
- ../include/walb/common.h ../include/walb/userland.h \
- ../include/walb/disk_name.h ../include/walb/log_device.h \
- ../include/walb/log_record.h ../include/walb/walb.h \
- ../include/walb/util.h ../include/walb/checksum.h \
+test_super.o: test/test_super.c util.h check_userland.h \
+ ../include/walb/walb.h ../include/walb/common.h \
+ ../include/walb/userland.h ../include/walb/disk_name.h \
+ ../include/walb/log_device.h ../include/walb/log_record.h \
+ ../include/walb/walb.h ../include/walb/util.h ../include/walb/checksum.h \
  ../include/walb/super.h ../include/walb/sector.h \
  ../include/walb/snapshot.h ../include/walb/u64bits.h \
  ../include/walb/super.h
-test_snapshot.o: test_snapshot.c util.h check_userland.h \
+test_snapshot.o: test/test_snapshot.c util.h check_userland.h \
  ../include/walb/walb.h ../include/walb/common.h \
  ../include/walb/userland.h ../include/walb/disk_name.h \
  ../include/walb/log_device.h ../include/walb/log_record.h \
@@ -106,7 +100,7 @@ test_snapshot.o: test_snapshot.c util.h check_userland.h \
  ../include/walb/super.h ../include/walb/sector.h \
  ../include/walb/snapshot.h ../include/walb/u64bits.h snapshot.h \
  ../include/walb/log_record.h ../include/walb/snapshot.h
-test_logpack.o: test_logpack.c ../include/walb/block_size.h \
+test_logpack.o: test/test_logpack.c ../include/walb/block_size.h \
  ../include/walb/common.h ../include/walb/userland.h util.h \
  check_userland.h ../include/walb/walb.h ../include/walb/disk_name.h \
  ../include/walb/log_device.h ../include/walb/log_record.h \
