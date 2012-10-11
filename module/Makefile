@@ -47,6 +47,7 @@ test-kthread-mod-objs := test_kthread.o
 test-deadlock-mod-objs := test_deadlock.o
 test-serialized-task-mod-objs := test_serialized_task.o
 test-completion-mod-objs := test_completion.o
+test-vmalloc-mod-objs := test_vmalloc.o
 
 simple-blk-mod-objs := simple_blk.o
 BASE_BIO_OBJS = base_bio.o size_list.o
@@ -83,6 +84,7 @@ test-kmem-cache-mod.o \
 test-workqueue-mod.o \
 test-serialized-task-mod.o \
 test-completion-mod.o \
+test-vmalloc-mod.o \
 simple-blk-mod.o \
 none-bio-mod.o \
 none-req-mod.o \
