@@ -159,7 +159,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_DEV_START,
+	WALB_IOCTL_START_DEV,
 
 	/*
 	 * Stop a walb device.
@@ -171,7 +171,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_DEV_STOP,
+	WALB_IOCTL_STOP_DEV,
 
 	/*
 	 * Get walb device major number.
@@ -198,7 +198,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_GET_DEV_LIST,
+	WALB_IOCTL_LIST_DEV,
 
 	/*
 	 * Get numbr of walb devices.
@@ -210,7 +210,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_GET_NUM_DEV,
+	WALB_IOCTL_NUM_OF_DEV,
 	
 	/****************************************
 	 * For WALB_IOCTL_WDEV
@@ -225,7 +225,7 @@ enum {
 	 * OUTPUT:
 	 *   ctl->val_u64 as oldest_lsid
 	 */
-	WALB_IOCTL_OLDEST_LSID_GET,
+	WALB_IOCTL_GET_OLDEST_LSID,
 
 	/*
 	 * Set oldest_lsid.
@@ -235,7 +235,7 @@ enum {
 	 * OUTPUT:
 	 *   None.
 	 */
-	WALB_IOCTL_OLDEST_LSID_SET,
+	WALB_IOCTL_SET_OLDEST_LSID,
 
 	/*
 	 * NOT YET IMPLEMENTED.
@@ -244,7 +244,7 @@ enum {
 	 * INPUT:
 	 * OUTPUT:
 	 */
-	WALB_IOCTL_LSID_SEARCH,
+	WALB_IOCTL_SEARCH_LSID,
 
 	/*
 	 * NOT YET IMPLEMENTED.
@@ -253,7 +253,7 @@ enum {
 	 * INPUT:
 	 * OUTPUT:
 	 */
-	WALB_IOCTL_STATUS_GET,
+	WALB_IOCTL_STATUS,
 
 	/*
 	 * Create a snapshot.
@@ -267,7 +267,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_SNAPSHOT_CREATE,
+	WALB_IOCTL_CREATE_SNAPSHOT,
 
 	/*
 	 * Delete a snapshot.
@@ -280,7 +280,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_SNAPSHOT_DELETE,
+	WALB_IOCTL_DELETE_SNAPSHOT,
 
 	/*
 	 * Delete all snapshots in a lsid range.
@@ -294,7 +294,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_SNAPSHOT_DELETE_RANGE,
+	WALB_IOCTL_DELETE_SNAPSHOT_RANGE,
 
 	/*
 	 * Get snapshot record.
@@ -308,7 +308,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_SNAPSHOT_GET,
+	WALB_IOCTL_GET_SNAPSHOT,
 
 	/*
 	 * Get number of snapshots in a lsid range.
@@ -322,7 +322,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_SNAPSHOT_NUM_RANGE,
+	WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE,
 
 	/*
 	 * Get snapshot records in a lsid range.
@@ -339,7 +339,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_SNAPSHOT_LIST_RANGE,
+	WALB_IOCTL_LIST_SNAPSHOT_RANGE,
 
 	/*
 	 * Get checkpoint interval.
@@ -351,7 +351,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_CHECKPOINT_INTERVAL_GET,
+	WALB_IOCTL_GET_CHECKPOINT_INTERVAL,
 
 	/*
 	 * Set checkpoint interval.
@@ -363,7 +363,7 @@ enum {
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_CHECKPOINT_INTERVAL_SET,
+	WALB_IOCTL_SET_CHECKPOINT_INTERVAL,
 
 	/*
 	 * Get written_lsid where all IO(s) which lsid < written_lsid
@@ -374,7 +374,7 @@ enum {
 	 * OUTPUT:
 	 *   ctl->val_u64 as written_lsid.
 	 */
-	WALB_IOCTL_WRITTEN_LSID_GET,
+	WALB_IOCTL_GET_WRITTEN_LSID,
 
 	/*
 	 * Get completed_lsid where all IO(s) which lsid < completed_lsid
@@ -386,7 +386,7 @@ enum {
 	 * OUTPUT:
 	 *   ctl->val_u64 as completed_lsid.
 	 */
-	WALB_IOCTL_COMPLETED_LSID_GET,
+	WALB_IOCTL_GET_COMPLETED_LSID,
 
 	/*
 	 * Get log space capacity.
@@ -395,7 +395,7 @@ enum {
 	 * OUTPUT:
 	 *   ctl->val_u64 as log space capacity [physical block].
 	 */
-	WALB_IOCTL_LOG_CAPACITY_GET,
+	WALB_IOCTL_GET_LOG_CAPACITY,
 
 	/*
 	 * NOT YET IMPLEMENTED.

@@ -23,11 +23,11 @@
  * Prototype of static functions.
  *******************************************************************************/
 
-static int ioctl_dev_start(struct walb_ctl *ctl);
-static int ioctl_dev_stop(struct walb_ctl *ctl);
+static int ioctl_start_dev(struct walb_ctl *ctl);
+static int ioctl_stop_dev(struct walb_ctl *ctl);
 static int ioctl_get_major(struct walb_ctl *ctl);
-static int ioctl_get_dev_list(struct walb_ctl *ctl);
-static int ioctl_get_num_dev(struct walb_ctl *ctl);
+static int ioctl_list_dev(struct walb_ctl *ctl);
+static int ioctl_num_of_dev(struct walb_ctl *ctl);
 static int dispatch_ioctl(struct walb_ctl *ctl);
 static int ctl_ioctl(unsigned int command, struct walb_ctl __user *user);
 static long walb_ctl_ioctl(
@@ -47,7 +47,7 @@ static long walb_ctl_compat_ioctl(
  * Start walb device.
  *
  * @ctl walb_ctl data.
- *	command == WALB_IOCTL_DEV_START
+ *	command == WALB_IOCTL_START_DEV
  *	Input:
  *	  u2k
  *	    wminor (even value --> v	: wdev minor,
@@ -66,20 +66,20 @@ static long walb_ctl_compat_ioctl(
  *
  * @return 0 in success, or -EFAULT.
  */
-static int ioctl_dev_start(struct walb_ctl *ctl)
+static int ioctl_start_dev(struct walb_ctl *ctl)
 {
 	dev_t ldevt, ddevt;
 	unsigned int wminor;
 	struct walb_dev *wdev;
 	char *name;
 	
-	ASSERT(ctl->command == WALB_IOCTL_DEV_START);
+	ASSERT(ctl->command == WALB_IOCTL_START_DEV);
 
 	print_walb_ctl(ctl); /* debug */
 	
 	ldevt = MKDEV(ctl->u2k.lmajor, ctl->u2k.lminor);
 	ddevt = MKDEV(ctl->u2k.dmajor, ctl->u2k.dminor);
-	LOGd("ioctl_dev_start: (ldevt %u:%u) (ddevt %u:%u)\n",
+	LOGd("(ldevt %u:%u) (ddevt %u:%u)\n",
 		MAJOR(ldevt), MINOR(ldevt),
 		MAJOR(ddevt), MINOR(ddevt));
 	if (ctl->u2k.buf_size > 0) {
@@ -97,7 +97,7 @@ static int ioctl_dev_start(struct walb_ctl *ctl)
 		wminor = ctl->u2k.wminor;
 		if (wminor % 2 != 0) { wminor --; }
 	}
-	LOGd("ioctl_dev_start: wminor: %u\n", wminor);
+	LOGd("wminor: %u\n", wminor);
 	
 	wdev = prepare_wdev(wminor, ldevt, ddevt, name);
 	if (wdev == NULL) {
@@ -139,7 +139,7 @@ error0:
  * Stop walb device.
  *
  * @ctl walb_ctl data.
- *	command == WALB_IOCTL_DEV_STOP
+ *	command == WALB_IOCTL_STOP_DEV
  *	Input:
  *	  u2k
  *	    wmajor, wminor,
@@ -148,13 +148,13 @@ error0:
  *
  * @return 0 in success, or -EFAULT.
  */
-static int ioctl_dev_stop(struct walb_ctl *ctl)
+static int ioctl_stop_dev(struct walb_ctl *ctl)
 {
 	dev_t wdevt;
 	unsigned int wmajor, wminor;
 	struct walb_dev *wdev;
 	
-	ASSERT(ctl->command == WALB_IOCTL_DEV_STOP);
+	ASSERT(ctl->command == WALB_IOCTL_STOP_DEV);
 
 	/* Input */
 	wmajor = ctl->u2k.wmajor;
@@ -221,14 +221,14 @@ static int ioctl_get_major(struct walb_ctl *ctl)
  * RETURN:
  *   0 in success, or -EFAULT.
  */
-static int ioctl_get_dev_list(struct walb_ctl *ctl)
+static int ioctl_list_dev(struct walb_ctl *ctl)
 {
 	unsigned int *minor;
 	struct walb_disk_data *ddata;
 	size_t n;
 	
 	ASSERT(ctl);
-	ASSERT(ctl->command == WALB_IOCTL_GET_DEV_LIST);
+	ASSERT(ctl->command == WALB_IOCTL_LIST_DEV);
 
 	if (ctl->u2k.buf_size < sizeof(unsigned int) * 2) {
 		LOGe("Buffer size is too small.\n");
@@ -261,9 +261,9 @@ error0:
  * RETURN:
  *   0 in success, or -EFAULT.
  */
-static int ioctl_get_num_dev(struct walb_ctl *ctl)
+static int ioctl_num_of_dev(struct walb_ctl *ctl)
 {
-	ASSERT(ctl->command == WALB_IOCTL_GET_NUM_DEV);
+	ASSERT(ctl->command == WALB_IOCTL_NUM_OF_DEV);
 
 	ctl->val_int = (int)get_n_devices();
 	ASSERT(get_wdev_list_range(NULL, NULL, UINT_MAX, 0, UINT_MAX)
@@ -286,20 +286,20 @@ static int dispatch_ioctl(struct walb_ctl *ctl)
 	ASSERT(ctl != NULL);
 	
 	switch(ctl->command) {
-	case WALB_IOCTL_DEV_START:
-		ret = ioctl_dev_start(ctl);
+	case WALB_IOCTL_START_DEV:
+		ret = ioctl_start_dev(ctl);
 		break;
-	case WALB_IOCTL_DEV_STOP:
-		ret = ioctl_dev_stop(ctl);
+	case WALB_IOCTL_STOP_DEV:
+		ret = ioctl_stop_dev(ctl);
 		break;
 	case WALB_IOCTL_GET_MAJOR:
 		ret = ioctl_get_major(ctl);
 		break;
-	case WALB_IOCTL_GET_DEV_LIST:
-		ret = ioctl_get_dev_list(ctl);
+	case WALB_IOCTL_LIST_DEV:
+		ret = ioctl_list_dev(ctl);
 		break;
-	case WALB_IOCTL_GET_NUM_DEV:
-		ret = ioctl_get_num_dev(ctl);
+	case WALB_IOCTL_NUM_OF_DEV:
+		ret = ioctl_num_of_dev(ctl);
 		break;
 	default:
 		LOGe("dispatch_ioctl: command %d is not supported.\n",
