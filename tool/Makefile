@@ -10,7 +10,7 @@ endif
 
 BINARIES = walbctl trim test_rw
 TEST_BINARIES = \
-	test/test_checksum test/test_bitmap test/test_u64bits \
+	test/test_rbtree test/test_checksum test/test_bitmap test/test_u64bits \
 	test/test_sector test/test_super test/test_snapshot test/test_logpack
 
 binaries: $(BINARIES) $(TEST_BINARIES)
@@ -50,7 +50,11 @@ test/test_super: test/test_super.o util.o
 test/test_logpack: test/test_logpack.o logpack.o util.o
 	$(CC) -o $@ $(CFLAGS) test/test_logpack.o logpack.o util.o
 
+test/test_rbtree: test/test_rbtree.o lib/rbtree.o
+	$(CC) -o $@ $(CFLAGS) test/test_rbtree.o lib/rbtree.o
+
 SRCS= \
+	test/test_rbtree.c \
 	test/test_bitmap.c \
 	test/test_sector.c \
 	test/test_super.c \
@@ -73,6 +77,7 @@ depend: Makefile
 	mv Makefile.new Makefile
 
 # DO NOT DELETE
+test_rbtree.o: test/test_rbtree.c include/rbtree.h
 test_bitmap.o: test/test_bitmap.c ../include/walb/bitmap.h \
  ../include/walb/common.h ../include/walb/userland.h
 test_sector.o: test/test_sector.c ../include/walb/sector.h \
