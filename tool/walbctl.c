@@ -27,14 +27,23 @@
 #include "snapshot.h"
 #include "walblog_format.h"
 
-
-#define NOMEM_STR "Memory allocation failed.\n"
-
 /*******************************************************************************
- * Typedefs.
+ * Macros.
  *******************************************************************************/
 
-typedef struct config
+static char NOMEM_STR[] = "Memory allocation failed.\n";
+
+/* Buffer size for ioctl should be page size due to performance. */
+#define BUFFER_SIZE 4096
+
+/*******************************************************************************
+ * Static data definition.
+ *******************************************************************************/
+
+/**
+ * Command-line configuration.
+ */
+struct config
 {
 	char *cmd_str; /* command string */
 	char *ldev_name; /* log device name */
@@ -56,12 +65,25 @@ typedef struct config
 
 	size_t size; /* (size_t)(-1) means undefined. */
 	
-} config_t;
+};
 
-/*******************************************************************************
- * Helper functions.
- *******************************************************************************/
+/**
+ * For command string to function.
+ */
+typedef bool (*command_fn)(const struct config *);
 
+/**
+ * Helper data for map command string to function.
+ */
+struct map_str_to_fn
+{
+	const char *str;
+	command_fn fn;
+};
+
+/**
+ * Options string.
+ */
 static const char *helpstr_options_ = 
 	"OPTIONS:\n"
 	"  N_SNAP: --n_snap [max number of snapshots]\n"
@@ -77,13 +99,19 @@ static const char *helpstr_options_ =
 	"  NAME:   --name [name of stuff]\n"
 	"  WLOG:   walb log data as stream\n";
 
-typedef struct
+/**
+ * Helper data structure for help command.
+ */
+struct cmdhelp
 {
 	const char *cmdline;
 	const char *description;
-} cmdhelp_t;
+};
 
-static cmdhelp_t cmdhelps[] = {
+/**
+ * Help string.
+ */
+static struct cmdhelp cmdhelps_[] = {
 	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (SIZE)", 
 	  "Format log device." },
 	{ "create_wdev LDEV DDEV (NAME)",
@@ -127,58 +155,11 @@ static cmdhelp_t cmdhelps[] = {
 	  "Get walb version."},
 };
 
-void show_shorthelp()
-{
-	printf("Usage: walbctl COMMAND OPTIONS\n"
-		"COMMAND:\n");
-	int size = sizeof(cmdhelps) / sizeof(cmdhelp_t);
-	int i;
-	for (i = 0; i < size; i ++) {
-		printf("  %s\n", cmdhelps[i].cmdline);
-	}
-	printf("%s"
-		"NIY: Not Implemented Yet.\n",
-		helpstr_options_);
-}
-
-void show_help()
-{
-	printf("Usage: walbctl COMMAND OPTIONS\n"
-		"COMMAND:\n");
-	int size = sizeof(cmdhelps) / sizeof(cmdhelp_t);
-	int i;
-	for (i = 0; i < size; i ++) {
-		printf("  %s\n"
-			"      %s\n",
-			cmdhelps[i].cmdline,
-			cmdhelps[i].description);
-	}
-	printf("%s"
-		"NIY: Not Implemented Yet.\n",
-		helpstr_options_);
-}
-
-
-void init_config(config_t* cfg)
-{
-	ASSERT(cfg != NULL);
-
-	/* memset(cfg, 0, sizeof(config_t)); */
-	
-	cfg->n_snapshots = 10000;
-
-	cfg->lsid0 = (u64)(-1);
-	cfg->lsid1 = (u64)(-1);
-
-	cfg->name = NULL;
-
-	cfg->size = (size_t)(-1);
-}
-
 /**
  * For getopt.
  */
-enum {
+enum
+{
 	OPT_LDEV = 1,
 	OPT_DDEV,
 	OPT_N_SNAP,
@@ -192,10 +173,99 @@ enum {
 	OPT_HELP,
 };
 
+/*******************************************************************************
+ * Prototype of static functions.
+ *******************************************************************************/
+
+static void show_shorthelp();
+static void show_help();
+static void init_config(struct config* cfg);
+static int parse_opt(int argc, char* const argv[], struct config *cfg);
+static bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
+			u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+			const char *name);
+static bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_flag);
+static u64 get_oldest_lsid(const char* wdev_name);
+static u64 get_written_lsid(const char* wdev_name);
+static u64 get_completed_lsid(const char* wdev_name);
+static u64 get_log_capacity(const char* wdev_name);
+static bool do_format_ldev(const struct config *cfg);
+static bool do_create_wdev(const struct config *cfg);
+static bool do_delete_wdev(const struct config *cfg);
+static bool do_create_snapshot(const struct config *cfg);
+static bool do_set_checkpoint_interval(const struct config *cfg);
+static bool do_get_checkpoint_interval(const struct config *cfg);
+static bool do_cat_wldev(const struct config *cfg);
+static bool do_redo_wlog(const struct config *cfg);
+static bool do_redo(const struct config *cfg);
+static bool do_show_wlog(const struct config *cfg);
+static bool do_show_wldev(const struct config *cfg);
+static bool do_set_oldest_lsid(const struct config *cfg);
+static bool do_get_oldest_lsid(const struct config *cfg);
+static bool do_get_written_lsid(const struct config *cfg);
+static bool do_get_completed_lsid(const struct config *cfg);
+static bool do_get_log_usage(const struct config *cfg);
+static bool do_get_log_capacity(const struct config *cfg);
+static bool do_get_version(const struct config *cfg);
+static bool do_help(const struct config *cfg);
+static bool dispatch(const struct config *cfg);
+
+/*******************************************************************************
+ * Helper functions.
+ *******************************************************************************/
+
+static void show_shorthelp()
+{
+	printf("Usage: walbctl COMMAND OPTIONS\n"
+		"COMMAND:\n");
+	int size = sizeof(cmdhelps_) / sizeof(struct cmdhelp);
+	int i;
+	for (i = 0; i < size; i ++) {
+		printf("  %s\n", cmdhelps_[i].cmdline);
+	}
+	printf("%s"
+		"NIY: Not Implemented Yet.\n",
+		helpstr_options_);
+}
+
+static void show_help()
+{
+	printf("Usage: walbctl COMMAND OPTIONS\n"
+		"COMMAND:\n");
+	int size = sizeof(cmdhelps_) / sizeof(struct cmdhelp);
+	int i;
+	for (i = 0; i < size; i ++) {
+		printf("  %s\n"
+			"      %s\n",
+			cmdhelps_[i].cmdline,
+			cmdhelps_[i].description);
+	}
+	printf("%s"
+		"NIY: Not Implemented Yet.\n",
+		helpstr_options_);
+}
+
+
+static void init_config(struct config* cfg)
+{
+	ASSERT(cfg != NULL);
+
+	/* memset(cfg, 0, sizeof(struct config)); */
+	
+	cfg->n_snapshots = 10000;
+
+	cfg->lsid0 = (u64)(-1);
+	cfg->lsid1 = (u64)(-1);
+
+	cfg->name = NULL;
+
+	cfg->size = (size_t)(-1);
+}
+
 /**
  * Parse options.
  */
-int parse_opt(int argc, char* const argv[], config_t *cfg)
+static int parse_opt(int argc, char* const argv[], struct config *cfg)
 {
 	int c;
 
@@ -291,7 +361,7 @@ int parse_opt(int argc, char* const argv[], config_t *cfg)
  *
  * @return true in success, or false.
  */
-bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
+static bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
 			u64 ddev_lb, u64 ldev_lb, int n_snapshots,
 			const char *name)
 {
@@ -311,7 +381,7 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
 			name);
 	
 	/* Write super sector */
-	if (! __write_super_sector(fd, &super_sect)) {
+	if (!__write_super_sector(fd, &super_sect)) {
 		LOGe("write super sector failed.\n");
 		goto error0;
 	}
@@ -330,27 +400,27 @@ bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
 	int i = 0;
 	int n_sectors = (int)super_sect.snapshot_metadata_size;
 	for (i = 0; i < n_sectors; i ++) {
-		if (! write_snapshot_sector(fd, &super_sect, snap_sectp, i)) {
+		if (!write_snapshot_sector(fd, &super_sect, snap_sectp, i)) {
 			goto error1;
 		}
 	}
 
 	/* Write invalid logpack not to run redo. */
-	if (! write_invalid_logpack_header(fd, &super_sect, physical_bs, 0)) {
+	if (!write_invalid_logpack_header(fd, &super_sect, physical_bs, 0)) {
 		goto error1;
 	}
 
 #if 1	     
 	/* Read super sector and print for debug. */
 	memset(&super_sect, 0, sizeof(super_sect));
-	if (! __read_super_sector(fd, &super_sect, physical_bs, n_snapshots)) {
+	if (!__read_super_sector(fd, &super_sect, physical_bs, n_snapshots)) {
 		goto error1;
 	}
 	/* print_super_sector(&super_sect); */
 
 	/* Read first snapshot sector and print for debug. */
 	memset(snap_sectp, 0, physical_bs);
-	if (! read_snapshot_sector(fd, &super_sect, snap_sectp, 0)) {
+	if (!read_snapshot_sector(fd, &super_sect, snap_sectp, 0)) {
 		goto error1;
 	}
 	/* print_snapshot_sector(snap_sectp, physical_bs); */
@@ -373,7 +443,7 @@ error0:
  *
  * @return true in success, or false.
  */
-bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_flag)
+static bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_flag)
 {
 	if (wdev_name == NULL) {
 		LOGe("Specify walb device.\n");
@@ -410,10 +480,10 @@ error0:
  *
  * @return oldest_lsid in success, or (u64)(-1).
  */
-u64 get_oldest_lsid(const char* wdev_name)
+static u64 get_oldest_lsid(const char* wdev_name)
 {
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_OLDEST_LSID_GET,
+		.command = WALB_IOCTL_GET_OLDEST_LSID,
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
@@ -430,10 +500,30 @@ u64 get_oldest_lsid(const char* wdev_name)
  *
  * @return written_lsid in success, or (u64)(-1).
  */
-u64 get_written_lsid(const char* wdev_name)
+static u64 get_written_lsid(const char* wdev_name)
 {
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_WRITTEN_LSID_GET,
+		.command = WALB_IOCTL_GET_WRITTEN_LSID,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+	
+	if (invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
+		return ctl.val_u64;
+	} else {
+		return (u64)(-1);
+	}
+}
+
+/**
+ * Get written_lsid.
+ *
+ * @return written_lsid in success, or (u64)(-1).
+ */
+static u64 get_completed_lsid(const char* wdev_name)
+{
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_GET_COMPLETED_LSID,
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
@@ -450,10 +540,10 @@ u64 get_written_lsid(const char* wdev_name)
  *
  * @return log capacity [physical sector] in success, or (u64)(-1).
  */
-u64 get_log_capacity(const char* wdev_name)
+static u64 get_log_capacity(const char* wdev_name)
 {
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_LOG_CAPACITY_GET,
+		.command = WALB_IOCTL_GET_LOG_CAPACITY,
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
@@ -474,7 +564,7 @@ u64 get_log_capacity(const char* wdev_name)
  *
  * @return true in success, or false.
  */
-bool do_format_ldev(const config_t *cfg)
+static bool do_format_ldev(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "format_ldev") == 0);
@@ -541,7 +631,7 @@ bool do_format_ldev(const config_t *cfg)
 		goto error0;
 	}
 
-	if (! init_walb_metadata(fd, logical_bs, physical_bs,
+	if (!init_walb_metadata(fd, logical_bs, physical_bs,
 					ddev_size / logical_bs,
 					ldev_size / logical_bs,
 					cfg->n_snapshots, cfg->name)) {
@@ -562,7 +652,7 @@ error0:
 /**
  * Create walb device.
  */
-bool do_create_wdev(const config_t *cfg)
+static bool do_create_wdev(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "create_wdev") == 0);
@@ -601,7 +691,7 @@ bool do_create_wdev(const config_t *cfg)
 	char u2k_buf[DISK_NAME_LEN];
 	char k2u_buf[DISK_NAME_LEN];
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_DEV_START,
+		.command = WALB_IOCTL_START_DEV,
 		.u2k = { .wminor = WALB_DYNAMIC_MINOR,
 			 .lmajor = MAJOR(ldevt),
 			 .lminor = MINOR(ldevt),
@@ -645,7 +735,7 @@ error0:
 /**
  * Delete walb device.
  */
-bool do_delete_wdev(const config_t *cfg)
+static bool do_delete_wdev(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "delete_wdev") == 0);
@@ -674,7 +764,7 @@ bool do_delete_wdev(const config_t *cfg)
 	 * Make ioctl data.
 	 */
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_DEV_STOP,
+		.command = WALB_IOCTL_STOP_DEV,
 		.u2k = { .wmajor = MAJOR(wdevt),
 			 .wminor = MINOR(wdevt),
 			 .buf_size = 0, },
@@ -704,7 +794,7 @@ error0:
  * Input: NAME (default: datetime string).
  * Output: Nothing.
  */
-bool do_create_snapshot(const config_t *cfg)
+static bool do_create_snapshot(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "create_snapshot") == 0);
 
@@ -715,13 +805,13 @@ bool do_create_snapshot(const config_t *cfg)
 
 	/* Check config. */
 	if (cfg->name == NULL) {
-		if (! get_datetime_str(timestamp, name, SNAPSHOT_NAME_MAX_LEN)) {
+		if (!get_datetime_str(timestamp, name, SNAPSHOT_NAME_MAX_LEN)) {
 			ASSERT(false);
 		}
 	} else {
 		strncpy(name, cfg->name, SNAPSHOT_NAME_MAX_LEN);
 	}
-	if (! is_valid_snapshot_name(name)) {
+	if (!is_valid_snapshot_name(name)) {
 		LOGe("snapshot name %s is not valid.\n", name);
 		goto error0;
 	}
@@ -735,13 +825,13 @@ bool do_create_snapshot(const config_t *cfg)
 	strncpy(record.name, name, SNAPSHOT_NAME_MAX_LEN);
 	
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_SNAPSHOT_CREATE,
+		.command = WALB_IOCTL_CREATE_SNAPSHOT,
 		.u2k = { .buf_size = sizeof(struct walb_snapshot_record),
 			 .buf = (u8 *)&record },
 		.k2u = { .buf_size = 0 },
 	};
 	
-	if (! invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
 	LOGn("Create snapshot succeeded.\n");
 	
 	return true;
@@ -755,7 +845,7 @@ error0:
  *
  * @return true in success, or false.
  */
-bool do_set_checkpoint_interval(const config_t *cfg)
+static bool do_set_checkpoint_interval(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "set_checkpoint_interval") == 0);
 
@@ -769,13 +859,13 @@ bool do_set_checkpoint_interval(const config_t *cfg)
 	}
 	
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_CHECKPOINT_INTERVAL_SET,
+		.command = WALB_IOCTL_SET_CHECKPOINT_INTERVAL,
 		.val_u32 = (u32)cfg->size,
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
 	
-	if (! invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
 	LOGn("checkpoint interval is set to %"PRIu32" successfully.\n", ctl.val_u32);
 
 	return true;
@@ -788,17 +878,17 @@ error0:
  *
  * @return true in success, or false.
  */
-bool do_get_checkpoint_interval(const config_t *cfg)
+static bool do_get_checkpoint_interval(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "get_checkpoint_interval") == 0);
 
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_CHECKPOINT_INTERVAL_GET,
+		.command = WALB_IOCTL_GET_CHECKPOINT_INTERVAL,
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
 	
-	if (! invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
 	printf("checkpoint interval is %"PRIu32".\n", ctl.val_u32);
 
 	return true;
@@ -811,7 +901,7 @@ error0:
  *
  * @return true in success, or false.
  */
-bool do_cat_wldev(const config_t *cfg)
+static bool do_cat_wldev(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "cat_wldev") == 0);
@@ -837,16 +927,16 @@ bool do_cat_wldev(const config_t *cfg)
 	struct walb_super_sector *super_sectp = 
 		(struct walb_super_sector *)alloc_sector(physical_bs);
 	if (super_sectp == NULL) {
-		LOGe(NOMEM_STR);
+		LOGe("%s", NOMEM_STR);
 		goto error1;
 	}
 
 	u64 off0 = get_super_sector0_offset(physical_bs);
-	if (! read_sector(fd, (u8 *)super_sectp, physical_bs, off0)) {
+	if (!read_sector(fd, (u8 *)super_sectp, physical_bs, off0)) {
 		LOGe("read super sector0 failed.\n");
 		goto error1;
 	}
-	if (! __is_valid_super_sector(super_sectp, physical_bs)) {
+	if (!__is_valid_super_sector(super_sectp, physical_bs)) {
 		LOGe("read super sector is not valid.\n");
 		goto error1;
 	}
@@ -854,7 +944,7 @@ bool do_cat_wldev(const config_t *cfg)
 	struct walb_logpack_header *logpack =
 		(struct walb_logpack_header *)alloc_sector(physical_bs);
 	if (logpack == NULL) {
-		LOGe(NOMEM_STR);
+		LOGe("%s", NOMEM_STR);
 		goto error2;
 	}
 
@@ -884,7 +974,7 @@ bool do_cat_wldev(const config_t *cfg)
 	ASSERT(bufsize % physical_bs == 0);
 	u8 *buf = alloc_sectors(physical_bs, bufsize / physical_bs);
 	if (buf == NULL) {
-		LOGe(NOMEM_STR);
+		LOGe("%s", NOMEM_STR);
 		goto error3;
 	}
 
@@ -913,7 +1003,7 @@ bool do_cat_wldev(const config_t *cfg)
 	while (lsid < end_lsid) {
 
 		/* Logpack header */
-		if (! read_logpack_header_from_wldev(fd, super_sectp, lsid, logpack)) {
+		if (!read_logpack_header_from_wldev(fd, super_sectp, lsid, logpack)) {
 			break;
 		}
 		LOGd("logpack %"PRIu64"\n", logpack->logpack_lsid);
@@ -921,7 +1011,7 @@ bool do_cat_wldev(const config_t *cfg)
 		
 		/* Realloc buffer if buffer size is not enough. */
 		if (bufsize / physical_bs < logpack->total_io_size) {
-			if (! realloc_sectors(&buf, physical_bs, logpack->total_io_size)) {
+			if (!realloc_sectors(&buf, physical_bs, logpack->total_io_size)) {
 				LOGe("realloc_sectors failed.\n");
 				goto error3;
 			}
@@ -930,7 +1020,7 @@ bool do_cat_wldev(const config_t *cfg)
 		}
 
 		/* Logpack data. */
-		if (! read_logpack_data_from_wldev(fd, super_sectp, logpack, buf, bufsize)) {
+		if (!read_logpack_data_from_wldev(fd, super_sectp, logpack, buf, bufsize)) {
 			LOGe("read logpack data failed.\n");
 			goto error4;
 		}
@@ -966,7 +1056,7 @@ error0:
  * --lsid1 (optional, default is the last lsid in the wlog.)
  * redo logs of lsid0 <= lsid < lsid1.
  */
-bool do_redo_wlog(const config_t *cfg)
+static bool do_redo_wlog(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "redo_wlog") == 0);
@@ -988,7 +1078,7 @@ bool do_redo_wlog(const config_t *cfg)
 	/* Allocate walblog header. */
 	walblog_header_t* wh = (walblog_header_t *)malloc(WALBLOG_HEADER_SIZE);
 	if (wh == NULL) {
-		LOGe(NOMEM_STR);
+		LOGe("%s", NOMEM_STR);
 		goto error1;
 	}
 	
@@ -1031,7 +1121,7 @@ bool do_redo_wlog(const config_t *cfg)
 	struct walb_logpack_header *logpack =
 		(struct walb_logpack_header *)alloc_sector(pbs);
 	if (logpack == NULL) {
-		LOGe(NOMEM_STR);
+		LOGe("%s", NOMEM_STR);
 		goto error2;
 	}
 
@@ -1040,7 +1130,7 @@ bool do_redo_wlog(const config_t *cfg)
 	ASSERT(bufsize % pbs == 0);
 	u8 *buf = alloc_sectors(pbs, bufsize / pbs);
 	if (buf == NULL) {
-		LOGe(NOMEM_STR);
+		LOGe("%s", NOMEM_STR);
 		goto error3;
 	}
 	
@@ -1048,20 +1138,20 @@ bool do_redo_wlog(const config_t *cfg)
 	while (lsid < end_lsid) {
 
 		/* Read logpack header */
-		if (! read_logpack_header(0, pbs, logpack)) {
+		if (!read_logpack_header(0, pbs, logpack)) {
 			break;
 		}
 
 		/* Realloc buffer if needed. */
 		u32 total_io_size = logpack->total_io_size;
 		if (total_io_size * pbs > bufsize) {
-			if (! realloc_sectors(&buf, pbs, total_io_size)) {
+			if (!realloc_sectors(&buf, pbs, total_io_size)) {
 				LOGe("realloc_sectors failed.\n");
 				goto error4;
 			}
 			bufsize = total_io_size * pbs;
 		}
-		if (! read_logpack_data(0, lbs, pbs, logpack, buf, bufsize)) {
+		if (!read_logpack_data(0, lbs, pbs, logpack, buf, bufsize)) {
 			LOGe("read logpack data failed.\n");
 			goto error4;
 		}
@@ -1074,7 +1164,7 @@ bool do_redo_wlog(const config_t *cfg)
 		LOGd("logpack %"PRIu64"\n", lsid);
 
 		/* Redo */
-		if (! redo_logpack(fd, lbs, pbs, logpack, buf)) {
+		if (!redo_logpack(fd, lbs, pbs, logpack, buf)) {
 			LOGe("redo_logpack failed.\n");
 			goto error4;
 		}
@@ -1108,7 +1198,7 @@ error0:
  * --ldev (required)
  * --ddev (required)
  */
-bool do_redo(const config_t *cfg)
+static bool do_redo(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "redo") == 0);
@@ -1121,7 +1211,7 @@ bool do_redo(const config_t *cfg)
 		goto error0;
 	}
 
-	if (! is_same_block_size(cfg->ldev_name, cfg->ddev_name)) {
+	if (!is_same_block_size(cfg->ldev_name, cfg->ddev_name)) {
 		LOGe("block size is not the same.\n");
 		goto error0;
 	}
@@ -1138,13 +1228,13 @@ bool do_redo(const config_t *cfg)
 
 	/* Read super sector. */
 	struct walb_super_sector *super = (struct walb_super_sector *)alloc_sector(pbs);
-	if (super == NULL) { LOGe(NOMEM_STR); goto error2; }
+	if (super == NULL) { LOGe("%s", NOMEM_STR); goto error2; }
 	u64 off0 = get_super_sector0_offset(pbs);
-	if (! read_sector(lfd, (u8 *)super, pbs, off0)) {
+	if (!read_sector(lfd, (u8 *)super, pbs, off0)) {
 		LOGe("Read super sector failed.\n");
 		goto error3;
 	}
-	if (! __is_valid_super_sector(super, pbs)) {
+	if (!__is_valid_super_sector(super, pbs)) {
 		LOGe("super sector is not valid.\n");
 		goto error3;
 	}
@@ -1152,11 +1242,11 @@ bool do_redo(const config_t *cfg)
 	size_t bufsize = 1024 * 1024; /* 1MB */
 	ASSERT(bufsize % pbs == 0);
 	u8 *buf = alloc_sectors(pbs, bufsize / pbs);
-	if (buf == NULL) { LOGe(NOMEM_STR); goto error3; }
+	if (buf == NULL) { LOGe("%s", NOMEM_STR); goto error3; }
 
 	struct walb_logpack_header *logpack =
 		(struct walb_logpack_header *)alloc_sector(pbs);
-	if (logpack == NULL) { LOGe(NOMEM_STR); goto error4; }
+	if (logpack == NULL) { LOGe("%s", NOMEM_STR); goto error4; }
 	
 	u64 lsid = super->written_lsid;
 	u64 begin_lsid = lsid;
@@ -1167,7 +1257,7 @@ bool do_redo(const config_t *cfg)
 		
 		/* Realloc buf if bufsize is not enough. */
 		if (bufsize / pbs < logpack->total_io_size) {
-			if (! realloc_sectors(&buf, pbs, logpack->total_io_size)) {
+			if (!realloc_sectors(&buf, pbs, logpack->total_io_size)) {
 				LOGe("realloc_sectors failed.\n");
 				goto error5;
 			}
@@ -1176,13 +1266,13 @@ bool do_redo(const config_t *cfg)
 		}
 
 		/* Read logpack data from log device. */
-		if (! read_logpack_data_from_wldev(lfd, super, logpack, buf, bufsize)) {
+		if (!read_logpack_data_from_wldev(lfd, super, logpack, buf, bufsize)) {
 			LOGe("read logpack data failed.\n");
 			goto error5;
 		}
 
 		/* Write logpack to data device. */
-		if (! redo_logpack(dfd, lbs, pbs, logpack, buf)) {
+		if (!redo_logpack(dfd, lbs, pbs, logpack, buf)) {
 			LOGe("redo_logpack failed.\n");
 			goto error5;
 		}
@@ -1193,7 +1283,7 @@ bool do_redo(const config_t *cfg)
 	/* Set new written_lsid and sync down. */
 	u64 end_lsid = lsid;
 	super->written_lsid = end_lsid;
-	if (! __write_super_sector(lfd, super)) {
+	if (!__write_super_sector(lfd, super)) {
 		LOGe("write super sector failed.\n");
 		goto error5;
 	}
@@ -1223,13 +1313,13 @@ error0:
  * Show wlog from stdin.
  *
  */
-bool do_show_wlog(const config_t *cfg)
+static bool do_show_wlog(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "show_wlog") == 0);
 
 	walblog_header_t* wh = (walblog_header_t *)malloc(WALBLOG_HEADER_SIZE);
-	if (wh == NULL) { LOGe(NOMEM_STR); goto error0; }
+	if (wh == NULL) { LOGe("%s", NOMEM_STR); goto error0; }
 	
 	/* Read and print wlog header. */
 	read_data(0, (u8 *)wh, WALBLOG_HEADER_SIZE);
@@ -1249,12 +1339,12 @@ bool do_show_wlog(const config_t *cfg)
 	/* Buffer for logpack header. */
 	struct walb_logpack_header *logpack;
 	logpack = (struct walb_logpack_header *)alloc_sector(physical_bs);
-	if (logpack == NULL) { LOGe(NOMEM_STR); goto error1; }
+	if (logpack == NULL) { LOGe("%s", NOMEM_STR); goto error1; }
 
 	/* Buffer for logpack data. */
 	size_t bufsize = 1024 * 1024; /* 1MB */
 	u8 *buf = alloc_sectors(physical_bs, bufsize / physical_bs);
-	if (buf == NULL) { LOGe(NOMEM_STR); goto error2; }
+	if (buf == NULL) { LOGe("%s", NOMEM_STR); goto error2; }
 
 	/* Range */
 	u64 begin_lsid, end_lsid;
@@ -1271,7 +1361,7 @@ bool do_show_wlog(const config_t *cfg)
 		/* Check buffer size. */
 		u32 total_io_size = logpack->total_io_size;
 		if (total_io_size * physical_bs > bufsize) {
-			if (! realloc_sectors(&buf, physical_bs, total_io_size)) {
+			if (!realloc_sectors(&buf, physical_bs, total_io_size)) {
 				LOGe("realloc_sectors failed.\n");
 				goto error3;
 			}
@@ -1279,7 +1369,7 @@ bool do_show_wlog(const config_t *cfg)
 		}
 
 		/* Read logpack data. */
-		if (! read_logpack_data(0, logical_bs, physical_bs, logpack, buf, bufsize)) {
+		if (!read_logpack_data(0, logical_bs, physical_bs, logpack, buf, bufsize)) {
 			LOGe("read logpack data failed.\n");
 			goto error3;
 		}
@@ -1314,7 +1404,7 @@ error0:
  *
  * @return true in success, or false.
  */
-bool do_show_wldev(const config_t *cfg)
+static bool do_show_wldev(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "show_wldev") == 0);
 
@@ -1334,17 +1424,17 @@ bool do_show_wldev(const config_t *cfg)
 	/* Allocate memory and read super block */
 	struct walb_super_sector *super_sectp = 
 		(struct walb_super_sector *)alloc_sector(physical_bs);
-	if (super_sectp == NULL) { LOGe(NOMEM_STR); goto error1; }
+	if (super_sectp == NULL) { LOGe("%s", NOMEM_STR); goto error1; }
 
 	u64 off0 = get_super_sector0_offset(physical_bs);
-	if (! read_sector(fd, (u8 *)super_sectp, physical_bs, off0)) {
+	if (!read_sector(fd, (u8 *)super_sectp, physical_bs, off0)) {
 		LOGe("read super sector0 failed.\n");
 		goto error1;
 	}
 	
 	struct walb_logpack_header *logpack =
 		(struct walb_logpack_header *)alloc_sector(physical_bs);
-	if (logpack == NULL) { LOGe(NOMEM_STR); goto error2; }
+	if (logpack == NULL) { LOGe("%s", NOMEM_STR); goto error2; }
 
 	__print_super_sector(super_sectp);
 	u64 oldest_lsid = super_sectp->oldest_lsid;
@@ -1371,7 +1461,7 @@ bool do_show_wldev(const config_t *cfg)
 	/* Print each logpack header. */
 	lsid = begin_lsid;
 	while (lsid < end_lsid) {
-		if (! read_logpack_header_from_wldev(fd, super_sectp, lsid, logpack)) {
+		if (!read_logpack_header_from_wldev(fd, super_sectp, lsid, logpack)) {
 			break;
 		}
 		print_logpack_header(logpack);
@@ -1396,18 +1486,18 @@ error0:
 /**
  * Set oldest_lsid.
  */
-bool do_set_oldest_lsid(const config_t *cfg)
+static bool do_set_oldest_lsid(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "set_oldest_lsid") == 0);
 	
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_OLDEST_LSID_SET,
+		.command = WALB_IOCTL_SET_OLDEST_LSID,
 		.val_u64 = cfg->lsid,
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
 	
-	if (! invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
 	
 	LOGn("oldest_lsid is set to %"PRIu64" successfully.\n", cfg->lsid);
 
@@ -1419,7 +1509,7 @@ error0:
 /**
  * Get oldest_lsid.
  */
-bool do_get_oldest_lsid(const config_t *cfg)
+static bool do_get_oldest_lsid(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "get_oldest_lsid") == 0);
 	
@@ -1435,7 +1525,7 @@ bool do_get_oldest_lsid(const config_t *cfg)
 /**
  * Get written_lsid.
  */
-bool do_get_written_lsid(const config_t *cfg)
+static bool do_get_written_lsid(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "get_written_lsid") == 0);
 	
@@ -1449,9 +1539,25 @@ bool do_get_written_lsid(const config_t *cfg)
 }
 
 /**
+ * Get completed_lsid.
+ */
+static bool do_get_completed_lsid(const struct config *cfg)
+{
+	ASSERT(strcmp(cfg->cmd_str, "get_completed_lsid") == 0);
+
+	u64 lsid = get_completed_lsid(cfg->wdev_name);
+	if (lsid != (u64)(-1)) {
+		printf("%"PRIu64"\n", lsid);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+/**
  * Get log usage.
  */
-bool do_get_log_usage(const config_t *cfg)
+static bool do_get_log_usage(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "get_log_usage") == 0);
 
@@ -1481,7 +1587,7 @@ error0:
 /**
  * Get log capacity.
  */
-bool do_get_log_capacity(const config_t *cfg)
+static bool do_get_log_capacity(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "get_log_capacity") == 0);
 
@@ -1499,7 +1605,7 @@ bool do_get_log_capacity(const config_t *cfg)
 /**
  * Get walb version.
  */
-bool do_get_version(const config_t *cfg)
+static bool do_get_version(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "get_version") == 0);
 	
@@ -1535,7 +1641,7 @@ error0:
 /**
  * Show help message.
  */
-bool do_help(__attribute__((unused)) const config_t *cfg)
+static bool do_help(UNUSED const struct config *cfg)
 {
 	show_help();
 	return true;
@@ -1546,20 +1652,9 @@ bool do_help(__attribute__((unused)) const config_t *cfg)
  *******************************************************************************/
 
 /**
- * For command string to function.
- */
-typedef bool (*command_fn)(const config_t *);
-
-struct map_str_to_fn {
-	const char *str;
-	command_fn fn;
-};
-
-
-/**
  * Dispatch command.
  */
-bool dispatch(const config_t *cfg)
+static bool dispatch(const struct config *cfg)
 {
 	bool ret = false;
 	ASSERT(cfg->cmd_str != NULL);
@@ -1583,6 +1678,7 @@ bool dispatch(const config_t *cfg)
 		{ "set_oldest_lsid", do_set_oldest_lsid },
 		{ "get_oldest_lsid", do_get_oldest_lsid },
 		{ "get_written_lsid", do_get_written_lsid },
+		{ "get_completed_lsid", do_get_completed_lsid },
 		{ "get_log_usage", do_get_log_usage },
 		{ "get_log_capacity", do_get_log_capacity },
 		{ "get_version", do_get_version },
@@ -1603,7 +1699,7 @@ bool dispatch(const config_t *cfg)
 
 int main(int argc, char* argv[])
 {
-	config_t cfgt;
+	struct config cfgt;
 
 	init_random();
 	init_config(&cfgt);
@@ -1612,7 +1708,7 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 	
-	if (! dispatch(&cfgt)) {
+	if (!dispatch(&cfgt)) {
 		LOGe("operation failed.\n");
 	}
 
