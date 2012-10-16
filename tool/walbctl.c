@@ -120,17 +120,16 @@ static struct cmdhelp cmdhelps_[] = {
 	  "Delete walb/walblog device." },
 	{ "create_snapshot WDEV NAME",
 	  "Create snapshot." },
-	{ "(NIY)delete_snapshot WDEV NAME",
+	{ "delete_snapshot WDEV NAME",
 	  "Delete snapshot." },
-	{ "(NIY)num_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
+	{ "num_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
 	  "Get number of snapshots." },
-	{ "(NIY)list_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
+	{ "list_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
 	  "Get list of snapshots." },
 	{ "set_checkpoint_interval WDEV SIZE",
 	  "Set checkpoint interval in [ms]." },
 	{ "get_checkpoint_interval WDEV",
-	  "Get checkpoint interval in [ms]."
-	  /* "Make checkpoint to reduce redo time after crash." */ },
+	  "Get checkpoint interval in [ms]." },
 	{ "cat_wldev WLDEV (LRANGE) > WLOG",
 	  "Extract wlog from walblog device." },
 	{ "show_wldev WLDEV (LRANGE)",
@@ -177,6 +176,7 @@ enum
  * Prototype of static functions.
  *******************************************************************************/
 
+/* Helper functions. */
 static void show_shorthelp();
 static void show_help();
 static void init_config(struct config* cfg);
@@ -189,10 +189,17 @@ static u64 get_oldest_lsid(const char* wdev_name);
 static u64 get_written_lsid(const char* wdev_name);
 static u64 get_completed_lsid(const char* wdev_name);
 static u64 get_log_capacity(const char* wdev_name);
+static bool dispatch(const struct config *cfg);
+
+/* commands. */
 static bool do_format_ldev(const struct config *cfg);
 static bool do_create_wdev(const struct config *cfg);
 static bool do_delete_wdev(const struct config *cfg);
 static bool do_create_snapshot(const struct config *cfg);
+static bool do_delete_snapshot(const struct config *cfg);
+static bool do_num_snapshot(const struct config *cfg);
+static bool do_list_snapshot(const struct config *cfg);
+static bool do_checkpoint(const struct config *cfg);
 static bool do_set_checkpoint_interval(const struct config *cfg);
 static bool do_get_checkpoint_interval(const struct config *cfg);
 static bool do_cat_wldev(const struct config *cfg);
@@ -208,7 +215,6 @@ static bool do_get_log_usage(const struct config *cfg);
 static bool do_get_log_capacity(const struct config *cfg);
 static bool do_get_version(const struct config *cfg);
 static bool do_help(const struct config *cfg);
-static bool dispatch(const struct config *cfg);
 
 /*******************************************************************************
  * Helper functions.
@@ -555,6 +561,52 @@ static u64 get_log_capacity(const char* wdev_name)
 	}
 }
 
+/**
+ * Dispatch command.
+ */
+static bool dispatch(const struct config *cfg)
+{
+	bool ret = false;
+	ASSERT(cfg->cmd_str != NULL);
+
+	struct map_str_to_fn map[] = {
+		{ "format_ldev", do_format_ldev },
+		{ "create_wdev", do_create_wdev },
+		{ "delete_wdev", do_delete_wdev },
+		{ "create_snapshot", do_create_snapshot },
+		{ "delete_snapshot", do_delete_snapshot },
+		{ "num_snapshot", do_num_snapshot },
+		{ "list_snapshot", do_list_snapshot },
+		{ "checkpoint", do_checkpoint },
+		{ "set_checkpoint_interval", do_set_checkpoint_interval },
+		{ "get_checkpoint_interval", do_get_checkpoint_interval },
+		{ "cat_wldev", do_cat_wldev },
+		{ "show_wlog", do_show_wlog },
+		{ "show_wldev", do_show_wldev },
+		{ "redo_wlog", do_redo_wlog },
+		{ "redo", do_redo },
+		{ "set_oldest_lsid", do_set_oldest_lsid },
+		{ "get_oldest_lsid", do_get_oldest_lsid },
+		{ "get_written_lsid", do_get_written_lsid },
+		{ "get_completed_lsid", do_get_completed_lsid },
+		{ "get_log_usage", do_get_log_usage },
+		{ "get_log_capacity", do_get_log_capacity },
+		{ "get_version", do_get_version },
+		{ "help", do_help },
+	};
+	int array_size = sizeof(map)/sizeof(map[0]);
+
+	int i;
+	for (i = 0; i < array_size; i ++) {
+		if (strcmp(cfg->cmd_str, map[i].str) == 0) {
+			ret = (*map[i].fn)(cfg);
+			break;
+		}
+	}
+	
+	return ret;
+}
+
 /*******************************************************************************
  * Commands.
  *******************************************************************************/
@@ -796,6 +848,8 @@ error0:
  */
 static bool do_create_snapshot(const struct config *cfg)
 {
+	/* now editing */
+	
 	ASSERT(strcmp(cfg->cmd_str, "create_snapshot") == 0);
 
 	char name[SNAPSHOT_NAME_MAX_LEN + 1];
@@ -837,6 +891,48 @@ static bool do_create_snapshot(const struct config *cfg)
 	return true;
 
 error0:
+	return false;
+}
+
+/**
+ * Delete snapshot(s).
+ *
+ * Specify name or lsid range.
+ */
+static bool do_delete_snapshot(const struct config *cfg)
+{
+	/* not yet implemented */
+	return false;
+}
+
+/**
+ * Get number of snapshots.
+ *
+ * Specify lsid range.
+ */
+static bool do_num_snapshot(const struct config *cfg)
+{
+	/* not yet implemented */
+	return false;
+}
+
+/**
+ * List snapshots.
+ *
+ * Specify lsid range.
+ */
+static bool do_list_snapshot(const struct config *cfg)
+{
+	/* not yet implemented */
+	return false;
+}
+
+/**
+ * Make checkpointo immediately.
+ */
+static bool do_checkpoint(const struct config *cfg)
+{
+	/* not yet implemented */
 	return false;
 }
 
@@ -1650,52 +1746,6 @@ static bool do_help(UNUSED const struct config *cfg)
 /*******************************************************************************
  * Functions for main.
  *******************************************************************************/
-
-/**
- * Dispatch command.
- */
-static bool dispatch(const struct config *cfg)
-{
-	bool ret = false;
-	ASSERT(cfg->cmd_str != NULL);
-
-	struct map_str_to_fn map[] = {
-		{ "format_ldev", do_format_ldev },
-		{ "create_wdev", do_create_wdev },
-		{ "delete_wdev", do_delete_wdev },
-		{ "create_snapshot", do_create_snapshot },
-		/* { "delete_snapshot", do_delete_snapshot }, */
-		/* { "num_snapshot", do_num_snapshot }, */
-		/* { "list_snapshot", do_list_snapshot }, */
-		/* { "checkpoint", do_checkpoint }, */
-		{ "set_checkpoint_interval", do_set_checkpoint_interval },
-		{ "get_checkpoint_interval", do_get_checkpoint_interval },
-		{ "cat_wldev", do_cat_wldev },
-		{ "show_wlog", do_show_wlog },
-		{ "show_wldev", do_show_wldev },
-		{ "redo_wlog", do_redo_wlog },
-		{ "redo", do_redo },
-		{ "set_oldest_lsid", do_set_oldest_lsid },
-		{ "get_oldest_lsid", do_get_oldest_lsid },
-		{ "get_written_lsid", do_get_written_lsid },
-		{ "get_completed_lsid", do_get_completed_lsid },
-		{ "get_log_usage", do_get_log_usage },
-		{ "get_log_capacity", do_get_log_capacity },
-		{ "get_version", do_get_version },
-		{ "help", do_help },
-	};
-	int array_size = sizeof(map)/sizeof(map[0]);
-
-	int i;
-	for (i = 0; i < array_size; i ++) {
-		if (strcmp(cfg->cmd_str, map[i].str) == 0) {
-			ret = (*map[i].fn)(cfg);
-			break;
-		}
-	}
-	
-	return ret;
-}
 
 int main(int argc, char* argv[])
 {
