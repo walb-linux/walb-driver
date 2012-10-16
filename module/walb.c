@@ -621,6 +621,7 @@ error0:
  */
 static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
+	int ret;
 	struct walb_snapshot_record *srec0, *srec1, *srec;
 	
 	LOGn("WALB_IOCTL_GET_SNAPSHOT\n");
@@ -638,11 +639,13 @@ static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
 	srec1 = (struct walb_snapshot_record *)ctl->k2u.__buf;
 	ASSERT(srec0);
 	ASSERT(srec1);
-	snapshot_get(wdev->snapd, srec0->name, &srec);
-	if (srec) {
+	ret = snapshot_get(wdev->snapd, srec0->name, &srec);
+	if (ret) {
+		ASSERT(srec);
 		memcpy(srec1, srec, sizeof(struct walb_snapshot_record));
 	} else {
 		snapshot_record_init(srec1);
+		ctl->error = ret;
 		goto error0;
 	}
 	return 0;
@@ -662,6 +665,7 @@ error0:
 static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	u64 lsid0, lsid1;
+	int ret;
 	
 	LOGn("WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE\n");
 	ASSERT(ctl->command == WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE);
@@ -672,11 +676,13 @@ static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_c
 	}
 	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
 	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
-	ctl->val_int = snapshot_n_records_range(
+	ret = snapshot_n_records_range(
 		wdev->snapd, lsid0, lsid1);
-	if (ctl->val_int < 0) {
+	if (ret < 0) {
+		ctl->error = ret;
 		goto error0;
 	}
+	ctl->val_int = ret;
 	return 0;
 	
 error0:
@@ -696,6 +702,7 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 	u64 lsid0, lsid1;
 	struct walb_snapshot_record *srec;
 	size_t size;
+	int n_rec, ret;
 	
 	LOGn("WALB_IOCTL_LIST_SNAPSHOT_RANGE\n");
 	ASSERT(ctl->command == WALB_IOCTL_LIST_SNAPSHOT_RANGE);
@@ -712,10 +719,19 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 		LOGe("Buffer is to small for results.\n");
 		goto error0;
 	}
-	ctl->val_int = snapshot_list_range(wdev->snapd, srec, size,
-					lsid0, lsid1);
-	if (ctl->val_int < 0) {
+	ret = snapshot_list_range(wdev->snapd, srec, size,
+				lsid0, lsid1);
+	if (ret < 0) {
+		ctl->error = ret;
 		goto error0;
+	}
+	n_rec = ret;
+	ctl->val_int = n_rec;
+	if (n_rec > 0) {
+		ASSERT(srec[n_rec - 1].lsid != INVALID_LSID);
+		ctl->val_u64 = srec[n_rec - 1].lsid + 1;
+	} else {
+		ctl->val_u64 = INVALID_LSID;
 	}
 	return 0;
 

@@ -1677,8 +1677,7 @@ int snapshot_del_range_nolock(struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
 	struct multimap_cursor cur;
 	
 	ASSERT(snapd);
-	ASSERT(lsid0 < lsid1);
-	ASSERT(lsid1 != INVALID_LSID);
+	ASSERT(is_lsid_range_valid(lsid0, lsid1));
 	
 	multimap_cursor_init(snapd->lsid_idx, &cur);
 	ret = multimap_cursor_search(&cur, lsid0, MAP_SEARCH_GE, 0);
@@ -1793,8 +1792,7 @@ int snapshot_n_records_range_nolock(
 	struct multimap_cursor cur;
 	
 	ASSERT(snapd);
-	ASSERT(lsid0 < lsid1);
-	ASSERT(lsid1 != INVALID_LSID);
+	ASSERT(is_lsid_range_valid(lsid0, lsid1));
 
 	multimap_cursor_init(snapd->lsid_idx, &cur);
 	ret = multimap_cursor_search(&cur, lsid0, MAP_SEARCH_GE, 0);
@@ -1826,7 +1824,7 @@ int snapshot_n_records_range(
 	int n;
 
 	snapshot_read_lock(snapd);
-	n = snapshot_n_records_range(snapd, lsid0, lsid1);
+	n = snapshot_n_records_range_nolock(snapd, lsid0, lsid1);
 	snapshot_read_unlock(snapd);
 	return n;
 }
@@ -1867,8 +1865,7 @@ int snapshot_list_range_nolock(struct snapshot_data *snapd,
 	ASSERT(snapd);
 	ASSERT(buf);
 	ASSERT(buf_size > 0);
-	ASSERT(lsid0 < lsid1);
-	ASSERT(lsid1 != INVALID_LSID);
+	ASSERT(is_lsid_range_valid(lsid0, lsid1));
 	
 	multimap_cursor_init(snapd->lsid_idx, &cur);
 	ret = multimap_cursor_search(&cur, lsid0, MAP_SEARCH_GE, 0);

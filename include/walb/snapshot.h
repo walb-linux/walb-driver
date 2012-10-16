@@ -259,10 +259,9 @@ static inline int is_valid_snapshot_name(const char *name)
 	}
 
 	/* Character code check. */
-	for (i = 0; i < len; i ++) {
+	for (i = 0; i < len; i++) {
 		n = name[i];
-		if (! (n == '_' ||
-				n == '-' ||
+		if (!(n == '_' || n == '-' ||
 				('0' <= n && n <= '9') ||
 				('a' <= n && n <= 'z') ||
 				('A' <= n && n <= 'Z'))) { return 0; }

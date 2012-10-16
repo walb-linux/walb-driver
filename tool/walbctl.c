@@ -62,9 +62,12 @@ struct config
 	u64 lsid1; /* to lsid */
 
 	char *name; /* name of stuff */
+	
+	/* These will be converted to lsid(s) internally. */
+	char *snap0; /* from snapshot */
+	char *snap1; /* to snapshot */
 
 	size_t size; /* (size_t)(-1) means undefined. */
-	
 };
 
 /**
@@ -120,7 +123,7 @@ static struct cmdhelp cmdhelps_[] = {
 	  "Delete walb/walblog device." },
 	{ "create_snapshot WDEV NAME",
 	  "Create snapshot." },
-	{ "delete_snapshot WDEV NAME",
+	{ "delete_snapshot WDEV NAME | LRANGE",
 	  "Delete snapshot." },
 	{ "num_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
 	  "Get number of snapshots." },
@@ -168,6 +171,8 @@ enum
 	OPT_LSID0,
 	OPT_LSID1,
 	OPT_NAME,
+	OPT_SNAP0,
+	OPT_SNAP1,
 	OPT_SIZE,
 	OPT_HELP,
 };
@@ -190,7 +195,12 @@ static u64 get_written_lsid(const char* wdev_name);
 static u64 get_completed_lsid(const char* wdev_name);
 static u64 get_log_capacity(const char* wdev_name);
 static bool dispatch(const struct config *cfg);
-
+static bool delete_snapshot_by_name(const struct config *cfg);
+static bool delete_snapshot_by_lsid_range(const struct config *cfg);
+static u64 get_lsid_by_snapshot_name(
+	const char *wdev_name, const char *snap_name);
+static void decide_lsid_range(const struct config *cfg, u64 lsid[2]);
+	
 /* commands. */
 static bool do_format_ldev(const struct config *cfg);
 static bool do_create_wdev(const struct config *cfg);
@@ -284,9 +294,11 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			{"wdev", 1, 0, OPT_WDEV}, /* walb device */
 			{"wldev", 1, 0, OPT_WLDEV}, /* walb log device */
 			{"lsid", 1, 0, OPT_LSID}, /* lsid */
-			{"lsid0", 1, 0, OPT_LSID0},
-			{"lsid1", 1, 0, OPT_LSID1},
+			{"lsid0", 1, 0, OPT_LSID0}, /* begin */
+			{"lsid1", 1, 0, OPT_LSID1}, /* end */
 			{"name", 1, 0, OPT_NAME},
+			{"snap0", 1, 0, OPT_SNAP0}, /* begin */
+			{"snap1", 1, 0, OPT_SNAP1}, /* end */
 			{"size", 1, 0, OPT_SIZE},
 			{"help", 0, 0, OPT_HELP},
 			{0, 0, 0, 0}
@@ -326,6 +338,12 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 		case OPT_NAME:
 			cfg->name = strdup(optarg);
 			break;
+		case OPT_SNAP0:
+			cfg->snap0 = strdup(optarg);
+			break;
+		case OPT_SNAP1:
+			cfg->snap1 = strdup(optarg);
+			break;
 		case OPT_SIZE:
 			cfg->size = atoll(optarg);
 			break;
@@ -342,7 +360,7 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 		while (optind < argc) {
 			cfg->cmd_str = strdup(argv[optind]);
 			LOGd("%s ", argv[optind]);
-			optind ++;
+			optind++;
 		}
 		LOGd("\n");
 	} else {
@@ -607,6 +625,148 @@ static bool dispatch(const struct config *cfg)
 	return ret;
 }
 
+/**
+ * Delete a snapshot by name.
+ */
+static bool delete_snapshot_by_name(const struct config *cfg)
+{
+	/* Check. */
+	if (!is_valid_snapshot_name(cfg->name)) {
+		LOGe("snapshot name %s is not valid.\n", cfg->name);
+		goto error0;
+	}
+		
+	/* Prepare control data. */
+	struct walb_snapshot_record record;
+	record.lsid = INVALID_LSID;
+	record.timestamp = 0;
+	record.snapshot_id = INVALID_SNAPSHOT_ID;
+	snprintf(record.name, SNAPSHOT_NAME_MAX_LEN, "%s", cfg->name);
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_DELETE_SNAPSHOT,
+		.u2k = { .buf_size = sizeof(struct walb_snapshot_record),
+			 .buf = (u8 *)&record },
+		.k2u = { .buf_size = 0 },
+	};
+	
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+	LOGn("Delete snapshot succeeded.\n");
+	return true;
+
+error0:
+	LOGe("Delete snapshot failed: %d.\n", ctl.error);
+	return false;
+}
+
+/**
+ * Delete snapshots by range.
+ */
+static bool delete_snapshot_by_lsid_range(const struct config *cfg)
+{
+	int error = 0;
+	
+	/* Check */
+	if (is_lsid_range_valid(cfg->lsid0, cfg->lsid1)) {
+		LOGe("lsid range is not valid (%"PRIu64", %"PRIu64").\n",
+			cfg->lsid0, cfg->lsid1);
+		goto error0;
+	}
+		
+	/* Prepare control data. */
+	u64 lsid[2];
+	lsid[0] = cfg->lsid0;
+	lsid[1] = cfg->lsid1;
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_DELETE_SNAPSHOT_RANGE,
+		.u2k = { .buf_size = sizeof(lsid),
+			 .buf = (u8 *)&lsid[0] },
+		.k2u = { .buf_size = 0 },
+	};
+	
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
+		error = ctl.error;
+		goto error0;
+	}
+	LOGn("Delete %d snapshots succeeded.\n", ctl.val_int);
+	return true;
+
+error0:
+	LOGe("Delete snapshots failed: %d.\n", error);
+	return false;
+}
+
+/**
+ * Get lsid by snapshot name.
+ *
+ * RETURN:
+ *   lsid in success, or INVALID_LSID.
+ */
+static u64 get_lsid_by_snapshot_name(
+	const char *wdev_name, const char *snap_name)
+{
+	ASSERT(is_valid_snapshot_name(snap_name));
+	struct walb_snapshot_record srec[2];
+
+	snprintf(srec[0].name, SNAPSHOT_NAME_MAX_LEN, "%s", snap_name);
+	
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_GET_SNAPSHOT,
+		.u2k = { .buf_size = sizeof(struct walb_snapshot_record),
+			 .buf = (u8 *)&srec[0] },
+		.k2u = { .buf_size = sizeof(struct walb_snapshot_record),
+			 .buf = (u8 *)&srec[1] },
+	};
+	if (!invoke_ioctl(wdev_name, &ctl, O_RDWR)) { goto error0; }
+	ASSERT(srec[1].lsid != INVALID_LSID);
+	return srec[1].lsid;
+	
+error0:
+	return INVALID_LSID;
+}
+
+/**
+ * Decide lsid range using config.
+ *
+ * @cfg configuration.
+ * @lsid u64 array of size 2 to store result.
+ */
+static void decide_lsid_range(const struct config *cfg, u64 lsid[2])
+{
+	ASSERT(cfg);
+	
+	/* Decide lsid[0]. */
+	if (cfg->lsid0 != (u64)(-1)) {
+		lsid[0] = cfg->lsid0;
+	} else if (is_valid_snapshot_name(cfg->snap0)) {
+		lsid[0] = get_lsid_by_snapshot_name(cfg->wdev_name, cfg->snap0);
+		if (lsid[0] == INVALID_LSID) {
+			LOGe("Snapshot %s not found.\n", cfg->snap0);
+			goto error0;
+		}
+	} else {
+		lsid[0] = 0;
+	}
+	
+	/* Decide lsid[1]. */
+	if (cfg->lsid1 != (u64)(-1)) {
+		lsid[1] = cfg->lsid1;
+	} else if (is_valid_snapshot_name(cfg->snap1)) {
+		lsid[1] = get_lsid_by_snapshot_name(cfg->wdev_name, cfg->snap1);
+		if (lsid[1] == INVALID_LSID) {
+			LOGe("Snapshot %s not found.\n", cfg->snap1);
+			goto error0;
+		}
+	} else {
+		lsid[1] = MAX_LSID + 1;
+	}
+	return;
+
+error0:
+	lsid[0] = INVALID_LSID;
+	lsid[1] = INVALID_LSID;
+	return;
+}
+
 /*******************************************************************************
  * Commands.
  *******************************************************************************/
@@ -848,8 +1008,7 @@ error0:
  */
 static bool do_create_snapshot(const struct config *cfg)
 {
-	/* now editing */
-	
+	int error = 0;
 	ASSERT(strcmp(cfg->cmd_str, "create_snapshot") == 0);
 
 	char name[SNAPSHOT_NAME_MAX_LEN + 1];
@@ -885,34 +1044,80 @@ static bool do_create_snapshot(const struct config *cfg)
 		.k2u = { .buf_size = 0 },
 	};
 	
-	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
+		error = ctl.error;
+		goto error0;
+	}
 	LOGn("Create snapshot succeeded.\n");
-	
 	return true;
 
 error0:
+	LOGe("Create snapshot failed: %d.\n", error);
 	return false;
 }
 
 /**
- * Delete snapshot(s).
+ * Delete one or more snapshots.
  *
  * Specify name or lsid range.
  */
 static bool do_delete_snapshot(const struct config *cfg)
 {
-	/* not yet implemented */
-	return false;
+	bool ret = false;
+	ASSERT(strcmp(cfg->cmd_str, "delete_snapshot") == 0);
+	
+	/* Check config. */
+	if (cfg->name) {
+		ret = delete_snapshot_by_name(cfg);
+	} else if (is_lsid_range_valid(cfg->lsid0, cfg->lsid1)) {
+		ret = delete_snapshot_by_lsid_range(cfg);
+	} else {
+		LOGe("Specify snapshot name or lsid range to delete.\n");
+		ret = false;
+	}
+	return ret;
 }
 
 /**
  * Get number of snapshots.
  *
- * Specify lsid range.
+ * Specify a range (optional)
+ *   Left edge by --lsid0 or --snap0 (default: 0)
+ *   Right edge by --lsid1 or --snap1 (default: MAX_LSID + 1)
  */
 static bool do_num_snapshot(const struct config *cfg)
 {
-	/* not yet implemented */
+	int error = 0;
+	ASSERT(strcmp(cfg->cmd_str, "num_snapshot") == 0);
+
+	/* Decide lsid range. */
+	u64 lsid[2];
+	decide_lsid_range(cfg, lsid);
+	if (!is_lsid_range_valid(lsid[0], lsid[1])) {
+		LOGe("Specify correct lsid range: (%"PRIu64", %"PRIu64").\n",
+			lsid[0], lsid[1]);
+		goto error0;
+	}
+	
+	/* Prepare control data. */
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE,
+		.u2k = { .buf_size = sizeof(lsid),
+			 .buf = (u8 *)&lsid[0] },
+		.k2u = { .buf_size = 0 },
+	};
+	
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
+		error = ctl.error;
+		goto error0;
+	}
+	ASSERT(ctl.val_int >= 0);
+	LOGn("Num of snapshots in range (%"PRIu64", %"PRIu64"): %d.\n",
+		lsid[0], lsid[1], ctl.val_int);
+	return true;
+
+error0:
+	LOGe("Num of snapshots ioctl failed: %d.\n", error);
 	return false;
 }
 
@@ -923,7 +1128,47 @@ static bool do_num_snapshot(const struct config *cfg)
  */
 static bool do_list_snapshot(const struct config *cfg)
 {
-	/* not yet implemented */
+	int error = 0;
+	ASSERT(strcmp(cfg->cmd_str, "list_snapshot") == 0);
+	int n_rec, i;
+
+	u8 buf[PAGE_SIZE];
+	struct walb_snapshot_record *srec =
+		(struct walb_snapshot_record *)buf;
+
+	/* Decide lsid range. */
+	u64 lsid[2];
+	decide_lsid_range(cfg, lsid);
+	if (!is_lsid_range_valid(lsid[0], lsid[1])) {
+		LOGe("Specify correct lsid range: (%"PRIu64", %"PRIu64").\n",
+			lsid[0], lsid[1]);
+		goto error0;
+	}
+	while (lsid[0] < lsid[1]) {
+	
+		/* Prepare control data. */
+		struct walb_ctl ctl = {
+			.command = WALB_IOCTL_LIST_SNAPSHOT_RANGE,
+			.u2k = { .buf_size = sizeof(lsid),
+				 .buf = (u64 *)&lsid[0] },
+			.k2u = { .buf_size = PAGE_SIZE,
+				 .buf = &buf[0] },
+		};
+	
+		if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
+			error = ctl.error;
+			goto error0;
+		}
+		n_rec = ctl.val_int;
+		for (i = 0; i < n_rec; i++) {
+			print_snapshot_record(&srec[i]);
+		}
+		lsid[0] = ctl.val_u64; /* the first lsid of remaining. */
+	}
+	return true;
+
+error0:
+	LOGe("List snapshots ioctl failed: %d.\n", error);
 	return false;
 }
 
@@ -932,7 +1177,16 @@ static bool do_list_snapshot(const struct config *cfg)
  */
 static bool do_take_checkpoint(const struct config *cfg)
 {
-	/* not yet implemented */
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_TAKE_CHECKPOINT,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) { goto error0; }
+	return true;
+
+error0:
+	LOGe("Take snapshot failed\n");
 	return false;
 }
 
