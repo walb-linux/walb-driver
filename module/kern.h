@@ -140,6 +140,18 @@ static inline struct walb_dev* get_wdev_from_queue(struct request_queue *q)
 	return wdev;
 }
 
+/**
+ * Get walb device from checkpoint data.
+ */
+static inline struct walb_dev* get_wdev_from_checkpoint_data(
+	struct checkpoint_data *cpd)
+{
+	struct walb_dev *wdev;
+	ASSERT(cpd);
+	wdev = (struct walb_dev *)container_of(cpd, struct walb_dev, cpd);
+	return wdev;
+}
+
 /*******************************************************************************
  * Prototypes defined in walb.c
  *******************************************************************************/

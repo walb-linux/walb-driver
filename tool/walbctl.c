@@ -199,7 +199,7 @@ static bool do_create_snapshot(const struct config *cfg);
 static bool do_delete_snapshot(const struct config *cfg);
 static bool do_num_snapshot(const struct config *cfg);
 static bool do_list_snapshot(const struct config *cfg);
-static bool do_checkpoint(const struct config *cfg);
+static bool do_take_checkpoint(const struct config *cfg);
 static bool do_set_checkpoint_interval(const struct config *cfg);
 static bool do_get_checkpoint_interval(const struct config *cfg);
 static bool do_cat_wldev(const struct config *cfg);
@@ -577,7 +577,7 @@ static bool dispatch(const struct config *cfg)
 		{ "delete_snapshot", do_delete_snapshot },
 		{ "num_snapshot", do_num_snapshot },
 		{ "list_snapshot", do_list_snapshot },
-		{ "checkpoint", do_checkpoint },
+		{ "take_checkpoint", do_take_checkpoint },
 		{ "set_checkpoint_interval", do_set_checkpoint_interval },
 		{ "get_checkpoint_interval", do_get_checkpoint_interval },
 		{ "cat_wldev", do_cat_wldev },
@@ -930,7 +930,7 @@ static bool do_list_snapshot(const struct config *cfg)
 /**
  * Make checkpointo immediately.
  */
-static bool do_checkpoint(const struct config *cfg)
+static bool do_take_checkpoint(const struct config *cfg)
 {
 	/* not yet implemented */
 	return false;

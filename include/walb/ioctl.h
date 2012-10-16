@@ -354,6 +354,18 @@ enum {
 	WALB_IOCTL_GET_CHECKPOINT_INTERVAL,
 
 	/*
+	 * Take a checkpoint immediately.
+	 *
+	 * INPUT:
+	 *   None.
+	 * OUTPUT:
+	 *   None.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_TAKE_CHECKPOINT,
+
+	/*
 	 * Set checkpoint interval.
 	 *
 	 * INPUT:

@@ -107,6 +107,7 @@ static int ioctl_wdev_delete_snapshot_range(struct walb_dev *wdev, struct walb_c
 static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl);
+static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
@@ -294,6 +295,9 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		break;
 	case WALB_IOCTL_SET_OLDEST_LSID:
 		ret = ioctl_wdev_set_oldest_lsid(wdev, ctl);
+		break;
+	case WALB_IOCTL_TAKE_CHECKPOINT:
+		ret = ioctl_wdev_take_checkpoint(wdev, ctl);
 		break;
 	case WALB_IOCTL_GET_CHECKPOINT_INTERVAL:
 		ret = ioctl_wdev_get_checkpoint_interval(wdev, ctl);
@@ -715,6 +719,40 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 	}
 	return 0;
 
+error0:
+	return -EFAULT;
+}
+
+/**
+ * Take a snapshot immedicately.
+ *
+ * @wdev walb dev.
+ * @ctl ioctl data.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ctl)
+{
+	bool ret;
+	
+	LOGn("WALB_IOCTL_TAKE_CHECKPOINT\n");
+	ASSERT(ctl->command == WALB_IOCTL_TAKE_CHECKPOINT);
+
+	stop_checkpointing(&wdev->cpd);
+#ifdef WALB_DEBUG
+	down_write(&wdev->cpd.lock);
+	ASSERT(wdev->cpd.state == CP_STOPPED);
+	up_write(&wdev->cpd.lock);
+#endif
+	ret = take_checkpoint(&wdev->cpd);
+	if (!ret) {
+		atomic_set(&wdev->is_read_only, 1);
+		LOGe("superblock sync failed.\n");
+		goto error0;
+	}
+	start_checkpointing(&wdev->cpd);
+
+	return 0;
 error0:
 	return -EFAULT;
 }

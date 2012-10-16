@@ -78,6 +78,7 @@ struct checkpoint_data
 };
 
 void init_checkpointing(struct checkpoint_data *cpd, u64 written_lsid);
+bool take_checkpoint(struct checkpoint_data *cpd);
 void task_do_checkpointing(struct work_struct *work);
 void start_checkpointing(struct checkpoint_data *cpd);
 void stop_checkpointing(struct checkpoint_data *cpd);
