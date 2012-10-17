@@ -115,7 +115,7 @@ struct cmdhelp
  * Help string.
  */
 static struct cmdhelp cmdhelps_[] = {
-	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (SIZE)", 
+	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (N_SNAP)", 
 	  "Format log device." },
 	{ "create_wdev LDEV DDEV (NAME)",
 	  "Make walb/walblog device." },
@@ -371,13 +371,12 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 	return 0;
 }
 
-
 /**
  * Initialize log device.
  *
  * @fd block device file descripter.
- * @logical_bs logical block size.
- * @physical_bs physical block size.
+ * @lbs logical block size.
+ * @pbs physical block size.
  * @ddev_lb device size [logical block].
  * @ldev_lb log device size [logical block]
  * @n_snapshots number of snapshots to keep.
@@ -385,75 +384,92 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
  *
  * @return true in success, or false.
  */
-static bool init_walb_metadata(int fd, int logical_bs, int physical_bs,
-			u64 ddev_lb, u64 ldev_lb, int n_snapshots,
-			const char *name)
+static bool init_walb_metadata(
+	int fd, int lbs, int pbs,
+	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+	const char *name)
 {
 	ASSERT(fd >= 0);
-	ASSERT(logical_bs > 0);
-	ASSERT(physical_bs > 0);
+	ASSERT(lbs > 0);
+	ASSERT(pbs > 0);
 	ASSERT(ddev_lb < (u64)(-1));
 	ASSERT(ldev_lb < (u64)(-1));
 	/* name can be null. */
 
-	struct walb_super_sector super_sect;
+	/* Alloc super sector. */
+	struct sector_data *super_sect_data
+		= sector_alloc_zero(pbs);
+	if (!super_sect_data) {
+		LOGe("alloc sector failed.\n");
+		goto error0;
+	}
+	struct walb_super_sector *super_sect
+		= get_super_sector(super_sect_data);
 
 	/* Initialize super sector. */
-	__init_super_sector(&super_sect,
-			logical_bs, physical_bs,
-			ddev_lb, ldev_lb, n_snapshots,
-			name);
+	init_super_sector(
+		super_sect_data, lbs, pbs,
+		ddev_lb, ldev_lb, n_snapshots, name);
 	
 	/* Write super sector */
-	if (!__write_super_sector(fd, &super_sect)) {
+	if (!write_super_sector(fd, super_sect_data)) {
 		LOGe("write super sector failed.\n");
-		goto error0;
+		goto error1;
 	}
 
-	/* Prepare snapshot sectors
-	   Bitmap data will be all 0. */
-	struct walb_snapshot_sector *snap_sectp;
-	ASSERT(sizeof(*snap_sectp) <= (size_t)physical_bs);
-
-	snap_sectp = (struct walb_snapshot_sector *)alloc_sector_zero(physical_bs);
-	if (snap_sectp == NULL) {
-		goto error0;
+	/* Prepare a snapshot sectors. */
+	struct sector_data *snap_sect_data
+		= sector_alloc_zero(pbs);
+	if (!snap_sect_data) {
+		LOGe("allocate sector failed.\n");
+		goto error1;
 	}
+	struct walb_snapshot_sector *snap_sect
+		= get_snapshot_sector(snap_sect_data);
 	
 	/* Write snapshot sectors */
 	int i = 0;
-	int n_sectors = (int)super_sect.snapshot_metadata_size;
-	for (i = 0; i < n_sectors; i ++) {
-		if (!write_snapshot_sector(fd, &super_sect, snap_sectp, i)) {
-			goto error1;
+	int n_sectors = (int)super_sect->snapshot_metadata_size;
+	for (i = 0; i < n_sectors; i++) {
+		init_snapshot_sector(snap_sect_data);
+		if (!write_snapshot_sector(fd, super_sect, snap_sect, i)) {
+			LOGe("write snapshot sector %d failed.\n", i);
+			goto error2;
 		}
 	}
 
 	/* Write invalid logpack not to run redo. */
-	if (!write_invalid_logpack_header(fd, &super_sect, physical_bs, 0)) {
-		goto error1;
+	if (!write_invalid_logpack_header(fd, super_sect, pbs, 0)) {
+		LOGe("write invalid logpack header for lsid 0 failed.\n");
+		goto error2;
 	}
 
 #if 1	     
 	/* Read super sector and print for debug. */
-	memset(&super_sect, 0, sizeof(super_sect));
-	if (!__read_super_sector(fd, &super_sect, physical_bs, n_snapshots)) {
-		goto error1;
+	sector_zeroclear(super_sect_data);
+	if (!read_super_sector(fd, super_sect_data)) {
+		goto error2;
 	}
-	/* print_super_sector(&super_sect); */
+	print_super_sector(super_sect_data);
 
 	/* Read first snapshot sector and print for debug. */
-	memset(snap_sectp, 0, physical_bs);
-	if (!read_snapshot_sector(fd, &super_sect, snap_sectp, 0)) {
-		goto error1;
+	for (i = 0; i < n_sectors; i++) {
+		sector_zeroclear(snap_sect_data);
+		if (!read_snapshot_sector(fd, super_sect, snap_sect, i)) {
+			LOGe("read snapshot sector %d failed.\n", i);
+			goto error2;
+		}
+		print_snapshot_sector(snap_sect, pbs);
 	}
-	/* print_snapshot_sector(snap_sectp, physical_bs); */
 #endif
-	free(snap_sectp);
+	sector_free(snap_sect_data);
+	sector_free(super_sect_data);
 	return true;
 
+error2:
+	sector_free(snap_sect_data);
 error1:
-	free(snap_sectp);
+	sector_free(super_sect_data);
 error0:
 	return false;
 }
@@ -664,18 +680,14 @@ error0:
 static bool delete_snapshot_by_lsid_range(const struct config *cfg)
 {
 	int error = 0;
+	ASSERT(is_lsid_range_valid(cfg->lsid0, cfg->lsid1));
 	
-	/* Check */
-	if (is_lsid_range_valid(cfg->lsid0, cfg->lsid1)) {
-		LOGe("lsid range is not valid (%"PRIu64", %"PRIu64").\n",
-			cfg->lsid0, cfg->lsid1);
-		goto error0;
-	}
-		
-	/* Prepare control data. */
+	/* Decide lsid range. */
 	u64 lsid[2];
 	lsid[0] = cfg->lsid0;
 	lsid[1] = cfg->lsid1;
+	
+	/* Prepare control data. */
 	struct walb_ctl ctl = {
 		.command = WALB_IOCTL_DELETE_SNAPSHOT_RANGE,
 		.u2k = { .buf_size = sizeof(lsid),

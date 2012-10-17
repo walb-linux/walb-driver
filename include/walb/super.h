@@ -150,11 +150,26 @@ static inline char* set_super_sector_name(
 	struct walb_super_sector *super_sect, const char *name)
 {
 	if (name) {
-		strncpy(super_sect->name, name, DISK_NAME_LEN);
+		snprintf(super_sect->name, DISK_NAME_LEN, "%s", name);
 	} else {
 		super_sect->name[0] = '\0';
 	}
 	return super_sect->name;
+}
+
+/**
+ * Get super sector pointer.
+ *
+ * @sect sector data.
+ * 
+ * RETURN:
+ *   pointer to walb_super_sector.
+ */
+static inline struct walb_super_sector* get_super_sector(
+	struct sector_data *sect)
+{
+	ASSERT_SECTOR_DATA(sect);
+	return (struct walb_super_sector *)(sect->data);
 }
 
 #endif /* WALB_SUPER_H */

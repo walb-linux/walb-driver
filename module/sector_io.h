@@ -59,16 +59,6 @@ bool walb_write_super_sector(
  *******************************************************************************/
 
 /**
- * Get super sector pointer.
- */
-static inline struct walb_super_sector*
-get_super_sector(struct sector_data *sect)
-{
-	ASSERT_SECTOR_DATA(sect);
-	return (struct walb_super_sector *)(sect->data);
-}
-
-/**
  * Get logpack header pointer.
  */
 static inline struct walb_logpack_header*

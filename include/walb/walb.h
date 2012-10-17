@@ -52,7 +52,7 @@
  */
 static inline bool is_lsid_range_valid(u64 lsid0, u64 lsid1)
 {
-	return lsid0 < lsid1 && lsid1 < MAX_LSID + 1;
+	return lsid0 < lsid1 && lsid1 <= MAX_LSID + 1;
 }
 
 #endif /* WALB_H */

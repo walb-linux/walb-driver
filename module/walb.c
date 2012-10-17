@@ -513,7 +513,7 @@ static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ct
 	int error;
 	struct walb_snapshot_record *srec;
 	
-	LOGn("WALB_IOCTL_CREATE_SNAPSHOT_CREATE\n");
+	LOGn("WALB_IOCTL_CREATE_SNAPSHOT\n");
 	ASSERT(ctl->command == WALB_IOCTL_CREATE_SNAPSHOT);
 		
 	if (sizeof(struct walb_snapshot_record) > ctl->u2k.buf_size) {
@@ -529,6 +529,9 @@ static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ct
 		srec->lsid = get_completed_lsid(wdev);
 		ASSERT(srec->lsid != INVALID_LSID);
 	}
+	srec->name[DISK_NAME_LEN - 1] = '\0';
+	LOGn("Create snapshot name %s lsid %"PRIu64" ts %"PRIu64"\n",
+		srec->name, srec->lsid, srec->timestamp);
 	error = snapshot_add(wdev->snapd, srec->name, srec->lsid, srec->timestamp);
 	if (error) {
 		ctl->error = error;
@@ -553,7 +556,7 @@ static int ioctl_wdev_delete_snapshot(struct walb_dev *wdev, struct walb_ctl *ct
 	struct walb_snapshot_record *srec;
 	int error;
 	
-	LOGn("WALB_IOCTL_DELETE_SNAPSHOT_\n");
+	LOGn("WALB_IOCTL_DELETE_SNAPSHOT\n");
 	ASSERT(ctl->command == WALB_IOCTL_DELETE_SNAPSHOT);
 	
 	if (sizeof(struct walb_snapshot_record) > ctl->u2k.buf_size) {
@@ -598,6 +601,10 @@ static int ioctl_wdev_delete_snapshot_range(struct walb_dev *wdev, struct walb_c
 	}
 	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
 	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
+	if (!is_lsid_range_valid(lsid0, lsid1)) {
+		LOGe("Specify valid lsid range.\n");
+		goto error0;
+	}
 	ret = snapshot_del_range(wdev->snapd, lsid0, lsid1);
 	if (ret >= 0) { 
 		ctl->val_int = ret;
@@ -676,6 +683,11 @@ static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_c
 	}
 	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
 	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
+	if (!is_lsid_range_valid(lsid0, lsid1)) {
+		LOGe("Specify valid lsid range.\n");
+		goto error0;
+	}
+	
 	ret = snapshot_n_records_range(
 		wdev->snapd, lsid0, lsid1);
 	if (ret < 0) {
@@ -713,6 +725,10 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 	}
 	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
 	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
+	if (!is_lsid_range_valid(lsid0, lsid1)) {
+		LOGe("Specify valid lsid range.\n");
+		goto error0;
+	}
 	srec = (struct walb_snapshot_record *)ctl->k2u.__buf;
 	size = ctl->k2u.buf_size / sizeof(struct walb_snapshot_record);
 	if (size == 0) {
@@ -1261,7 +1277,8 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 {
 	u64 snapshot_begin_pb, snapshot_end_pb;
 	struct sector_data *lsuper0_tmp;
-	ASSERT(wdev != NULL);
+	int ret;
+	ASSERT(wdev);
 
 	/*
 	 * 1. Read log device metadata
@@ -1272,7 +1289,7 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 		goto error0;
 	}
 	lsuper0_tmp = sector_alloc(wdev->physical_bs, GFP_NOIO);
-	if (lsuper0_tmp) {
+	if (!lsuper0_tmp) {
 		LOGe("walb_ldev_init: alloc sector failed.\n");
 		goto error1;
 	}
@@ -1316,10 +1333,14 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 		goto error2;
 	}
 	/* Initialize snapshot data by scanning snapshot sectors. */
-	/* if (snapshot_data_initialize(wdev->snapd) != 0) { */
-	/*	   LOGe("snapshot_data_initialize() failed.\n"); */
-	/*	   goto out_snapshot_create; */
-	/* } */
+	ret = snapshot_data_initialize(wdev->snapd);
+	if (!ret) {
+		LOGe("Initialize snapshot data failed.\n");
+		goto error3;
+	}
+
+	/* now editing */
+	
 	
 	/*
 	 * 3. Redo from written_lsid to avaialble latest lsid.
@@ -1344,12 +1365,8 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 /*	   if (wdev->snapd) { */
 /*		   snapshot_data_finalize(wdev->snapd); */
 /*	   } */
-#if 0
-out_snapshot_create:
-	if (wdev->snapd) {
-		snapshot_data_destroy(wdev->snapd);
-	}
-#endif
+error3:
+	snapshot_data_destroy(wdev->snapd);
 error2:
 	sector_free(lsuper0_tmp);
 error1:

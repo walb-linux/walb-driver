@@ -191,7 +191,6 @@ static bool sector_load(struct snapshot_data *snapd, u64 off)
 		ctl->state = SNAPSHOT_SECTOR_CONTROL_ALLOC;
 		ctl->sector = sect;
 	}
-	ASSERT_SNAPSHOT_SECTOR(ctl->sector);
 
 	/* Read sector if need. */
 	if (ctl->state == SNAPSHOT_SECTOR_CONTROL_ALLOC) {
@@ -202,6 +201,13 @@ static bool sector_load(struct snapshot_data *snapd, u64 off)
 		}
 		ctl->state = SNAPSHOT_SECTOR_CONTROL_CLEAN;
 	}
+
+	/* Validate. */
+	if (!is_valid_snapshot_sector(ctl->sector)) {
+		LOGe("Snapshot sector %"PRIu64" not valid.\n", off);
+		goto error0;
+	}
+	
 	return true;
 	
 error0:

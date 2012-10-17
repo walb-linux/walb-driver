@@ -340,6 +340,7 @@ static inline void init_snapshot_sector(struct sector_data *sect)
 	int i, n_records;
 
 	ASSERT_SECTOR_DATA(sect);
+	/* allocation bitmap will be also zerocleared. */
 	sector_zeroclear(sect);
 	n_records = get_max_n_records_in_snapshot_sector(sect->size);
 	ASSERT(n_records > 0);
@@ -350,12 +351,12 @@ static inline void init_snapshot_sector(struct sector_data *sect)
 	for (i = 0; i < n_records; i ++) {
 		snapshot_record_init(&snap_sect->record[i]);
 	}
-
-/* #ifdef WALB_DEBUG */
-/*	   for (i = 0; i < n_records; i ++) { */
-/*		   ASSERT(! is_alloc_snapshot_record(i, sect)); */
-/*	   } */
-/* #endif */
+	
+#ifdef WALB_DEBUG
+	for (i = 0; i < n_records; i ++) {
+		ASSERT(!is_alloc_snapshot_record(i, sect));
+	}
+#endif
 }
 
 /**
