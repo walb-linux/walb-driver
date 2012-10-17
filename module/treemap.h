@@ -20,11 +20,11 @@
  */
 
 /**
- * Invalid value.
+ * Invalid key and value.
  * Causion: this is not NULL.
  */
+#define TREEMAP_INVALID_KEY ((u64)(-1))
 #define TREEMAP_INVALID_VAL ((unsigned long)(-1))
-
 
 /**
  * Tree node.
@@ -193,6 +193,7 @@ int map_cursor_is_end(struct map_cursor *cursor);
 int map_cursor_is_data(struct map_cursor *cursor);
 int map_cursor_is_valid(struct map_cursor *cursor);
 void map_cursor_copy(struct map_cursor *dst, struct map_cursor *src);
+u64 map_cursor_key(const struct map_cursor *cursor);
 unsigned long map_cursor_val(const struct map_cursor *cursor);
 /* int map_cursor_update(struct map_cursor *cursor); */
 int map_cursor_del(struct map_cursor *cursor);

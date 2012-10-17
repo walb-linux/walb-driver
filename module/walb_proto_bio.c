@@ -125,13 +125,20 @@ struct pdata
 			    This is lsid of next created logpack.
 			    lsid_lock must be held. */
 	u64 oldest_lsid; /* oldest lsid.
-			    All previous logpacks of the logpack with
-			    the oldest lsid can be overwritten.
+			    All logpacks which lsid < oldest_lsid
+			    can be overwritten.
 			    lsid_lock must be held. */
 	u64 written_lsid; /* written lsid.
-			     All previous logpacks of the logpack with
-			     the written_lsid have been stored.
+			     All logpacks which lsid < written_lsid
+			     must have been stored.
 			     lsid_lock must be held. */
+
+#ifdef WALB_FAST_ALGORITHM
+	u64 completed_lsid; /* IO completed lsid.
+			       All logpacks which lsid < completed_lsid
+			       must have been stored.
+			       lsid_lock must be held. */
+#endif
 	
 	spinlock_t lsuper0_lock; /* Use spin_lock() and spin_unlock(). */
 	struct sector_data *lsuper0; /* lsuper0_lock must be held
@@ -600,6 +607,9 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->written_lsid = ssect->written_lsid;
 	pdata->oldest_lsid = ssect->oldest_lsid;
 	pdata->latest_lsid = pdata->written_lsid; /* redo must be done. */
+#ifdef WALB_FAST_ALGORITHM
+	pdata->completed_lsid = pdata->written_lsid; /* redo must be done. */
+#endif
 	pdata->ring_buffer_size = ssect->ring_buffer_size;
 	pdata->ring_buffer_off = get_ring_buffer_offset_2(ssect);
 	pdata->flags = 0;
@@ -1778,6 +1788,16 @@ static void wait_for_logpack_and_submit_datapack(
 		list_del(&biow->list);
 		destroy_bio_wrapper_dec(pdata, biow);
 	}
+
+#ifdef WALB_FAST_ALGORITHM
+	/* Update completed_lsid. */
+	if (!is_failed) {
+		spin_lock(&pdata->lsid_lock);
+		pdata->completed_lsid = 
+			get_next_lsid(get_logpack_header(wpack->logpack_header_sector));
+		spin_unlock(&pdata->lsid_lock);
+	}
+#endif
 }
 
 /**

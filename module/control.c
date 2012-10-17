@@ -10,6 +10,7 @@
 #include <linux/compat.h>
 #include <linux/rwsem.h>
 #include <linux/uaccess.h>
+#include <linux/vmalloc.h>
 
 #include "kern.h"
 #include "hashtbl.h"
@@ -17,6 +18,377 @@
 #include "alldevs.h"
 
 #include "walb/ioctl.h"
+
+/*******************************************************************************
+ * Prototype of static functions.
+ *******************************************************************************/
+
+static int ioctl_start_dev(struct walb_ctl *ctl);
+static int ioctl_stop_dev(struct walb_ctl *ctl);
+static int ioctl_get_major(struct walb_ctl *ctl);
+static int ioctl_list_dev(struct walb_ctl *ctl);
+static int ioctl_num_of_dev(struct walb_ctl *ctl);
+static int dispatch_ioctl(struct walb_ctl *ctl);
+static int ctl_ioctl(unsigned int command, struct walb_ctl __user *user);
+static long walb_ctl_ioctl(
+	struct file *file, unsigned int command, unsigned long u);
+#ifdef CONFIG_COMPAT
+static long walb_ctl_compat_ioctl(
+	struct file *file, unsigned int command, unsigned long u);
+#else
+#define walb_ctl_compat_ioctl NULL
+#endif
+
+/*******************************************************************************
+ * Implementation of static functions.
+ *******************************************************************************/
+
+/**
+ * Start walb device.
+ *
+ * @ctl walb_ctl data.
+ *	command == WALB_IOCTL_START_DEV
+ *	Input:
+ *	  u2k
+ *	    wminor (even value --> v	: wdev minor,
+ *				   v + 1: wlog minor,
+ *		   WALB_DYNAMIC_MINOR means automatic assignment),
+ *	    lmajor, lminor,
+ *	    dmajor, dminor,
+ *	    buf_size (<= DISK_NAME_LEN),
+ *	    (char *)__buf (name of walb device. terminated by '\0').
+ *	Output:
+ *	  error: 0 in success.
+ *	  k2u
+ *	    wmajor, wminor
+ *	    buf_size (<= DISK_NAME_LEN)
+ *	    (char *)__buf (name of walb device. terminated by '\0')
+ *
+ * @return 0 in success, or -EFAULT.
+ */
+static int ioctl_start_dev(struct walb_ctl *ctl)
+{
+	dev_t ldevt, ddevt;
+	unsigned int wminor;
+	struct walb_dev *wdev;
+	char *name;
+	
+	ASSERT(ctl->command == WALB_IOCTL_START_DEV);
+
+	print_walb_ctl(ctl); /* debug */
+	
+	ldevt = MKDEV(ctl->u2k.lmajor, ctl->u2k.lminor);
+	ddevt = MKDEV(ctl->u2k.dmajor, ctl->u2k.dminor);
+	LOGd("(ldevt %u:%u) (ddevt %u:%u)\n",
+		MAJOR(ldevt), MINOR(ldevt),
+		MAJOR(ddevt), MINOR(ddevt));
+	if (ctl->u2k.buf_size > 0) {
+		name = (char *)ctl->u2k.__buf;
+		LOGd("name len: %zu\n", strnlen(name, DISK_NAME_LEN));
+	} else {
+		name = NULL;
+	}
+
+	alldevs_write_lock();
+	
+	if (ctl->u2k.wminor == WALB_DYNAMIC_MINOR) {
+		wminor = get_free_minor();
+	} else {
+		wminor = ctl->u2k.wminor;
+		if (wminor % 2 != 0) { wminor --; }
+	}
+	LOGd("wminor: %u\n", wminor);
+	
+	wdev = prepare_wdev(wminor, ldevt, ddevt, name);
+	if (wdev == NULL) {
+		alldevs_write_unlock();
+		ctl->error = -1;
+		goto error0;
+	}
+	
+	if (alldevs_add(wdev) != 0) {
+		alldevs_write_unlock();
+		ctl->error = -2;
+		goto error1;
+	}
+	
+	register_wdev(wdev);
+	alldevs_write_unlock();
+
+	/* Return values to userland. */
+	ctl->k2u.wmajor = walb_major_;
+	ctl->k2u.wminor = wminor;
+	strncpy(ctl->k2u.__buf, get_super_sector(wdev->lsuper0)->name,
+		DISK_NAME_LEN);
+	ctl->error = 0;
+
+	print_walb_ctl(ctl); /* debug */
+	return 0;
+	
+	/* not tested */
+
+/* error2: */
+/*	   alldevs_dell(wdev); */
+error1:
+	destroy_wdev(wdev);
+error0:
+	return -EFAULT;
+}
+
+/**
+ * Stop walb device.
+ *
+ * @ctl walb_ctl data.
+ *	command == WALB_IOCTL_STOP_DEV
+ *	Input:
+ *	  u2k
+ *	    wmajor, wminor,
+ *	Output:
+ *	  error: 0 in success.
+ *
+ * @return 0 in success, or -EFAULT.
+ */
+static int ioctl_stop_dev(struct walb_ctl *ctl)
+{
+	dev_t wdevt;
+	unsigned int wmajor, wminor;
+	struct walb_dev *wdev;
+	
+	ASSERT(ctl->command == WALB_IOCTL_STOP_DEV);
+
+	/* Input */
+	wmajor = ctl->u2k.wmajor;
+	wminor = ctl->u2k.wminor;
+	if (wmajor != walb_major_) {
+		LOGe("Device major id is invalid.\n");
+		goto error0;
+	}
+	wdevt = MKDEV(wmajor, wminor);
+
+	alldevs_read_lock();
+	wdev = search_wdev_with_minor(wminor);
+	alldevs_read_unlock();
+
+	if (wdev == NULL) {
+		LOGe("Walb dev with minor %u not found.\n",
+			wminor);
+		ctl->error = -1;
+		goto error0;
+	}
+
+	unregister_wdev(wdev);
+	
+	alldevs_write_lock();
+	alldevs_del(wdev);
+	alldevs_write_unlock();
+	
+	destroy_wdev(wdev);
+
+	/* Set result */
+	ctl->error = 0;
+
+	return 0;
+	
+	/* not tested */
+	
+error0:	       
+	return -EFAULT;
+}
+
+/**
+ * Get major.
+ *
+ * @ctl walb ctl.
+ *   See walb/ioctl.h for input/output details.
+ * RETURN:
+ *   0.
+ */
+static int ioctl_get_major(struct walb_ctl *ctl)
+{
+	ASSERT(ctl);
+	ASSERT(ctl->command == WALB_IOCTL_GET_MAJOR);
+
+	ctl->k2u.wmajor = walb_major_;
+	ctl->error = 0;
+	return 0;
+}
+
+/**
+ * Get device list over a range.
+ *
+ * @ctl walb ctl.
+ *   See walb/ioctl.h for input/output details.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_list_dev(struct walb_ctl *ctl)
+{
+	unsigned int *minor;
+	struct walb_disk_data *ddata;
+	size_t n;
+	
+	ASSERT(ctl);
+	ASSERT(ctl->command == WALB_IOCTL_LIST_DEV);
+
+	if (ctl->u2k.buf_size < sizeof(unsigned int) * 2) {
+		LOGe("Buffer size is too small.\n");
+		goto error0;
+	}
+	minor = (unsigned int *)ctl->u2k.__buf;
+	ASSERT(minor);
+	if (minor[0] >= minor[1]) {
+		LOGe("minor[0] must be < minor[1].\n");
+		goto error0;
+	}
+	ddata = (struct walb_disk_data *)ctl->k2u.__buf;
+	if (ddata) {
+		n = ctl->k2u.buf_size / sizeof(struct walb_disk_data);
+	} else {
+		n = (size_t)UINT_MAX;
+	}
+	ctl->val_int = get_wdev_list_range(ddata, NULL, n, minor[0], minor[1]);
+	return 0;
+
+error0:
+	return -EFAULT;
+}
+
+/**
+ * Get number of devices.
+ *
+ * @ctl walb ctl.
+ *   See walb/ioctl.h for input/output details.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_num_of_dev(struct walb_ctl *ctl)
+{
+	ASSERT(ctl->command == WALB_IOCTL_NUM_OF_DEV);
+
+	ctl->val_int = (int)get_n_devices();
+	ASSERT(get_wdev_list_range(NULL, NULL, UINT_MAX, 0, UINT_MAX)
+		== ctl->val_int);
+	return 0;
+}
+
+/**
+ * Dispatcher WALB_IOCTL_CONTROL
+ *
+ * @ctl walb_ctl data.
+ *
+ * @return 0 in success,
+ *	   -ENOTTY in invalid command,
+ *	   -EFAULT in command failed.
+ */
+static int dispatch_ioctl(struct walb_ctl *ctl)
+{
+	int ret = 0;
+	ASSERT(ctl != NULL);
+	
+	switch(ctl->command) {
+	case WALB_IOCTL_START_DEV:
+		ret = ioctl_start_dev(ctl);
+		break;
+	case WALB_IOCTL_STOP_DEV:
+		ret = ioctl_stop_dev(ctl);
+		break;
+	case WALB_IOCTL_GET_MAJOR:
+		ret = ioctl_get_major(ctl);
+		break;
+	case WALB_IOCTL_LIST_DEV:
+		ret = ioctl_list_dev(ctl);
+		break;
+	case WALB_IOCTL_NUM_OF_DEV:
+		ret = ioctl_num_of_dev(ctl);
+		break;
+	default:
+		LOGe("dispatch_ioctl: command %d is not supported.\n",
+			ctl->command);
+		ret = -ENOTTY;
+	}
+	return ret;
+}
+
+/**
+ * Execute ioctl for /dev/walb/control.
+ *
+ * @command ioctl command.
+ * @user walb_ctl data in userland.
+ * 
+ * @return 0 in success,
+ *	   -ENOTTY in invalid command,
+ *	   -EFAULT in command failed.
+ */
+static int ctl_ioctl(unsigned int command, struct walb_ctl __user *user)
+{
+	int ret = 0;
+	struct walb_ctl *ctl;
+
+	if (command != WALB_IOCTL_CONTROL) {
+		LOGe("ioctl cmd must be %08lx but %08x\n",
+			WALB_IOCTL_CONTROL, command);
+		return -ENOTTY;
+	}
+
+	ctl = walb_get_ctl(user, GFP_KERNEL);
+	if (ctl == NULL) { goto error0; }
+
+	ret = dispatch_ioctl(ctl);
+	
+	if (walb_put_ctl(user, ctl) != 0) {
+		LOGe("walb_put_ctl failed.\n");
+		goto error0;
+	}
+	return ret;
+
+error0:
+	return -EFAULT;
+}
+
+static long walb_ctl_ioctl(
+	struct file *file, unsigned int command, unsigned long u)
+{
+	int ret;
+	u32 version;
+	
+	if (command == WALB_IOCTL_VERSION) {
+		version = WALB_VERSION;
+		ret = __put_user(version, (u32 __user *)u);
+	} else {
+		ret = (long)ctl_ioctl(command, (struct walb_ctl __user *)u);
+	}
+	return ret;
+}
+
+#ifdef CONFIG_COMPAT
+static long walb_ctl_compat_ioctl(
+	struct file *file, unsigned int command, unsigned long u)
+{
+	return walb_ctl_ioctl(file, command, (unsigned long)compat_ptr(u));
+}
+#endif
+
+/*******************************************************************************
+ * Static data.
+ *******************************************************************************/
+
+static const struct file_operations ctl_fops_ = {
+	.open = nonseekable_open,
+	.unlocked_ioctl = walb_ctl_ioctl,
+	.compat_ioctl = walb_ctl_compat_ioctl,
+	.owner = THIS_MODULE,
+};
+
+static struct miscdevice walb_misc_ = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name  = WALB_NAME,
+	.nodename = WALB_DIR_NAME "/" WALB_CONTROL_NAME,
+	.fops = &ctl_fops_,
+};
+
+/*******************************************************************************
+ * Implementation of global functions.
+ *******************************************************************************/
 
 /**
  * Allocate memory and call @copy_from_user().
@@ -32,7 +404,12 @@ void* walb_alloc_and_copy_from_user(
 		goto error0;
 	}
 
-	buf = kmalloc(buf_size, gfp_mask);
+	if (buf_size <= PAGE_SIZE) {
+		buf = kmalloc(buf_size, gfp_mask);
+	} else {
+		BUG_ON(gfp_mask != GFP_KERNEL);
+		buf = vmalloc(buf_size);
+	}
 	if (buf == NULL) {
 		LOGe("memory allocation for walb_ctl.u2k.buf failed.\n");
 		goto error0;
@@ -54,27 +431,30 @@ error0:
  * Call @copy_to_user() and free memory.
  *
  * @return 0 in success, or -1.
- *	   kfree(buf) is also executed in error.
+ *   Even if an error occurs, the memory will be deallocated.
  */
 int walb_copy_to_user_and_free(
 	void __user *userbuf,
 	void *buf,
 	size_t buf_size)
 {
-	if (buf_size == 0 || userbuf == NULL || buf == NULL) {
-		goto error0;
-	}
-
-	if (copy_to_user(userbuf, buf, buf_size)) {
-		goto error0;
-	}
+	int ret = 0;
 	
-	kfree(buf);
-	return 0;
-
-error0:
-	kfree(buf);
-	return -1;
+	if (buf_size == 0 || userbuf == NULL || buf == NULL) {
+		ret = -1;
+		goto fin;
+	}
+	if (copy_to_user(userbuf, buf, buf_size)) {
+		ret = -1;
+		goto fin;
+	}
+fin:
+	if (buf_size <= PAGE_SIZE) {
+		kfree(buf);
+	} else {
+		vfree(buf);
+	}
+	return ret;
 }
 
 /**
@@ -118,10 +498,12 @@ struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
 	}
 	return ctl;
 
-/* error3: */
-/*	   if (ctl->k2u.buf_size > 0) { */
-/*		   kfree(ctl->k2u.__buf); */
-/*	   } */
+#if 0
+error3:
+	if (ctl->k2u.buf_size > 0) {
+		kfree(ctl->k2u.__buf);
+	}
+#endif
 error2:
 	if (ctl->u2k.buf_size > 0) {
 		kfree(ctl->u2k.__buf);
@@ -168,260 +550,6 @@ error0:
 	kfree(ctl);
 	return -1;
 }
-
-/**
- * Start walb device.
- *
- * @ctl walb_ctl data.
- *	command == WALB_IOCTL_DEV_START
- *	Input:
- *	  u2k
- *	    wminor (even value --> v	: wdev minor,
- *				   v + 1: wlog minor,
- *		   WALB_DYNAMIC_MINOR means automatic assignment),
- *	    lmajor, lminor,
- *	    dmajor, dminor,
- *	    buf_size (<= DISK_NAME_LEN),
- *	    (char *)__buf (name of walb device. terminated by '\0').
- *	Output:
- *	  error: 0 in success.
- *	  k2u
- *	    wmajor, wminor
- *	    buf_size (<= DISK_NAME_LEN)
- *	    (char *)__buf (name of walb device. terminated by '\0')
- *
- * @return 0 in success, or -EFAULT.
- */
-static int ioctl_dev_start(struct walb_ctl *ctl)
-{
-	dev_t ldevt, ddevt;
-	unsigned int wminor;
-	struct walb_dev *wdev;
-	char *name;
-	
-	ASSERT(ctl->command == WALB_IOCTL_DEV_START);
-
-	print_walb_ctl(ctl); /* debug */
-	
-	ldevt = MKDEV(ctl->u2k.lmajor, ctl->u2k.lminor);
-	ddevt = MKDEV(ctl->u2k.dmajor, ctl->u2k.dminor);
-	LOGd("ioctl_dev_start: (ldevt %u:%u) (ddevt %u:%u)\n",
-		MAJOR(ldevt), MINOR(ldevt),
-		MAJOR(ddevt), MINOR(ddevt));
-	if (ctl->u2k.buf_size > 0) {
-		name = (char *)ctl->u2k.__buf;
-		LOGd("name len: %zu\n", strnlen(name, DISK_NAME_LEN));
-	} else {
-		name = NULL;
-	}
-
-	alldevs_write_lock();
-	
-	if (ctl->u2k.wminor == WALB_DYNAMIC_MINOR) {
-		wminor = get_free_minor();
-	} else {
-		wminor = ctl->u2k.wminor;
-		if (wminor % 2 != 0) { wminor --; }
-	}
-	LOGd("ioctl_dev_start: wminor: %u\n", wminor);
-	
-	wdev = prepare_wdev(wminor, ldevt, ddevt, name);
-	if (wdev == NULL) {
-		alldevs_write_unlock();
-		ctl->error = -1;
-		goto error0;
-	}
-	
-	if (alldevs_add(wdev) != 0) {
-		alldevs_write_unlock();
-		ctl->error = -2;
-		goto error1;
-	}
-	
-	register_wdev(wdev);
-	alldevs_write_unlock();
-
-	/* Return values to userland. */
-	ctl->k2u.wmajor = walb_major_;
-	ctl->k2u.wminor = wminor;
-	strncpy(ctl->k2u.__buf, get_super_sector(wdev->lsuper0)->name,
-		DISK_NAME_LEN);
-	ctl->error = 0;
-
-	print_walb_ctl(ctl); /* debug */
-	return 0;
-	
-	/* not tested */
-
-/* error2: */
-/*	   alldevs_dell(wdev); */
-error1:
-	destroy_wdev(wdev);
-error0:
-	return -EFAULT;
-}
-
-/**
- * Stop walb device.
- *
- * @ctl walb_ctl data.
- *	command == WALB_IOCTL_DEV_STOP
- *	Input:
- *	  u2k
- *	    wmajor, wminor,
- *	Output:
- *	  error: 0 in success.
- *
- * @return 0 in success, or -EFAULT.
- */
-static int ioctl_dev_stop(struct walb_ctl *ctl)
-{
-	dev_t wdevt;
-	unsigned int wmajor, wminor;
-	struct walb_dev *wdev;
-	
-	ASSERT(ctl->command == WALB_IOCTL_DEV_STOP);
-
-	/* Input */
-	wmajor = ctl->u2k.wmajor;
-	wminor = ctl->u2k.wminor;
-	if (wmajor != walb_major_) {
-		LOGe("Device major id is invalid.\n");
-		goto error0;
-	}
-	wdevt = MKDEV(wmajor, wminor);
-
-	alldevs_read_lock();
-	wdev = search_wdev_with_minor(wminor);
-	alldevs_read_unlock();
-
-	if (wdev == NULL) {
-		LOGe("Walb dev with minor %u not found.\n",
-			wminor);
-		ctl->error = -1;
-		goto error0;
-	}
-
-	unregister_wdev(wdev);
-	
-	alldevs_write_lock();
-	alldevs_del(wdev);
-	alldevs_write_unlock();
-	
-	destroy_wdev(wdev);
-
-	/* Set result */
-	ctl->error = 0;
-
-	return 0;
-	
-	/* not tested */
-	
-error0:	       
-	return -EFAULT;
-}
-
-/**
- * Dispatcher WALB_IOCTL_CONTROL
- *
- * @ctl walb_ctl data.
- *
- * @return 0 in success,
- *	   -ENOTTY in invalid command,
- *	   -EFAULT in command failed.
- */
-static int dispatch_ioctl(struct walb_ctl *ctl)
-{
-	int ret = 0;
-	ASSERT(ctl != NULL);
-	
-	switch(ctl->command) {
-	case WALB_IOCTL_DEV_START:
-		ret = ioctl_dev_start(ctl);
-		break;
-	case WALB_IOCTL_DEV_STOP:
-		ret = ioctl_dev_stop(ctl);
-		break;
-	default:
-		LOGe("dispatch_ioctl: command %d is not supported.\n",
-			ctl->command);
-		ret = -ENOTTY;
-	}
-	return ret;
-}
-
-/**
- * Execute ioctl for /dev/walb/control.
- *
- * @command ioctl command.
- * @user walb_ctl data in userland.
- * 
- * @return 0 in success,
- *	   -ENOTTY in invalid command,
- *	   -EFAULT in command failed.
- */
-static int ctl_ioctl(uint command, struct walb_ctl __user *user)
-{
-	int ret = 0;
-	struct walb_ctl *ctl;
-
-	if (command != WALB_IOCTL_CONTROL) {
-		LOGe("ioctl cmd must be %08lx but %08x\n",
-			WALB_IOCTL_CONTROL, command);
-		return -ENOTTY;
-	}
-
-	ctl = walb_get_ctl(user, GFP_KERNEL);
-	if (ctl == NULL) { goto error0; }
-
-	ret = dispatch_ioctl(ctl);
-	
-	if (walb_put_ctl(user, ctl) != 0) {
-		LOGe("walb_put_ctl failed.\n");
-		goto error0;
-	}
-	return ret;
-
-error0:
-	return -EFAULT;
-}
-
-static long walb_ctl_ioctl(struct file *file, uint command, ulong u)
-{
-	int ret;
-	u32 version;
-	
-	if (command == WALB_IOCTL_VERSION) {
-		version = WALB_VERSION;
-		ret = __put_user(version, (u32 __user *)u);
-	} else {
-		ret = (long)ctl_ioctl(command, (struct walb_ctl __user *)u);
-	}
-	return ret;
-}
-
-#ifdef CONFIG_COMPAT
-static long walb_ctl_compat_ioctl(struct file *file, uint command, ulong u)
-{
-	return (long)walb_ctl_ioctl(file, command, (ulong)compat_ptr(u));
-}
-#else
-#define walb_ctl_compat_ioctl NULL
-#endif
-
-static const struct file_operations ctl_fops_ = {
-	.open = nonseekable_open,
-	.unlocked_ioctl = walb_ctl_ioctl,
-	.compat_ioctl = walb_ctl_compat_ioctl,
-	.owner = THIS_MODULE,
-};
-
-static struct miscdevice walb_misc_ = {
-	.minor = MISC_DYNAMIC_MINOR,
-	.name  = WALB_NAME,
-	.nodename = WALB_DIR_NAME "/" WALB_CONTROL_NAME,
-	.fops = &ctl_fops_,
-};
 
 /**
  * Init walb control device.

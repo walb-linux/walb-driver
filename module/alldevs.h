@@ -34,6 +34,16 @@ struct walb_dev* search_wdev_with_minor(unsigned int minor);
 struct walb_dev* search_wdev_with_name(const char* name);
 struct walb_dev* search_wdev_with_uuid(const u8* uuid);
 
+/* Listing and counting. */
+int get_wdev_list_range(
+	struct walb_disk_data *ddata_k,
+	struct walb_disk_data __user *ddata_u,
+	size_t n,
+	unsigned int minor0, unsigned int minor1);
+
+/* Get number of walb devices. */
+unsigned int get_n_devices(void);
+
 /* Get free minor. */
 unsigned int get_free_minor(void);
 

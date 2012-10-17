@@ -545,9 +545,6 @@ void __init_super_sector(struct walb_super_sector* super_sect,
 
 	ASSERT(sizeof(struct walb_super_sector) <= (size_t)physical_bs);
 
-	/* Set sector type. */
-	super_sect->sector_type = SECTOR_TYPE_SUPER;
-	
 	/* Calculate number of snapshot sectors. */
 	int n_sectors;
 	int t = get_max_n_records_in_snapshot_sector(physical_bs);
@@ -557,17 +554,16 @@ void __init_super_sector(struct walb_super_sector* super_sect,
 
 	/* Prepare super sector */
 	memset(super_sect, 0, sizeof(super_sect));
-
+	/* Set sector type. */
+	super_sect->sector_type = SECTOR_TYPE_SUPER;
 	/* Fill parameters. */
 	super_sect->logical_bs = logical_bs;
 	super_sect->physical_bs = physical_bs;
 	super_sect->snapshot_metadata_size = n_sectors;
 	generate_uuid(super_sect->uuid);
-	
 	super_sect->ring_buffer_size =
 		ldev_lb / (physical_bs / logical_bs)
 		- get_ring_buffer_offset(physical_bs, n_snapshots);
-
 	super_sect->oldest_lsid = 0;
 	super_sect->written_lsid = 0;
 	super_sect->device_size = ddev_lb;
@@ -818,24 +814,29 @@ error0:
  */
 bool read_super_sector(int fd, struct sector_data *sect)
 {
-	if (! is_valid_sector_data(sect)) { return false; }
+	if (!is_valid_sector_data(sect)) {
+		LOGe("Sector data is not valid.\n");
+		goto error0;
+	}
 
 	ASSERT(sect->size <= PAGE_SIZE);
 	
 	u64 off0 = get_super_sector0_offset(sect->size);
-	if (! sector_read(fd, off0, sect)) {
+	if (!sector_read(fd, off0, sect)) {
 		LOGe("Read sector failed.\n");
-		return false;
+		goto error0;
 	}
 	if (checksum(sect->data, sect->size) != 0) {
 		LOGe("Checksum invalid.\n");
-		return false;
+		goto error0;
 	}
-	if (! is_valid_super_sector(sect)) {
+	if (!is_valid_super_sector(sect)) {
 		LOGe("Super sector invalid.\n");
-		return false;
+		goto error0;
 	}
 	return true;
+error0:
+	return false;
 }
 
 /**

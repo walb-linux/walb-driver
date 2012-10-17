@@ -123,13 +123,13 @@ enum {
 /**
  * Ioctl command id.
  *
+ * WALB_IOCTL_VERSION is for both. (currently each walb device only.)
  * WALB_IOCTL_CONTROL is for /dev/walb/control device.
  * WALB_IOCTL_WDEV is for each walb device.
- * WALB_IOCTL_VERSION is for both. (currently each walb device only.)
  */
+#define WALB_IOCTL_VERSION _IOR(WALB_IOCTL_ID, WALB_IOCTL_VERSION_CMD, u32)
 #define WALB_IOCTL_CONTROL _IOWR(WALB_IOCTL_ID, WALB_IOCTL_CONTROL_CMD, struct walb_ctl)
-#define WALB_IOCTL_WDEV	   _IOWR(WALB_IOCTL_ID, WALB_IOCTL_WDEV_CMD,	struct walb_ctl)
-#define WALB_IOCTL_VERSION  _IOR(WALB_IOCTL_ID, WALB_IOCTL_VERSION_CMD, u32)
+#define WALB_IOCTL_WDEV _IOWR(WALB_IOCTL_ID, WALB_IOCTL_WDEV_CMD, struct walb_ctl)
 
 /**
  * For walb_ctl.command.
@@ -137,36 +137,308 @@ enum {
 enum {
 	WALB_IOCTL_DUMMY = 0,
 
-	/*
+	/****************************************
 	 * For WALB_IOCTL_CONTROL
-	 */
-	WALB_IOCTL_DEV_START,
-	WALB_IOCTL_DEV_STOP,
-	WALB_IOCTL_DEV_LIST, /* NIY */
-	WALB_IOCTL_NUM_DEV_GET, /* NIY */
+	 * The target is /dev/walb/control.
+	 ****************************************/
 
 	/*
-	 * For WALB_IOCTL_WDEV
+	 * Start a walb device.
+	 *
+	 * INPUT:
+	 *   ctl->u2k.lmajor, ctl->u2k.lminor as log device major/minor.
+	 *   ctl->u2k.dmajor, ctl->u2k.dminor as data device major/minor.
+	 *   ctl->u2k.buf as device name (ctl->u2k.buf_size < DISK_NAME_LEN).
+	 *     You can specify NULL and 0.
+	 *   ctl->u2k.wminor as walb device minor.
+	 *     Specify WALB_DYNAMIC_MINOR for automatic assign.
+	 * OUTPUT:
+	 *   ctl->k2u.wmajor, ctl->k2u.wminor as walb device major/minor.
+	 *   ctl->k2u.buf as device name (ctl->k2u.buf_size >= DISK_NAME_LEN).
+	 *   ctl->error as error code.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_OLDEST_LSID_GET,
-	WALB_IOCTL_OLDEST_LSID_SET,
-	WALB_IOCTL_LSID_SEARCH, /* NIY */
-	WALB_IOCTL_STATUS_GET, /* NIY */
+	WALB_IOCTL_START_DEV,
 
-	WALB_IOCTL_SNAPSHOT_CREATE, /* NIY */
-	WALB_IOCTL_SNAPSHOT_DELETE, /* NIY */
-	WALB_IOCTL_SNAPSHOT_GET, /* NIY */
-	WALB_IOCTL_SNAPSHOT_NUM, /* NIY */
-	WALB_IOCTL_SNAPSHOT_LIST, /* NIY */
+	/*
+	 * Stop a walb device.
+	 *
+	 * INPUT:
+	 *   ctl->u2k.wmajor, ctl->u2k.wmajor as walb device major/minor.
+	 * OUTPUT:
+	 *   ctl->error as error code.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_STOP_DEV,
 
-	WALB_IOCTL_CHECKPOINT_INTERVAL_GET,
-	WALB_IOCTL_CHECKPOINT_INTERVAL_SET,
+	/*
+	 * Get walb device major number.
+	 *
+	 * INPUT:
+	 *   None.
+	 * OUTPUT:
+	 *   ctl->k2u.wmajor as major number.
+	 * RETURN:
+	 *   0.
+	 */
+	WALB_IOCTL_GET_MAJOR,
 
-	WALB_IOCTL_WRITTEN_LSID_GET,
-	WALB_IOCTL_LOG_CAPACITY_GET,
+	/*
+	 * Get walb device data list.
+	 *
+	 * INPUT:
+	 *   ctl->u2k.buf as unsigned int *minor.
+	 *     ctl->u2k.buf_size >= sizeof(unsigned int) * 2.
+	 *     Range: minor[0] <= minor < minor[1].
+	 * OUTPUT:
+	 *   ctl->k2u.buf as struct disk_data *ddata.
+	 *   ctl->val_int as number of stored devices.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_LIST_DEV,
 
+	/*
+	 * Get numbr of walb devices.
+	 *
+	 * INPUT:
+	 *   None.
+	 * OUTPUT:
+	 *   ctl->val_int as number of walb devices.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_NUM_OF_DEV,
+	
+	/****************************************
+	 * For WALB_IOCTL_WDEV
+	 * The targets are walb devices.
+	 ****************************************/
+
+	/*
+	 * Get oldest_lsid.
+	 *
+	 * INPUT:
+	 *   None.
+	 * OUTPUT:
+	 *   ctl->val_u64 as oldest_lsid
+	 */
+	WALB_IOCTL_GET_OLDEST_LSID,
+
+	/*
+	 * Set oldest_lsid.
+	 *
+	 * INPUT:
+	 *   ctl->val_u64 as new oldest_lsid.
+	 * OUTPUT:
+	 *   None.
+	 */
+	WALB_IOCTL_SET_OLDEST_LSID,
+
+	/*
+	 * NOT YET IMPLEMENTED.
+	 * ???
+	 *
+	 * INPUT:
+	 * OUTPUT:
+	 */
+	WALB_IOCTL_SEARCH_LSID,
+
+	/*
+	 * NOT YET IMPLEMENTED.
+	 * ???
+	 *
+	 * INPUT:
+	 * OUTPUT:
+	 */
+	WALB_IOCTL_STATUS,
+
+	/*
+	 * Create a snapshot.
+	 *
+	 * INPUT:
+	 *   ctl->u2k.buf as struct walb_snapshot_record *rec.
+	 *   ctl->u2k.buf_size must > (struct walb_snapshot_record).
+	 *     If rec->lsid is INVALID_LSID, then completed_lsid will be used.
+	 * OUTPUT:
+	 *   None.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_CREATE_SNAPSHOT,
+
+	/*
+	 * Delete a snapshot.
+	 *
+	 * INPUT:
+	 *   ctl->u2k.buf as struct walb_snapshot_record *rec.
+	 *     Only rec->name will be used.
+	 * OUTPUT:
+	 *   None.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_DELETE_SNAPSHOT,
+
+	/*
+	 * Delete all snapshots in a lsid range.
+	 *
+	 * INPUT:
+	 *   ctl->u2k.buf as u64 *lsid.
+	 *     ctl->u2k.buf_size must be >= sizeof(u64) * 2;
+	 *     The range is lsid[0] <= lsid < lsid[1].
+	 * OUTPUT:
+	 *   ctl->val_int as the number of deleted records.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_DELETE_SNAPSHOT_RANGE,
+
+	/*
+	 * Get snapshot record.
+	 *
+	 * INPUT:
+	 *   ctl->u2k.buf as struct walb_snapshot_record *rec0.
+	 *     Only rec0->name will be used.
+	 * OUTPUT:
+	 *   ctl->k2u.buf as struct walb_snapshot_record *rec1.
+	 *     rec1->name must be the same as rec1->name.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_GET_SNAPSHOT,
+
+	/*
+	 * Get number of snapshots in a lsid range.
+	 *
+	 * INPUT:
+	 *   ctl->u2k.buf as u64 *lsid.
+	 *     ctl->u2k.buf_size must be >= sizeof(u64) * 2;
+	 *     The range is lsid[0] <= lsid < lsid[1].
+	 * OUTPUT:
+	 *   ctl->val_int as the number of deleted records.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE,
+
+	/*
+	 * Get snapshot records in a lsid range.
+	 *
+	 * INPUT:
+	 *   ctl->u2k.buf as u64 *lsid.
+	 *     ctl->u2k.buf_size must be >= sizeof(u64) * 2;
+	 *     The range is lsid[0] <= lsid < lsid[1].
+	 * OUTPUT:
+	 *   ctl->k2u.buf as struct walb_snapshot_record *rec.
+	 *   If the buffer size is small,
+	 *   all matched records will not be filled.
+	 *   ctl->val_int as the number of filled records.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_LIST_SNAPSHOT_RANGE,
+
+	/*
+	 * Get checkpoint interval.
+	 *
+	 * INPUT:
+	 *   None.
+	 * OUTPUT:
+	 *   ctl->val_u32 as interval [ms].
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_GET_CHECKPOINT_INTERVAL,
+
+	/*
+	 * Take a checkpoint immediately.
+	 *
+	 * INPUT:
+	 *   None.
+	 * OUTPUT:
+	 *   None.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_TAKE_CHECKPOINT,
+
+	/*
+	 * Set checkpoint interval.
+	 *
+	 * INPUT:
+	 *   ctl->val_u32 as new interval [ms].
+	 * OUTPUT:
+	 *   None.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_SET_CHECKPOINT_INTERVAL,
+
+	/*
+	 * Get written_lsid where all IO(s) which lsid < written_lsid
+	 * have been written to the underlying both log and data devices.
+	 *
+	 * INPUT:
+	 *   None
+	 * OUTPUT:
+	 *   ctl->val_u64 as written_lsid.
+	 */
+	WALB_IOCTL_GET_WRITTEN_LSID,
+
+	/*
+	 * Get completed_lsid where all IO(s) which lsid < completed_lsid
+	 * have been completed.
+	 * For easy algorithm, this is the same as written_lsid.
+	 *
+	 * INPUT:
+	 *   None
+	 * OUTPUT:
+	 *   ctl->val_u64 as completed_lsid.
+	 */
+	WALB_IOCTL_GET_COMPLETED_LSID,
+
+	/*
+	 * Get log space capacity.
+	 * INPUT:
+	 *   None
+	 * OUTPUT:
+	 *   ctl->val_u64 as log space capacity [physical block].
+	 */
+	WALB_IOCTL_GET_LOG_CAPACITY,
+
+	/*
+	 * NOT YET IMPLEMENTED.
+	 *
+	 * Resize walb device.
+	 *
+	 * INPUT:
+	 * OUTPUT:
+	 * RETURN:
+	 */
+	WALB_IOCTL_RESIZE,
+
+	/*
+	 * NOT YET IMPLEMENTED.
+	 *
+	 * Clear all logs.
+	 *
+	 * This will revalidate the log space size
+	 * when log device size has changed.
+	 * This will create a new UUID.
+	 */
+	WALB_IOCTL_CLEAR_LOG,
+
+	/*
+	 * NOT YET IMPLEMENTED.
+	 *
+	 * Stop write IO processing for a specified period.
+	 */
+	WALB_IOCTL_FREEZE_TEMPORARILY,
+	
 	/* NIY means [N]ot [I]mplemented [Y]et. */
 };
-
 
 #endif /* WALB_IOCTL_H */

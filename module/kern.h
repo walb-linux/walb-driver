@@ -96,6 +96,11 @@ struct walb_dev
 	spinlock_t oldest_lsid_lock;
 	u64 oldest_lsid;
 
+#ifdef WALB_FAST_ALGORITHM
+	spinlock_t completed_lsid_lock;
+	u64 completed_lsid;
+#endif
+	
 	/*
 	 * For wrapper log device.
 	 */
@@ -132,6 +137,18 @@ static inline struct walb_dev* get_wdev_from_queue(struct request_queue *q)
 	
 	ASSERT(q);
 	wdev = (struct walb_dev *)q->queuedata;
+	return wdev;
+}
+
+/**
+ * Get walb device from checkpoint data.
+ */
+static inline struct walb_dev* get_wdev_from_checkpoint_data(
+	struct checkpoint_data *cpd)
+{
+	struct walb_dev *wdev;
+	ASSERT(cpd);
+	wdev = (struct walb_dev *)container_of(cpd, struct walb_dev, cpd);
 	return wdev;
 }
 

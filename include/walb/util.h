@@ -1,5 +1,5 @@
 /**
- * General definitions for Walb.
+ * Utilities for walb.
  *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */

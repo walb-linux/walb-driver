@@ -56,7 +56,7 @@ static struct sector_data* get_sector_snapshot_data_u(
  */
 void print_snapshot_record(const struct walb_snapshot_record* snap_rec)
 {
-	ASSERT(snap_rec != NULL);
+	ASSERT(snap_rec);
 	PRINT_D_SNAPSHOT_RECORD(snap_rec);
 }
 
@@ -115,7 +115,7 @@ bool write_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
 
 	/* really write sector data. */
 	u64 off = get_metadata_offset_2(super_sect) + idx;
-	if (! write_sector(fd, sector_buf, sect_sz, off)) {
+	if (!write_sector(fd, sector_buf, sect_sz, off)) {
 		return false;
 	}
 	return true;
@@ -136,8 +136,8 @@ bool read_snapshot_sector(int fd, const struct walb_super_sector* super_sect,
 			struct walb_snapshot_sector* snap_sect, u32 idx)
 {
 	ASSERT(fd >= 0);
-	ASSERT(super_sect != NULL);
-	ASSERT(snap_sect != NULL);
+	ASSERT(super_sect);
+	ASSERT(snap_sect);
 	
 	u32 sect_sz = super_sect->physical_bs;
 	u32 meta_sz = super_sect->snapshot_metadata_size;

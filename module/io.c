@@ -14,8 +14,23 @@
 void walb_make_request(struct request_queue *q, struct bio *bio)
 {
 	UNUSED struct walb_dev *wdev = get_wdev_from_queue(q);
-	
-	/* now editing */
+
+	/* Set a clock ahead. */
+	spin_lock(&wdev->latest_lsid_lock);
+	wdev->latest_lsid++;
+	spin_unlock(&wdev->latest_lsid_lock);
+
+#ifdef WALB_FAST_ALGORITHM
+	spin_lock(&wdev->completed_lsid_lock);
+	wdev->completed_lsid++;
+	spin_unlock(&wdev->completed_lsid_lock);
+#endif
+	spin_lock(&wdev->cpd.written_lsid_lock);
+	wdev->cpd.written_lsid++;
+	spin_unlock(&wdev->cpd.written_lsid_lock);
+
+	/* not yet implemented. */
+	set_bit(BIO_UPTODATE, &bio->bi_flags);
 	bio_endio(bio, 0);
 }
 
@@ -36,6 +51,7 @@ void walblog_make_request(struct request_queue *q, struct bio *bio)
 		bio_endio(bio, -EIO);
 	} else {
 		bio->bi_bdev = wdev->ldev;
+		generic_make_request(bio);
 	}
 }
 
