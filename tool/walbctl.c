@@ -1031,7 +1031,7 @@ static bool do_create_snapshot(const struct config *cfg)
 	if (cfg->name) {
 		snprintf(name, SNAPSHOT_NAME_MAX_LEN, "%s", cfg->name);
 	} else {
-		bool retb;
+		UNUSED bool retb;
 		retb = get_datetime_str(timestamp, name, SNAPSHOT_NAME_MAX_LEN);
 		ASSERT(retb);
 	}
@@ -1581,7 +1581,7 @@ static bool do_redo(const struct config *cfg)
 	}
 	
 	/* Block size. */
-	int lbs = get_bdev_logical_block_size(cfg->ldev_name);
+	UNUSED int lbs = get_bdev_logical_block_size(cfg->ldev_name);
 	int pbs = get_bdev_physical_block_size(cfg->ldev_name);
 	ASSERT(lbs == LOGICAL_BLOCK_SIZE);
 	ASSERT_PBS(pbs);

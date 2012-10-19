@@ -571,9 +571,10 @@ error:
  *
  * @return True in success, or false.
  */
-bool logpack_add_io_request(struct logpack* logpack,
-			u64 offset, const u8* data, int size,
-			bool is_padding)
+bool logpack_add_io_request(
+	struct logpack* logpack,
+	u64 offset, UNUSED const u8* data, int size,
+	bool is_padding)
 {
 	/* Check parameters. */
 	ASSERT_LOGPACK(logpack, false);

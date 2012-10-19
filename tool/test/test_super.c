@@ -33,10 +33,10 @@ void test(int lbs, int pbs, u64 ddev_lb, u64 ldev_lb,
 	ASSERT_SUPER_SECTOR(super_sect);
 	print_super_sector(super_sect);
 
-	int fd = open(LOG_DEV_FILE, O_RDWR | O_CREAT | O_TRUNC, 00775);
+	int fd = open(LOG_DEV_FILE, O_RDWR | O_CREAT | O_TRUNC, 00755);
 	ASSERT(fd > 0);
 
-	bool ret;
+	UNUSED bool ret;
 	ret = write_super_sector(fd, super_sect);
 	ASSERT(ret);
 	print_super_sector(super_sect);

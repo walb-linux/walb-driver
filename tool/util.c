@@ -81,10 +81,10 @@ bool get_datetime_str(time_t t, char* buf, size_t n)
 int check_bdev(const char* path)
 {
 	struct stat sb;
-	dev_t devt;
-	size_t sector_size;
-	size_t __attribute__((unused)) dev_size;
-	size_t __attribute__((unused)) size;
+	UNUSED dev_t devt;
+	UNUSED size_t sector_size;
+	UNUSED size_t dev_size;
+	UNUSED size_t size;
 	
 	if (path == NULL) {
 		LOGe("path is null.\n");

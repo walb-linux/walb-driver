@@ -137,6 +137,7 @@ void test_sector_array(unsigned int sect_size, unsigned int n_sectors)
 	unsigned int i;
 	struct sector_data_array *sect_ary0, *sect_ary1;
 	struct sector_data *sect0, *sect1;
+	UNUSED bool retb;
 
 	raw_size = sect_size * (n_sectors + 3) * sizeof(u8);
 	raw = (u8 *)malloc(raw_size);
@@ -166,11 +167,13 @@ void test_sector_array(unsigned int sect_size, unsigned int n_sectors)
 	}
 
 	/* Realloc with the same size. */
-	sector_array_realloc(sect_ary0, n_sectors);
+	retb = sector_array_realloc(sect_ary0, n_sectors);
+	ASSERT(retb);
 	ASSERT(sect_ary0->size == n_sectors);
 
 	/* Grow the array. */
-	sector_array_realloc(sect_ary0, n_sectors + 3);
+	retb = sector_array_realloc(sect_ary0, n_sectors + 3);
+	ASSERT(retb);
 	ASSERT(sect_ary0->size == n_sectors + 3);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
 	for (i = 0; i < n_sectors + 3; i++) {
@@ -248,7 +251,7 @@ void test_sector_io(unsigned int sect_size, unsigned int n_sectors)
 	}
 	
 	/* write */
-	int fd = open(TEST_FILE, O_RDWR | O_TRUNC |O_CREAT, 00775);
+	int fd = open(TEST_FILE, O_RDWR | O_TRUNC |O_CREAT, 00755);
 	ASSERT(fd > 0);
 
 	ret = sector_array_write(fd, sect_ary0, 0, n_sectors);

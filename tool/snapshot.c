@@ -34,7 +34,7 @@
 /**
  * Print snapshot record for debug.
  */
-void print_snapshot_record(const struct walb_snapshot_record* snap_rec)
+void print_snapshot_record(UNUSED const struct walb_snapshot_record* snap_rec)
 {
 	ASSERT(snap_rec);
 	PRINT_D_SNAPSHOT_RECORD(snap_rec);
