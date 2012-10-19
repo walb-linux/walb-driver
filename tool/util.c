@@ -16,6 +16,7 @@
 #include <time.h>
 
 #include "walb/walb.h"
+#include "walb/block_size.h"
 #include "random.h"
 #include "util.h"
 
@@ -25,7 +26,7 @@
 void print_binary_hex(const u8* data, size_t size)
 {
 	size_t i;
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 
 		int c = (unsigned char)data[i];
 		if (c == 0) {
@@ -80,10 +81,10 @@ bool get_datetime_str(time_t t, char* buf, size_t n)
 int check_bdev(const char* path)
 {
 	struct stat sb;
-	dev_t devt;
-	size_t sector_size;
-	size_t __attribute__((unused)) dev_size;
-	size_t __attribute__((unused)) size;
+	UNUSED dev_t devt;
+	UNUSED size_t sector_size;
+	UNUSED size_t dev_size;
+	UNUSED size_t size;
 	
 	if (path == NULL) {
 		LOGe("path is null.\n");
@@ -154,7 +155,7 @@ static int open_blk_dev(const char* devpath)
 {
 	int fd;
 	struct stat sb;
-	ASSERT(devpath != NULL);
+	ASSERT(devpath);
 	
 	fd = open(devpath, O_RDONLY);
 	if (fd < 0) {
@@ -256,7 +257,7 @@ dev_t get_bdev_devt(const char *devpath)
 {
 	struct stat sb;
 
-	ASSERT(devpath != NULL);
+	ASSERT(devpath);
 	
 	if (stat(devpath, &sb) == -1) {
 		LOGe("%s stat failed.\n", devpath);
@@ -292,7 +293,7 @@ void generate_uuid(u8* uuid)
 void print_uuid(const u8* uuid)
 {
 	size_t i;
-	for (i = 0; i < 16; i ++) {
+	for (i = 0; i < 16; i++) {
 		printf("%02x", (unsigned char)uuid[i]);
 	}
 }
@@ -309,60 +310,6 @@ void copy_uuid(u8* dst, const u8* src)
 }
 
 /**
- * Allocate sector (aligned and can be deallocated with free()).
- *
- * @sector_size sector size.
- *
- * @return pointer to allocated sector in success, or NULL.
- */
-u8* alloc_sector(int sector_size)
-{
-	return alloc_sectors(sector_size, 1);
-}
-
-/**
- * Allocate multiple sectors (aligned and can be deallocated with @free()).
- *
- * @sector_size sector size.
- * @n number of sectors.
- *
- * @return pointer to allocated memory in success, or NULL.
- */
-u8* alloc_sectors(int sector_size, int n)
-{
-	u8 *sectors;
-	if (posix_memalign((void **)&sectors, sector_size, sector_size * n) != 0) {
-		return NULL;
-	}
-
-	return sectors;
-}
-
-/**
- * Realloc multiple sectors.
- *
- * @memptr pointer to allocated pointer.
- * @sector_size sector size.
- * @n number of sectors.
- *
- * @return true in success, or false.
- *	   if false, the memory is freed.
- */
-bool realloc_sectors(u8** memptr, int sector_size, int n)
-{
-	u8* tmp;
-	tmp = realloc(*memptr, sector_size * n);
-
-	if (tmp) {
-		*memptr = tmp;
-		return true;
-	} else {
-		free(*memptr);
-		return false;
-	}
-}
-
-/**
  * Write sector data to the offset.
  *
  * @fd file descriptor to write.
@@ -372,9 +319,10 @@ bool realloc_sectors(u8** memptr, int sector_size, int n)
  *
  * @return true in success, or false.
  */
-bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset)
+bool write_sector_raw(
+	int fd, const u8* sector_buf, u32 sector_size, u64 offset)
 {
-	return write_sectors(fd, sector_buf, sector_size, offset, 1);
+	return write_sectors_raw(fd, sector_buf, sector_size, offset, 1);
 }
 
 /**
@@ -388,7 +336,8 @@ bool write_sector(int fd, const u8* sector_buf, u32 sector_size, u64 offset)
  *
  * @return true in success, or false.
  */
-bool write_sectors(int fd, const u8* sectors_buf, u32 sector_size, u64 offset, int n)
+bool write_sectors_raw(
+	int fd, const u8* sectors_buf, u32 sector_size, u64 offset, int n)
 {
 	ssize_t w = 0;
 	while (w < sector_size * n) {
@@ -401,7 +350,6 @@ bool write_sectors(int fd, const u8* sectors_buf, u32 sector_size, u64 offset, i
 			perror("write sector error.");
 			return false;
 		}
-
 	}
 	ASSERT(w == sector_size * n);
 	return true;
@@ -471,83 +419,333 @@ bool sector_write(int fd, u64 offset, const struct sector_data *sect)
 }
 
 /**
- * Read multiple sectors data from the offset.
+ * Read to sector data in units of logical block.
+ * Logical block size is 512 bytes.
+ *
+ * @fd file descriptor to write.
+ * @offset_lb offset [logical block].
+ * @sect sector data to be partially read.
+ * @idx_lb start index [logical block].
+ * @n_lb number of logical blocks to read.
+ *
+ * RETURN:
+ *   true in success, or false.
  */
-bool sector_array_read(int fd, u64 offset,
-		struct sector_data_array *sect_ary,
-		int start_idx, int n_sectors)
+bool sector_read_lb(
+	int fd,  u64 offset_lb, struct sector_data *sect,
+	unsigned int idx_lb, unsigned int n_lb)
+{
+	ASSERT(fd > 0);
+	ASSERT_SECTOR_DATA(sect);
+	ASSERT(capacity_pb(sect->size, idx_lb + n_lb) == 1);
+
+	ssize_t read_size = n_lb * LOGICAL_BLOCK_SIZE;
+	ssize_t off = idx_lb * LOGICAL_BLOCK_SIZE;
+	ssize_t r = 0;
+
+	while (r < read_size) {
+		ssize_t s = pread(
+			fd, sect->data + off + r,
+			read_size - r,
+			offset_lb * LOGICAL_BLOCK_SIZE + r);
+		if (s > 0) {
+			r += s;
+		} else {
+			perror("read sector error.");
+			return false;
+		}
+	}
+	ASSERT(r == read_size);
+	return true;
+}
+
+/**
+ * Write from sector data in units of logical block.
+ * Logical block size is 512 bytes.
+ *
+ * @fd file descriptor to write.
+ * @offset_lb offset [logical block].
+ * @sect sector data to be partially written.
+ * @idx_lb start index [logical block].
+ * @n_lb number of logical blocks to write.
+ *
+ * RETURN:
+ *   true in success, or false.
+ */
+bool sector_write_lb(
+	int fd,
+	u64 offset_lb, const struct sector_data *sect,
+	unsigned int idx_lb, unsigned int n_lb)
+{
+	ASSERT(fd > 0);
+	ASSERT_SECTOR_DATA(sect);
+	ASSERT(capacity_pb(sect->size, idx_lb + n_lb) == 1);
+
+	ssize_t write_size = n_lb * LOGICAL_BLOCK_SIZE;
+	ssize_t off = idx_lb * LOGICAL_BLOCK_SIZE;
+	ssize_t w = 0;
+
+	while (w < write_size) {
+		ssize_t s = pwrite(
+			fd, sect->data + off + w,
+			write_size - w,
+			offset_lb * LOGICAL_BLOCK_SIZE + w);
+		if (s > 0) {
+			w += s;
+		} else {
+			perror("write sector error.");
+			return false;
+		}
+	}
+	ASSERT(w == write_size);
+	return true;
+}
+
+/**
+ * Read multiple sectors data at an offset.
+ */
+bool sector_array_pread(
+	int fd, u64 offset,
+	struct sector_data_array *sect_ary,
+	unsigned int start_idx, unsigned int n_sectors)
 {
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
-	ASSERT(start_idx >= 0);
 	ASSERT(start_idx + n_sectors <= sect_ary->size);
 
-	int i, idx;
+	unsigned int i, idx;
 	u64 off;
 	bool ret;
-	for (i = 0; i < n_sectors; i ++) {
+	for (i = 0; i < n_sectors; i++) {
 		idx = start_idx + i;
 		off = offset + i;
 		ret = sector_read(fd, off,
 				get_sector_data_in_array(sect_ary, idx));
-		if (! ret) { LOGe("read failed.\n"); return false; }
+		if (!ret) { LOGe("read failed.\n"); return false; }
 	}
 	return true;
 }
 
 /**
- * Read multiple sectors data to the offset.
+ * Write multiple sectors data at an offset.
  */
-bool sector_array_write(int fd, u64 offset,
-			const struct sector_data_array *sect_ary,
-			int start_idx, int n_sectors)
+bool sector_array_pwrite(
+	int fd, u64 offset,
+	const struct sector_data_array *sect_ary,
+	unsigned int start_idx, unsigned int n_sectors)
 {
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
-	ASSERT(start_idx >= 0);
 	ASSERT(start_idx + n_sectors <= sect_ary->size);
 
-	int i, idx;
+	unsigned int i, idx;
 	u64 off;
 	bool ret;
-	for (i = 0; i < n_sectors; i ++) {
+	for (i = 0; i < n_sectors; i++) {
 		idx = start_idx + i;
 		off = offset + i;
 		ret = sector_write(
 			fd, off,
 			get_sector_data_in_array_const(sect_ary, idx));
-		if (! ret) { LOGe("write failed.\n"); return false; }
+		if (!ret) { LOGe("write failed.\n"); return false; }
 	}
 	return true;
+}
+
+/**
+ * Read multiple logical sectors at an offset.
+ * Logical block size is 512 bytes.
+ *
+ * @fd file descriptor of the target storage device.
+ * @offset_lb storage offset [logical blocks].
+ * @sect_ary input sector data array.
+ * @idx_lb start offset in sect_ary [logical blocks].
+ * @n_lb number of sectors to write [logical blocks].
+ *
+ * RETURN:
+ *   true in success, or false.
+ */
+bool sector_array_pread_lb(
+	int fd, u64 offset_lb,
+	struct sector_data_array *sect_ary,
+	unsigned int idx_lb, unsigned int n_lb)
+{
+	ASSERT(fd > 0);
+	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+	ASSERT(n_lb > 0);
+
+	const unsigned int pbs = sect_ary->sector_size;
+	unsigned int idx, off_lb, tmp_lb;
+	unsigned int r_lb = 0;
+	
+	while (r_lb < n_lb) {
+		idx = addr_pb(pbs, idx_lb + r_lb);
+		off_lb = off_in_pb(pbs, idx_lb + r_lb);
+		tmp_lb = min(n_lb_in_pb(pbs) - off_lb, n_lb - r_lb);
+		if (!sector_read_lb(
+				fd, offset_lb + r_lb,
+				sect_ary->array[idx],
+				off_lb, tmp_lb)) {
+			goto error0;
+		}
+		r_lb += tmp_lb;
+	}
+	ASSERT(r_lb == n_lb);
+	return true;
+	
+error0:
+	return false;
+}
+
+/**
+ * Write multiple logical sectors at an offset.
+ * Logical block size is 512 bytes.
+ *
+ * @fd file descriptor of the target storage device.
+ * @offset_lb storage offset [logical block].
+ * @sect_ary input sector data array.
+ * @idx_lb start offset in sect_ary [logical block].
+ * @n_lb number of sectors to write [logical block].
+ *
+ * RETURN:
+ *   true in success, or false.
+ */
+bool sector_array_pwrite_lb(
+	int fd, u64 offset_lb,
+	const struct sector_data_array *sect_ary,
+	unsigned int idx_lb, unsigned int n_lb)
+{
+	ASSERT(fd > 0);
+	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+	ASSERT(n_lb > 0);
+
+	const unsigned int pbs = sect_ary->sector_size;
+	unsigned int idx, off_lb, tmp_lb;
+	unsigned int w_lb = 0;
+	
+	while (w_lb < n_lb) {
+		idx = addr_pb(pbs, idx_lb + w_lb);
+		off_lb = off_in_pb(pbs, idx_lb + w_lb);
+		tmp_lb = min(n_lb_in_pb(pbs) - off_lb, n_lb - w_lb);
+		if (!sector_write_lb(
+				fd, offset_lb + w_lb,
+				sect_ary->array[idx],
+				off_lb, tmp_lb)) {
+			goto error0;
+		}
+		w_lb += tmp_lb;
+	}
+	ASSERT(w_lb == n_lb);
+	return true;
+	
+error0:
+	return false;
+}
+
+/**
+ * Read multiple sectors.
+ *
+ * @fd file descriptor of the target storage device.
+ * @sect_ary sector data array.
+ * @start_idx start offset in sect_ary [sectors].
+ * @n_sectors number of sectors to read [sectors].
+ *
+ * RETURN:
+ *   true in success, or false.
+ */
+bool sector_array_read(
+	int fd, 
+	struct sector_data_array *sect_ary,
+	unsigned int start_idx, unsigned int n_sectors)
+{
+	ASSERT(fd >= 0);
+	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+	ASSERT(start_idx + n_sectors <= sect_ary->size);
+
+	unsigned int i, idx;
+	bool ret;
+	for (i = 0; i < n_sectors; i++) {
+		idx = start_idx + i;
+		ret = read_data(
+			fd,
+			(u8 *)sect_ary->array[idx]->data,
+			sect_ary->sector_size);
+		if (!ret) {
+			LOGe("read failed.\n");
+			goto error0;
+		}
+	}
+	return true;
+error0:
+	return false;
+}
+
+/**
+ * Write multiple sectors.
+ *
+ * @fd file descriptor of the target storage device.
+ * @sect_ary sector data array.
+ * @start_idx start offset in sect_ary [sectors].
+ * @n_sectors number of sectors to write [sectors].
+ *
+ * RETURN:
+ *   true in success, or false.
+ */
+bool sector_array_write(
+	int fd,
+	const struct sector_data_array *sect_ary,
+	unsigned int start_idx, unsigned int n_sectors)
+{
+	ASSERT(fd >= 0);
+	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+	ASSERT(start_idx + n_sectors <= sect_ary->size);
+
+	unsigned int i, idx;
+	bool ret;
+	for (i = 0; i < n_sectors; i++) {
+		idx = start_idx + i;
+		ret = write_data(
+			fd,
+			(u8 *)sect_ary->array[idx]->data,
+			sect_ary->sector_size);
+		if (!ret) {
+			LOGe("read failed.\n");
+			goto error0;
+		}
+	}
+	return true;
+error0:
+	return false;
 }
 
 /**
  * Initialize super sector.
  *
  * @super_sect super sector image to initialize.
- * @logical_bs logical block size.
- * @physical_bs physical block size.
+ * @lbs logical block size.
+ * @pbs physical block size.
  * @ddev_lb device size [logical block].
  * @ldev_lb log device size [logical block]
  * @n_snapshots number of snapshots to keep.
  * @name name of the walb device, or NULL.
  */
-void __init_super_sector(struct walb_super_sector* super_sect,
-			int logical_bs, int physical_bs,
-			u64 ddev_lb, u64 ldev_lb, int n_snapshots,
-			const char *name)
+void init_super_sector_raw(
+	struct walb_super_sector* super_sect,
+	unsigned int lbs, unsigned int pbs,
+	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+	const char *name)
 {
 	ASSERT(super_sect);
-	ASSERT(logical_bs > 0);
-	ASSERT(physical_bs > 0);
+	ASSERT(lbs > 0);
+	ASSERT(pbs > 0);
 	ASSERT(ddev_lb < (u64)(-1));
 	ASSERT(ldev_lb < (u64)(-1));
 
-	ASSERT(sizeof(struct walb_super_sector) <= (size_t)physical_bs);
+	ASSERT(sizeof(struct walb_super_sector) <= (size_t)pbs);
 
 	/* Calculate number of snapshot sectors. */
 	int n_sectors;
-	int t = get_max_n_records_in_snapshot_sector(physical_bs);
+	int t = get_max_n_records_in_snapshot_sector(pbs);
 	n_sectors = (n_snapshots + t - 1) / t;
 
 	LOGd("metadata_size: %d\n", n_sectors);
@@ -557,47 +755,46 @@ void __init_super_sector(struct walb_super_sector* super_sect,
 	/* Set sector type. */
 	super_sect->sector_type = SECTOR_TYPE_SUPER;
 	/* Fill parameters. */
-	super_sect->logical_bs = logical_bs;
-	super_sect->physical_bs = physical_bs;
+	super_sect->logical_bs = lbs;
+	super_sect->physical_bs = pbs;
 	super_sect->snapshot_metadata_size = n_sectors;
 	generate_uuid(super_sect->uuid);
 	super_sect->ring_buffer_size =
-		ldev_lb / (physical_bs / logical_bs)
-		- get_ring_buffer_offset(physical_bs, n_snapshots);
+		ldev_lb / (pbs / lbs)
+		- get_ring_buffer_offset(pbs, n_snapshots);
 	super_sect->oldest_lsid = 0;
 	super_sect->written_lsid = 0;
 	super_sect->device_size = ddev_lb;
 	char *rname = set_super_sector_name(super_sect, name);
-	if (name != NULL && strlen(name) != strlen(rname)) {
+	if (name && strlen(name) != strlen(rname)) {
 		printf("name %s is pruned to %s.\n", name, rname);
 	}
 
-	ASSERT(__is_valid_super_sector(super_sect, physical_bs));
+	ASSERT(is_valid_super_sector_raw(super_sect, pbs));
 }
 
 /**
  * Initialize super sector image.
  */
 void init_super_sector(struct sector_data *sect,
-		int logical_bs, int physical_bs,
+		unsigned int lbs, unsigned int pbs,
 		u64 ddev_lb, u64 ldev_lb, int n_snapshots,
 		const char *name)
 {
-
 	ASSERT_SECTOR_DATA(sect);
-	ASSERT(physical_bs == sect->size);
+	ASSERT(pbs == sect->size);
 	
-	__init_super_sector(sect->data, logical_bs, physical_bs,
-			ddev_lb, ldev_lb, n_snapshots, name);
+	init_super_sector_raw(
+		sect->data, lbs, pbs, ddev_lb, ldev_lb, n_snapshots, name);
 }
 
 /**
  * Print super sector for debug.
  * This will be obsolute. Use print_super_sector() instead.
  */
-void __print_super_sector(const struct walb_super_sector* super_sect)
+void print_super_sector_raw(const struct walb_super_sector* super_sect)
 {
-	ASSERT(super_sect != NULL);
+	ASSERT(super_sect);
 	printf("checksum: %08x\n"
 		"logical_bs: %u\n"
 		"physical_bs: %u\n"
@@ -626,7 +823,7 @@ void __print_super_sector(const struct walb_super_sector* super_sect)
 void print_super_sector(const struct sector_data *sect)
 {
 	ASSERT_SUPER_SECTOR(sect);
-	__print_super_sector((const struct walb_super_sector *)sect->data);
+	print_super_sector_raw((const struct walb_super_sector *)sect->data);
 }
 
 /**
@@ -637,9 +834,9 @@ void print_super_sector(const struct sector_data *sect)
  *
  * @return true in success, or false.
  */
-bool __write_super_sector(int fd, const struct walb_super_sector* super_sect)
+bool write_super_sector_raw(int fd, const struct walb_super_sector* super_sect)
 {
-	ASSERT(super_sect != NULL);
+	ASSERT(super_sect);
 	u32 sect_sz = super_sect->physical_bs;
 	
 	/* Memory image of sector. */
@@ -665,8 +862,8 @@ bool __write_super_sector(int fd, const struct walb_super_sector* super_sect)
 	/* Really write sector data. */
 	u64 off0 = get_super_sector0_offset_2(super_sect);
 	u64 off1 = get_super_sector1_offset_2(super_sect);
-	if (! write_sector(fd, sector_buf, sect_sz, off0) ||
-		! write_sector(fd, sector_buf, sect_sz, off1)) {
+	if (!write_sector_raw(fd, sector_buf, sect_sz, off0) ||
+		!write_sector_raw(fd, sector_buf, sect_sz, off1)) {
 		goto error1;
 	}
 	free(sector_buf);
@@ -684,7 +881,7 @@ error0:
 bool write_super_sector(int fd, const struct sector_data *sect)
 {
 	if (is_valid_super_sector(sect)) {
-		return __write_super_sector(fd, sect->data);
+		return write_super_sector_raw(fd, sect->data);
 	} else {
 		return false;
 	}
@@ -699,9 +896,9 @@ bool write_super_sector(int fd, const struct sector_data *sect)
  *
  * @return true in success, or false.
  */
-bool read_sector(int fd, u8* sector_buf, u32 sector_size, u64 offset)
+bool read_sector_raw(int fd, u8* sector_buf, u32 sector_size, u64 offset)
 {
-	return read_sectors(fd, sector_buf, sector_size, offset, 1);
+	return read_sectors_raw(fd, sector_buf, sector_size, offset, 1);
 }
 
 
@@ -715,7 +912,8 @@ bool read_sector(int fd, u8* sector_buf, u32 sector_size, u64 offset)
  *
  * @return true in success, or false.
  */
-bool read_sectors(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n)
+bool read_sectors_raw(
+	int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n)
 {
 	ssize_t r = 0;
 	while (r < sector_size * n) {
@@ -745,13 +943,14 @@ bool read_sectors(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n)
  *
  * @return true in success, or false.
  */
-bool __read_super_sector(int fd, struct walb_super_sector* super_sect,
-			u32 sector_size, u32 n_snapshots)
+bool read_super_sector_raw(
+	int fd, struct walb_super_sector* super_sect,
+	u32 sector_size, u32 n_snapshots)
 {
 	/* 1. Read two sectors
 	   2. Compare them and choose one having larger written_lsid. */
-	ASSERT(super_sect != NULL);
-	ASSERT((int)sector_size <= PAGE_SIZE);
+	ASSERT(super_sect);
+	ASSERT(sector_size <= PAGE_SIZE);
 	
 	/* Memory image of sector. */
 	u8 *buf, *buf0, *buf1;
@@ -765,8 +964,8 @@ bool __read_super_sector(int fd, struct walb_super_sector* super_sect,
 	u64 off0 = get_super_sector0_offset(sector_size);
 	u64 off1 = get_super_sector1_offset(sector_size, n_snapshots);
 
-	bool ret0 = read_sector(fd, buf0, sector_size, off0);
-	bool ret1 = read_sector(fd, buf1, sector_size, off1);
+	bool ret0 = read_sector_raw(fd, buf0, sector_size, off0);
+	bool ret1 = read_sector_raw(fd, buf1, sector_size, off1);
 
 	if (ret0 && checksum(buf0, sector_size) != 0) {
 		ret0 = -1;
@@ -845,8 +1044,8 @@ error0:
 void print_bitmap(const u8* bitmap, size_t size)
 {
 	size_t i, j;
-	for (i = 0; i < size; i ++) {
-		for (j = 0; j < 8; j ++) {
+	for (i = 0; i < size; i++) {
+		for (j = 0; j < 8; j++) {
 			if (bitmap[i] & (1 << j)) { /* on */
 				printf("1");
 			} else { /* off */
@@ -862,32 +1061,13 @@ void print_bitmap(const u8* bitmap, size_t size)
 void print_u32bitmap(const u32 bitmap)
 {
 	u32 i;
-	for (i = 0; i < 32; i ++) {
+	for (i = 0; i < 32; i++) {
 		if (bitmap & (1 << i)) { /* on */
 			printf("1");
 		} else { /* off */
 			printf("0");
 		}
 	}
-}
-
-/**
- * Allocate sector and set all zero.
- */
-u8* alloc_sector_zero(int sector_size)
-{
-	return alloc_sectors_zero(sector_size, 1);
-}
-
-/**
- * Allocate multiple sectors and set all zero.
- */
-u8* alloc_sectors_zero(int sector_size, int n)
-{
-	u8 *sectors = alloc_sectors(sector_size, n);
-	if (sectors == NULL) { return NULL; }
-	memset(sectors, 0, sector_size * n);
-	return sectors;
 }
 
 /**
@@ -952,6 +1132,5 @@ bool is_same_block_size(const char* devpath1, const char* devpath2)
 
 	return (lbs1 == lbs2 && pbs1 == pbs2);
 }
-
 
 /* end of file */

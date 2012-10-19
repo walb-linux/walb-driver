@@ -34,10 +34,18 @@ typedef int64_t s64;
 /* page size */
 #ifndef PAGE_SIZE
 #include <unistd.h>
-#define PAGE_SIZE getpagesize()
+#define PAGE_SIZE ((unsigned int)getpagesize())
 #endif
 
 /* bool */
 #include <stdbool.h>
+
+/* min/max */
+#ifndef min
+#define min(x, y) ((x) < (y) ? (x) : (y))
+#endif
+#ifndef max
+#define max(x, y) ((x) > (y) ? (x) : (y))
+#endif
 
 #endif /* WALB_USERLAND_H */

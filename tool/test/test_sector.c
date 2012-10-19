@@ -18,18 +18,18 @@
  * Static functions.
  *******************************************************************************/
 
-__attribute__((unused)) static bool is_sector_zero(const struct sector_data *sect)
+UNUSED static bool is_sector_zero(const struct sector_data *sect)
 {
-	int i;
+	unsigned int i;
 	ASSERT_SECTOR_DATA(sect);
 	
-	for (i = 0; i < sect->size; i ++) {
+	for (i = 0; i < sect->size; i++) {
 		if (((u8 *)sect->data)[i] != 0) { return false; }
 	}
 	return true;
 }
 
-__attribute__((unused)) static void memset_sector_random(struct sector_data *sect)
+UNUSED static void memset_sector_random(struct sector_data *sect)
 {
 	ASSERT_SECTOR_DATA(sect);
 	memset_random((u8 *)sect->data, sect->size);
@@ -43,17 +43,19 @@ __attribute__((unused)) static void memset_sector_random(struct sector_data *sec
  * @offset start offset in bytes.
  * @copy_size range to copy in bytes.
  */
-static void test_sector_array_copy_detail(int sect_size, int n_sectors, int offset, int copy_size)
+static void test_sector_array_copy_detail(
+	unsigned int sect_size, unsigned int n_sectors,
+	unsigned int offset, unsigned int copy_size)
 {
 	u8 *raw0, *raw1;
-	int raw_size;
+	unsigned int raw_size;
 	char *str;
 	int str_size;
 	struct sector_data_array *sect_ary0, *sect_ary1;
 
 	raw_size = sect_size * n_sectors;
 	str_size = raw_size * 3 + 1;
-	ASSERT(0 <= offset && offset < raw_size);
+	ASSERT(offset < raw_size);
 	ASSERT(offset + copy_size <= raw_size);
 	ASSERT(copy_size > 0);
 
@@ -128,13 +130,14 @@ void test_single_sector(int sect_size)
 	sector_free(sect1);
 }
 
-void test_sector_array(int sect_size, int n_sectors)
+void test_sector_array(unsigned int sect_size, unsigned int n_sectors)
 {
 	u8 *raw;
-	int raw_size;
-	int i;
+	unsigned int raw_size;
+	unsigned int i;
 	struct sector_data_array *sect_ary0, *sect_ary1;
 	struct sector_data *sect0, *sect1;
+	UNUSED bool retb;
 
 	raw_size = sect_size * (n_sectors + 3) * sizeof(u8);
 	raw = (u8 *)malloc(raw_size);
@@ -149,13 +152,13 @@ void test_sector_array(int sect_size, int n_sectors)
 
 	/* Prepare raw data and sect_ary1. */
 	memset_random(raw, raw_size);
-	for (i = 0; i < n_sectors + 3; i ++) {
+	for (i = 0; i < n_sectors + 3; i++) {
 		sect1 = get_sector_data_in_array(sect_ary1, i);
 		memcpy(sect1->data, raw + i * sect_size, sect_size);
 		ASSERT(memcmp(sect1->data, raw + i * sect_size, sect_size) == 0);
 	}
 
-	for (i = 0; i < n_sectors; i ++) {
+	for (i = 0; i < n_sectors; i++) {
 		sect0 = get_sector_data_in_array(sect_ary0, i);
 		sect1 = get_sector_data_in_array(sect_ary1, i);
 		ASSERT(memcmp(sect1->data, raw + i * sect_size, sect_size) == 0);
@@ -164,14 +167,16 @@ void test_sector_array(int sect_size, int n_sectors)
 	}
 
 	/* Realloc with the same size. */
-	sector_array_realloc(sect_ary0, n_sectors);
+	retb = sector_array_realloc(sect_ary0, n_sectors);
+	ASSERT(retb);
 	ASSERT(sect_ary0->size == n_sectors);
 
 	/* Grow the array. */
-	sector_array_realloc(sect_ary0, n_sectors + 3);
+	retb = sector_array_realloc(sect_ary0, n_sectors + 3);
+	ASSERT(retb);
 	ASSERT(sect_ary0->size == n_sectors + 3);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
-	for (i = 0; i < n_sectors + 3; i ++) {
+	for (i = 0; i < n_sectors + 3; i++) {
 		sect0 = get_sector_data_in_array(sect_ary0, i);
 		sect1 = get_sector_data_in_array(sect_ary1, i);
 		if (i >= n_sectors) {
@@ -185,7 +190,7 @@ void test_sector_array(int sect_size, int n_sectors)
 	sector_array_realloc(sect_ary0, n_sectors - 3);
 	ASSERT(sect_ary0->size == n_sectors - 3);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
-	for (i = 0; i < n_sectors - 3; i ++) {
+	for (i = 0; i < n_sectors - 3; i++) {
 		sect0 = get_sector_data_in_array(sect_ary0, i);
 		sect1 = get_sector_data_in_array(sect_ary1, i);
 		ASSERT(sector_compare(sect1, sect0) == 0);
@@ -208,14 +213,14 @@ void test_sector_array_copy(int sect_size, int n_sectors)
 	test_sector_array_copy_detail(sect_size, n_sectors, offset, copy_size);
 
 	/* Randomly */
-	for (i = 0; i < 10; i ++) {
+	for (i = 0; i < 10; i++) {
 		offset = get_random(sect_size * n_sectors);
 		copy_size = get_random(sect_size * n_sectors - offset - 1) + 1;
 		test_sector_array_copy_detail(sect_size, n_sectors, offset, copy_size);
 	}
 
 	/* Aligned */
-	for (i = 0; i < 10; i ++) {
+	for (i = 0; i < 10; i++) {
 		n_offset = get_random(n_sectors);
 		offset = sect_size * n_offset;
 		n_copy_size = get_random(n_sectors - n_offset - 1) + 1;
@@ -224,11 +229,11 @@ void test_sector_array_copy(int sect_size, int n_sectors)
 	}
 }
 
-void test_sector_io(int sect_size, int n_sectors)
+void test_sector_io(unsigned int sect_size, unsigned int n_sectors)
 {
 	struct sector_data_array *sect_ary0, *sect_ary1;
-	struct sector_data *sect0, __attribute__((unused)) *sect1;
-	__attribute__((unused)) bool ret;
+	struct sector_data *sect0, UNUSED *sect1;
+	UNUSED bool ret;
 
 	/* prepare */
 	sect_ary0 = sector_array_alloc(sect_size, n_sectors);
@@ -239,27 +244,27 @@ void test_sector_io(int sect_size, int n_sectors)
 	ASSERT(sect_ary1->size == n_sectors);
 
 	/* Fill random data. */
-	int i;
-	for (i = 0; i < n_sectors; i ++) {
+	unsigned int i;
+	for (i = 0; i < n_sectors; i++) {
 		sect0 = get_sector_data_in_array(sect_ary0, i);
 		memset_sector_random(sect0);
 	}
 	
 	/* write */
-	int fd = open(TEST_FILE, O_RDWR | O_TRUNC |O_CREAT, 00775);
+	int fd = open(TEST_FILE, O_RDWR | O_TRUNC |O_CREAT, 00755);
 	ASSERT(fd > 0);
 
-	ret = sector_array_write(fd, 0, sect_ary0, 0, n_sectors);
+	ret = sector_array_write(fd, sect_ary0, 0, n_sectors);
 	ASSERT(ret);
 	
 	/* read */
-	ret = sector_array_read(fd, 0, sect_ary1, 0, n_sectors);
+	ret = sector_array_read(fd, sect_ary1, 0, n_sectors);
 	ASSERT(ret);
 	
 	close(fd);
 	
 	/* check */
-	for (i = 0; i < n_sectors; i ++) {
+	for (i = 0; i < n_sectors; i++) {
 		sect0 = get_sector_data_in_array(sect_ary0, i);
 		sect1 = get_sector_data_in_array(sect_ary1, i);
 		

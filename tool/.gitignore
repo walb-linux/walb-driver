@@ -8,6 +8,7 @@ test_snapshot
 test_sector
 test_super
 test_logpack
+test_rbtree
 test_rw
 trim
 walbctl

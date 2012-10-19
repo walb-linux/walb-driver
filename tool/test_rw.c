@@ -68,11 +68,11 @@ int main(int argc, char* argv[])
 		memcpy(block[2], block[0], BLOCK_SIZE);
 		memset(block[1], 0, BLOCK_SIZE);
 		
-		write_sector(fd, block[0], BLOCK_SIZE, i);
+		write_sector_raw(fd, block[0], BLOCK_SIZE, i);
 #if 1
 		memset_random(block[0], BLOCK_SIZE);
 #endif
-		read_sector(fd, block[1], BLOCK_SIZE, i);
+		read_sector_raw(fd, block[1], BLOCK_SIZE, i);
 
 		int c = memcmp(block[1], block[2], BLOCK_SIZE);
 		printf("%d %s\n", i, (c == 0 ? "OK" : "NG"));
