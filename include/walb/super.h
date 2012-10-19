@@ -8,6 +8,7 @@
 
 #include "walb.h"
 #include "sector.h"
+#include "block_size.h"
 #include "util.h"
 
 /**
@@ -101,18 +102,20 @@ struct walb_super_sector {
  * This function does not evaluate checksum.
  *
  * @sect pointer to super sector image.
+ * @pbs physical block size [byte].
  *
  * @return non-zero if valid, or 0.
  */
-static inline int __is_valid_super_sector(const struct walb_super_sector *sect, int physical_bs)
+static inline int is_valid_super_sector_raw(
+	const struct walb_super_sector *sect, unsigned int pbs)
 {
 	/* physical_bs */
-	CHECK(physical_bs > 0);
+	CHECK(is_valid_pbs(pbs));
 	
 	/* sector type */
 	CHECK(sect->sector_type == SECTOR_TYPE_SUPER);
 	/* block size */
-	CHECK(sect->physical_bs == (u32)physical_bs);
+	CHECK(sect->physical_bs == pbs);
 	CHECK(sect->physical_bs >= sect->logical_bs);
 	CHECK(sect->physical_bs % sect->logical_bs == 0);
 	/* lsid consistency. */
@@ -134,8 +137,8 @@ error:
  */
 static inline int is_valid_super_sector(const struct sector_data* sect)
 {
-	if (! is_valid_sector_data(sect)) { return 0; }
-	return __is_valid_super_sector(sect->data, sect->size);
+	if (!is_valid_sector_data(sect)) { return 0; }
+	return is_valid_super_sector_raw(sect->data, sect->size);
 }
 
 /**
@@ -170,6 +173,21 @@ static inline struct walb_super_sector* get_super_sector(
 {
 	ASSERT_SECTOR_DATA(sect);
 	return (struct walb_super_sector *)(sect->data);
+}
+
+/**
+ * Get super sector pointer (const).
+ * 
+ * @sect sector data.
+ * 
+ * RETURN:
+ *   const pointer to walb_super_sector.
+ */
+static inline const struct walb_super_sector* get_super_sector_const(
+	const struct sector_data *sect)
+{
+	ASSERT_SECTOR_DATA(sect);
+	return (const struct walb_super_sector *)(sect->data);
 }
 
 #endif /* WALB_SUPER_H */

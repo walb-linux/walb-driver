@@ -42,7 +42,7 @@ void test(int pbs)
 	int fd = open(LOG_DEV_FILE, O_RDWR | O_TRUNC | O_CREAT, 0755);
 	ASSERT(fd > 0);
 
-	logpack_t *logpack = alloc_logpack(pbs, 1);
+	struct logpack *logpack = alloc_logpack(pbs, 1);
 	ASSERT(logpack);
     
 	/* now editing */

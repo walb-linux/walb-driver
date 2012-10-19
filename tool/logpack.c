@@ -51,9 +51,10 @@ error:
  *
  * @return ture in success, or false.
  */
-bool read_logpack_header_from_wldev(int fd,
-				const struct walb_super_sector* super_sectp,
-				u64 lsid, struct walb_logpack_header* lhead)
+bool read_logpack_header_from_wldev(
+	int fd,
+	const struct walb_super_sector* super_sectp,
+	u64 lsid, struct sector_data *lhead_sect)
 {
 	/* calc offset in the ring buffer */
 	u64 ring_buffer_offset = get_ring_buffer_offset_2(super_sectp);
@@ -62,23 +63,24 @@ bool read_logpack_header_from_wldev(int fd,
 	u64 off = ring_buffer_offset + lsid % ring_buffer_size;
 
 	/* read sector */
-	if (! read_sector(fd, (u8 *)lhead, super_sectp->physical_bs, off)) {
+	if (!sector_read(fd, off, lhead_sect)) {
 		LOGe("read logpack header (lsid %"PRIu64") failed.\n", lsid);
 		goto error0;
 	}
-
+	struct walb_logpack_header *lhead =
+		get_logpack_header(lhead_sect);
+	
 	/* check lsid */
 	if (lsid != lhead->logpack_lsid) {
 		LOGe("lsid (given %"PRIu64" read %"PRIu64") is invalid.\n",
 			lsid, lhead->logpack_lsid);
 		goto error0;
 	}
-
-	if (! is_valid_logpack_header_with_checksum(lhead, super_sectp->physical_bs)) {
+	if (!is_valid_logpack_header_with_checksum(
+			lhead, super_sectp->physical_bs)) {
 		LOGe("check logpack header failed.\n");
 		goto error0;
 	}
-
 	return true;
 	
 error0:
@@ -105,7 +107,7 @@ void print_logpack_header(const struct walb_logpack_header* lhead)
 		lhead->n_padding,
 		lhead->total_io_size,
 		lhead->logpack_lsid);
-	for (i = 0; i < lhead->n_records; i ++) {
+	for (i = 0; i < lhead->n_records; i++) {
 		printf("record %d\n"
 			"  checksum: %08x\n"
 			"  lsid: %"PRIu64"\n"
@@ -150,60 +152,57 @@ bool write_logpack_header(int fd,
  * @fd file descriptor of log device.
  * @super_sectp super sector.
  * @logpack logpack header.
- * @buf buffer.
- * @bufsize buffer size in bytes.
+ * @sect_ary sector array.
  *
  * @return true in success, or false.
  */
-bool read_logpack_data_from_wldev(int fd,
-				const struct walb_super_sector* super_sectp,
-				const struct walb_logpack_header* lhead,
-				u8* buf, size_t bufsize)
+bool read_logpack_data_from_wldev(
+	int fd,
+	const struct walb_super_sector* super,
+	const struct walb_logpack_header* lhead,
+	struct sector_data_array *sect_ary)
 {
-	int logical_bs = super_sectp->logical_bs;
-	int physical_bs = super_sectp->physical_bs;
-	int n_lb_in_pb = physical_bs / logical_bs;
-	ASSERT(physical_bs % logical_bs == 0);
+	const int lbs = super->logical_bs;
+	const int pbs = super->physical_bs;
+	ASSERT(lbs == LOGICAL_BLOCK_SIZE);
+	ASSERT_PBS(pbs);
 
-	if (lhead->total_io_size * physical_bs > (ssize_t)bufsize) {
+	if (lhead->total_io_size > sect_ary->size) {
 		LOGe("buffer size is not enough.\n");
 		return false;
 	}
-
+	
 	int i;
 	int n_req = lhead->n_records;
 	int total_pb;
 	u64 log_off;
 	u32 log_lb, log_pb;
-	u8 *buf_off;
-	
-	buf_off = 0;
-	total_pb = 0;
-	for (i = 0; i < n_req; i ++) {
 
+	total_pb = 0;
+	for (i = 0; i < n_req; i++) {
 		log_lb = lhead->record[i].io_size;
 
 		/* Calculate num of physical blocks. */
-		log_pb = log_lb / n_lb_in_pb;
-		if (log_lb % n_lb_in_pb != 0) { log_pb ++; }
+		log_pb = capacity_pb(pbs, log_lb);
 
 		log_off = get_offset_of_lsid_2
-			(super_sectp, lhead->record[i].lsid);
+			(super, lhead->record[i].lsid);
 		LOGd("lsid: %"PRIu64" log_off: %"PRIu64"\n",
 			lhead->record[i].lsid,
 			log_off);
 
-		buf_off = buf + (total_pb * physical_bs);
 		if (lhead->record[i].is_padding == 0) {
-
 			/* Read data for the log record. */
-			if (! read_sectors(fd, buf_off, physical_bs, log_off, log_pb)) {
+			if (!sector_array_pread(
+					fd, total_pb, sect_ary,
+					log_off, log_pb)) {
 				LOGe("read sectors failed.\n");
 				goto error0;
 			}
-
 			/* Confirm checksum */
-			u32 csum = checksum((const u8 *)buf_off, logical_bs * log_lb);
+			u32 csum = sector_array_checksum(
+				sect_ary, total_pb * pbs,
+				log_lb * lbs);
 			if (csum != lhead->record[i].checksum) {
 				LOGe("log header checksum is invalid. %08x %08x\n",
 					csum, lhead->record[i].checksum);
@@ -211,11 +210,11 @@ bool read_logpack_data_from_wldev(int fd,
 			}
 		} else {
 			/* memset zero instead of read due to padding area. */
-			memset(buf_off, 0, log_pb * physical_bs);
+			sector_array_memset(
+				sect_ary, total_pb * pbs, log_pb * pbs, 0);
 		}
 		total_pb += log_pb;
 	}
-
 	return true;
 	
 error0:	       
@@ -226,22 +225,23 @@ error0:
  * Read logpack header from fd.
  *
  * @fd file descriptor (opened, seeked)
- * @physical_bs physical block size (logpack header size)
+ * @pbs physical block size [byte].
  * @logpack logpack to be filled. (allocated size must be physical_bs).
  *
  * @return true in success, or false.
  */
-bool read_logpack_header(int fd,
-			int physical_bs,
-			struct walb_logpack_header* lhead)
+bool read_logpack_header(
+	int fd,
+	unsigned int pbs,
+	struct walb_logpack_header* lhead)
 {
 	/* Read */
-	if (! read_data(fd, (u8 *)lhead, physical_bs)) {
+	if (!read_data(fd, (u8 *)lhead, pbs)) {
 		return false;
 	}
 
 	/* Check */
-	if (! is_valid_logpack_header_with_checksum(lhead, physical_bs)) {
+	if (!is_valid_logpack_header_with_checksum(lhead, pbs)) {
 		return false;
 	}
 
@@ -252,23 +252,22 @@ bool read_logpack_header(int fd,
  * Read logpack data from ds.
  *
  * @fd file descriptor (opened, seeked)
- * @logical_bs logical block size.
- * @phycial_bs physical block size.
+ * @pbs physical block size.
  * @logpack corresponding logpack header.
  * @buf buffer to be filled.
  * @bufsize buffser size.
  *
  * @return true in success, or false.
  */
-bool read_logpack_data(int fd,
-		int logical_bs, int physical_bs,
+bool read_logpack_data_raw(int fd,
+		unsigned int pbs,
 		const struct walb_logpack_header* lhead,
 		u8* buf, size_t bufsize)
 {
-	ASSERT(physical_bs % logical_bs == 0);
-	const int n_lb_in_pb = physical_bs / logical_bs;
+	ASSERT(fd >= 0);
+	ASSERT_PBS(pbs);
 
-	if (lhead->total_io_size * physical_bs > (ssize_t)bufsize) {
+	if (lhead->total_io_size * pbs > bufsize) {
 		LOGe("buffer size is not enough.\n");
 		goto error0;
 	}
@@ -278,35 +277,99 @@ bool read_logpack_data(int fd,
 	u32 total_pb;
 
 	total_pb = 0;
-	for (i = 0; i < n_req; i ++) {
-
+	for (i = 0; i < n_req; i++) {
 		u32 log_lb = lhead->record[i].io_size;
-
-		u32 log_pb = log_lb / n_lb_in_pb;
-		if (log_lb % n_lb_in_pb != 0) { log_pb ++; }
-
-		u8 *buf_off = buf + (total_pb * physical_bs);
+		u32 log_pb = capacity_pb(pbs, log_lb);
+		u8 *buf_off = buf + (total_pb * pbs);
 		if (lhead->record[i].is_padding == 0) {
 
 			/* Read data of the log record. */
-			if (! read_data(fd, buf_off, log_pb * physical_bs)) {
+			if (!read_data(fd, buf_off, log_pb * pbs)) {
 				LOGe("read log data failed.\n");
 				goto error0;
 			}
 
 			/* Confirm checksum. */
-			u32 csum = checksum((const u8 *)buf_off, log_lb * logical_bs);
+			u32 csum = checksum((const u8 *)buf_off,
+					log_lb * LOGICAL_BLOCK_SIZE);
 			if (csum != lhead->record[i].checksum) {
 				LOGe("log header checksum in invalid. %08x %08x\n",
 					csum, lhead->record[i].checksum);
 				goto error0;
 			}
 		} else {
-			memset(buf_off, 0, log_pb * physical_bs);
+			memset(buf_off, 0, log_pb * pbs);
 		}
 		total_pb += log_pb;
 	}
-	
+	ASSERT(total_pb == lhead->total_io_size);
+	return true;
+		
+error0:
+	return false;
+}
+
+/**
+ * Read logpack data from ds.
+ *
+ * @fd file descriptor (opened, seeked)
+ * @lhead corresponding logpack header.
+ * @sect_ary sector data array to be store data.
+ *
+ * @return true in success, or false.
+ */
+bool read_logpack_data(
+	int fd,
+	const struct walb_logpack_header* lhead,
+	struct sector_data_array *sect_ary)
+{
+	ASSERT(fd >= 0);
+	ASSERT(lhead);
+	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+
+	unsigned int pbs = sect_ary->sector_size;
+	ASSERT_PBS(pbs);
+
+	if (lhead->total_io_size > sect_ary->size) {
+		LOGe("sect_ary size is not enough.\n");
+		goto error0;
+	}
+
+	int i;
+	const int n_req = lhead->n_records;
+	u32 total_pb;
+	unsigned int idx_pb, log_lb, log_pb;
+
+	total_pb = 0;
+	for (i = 0; i < n_req; i++) {
+		idx_pb = lhead->record[i].lsid_local - 1;
+		log_lb = lhead->record[i].io_size;
+		log_pb = capacity_pb(pbs, log_lb);
+		if (lhead->record[i].is_padding == 0) {
+
+			/* Read data of the log record. */
+			if (!sector_array_read(fd, sect_ary, idx_pb, log_pb)) {
+				LOGe("read log data failed.\n");
+				goto error0;
+			}
+
+			/* Confirm checksum. */
+			u32 csum = sector_array_checksum(
+				sect_ary,
+				idx_pb * pbs,
+				log_lb * LOGICAL_BLOCK_SIZE);
+			if (csum != lhead->record[i].checksum) {
+				LOGe("log header checksum in invalid. %08x %08x\n",
+					csum, lhead->record[i].checksum);
+				goto error0;
+			}
+		} else {
+			sector_array_memset(
+				sect_ary, idx_pb * pbs, log_pb * pbs, 0);
+		}
+		total_pb += log_pb;
+	}
+	ASSERT(total_pb == lhead->total_io_size);
 	return true;
 		
 error0:
@@ -317,36 +380,38 @@ error0:
  * Redo logpack.
  *
  * @fd file descriptor of data device (opened).
- * @logical_bs logical block size.
- * @physical_bs physical block size.
  * @logpack logpack header to be redo.
  * @buf logpack data. (meaning data size: lhead->total_io_size * physical_bs)
  */
-bool redo_logpack(int fd,
-		int logical_bs, int physical_bs,
-		const struct walb_logpack_header* lhead,
-		const u8* buf)
+bool redo_logpack(
+	int fd,
+	const struct walb_logpack_header* lhead,
+	const struct sector_data_array *sect_ary)
 {
+	ASSERT(lhead);
+	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
+	
 	int i;
 	int n_req = lhead->n_records;
-	
-	for (i = 0; i < n_req; i ++) {
 
+	unsigned int idx_lb, n_lb;
+	u64 off_lb;
+	
+	for (i = 0; i < n_req; i++) {
 		if (lhead->record[i].is_padding != 0) {
 			continue;
 		}
-
-		int buf_off = (int)(lhead->record[i].lsid_local - 1) * physical_bs;
-		u64 off_lb = lhead->record[i].offset;
-		int size_lb = lhead->record[i].io_size;
-
-		if (! write_sectors(fd, buf + buf_off, logical_bs, off_lb, size_lb)) {
+		off_lb = lhead->record[i].offset;
+		idx_lb = addr_lb(sect_ary->sector_size,
+				lhead->record[i].lsid_local - 1);
+		n_lb = lhead->record[i].io_size;
+		if (!sector_array_pwrite_lb(fd, off_lb, sect_ary, idx_lb, n_lb)) {
 			LOGe("write sectors failed.\n");
 			goto error0;
 		}
 	}
-
 	return true;
+	
 error0:	       
 	return false;
 }
@@ -356,28 +421,33 @@ error0:
  * This just fill zero.
  *
  * @fd file descriptor of data device (opened).
- * @physical_bs physical block size.
+ * @super_sect super sector.
  * @lsid lsid for logpack header.
  *
  * @return true in success, or false.
  */
-bool write_invalid_logpack_header(int fd, const struct walb_super_sector* super_sectp, int physical_bs, u64 lsid)
+bool write_invalid_logpack_header(
+	int fd, const struct sector_data *super_sect, u64 lsid)
 {
-	u64 off = get_offset_of_lsid_2(super_sectp, lsid);
+	const struct walb_super_sector *super
+		= get_super_sector_const(super_sect);
+	u64 off = get_offset_of_lsid_2(super, lsid);
+	unsigned int pbs = super->physical_bs;
 
-	u8* sect = alloc_sector_zero(physical_bs);
+	struct sector_data *sect = sector_alloc_zero(pbs);
 	if (!sect) {
 		LOGe("Allocate sector failed.\n");
 		goto error0;
 	}
-	if (!write_sector(fd, sect, physical_bs, off)) {
+	if (!sector_write(fd, off, sect)) {
 		LOGe("Write sector %"PRIu64" for lsid %"PRIu64" failed.\n", off, lsid);
 		goto error1;
 	}
-	free(sect);
+	sector_free(sect);
+	
 	return true;
 error1:
-	free(sect);
+	sector_free(sect);
 error0:
 	return false;
 }
@@ -390,24 +460,24 @@ error0:
  *
  * @return pointer to allocated logpack in success, or NULL.
  */
-logpack_t* alloc_logpack(unsigned int physical_bs, unsigned int n_sectors)
+struct logpack* alloc_logpack(unsigned int physical_bs, unsigned int n_sectors)
 {
 	ASSERT_PBS(physical_bs);
 	ASSERT(n_sectors > 0);
 
 	/* Allocate for itself. */
-	logpack_t* logpack = (logpack_t *)malloc(sizeof(logpack_t));
-	if (! logpack) { goto error; }
+	struct logpack* logpack = (struct logpack *)malloc(sizeof(struct logpack));
+	if (!logpack) { goto error; }
 	logpack->logical_bs = LOGICAL_BLOCK_SIZE;
 	logpack->physical_bs = physical_bs;
 
 	/* Header sector. */
 	logpack->head_sect = sector_alloc_zero(physical_bs);
-	if (! logpack->head_sect) { goto error; }
+	if (!logpack->head_sect) { goto error; }
 
 	/* Data sectors. */
 	logpack->data_sects = sector_array_alloc(physical_bs, n_sectors);
-	if (! logpack->data_sects) { goto error; }
+	if (!logpack->data_sects) { goto error; }
 
 	struct walb_logpack_header *lhead = logpack_get_header(logpack);
 	ASSERT(lhead);
@@ -419,7 +489,7 @@ logpack_t* alloc_logpack(unsigned int physical_bs, unsigned int n_sectors)
 	lhead->n_padding = 0;
 	int i;
 	int n_max = max_n_log_record_in_sector(physical_bs);
-	for (i = 0; i < n_max; i ++) {
+	for (i = 0; i < n_max; i++) {
 		lhead->record[i].is_exist = 0;
 	}
 	return logpack;
@@ -432,7 +502,7 @@ error:
 /**
  * Free logpack.
  */
-void free_logpack(logpack_t* logpack)
+void free_logpack(struct logpack* logpack)
 {
 	if (logpack) {
 		sector_array_free(logpack->data_sects);
@@ -444,7 +514,7 @@ void free_logpack(logpack_t* logpack)
 /**
  * Realloc logpack.
  */
-bool realloc_logpack(logpack_t* logpack, int n_sectors)
+bool realloc_logpack(struct logpack* logpack, int n_sectors)
 {
 	ASSERT(n_sectors > 0);
 	ASSERT_LOGPACK(logpack, false);
@@ -461,7 +531,7 @@ bool realloc_logpack(logpack_t* logpack, int n_sectors)
  *
  * @return true if valid, or false.
  */
-bool is_valid_logpack(logpack_t* logpack, bool is_checksum)
+bool is_valid_logpack(struct logpack* logpack, bool is_checksum)
 {
 	CHECK(logpack != NULL);
 	CHECK(logpack->head_sect != NULL);
@@ -501,12 +571,11 @@ error:
  *
  * @return True in success, or false.
  */
-bool logpack_add_io_request(logpack_t* logpack,
+bool logpack_add_io_request(struct logpack* logpack,
 			u64 offset, const u8* data, int size,
 			bool is_padding)
 {
 	/* Check parameters. */
-    
 	ASSERT_LOGPACK(logpack, false);
 	if (is_padding) { ASSERT(data); }
 	ASSERT(size % logpack->logical_bs == 0);
@@ -548,7 +617,7 @@ bool logpack_add_io_request(logpack_t* logpack,
 		current_size += capacity_pb(pbs, lrec->io_size);
 	}
 	if (current_size + n_pb > logpack->data_sects->size) {
-		if (! realloc_logpack(logpack, current_size + n_pb)) {
+		if (!realloc_logpack(logpack, current_size + n_pb)) {
 			goto error;
 		}
 	}
@@ -565,8 +634,8 @@ bool logpack_add_io_request(logpack_t* logpack,
 
 	/* Finalize logpack header. */
 	rec->is_exist = 1;
-	lhead->n_records ++;
-	if (is_padding) { lhead->n_padding ++; }
+	lhead->n_records++;
+	if (is_padding) { lhead->n_padding++; }
 
 	return true;
     
@@ -577,13 +646,13 @@ error:
 /**
  * Create random logpack data.
  */
-struct walb_logpack_header* create_random_logpack(int logical_bs, int physical_bs, const u8* buf)
+struct walb_logpack_header* create_random_logpack(
+	UNUSED  unsigned int lbs, UNUSED unsigned int pbs, UNUSED const u8* buf)
 {
 	/* now editing */
 
 	return NULL;
 }
-
 
 
 /* end of file */

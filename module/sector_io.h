@@ -54,18 +54,4 @@ bool walb_read_super_sector(
 bool walb_write_super_sector(
 	struct block_device *ldev, struct sector_data *lsuper);
 
-/*******************************************************************************
- * Static inline functions.
- *******************************************************************************/
-
-/**
- * Get logpack header pointer.
- */
-static inline struct walb_logpack_header*
-get_logpack_header(struct sector_data *sect)
-{
-	ASSERT_SECTOR_DATA(sect);
-	return (struct walb_logpack_header *)(sect->data);
-}
-
 #endif /* WALB_SECTOR_IO_H_KERNEL */

@@ -14,7 +14,7 @@
 /**
  * Walblog file header.
  */
-typedef struct walblog_header
+struct walblog_header
 {
 	u16 header_size; /* must be WALBLOG_HEADER_SIZE */
 	u16 sector_type; /* must be SECTOR_TYPE_WALBLOG_HEADER */
@@ -35,12 +35,12 @@ typedef struct walblog_header
 	u64 begin_lsid;
 	u64 end_lsid; /* may be larger than lsid of
 			 the next of the end logpack. */
-} walblog_header_t;
+};
 
 /**
  * Print walblog header.
  */
-inline void print_wlog_header(walblog_header_t* wh)
+inline void print_wlog_header(struct walblog_header* wh)
 {
 	const int str_size = 16 * 3 + 1;
 	char uuidstr[str_size];
@@ -72,7 +72,7 @@ inline void print_wlog_header(walblog_header_t* wh)
  *
  * @return true in valid, or false.
  */
-inline bool check_wlog_header(walblog_header_t* wh)
+inline bool check_wlog_header(struct walblog_header* wh)
 {
 	if (checksum((const u8 *)wh, WALBLOG_HEADER_SIZE) != 0) {
 		LOGe("wlog checksum is invalid.\n");

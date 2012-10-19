@@ -34,20 +34,15 @@ void test(int sector_size, int n_snapshots)
 			DATA_DEV_SIZE / 512, DATA_DEV_SIZE / 512,
 			n_snapshots, "test_supersector_name");
 	ASSERT_SUPER_SECTOR(super_sect);
+
+	/* now editing */
+	
 	
 	/* Prepare snapshot data for userland. */
-	struct snapshot_data_u *snapd;
-	snapd = alloc_snapshot_data_u
-		(fd, (const struct walb_super_sector *)super_sect->data);
-	clear_snapshot_data_u(snapd);
-	initialize_snapshot_data_u(snapd);
-	ASSERT_SNAPSHOT_SECTOR_DATA_U(snapd);
 
 	/* Write snapshot data. */
-	write_all_sectors_snapshot_data_u(snapd);
 
 	/* add several snapshot record */
-	/* now editing */
 	
 	/* search snapshot record */
 	
@@ -60,7 +55,6 @@ void test(int sector_size, int n_snapshots)
 	/* Check snapshot records are stored correctly. */
 	
 
-	free_snapshot_data_u(snapd);
 	close(fd);
 }
 

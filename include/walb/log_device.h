@@ -101,10 +101,11 @@
  * 
  * @return required metadata size by the sector.
  */
-static inline int get_metadata_size(int sector_size, int n_snapshots)
+static inline unsigned int get_metadata_size(
+	unsigned int sector_size, unsigned int n_snapshots)
 {
-	int n_sectors;
-	int t;
+	unsigned int n_sectors;
+	unsigned int t;
 	
 	ASSERT(PAGE_SIZE % sector_size == 0 &&
 		PAGE_SIZE >= sector_size);
@@ -220,6 +221,30 @@ static inline u64 get_offset_of_lsid_2
 {
 	return	get_ring_buffer_offset_2(super_sect) +
 		(lsid % super_sect->ring_buffer_size);
+}
+
+/*******************************************************************************
+ * Static inline functions.
+ *******************************************************************************/
+
+/**
+ * Get logpack header pointer.
+ */
+static inline struct walb_logpack_header*
+get_logpack_header(struct sector_data *sect)
+{
+	ASSERT_SECTOR_DATA(sect);
+	return (struct walb_logpack_header *)(sect->data);
+}
+
+/**
+ * Get logpack head pointer (const).
+ */
+static inline const struct walb_logpack_header*
+get_logpack_header_const(const struct sector_data *sect)
+{
+	ASSERT_SECTOR_DATA(sect);
+	return (const struct walb_logpack_header *)(sect->data);
 }
 
 #endif /* WALB_LOG_DEVICE_H */
