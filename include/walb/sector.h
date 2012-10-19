@@ -353,8 +353,6 @@ static inline int sector_array_realloc(
 				sizeof(struct sector_data *) * n_sectors, mask);
 		if (!new_ary) { goto error0; }
 		sect_ary->array = new_ary;
-		sect_ary->sector_size = sector_size;
-		sect_ary->size = n_sectors;
 		for (i = sect_ary->size; i < n_sectors; i++) {
 #ifdef __KERNEL__
 			sect_ary->array[i] = sector_alloc(sector_size, mask);
@@ -363,10 +361,13 @@ static inline int sector_array_realloc(
 #endif
 			if (!sect_ary->array[i]) { goto error1; }
 		}
+		sect_ary->sector_size = sector_size;
+		sect_ary->size = n_sectors;
 	} else {
 		/* Unchanged */
 		ASSERT(sect_ary->size == n_sectors);
 	}
+	
 	return 1;
 	
 error1:
