@@ -79,6 +79,13 @@ struct workqueue_struct *wq_misc_ = NULL;
  *******************************************************************************/
 
 /*******************************************************************************
+ * Macro definition.
+ *******************************************************************************/
+
+/* (struct gendisk *) --> (struct walb_dev *) */
+#define get_wdev_from_gd(gd) ((struct walb_dev *)(gd)->private_data)
+
+/*******************************************************************************
  * Prototypes of local functions.
  *******************************************************************************/
 
@@ -245,29 +252,32 @@ error0:
 	return 0;
 }
 
-/*
- * Open and close.
+/**
+ * Open walb device.
  */
 static int walb_open(struct block_device *bdev, fmode_t mode)
 {
-	struct walb_dev *dev = bdev->bd_disk->private_data;
-
-	spin_lock(&dev->lock);
-	if (! dev->users) 
+	struct walb_dev *wdev = get_wdev_from_gd(bdev->bd_disk);
+	
+	if (atomic_inc_return(&wdev->n_users) == 1) {
+		LOGn("This is the first time to open walb device %d"
+			" and check_disk_change() will be called.\n",
+			MINOR(wdev->devt));
 		check_disk_change(bdev);
-	dev->users++;
-	spin_unlock(&dev->lock);
+	}
 	return 0;
 }
 
+/**
+ * Release a walb device.
+ */
 static int walb_release(struct gendisk *gd, fmode_t mode)
 {
-	struct walb_dev *dev = gd->private_data;
-
-	spin_lock(&dev->lock);
-	dev->users--;
-	spin_unlock(&dev->lock);
-
+	struct walb_dev *wdev = get_wdev_from_gd(gd);
+	int n_users;
+	
+	n_users = atomic_dec_return(&wdev->n_users);
+	ASSERT(n_users >= 0);
 	return 0;
 }
 
@@ -942,13 +952,33 @@ static struct block_device_operations walb_ops = {
 	.ioctl		 = walb_ioctl
 };
 
+
+/**
+ * Open a walb device.
+ */
 static int walblog_open(struct block_device *bdev, fmode_t mode)
 {
+	struct walb_dev *wdev = get_wdev_from_gd(bdev->bd_disk);
+	
+	if (atomic_inc_return(&wdev->log_n_users) == 1) {
+		LOGn("This is the first time to open walblog device %d"
+			" and check_disk_change() will be called.\n",
+			MINOR(wdev->devt));
+		check_disk_change(bdev);
+	}
 	return 0;
 }
 
+/**
+ * Release a walblog device.
+ */
 static int walblog_release(struct gendisk *gd, fmode_t mode)
 {
+	struct walb_dev *wdev = get_wdev_from_gd(gd);
+	int n_users;
+	
+	n_users = atomic_dec_return(&wdev->log_n_users);
+	ASSERT(n_users >= 0);
 	return 0;
 }
 
@@ -1137,31 +1167,20 @@ static void finalize_workqueues(void)
 static int walb_prepare_device(struct walb_dev *wdev, unsigned int minor,
 			const char *name)
 {
-#if 1
-	/* bio interface */
+	/* Using bio interface */
 	wdev->queue = blk_alloc_queue(GFP_KERNEL);
 	if (wdev->queue == NULL)
 		goto out;
 	blk_queue_make_request(wdev->queue, walb_make_request);
-#else
-	/* request interface */
-	wdev->queue = blk_init_queue(walb_full_request2, &wdev->lock);
-	if (wdev->queue == NULL)
-		goto out;
-	if (elevator_change(wdev->queue, "noop"))
-		goto out_queue;
-#endif	
 
-	blk_queue_logical_block_size(wdev->queue, wdev->logical_bs);
+	/* logical/physical block size. */
+	blk_queue_logical_block_size(wdev->queue, 512);
 	blk_queue_physical_block_size(wdev->queue, wdev->physical_bs);
 	wdev->queue->queuedata = wdev;
 
-	/*
-	 * And the gendisk structure.
-	 */
-	/* dev->gd = alloc_disk(WALB_MINORS); */
+	/* Allocate a gendisk and set parameters. */
 	wdev->gd = alloc_disk(1);
-	if (! wdev->gd) {
+	if (!wdev->gd) {
 		LOGe("alloc_disk failure.\n");
 		goto out_queue;
 	}
@@ -1173,11 +1192,14 @@ static int walb_prepare_device(struct walb_dev *wdev, unsigned int minor,
 	wdev->gd->private_data = wdev;
 	set_capacity(wdev->gd, wdev->ddev_size);
 	
+	/* Set a name. */
 	snprintf(wdev->gd->disk_name, DISK_NAME_LEN,
 		"%s/%s", WALB_DIR_NAME, name);
 	LOGd("device path: %s, device name: %s\n",
 		wdev->gd->disk_name, name);
-
+	
+	atomic_set(&wdev->n_users, 0);
+	
 	return 0;
 
 #if 0
@@ -1219,10 +1241,11 @@ static int walblog_prepare_device(struct walb_dev *wdev,
 
 	blk_queue_make_request(wdev->log_queue, walblog_make_request);
 
-	blk_queue_logical_block_size(wdev->log_queue, wdev->logical_bs);
+	blk_queue_logical_block_size(wdev->log_queue, 512);
 	blk_queue_physical_block_size(wdev->log_queue, wdev->physical_bs);
 	wdev->log_queue->queuedata = wdev;
 
+	/* Allocate a gendisk and set parameters. */
 	wdev->log_gd = alloc_disk(1);
 	if (! wdev->log_gd) {
 		goto error1;
@@ -1233,14 +1256,16 @@ static int walblog_prepare_device(struct walb_dev *wdev,
 	wdev->log_gd->fops = &walblog_ops;
 	wdev->log_gd->private_data = wdev;
 	set_capacity(wdev->log_gd, wdev->ldev_size);
+
+	/* Set a name. */
 	snprintf(wdev->log_gd->disk_name, DISK_NAME_LEN,
 		"%s/L%s", WALB_DIR_NAME, name);
-	
+	atomic_set(&wdev->log_n_users , 0);
 	return 0;
 
 error1:
 	if (wdev->log_queue) {
-		kobject_put(&wdev->log_queue->kobj);
+		blk_cleanup_queue(wdev->log_queue);
 	}
 error0:
 	return -1;
@@ -1255,7 +1280,7 @@ static void walblog_finalize_device(struct walb_dev *wdev)
 		put_disk(wdev->log_gd);
 	}
 	if (wdev->log_queue) {
-		kobject_put(&wdev->log_queue->kobj);
+		blk_cleanup_queue(wdev->log_queue);
 	}
 }
 
@@ -1552,7 +1577,6 @@ struct walb_dev* prepare_wdev(unsigned int minor,
 		goto out;
 	}
 	cpd = &wdev->cpd;
-	spin_lock_init(&wdev->lock);
 	spin_lock_init(&wdev->latest_lsid_lock);
 	spin_lock_init(&wdev->lsuper0_lock);
 	/* spin_lock_init(&wdev->logpack_list_lock); */
@@ -1570,6 +1594,7 @@ struct walb_dev* prepare_wdev(unsigned int minor,
 	wdev->ldev_size = get_capacity(wdev->ldev->bd_disk);
 	ldev_lbs = bdev_logical_block_size(wdev->ldev);
 	ldev_pbs = bdev_physical_block_size(wdev->ldev);
+	ASSERT(ldev_lbs == LOGICAL_BLOCK_SIZE);
 	LOGi("log disk (%u:%u)\n"
 		"log disk size %llu\n"
 		"log logical sector size %u\n"
@@ -1589,6 +1614,7 @@ struct walb_dev* prepare_wdev(unsigned int minor,
 	wdev->ddev_size = get_capacity(wdev->ddev->bd_disk);
 	ddev_lbs = bdev_logical_block_size(wdev->ddev);
 	ddev_pbs = bdev_physical_block_size(wdev->ddev);
+	ASSERT(ddev_lbs == LOGICAL_BLOCK_SIZE);
 	LOGi("data disk (%d:%d)\n"
 		"data disk size %llu\n"
 		"data logical sector size %u\n"
@@ -1598,13 +1624,11 @@ struct walb_dev* prepare_wdev(unsigned int minor,
 		ddev_lbs, ddev_pbs);
 
 	/* Check compatibility of log device and data device. */
-	if (ldev_lbs != ddev_lbs || ldev_pbs != ddev_pbs) {
+	if (ldev_pbs != ddev_pbs) {
 		LOGe("Sector size of data and log must be same.\n");
 		goto out_ddev;
 	}
-	wdev->logical_bs = ldev_lbs;
 	wdev->physical_bs = ldev_pbs;
-	wdev->size = wdev->ddev_size * (u64)wdev->logical_bs;
 
 	/* Load log device metadata. */
 	if (walb_ldev_initialize(wdev) != 0) {
