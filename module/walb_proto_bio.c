@@ -3249,7 +3249,7 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 
 	ASSERT(q);
 	ASSERT(bio);
-	wdev = wdev_get_from_queue(q);
+	wdev = get_wdev_from_queue(q);
 	ASSERT(wdev);
 	pdata = get_pdata_from_wdev(wdev);
 	ASSERT(pdata);

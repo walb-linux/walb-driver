@@ -91,8 +91,18 @@ bool wdev_stop(unsigned int minor);
 /* Get a device. */
 struct wrapper_blk_dev* wdev_get(unsigned minor);
 
-/* Get a device from a queue. */
-struct wrapper_blk_dev* wdev_get_from_queue(struct request_queue *q);
+/**
+ * Get wdev from a request_queue.
+ */
+static inline struct wrapper_blk_dev* get_wdev_from_queue(
+	struct request_queue *q)
+{
+	struct wrapper_blk_dev* wdev;
+
+	ASSERT(q);
+	wdev = (struct wrapper_blk_dev *)q->queuedata;
+	return wdev;
+}
 
 /* Pack work helper functions. */
 struct pack_work* create_pack_work(

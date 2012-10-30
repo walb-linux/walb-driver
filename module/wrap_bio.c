@@ -105,7 +105,7 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 	struct block_device *bdev;
 	ASSERT(q);
 	ASSERT(bio);
-	wdev = wdev_get_from_queue(q);
+	wdev = get_wdev_from_queue(q);
 	ASSERT(wdev);
 	bdev = wdev->private_data;
 	ASSERT(bdev);

@@ -85,7 +85,14 @@ bool sdev_stop(unsigned int minor);
 struct simple_blk_dev* sdev_get(unsigned minor);
 
 /* Get a device from a queue. */
-struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q);
+static inline struct simple_blk_dev* get_sdev_from_queue(struct request_queue *q)
+{
+	struct simple_blk_dev* sdev;
+
+	ASSERT(q);
+	sdev = (struct simple_blk_dev *)q->queuedata;
+	return sdev;
+}
 
 /* Create a workqueue with a type. */
 struct workqueue_struct* create_wq_io(

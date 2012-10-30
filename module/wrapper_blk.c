@@ -208,20 +208,6 @@ struct wrapper_blk_dev* wdev_get(unsigned int minor)
 EXPORT_SYMBOL_GPL(wdev_get);
 
 /**
- * Get wdev from a request_queue.
- */
-struct wrapper_blk_dev* wdev_get_from_queue(struct request_queue *q)
-{
-	struct wrapper_blk_dev* wdev;
-
-	ASSERT(q);
-	wdev = (struct wrapper_blk_dev *)q->queuedata;
-	ASSERT_WRAPPER_BLK_DEV(wdev);
-	return wdev;
-}
-EXPORT_SYMBOL_GPL(wdev_get_from_queue);
-
-/**
  * Create a pack_work.
  *
  * RETURN:
