@@ -182,7 +182,7 @@ struct pdata
 					      logpack_gc_queue_lock
 					      must be held. */
 
-	struct worker_data gc_worker_data_; /* for gc worker. */
+	struct worker_data gc_worker_data; /* for gc worker. */
 
 	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
 					This will be used for logpack size
@@ -677,13 +677,13 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	atomic_set(&pdata->n_pending_bio, 0);
 
 	/* Prepare GC worker. */
-	ret = snprintf(pdata->gc_worker_data_.name, WORKER_NAME_MAX_LEN,
+	ret = snprintf(pdata->gc_worker_data.name, WORKER_NAME_MAX_LEN,
 		"%s/%u", WORKER_NAME_GC, wdev->minor);
 	if (ret >= WORKER_NAME_MAX_LEN) {
 		LOGe("Thread name size too long.\n");
 		goto error4;
 	}
-	initialize_worker(&pdata->gc_worker_data_,
+	initialize_worker(&pdata->gc_worker_data,
 			run_gc_logpack_list, (void *)wdev);
 	
 	return true;
@@ -722,7 +722,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 	ASSERT(pdata);
 
 	/* Finalize worker. */
-	finalize_worker(&pdata->gc_worker_data_);
+	finalize_worker(&pdata->gc_worker_data);
 
 	/* sync super block.
 	   The locks are not required because
@@ -1936,7 +1936,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		spin_unlock(&pdata->logpack_gc_queue_lock);
 
 		/* Wakeup the gc task. */
-		wakeup_worker(&pdata->gc_worker_data_);
+		wakeup_worker(&pdata->gc_worker_data);
 	}
 }
 
