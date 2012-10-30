@@ -39,6 +39,20 @@ extern struct workqueue_struct *wq_misc_;
 #define WALB_MINORS_SHIFT  4
 #define DEVNUM(kdevnum) ((MINOR(kdev_t_to_nr(kdevnum)) >> MINOR_SHIFT)
 
+#if 0
+/**
+ * WalB IOcore interface.
+ */
+struct walb_iocore_operations
+{
+	bool (*initialize)(struct walb_dev *wdev);
+	void (*finalize)(struct walb_dev *wdev);
+	void (*make_request)(struct walb_dev *wdev, struct bio *bio);
+	void (*stop)(struct walb_dev *wdev);
+	void (*start)(struct walb_dev *wdev);
+};
+#endif
+
 /**
  * The internal representation of walb and walblog device.
  */
@@ -125,7 +139,7 @@ struct walb_dev
 	struct snapshot_data *snapd;
 
 	/*
-	 * IO driver can use this.
+	 * For IOcore.
 	 */
 	void *private_data;
 };

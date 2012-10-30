@@ -212,10 +212,10 @@ static int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
 	struct walb_logpack_header *logpack;
 	u64 off;
 
-	ASSERT(wdev != NULL);
+	ASSERT(wdev);
 
 	sect = sector_alloc(wdev->physical_bs, GFP_NOIO);
-	if (sect == NULL) {
+	if (!sect) {
 		LOGe("walb_check_lsid_valid: alloc sector failed.\n");
 		goto error0;
 	}
@@ -293,7 +293,7 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 
 	/* Get ctl data. */
 	ctl = walb_get_ctl(userctl, GFP_KERNEL);
-	if (ctl == NULL) {
+	if (!ctl) {
 		LOGe("walb_get_ctl failed.\n");
 		goto error0;
 	}
@@ -1056,7 +1056,7 @@ static u64 get_completed_lsid(struct walb_dev *wdev)
  */
 static u64 get_log_capacity(struct walb_dev *wdev)
 {
-	ASSERT(wdev != NULL);
+	ASSERT(wdev);
 	ASSERT_SECTOR_DATA(wdev->lsuper0);
 	return get_super_sector(wdev->lsuper0)->ring_buffer_size;
 }
@@ -1072,13 +1072,13 @@ static int walb_set_name(struct walb_dev *wdev,
 	int name_len;
 	char *dev_name;
 
-	ASSERT(wdev != NULL);
-	ASSERT(wdev->lsuper0 != NULL);
+	ASSERT(wdev);
+	ASSERT(wdev->lsuper0);
 	
 	name_len = strnlen(name, DISK_NAME_LEN);
 	dev_name = get_super_sector(wdev->lsuper0)->name;
 	
-	if (name == NULL || name_len == 0) {
+	if (!name || name_len == 0) {
 		if (strnlen(dev_name, DISK_NAME_LEN) == 0) {
 			snprintf(dev_name, DISK_NAME_LEN, "%u", minor / 2);
 		}
@@ -1169,7 +1169,7 @@ static int walb_prepare_device(struct walb_dev *wdev, unsigned int minor,
 {
 	/* Using bio interface */
 	wdev->queue = blk_alloc_queue(GFP_KERNEL);
-	if (wdev->queue == NULL)
+	if (!wdev->queue)
 		goto out;
 	blk_queue_make_request(wdev->queue, walb_make_request);
 
@@ -1236,7 +1236,7 @@ static int walblog_prepare_device(struct walb_dev *wdev,
 				unsigned int minor, const char* name)
 {
 	wdev->log_queue = blk_alloc_queue(GFP_KERNEL);
-	if (wdev->log_queue == NULL)
+	if (!wdev->log_queue)
 		goto error0;
 
 	blk_queue_make_request(wdev->log_queue, walblog_make_request);
@@ -1353,7 +1353,7 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 		snapshot_begin_pb, snapshot_end_pb);
 	wdev->snapd = snapshot_data_create
 		(wdev->ldev, snapshot_begin_pb, snapshot_end_pb);
-	if (wdev->snapd == NULL) {
+	if (!wdev->snapd) {
 		LOGe("snapshot_data_create() failed.\n");
 		goto error2;
 	}
@@ -1405,9 +1405,9 @@ error0:
  */
 static void walb_ldev_finalize(struct walb_dev *wdev)
 {
-	ASSERT(wdev != NULL);
-	ASSERT(wdev->lsuper0 != NULL);
-	ASSERT(wdev->snapd != NULL);
+	ASSERT(wdev);
+	ASSERT(wdev->lsuper0);
+	ASSERT(wdev->snapd);
 
 	snapshot_data_finalize(wdev->snapd);
 	snapshot_data_destroy(wdev->snapd);
@@ -1421,8 +1421,8 @@ static void walb_ldev_finalize(struct walb_dev *wdev)
  */
 static void walb_register_device(struct walb_dev *wdev)
 {
-	ASSERT(wdev != NULL);
-	ASSERT(wdev->gd != NULL);
+	ASSERT(wdev);
+	ASSERT(wdev->gd);
 	
 	add_disk(wdev->gd);
 }
@@ -1444,8 +1444,8 @@ static void walb_unregister_device(struct walb_dev *wdev)
  */
 static void walblog_register_device(struct walb_dev *wdev)
 {
-	ASSERT(wdev != NULL);
-	ASSERT(wdev->log_gd != NULL);
+	ASSERT(wdev);
+	ASSERT(wdev->log_gd);
 	
 	add_disk(wdev->log_gd);
 }
@@ -1521,8 +1521,7 @@ static void walb_exit(void)
 
 	alldevs_write_lock();
 	wdev = alldevs_pop();
-	while (wdev != NULL) {
-
+	while (wdev) {
 		unregister_wdev(wdev);
 		destroy_wdev(wdev);
 		wdev = alldevs_pop();
@@ -1554,8 +1553,9 @@ static void walb_exit(void)
  *
  * @return allocated and prepared walb_dev data, or NULL.
  */
-struct walb_dev* prepare_wdev(unsigned int minor,
-			dev_t ldevt, dev_t ddevt, const char* name)
+struct walb_dev* prepare_wdev(
+	unsigned int minor,
+	dev_t ldevt, dev_t ddevt, const char* name)
 {
 	struct walb_dev *wdev;
 	u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
@@ -1572,7 +1572,7 @@ struct walb_dev* prepare_wdev(unsigned int minor,
 	 * Initialize walb_dev.
 	 */
 	wdev = kzalloc(sizeof(struct walb_dev), GFP_KERNEL);
-	if (wdev == NULL) {
+	if (!wdev) {
 		LOGe("kmalloc failed.\n");
 		goto out;
 	}
@@ -1646,6 +1646,11 @@ struct walb_dev* prepare_wdev(unsigned int minor,
 	ASSERT_SECTOR_DATA(wdev->lsuper0);
 	dev_name = get_super_sector(wdev->lsuper0)->name;
 
+	/* Setup iocore data. */
+	if (!iocore_initialize(wdev)) {
+		LOGe("iocore initialization failed.\n");
+		goto out_ldev_init;
+	}
 	
 	/*
 	 * Redo
@@ -1685,6 +1690,8 @@ struct walb_dev* prepare_wdev(unsigned int minor,
 /*	   walblog_finalize_device(wdev); */
 out_walbdev:
 	walb_finalize_device(wdev);
+out_iocore_init:
+	iocore_finalize(wdev);
 out_ldev_init:
 	walb_ldev_finalize(wdev);
 out_ddev:
@@ -1715,19 +1722,20 @@ void destroy_wdev(struct walb_dev *wdev)
 		MAJOR(wdev->ddev->bd_dev),
 		MINOR(wdev->ddev->bd_dev));
 
+	iocore_flush(wdev);
+	
 	walblog_finalize_device(wdev);
 	walb_finalize_device(wdev);
 	
 	snapshot_data_finalize(wdev->snapd);
 	walb_ldev_finalize(wdev);
+	iocore_finalize(wdev);
 	
 	if (wdev->ddev)
 		walb_unlock_bdev(wdev->ddev);
 	if (wdev->ldev)
 		walb_unlock_bdev(wdev->ldev);
 
-
-	
 	kfree(wdev);
 	LOGd("destroy_wdev done.\n");
 }
@@ -1738,9 +1746,9 @@ void destroy_wdev(struct walb_dev *wdev)
  */
 void register_wdev(struct walb_dev *wdev)
 {
-	ASSERT(wdev != NULL);
-	ASSERT(wdev->gd != NULL);
-	ASSERT(wdev->log_gd != NULL);
+	ASSERT(wdev);
+	ASSERT(wdev->gd);
+	ASSERT(wdev->log_gd);
 
 	start_checkpointing(&wdev->cpd);
 
@@ -1754,7 +1762,7 @@ void register_wdev(struct walb_dev *wdev)
  */
 void unregister_wdev(struct walb_dev *wdev)
 {
-	ASSERT(wdev != NULL);
+	ASSERT(wdev);
 
 	stop_checkpointing(&wdev->cpd);
 	
