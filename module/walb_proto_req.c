@@ -25,6 +25,7 @@
 #include "bio_entry.h"
 #include "req_entry.h"
 #include "worker.h"
+#include "pack_work.h"
 
 /*******************************************************************************
  * Module variables definition.
@@ -1718,7 +1719,7 @@ static void logpack_list_submit(
 static void logpack_list_submit_task(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct wrapper_blk_dev *wdev = pwork->data;
 	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	struct list_head wpack_list;
@@ -2048,7 +2049,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 static void logpack_list_wait_task(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct wrapper_blk_dev *wdev = pwork->data;
 	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	bool is_empty, is_working;
