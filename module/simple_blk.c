@@ -203,20 +203,6 @@ struct simple_blk_dev* sdev_get(unsigned int minor)
 EXPORT_SYMBOL_GPL(sdev_get);
 
 /**
- * Get sdev from a request_queue.
- */
-struct simple_blk_dev* sdev_get_from_queue(struct request_queue *q)
-{
-	struct simple_blk_dev* sdev;
-
-	ASSERT(q);
-	sdev = (struct simple_blk_dev *)q->queuedata;
-	ASSERT_SIMPLE_BLK_DEV(sdev);
-	return sdev;
-}
-EXPORT_SYMBOL_GPL(sdev_get_from_queue);
-
-/**
  * Create a workqueue with a type.
  */
 struct workqueue_struct* create_wq_io(const char *name, enum workqueue_type type)

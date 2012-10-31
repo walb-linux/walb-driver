@@ -59,18 +59,6 @@ struct wrapper_blk_dev
 	void *private_data; /* You can use this for any purpose. */
 };
 
-/**
- * Pack work.
- */
-struct pack_work
-{
-	struct work_struct work;
-#if 0
-	struct delayed_work dwork;
-#endif
-	struct wrapper_blk_dev *wdev;
-};
-
 /*******************************************************************************
  * Exported functions prototype.
  *******************************************************************************/
@@ -91,26 +79,17 @@ bool wdev_stop(unsigned int minor);
 /* Get a device. */
 struct wrapper_blk_dev* wdev_get(unsigned minor);
 
-/* Get a device from a queue. */
-struct wrapper_blk_dev* wdev_get_from_queue(struct request_queue *q);
+/**
+ * Get wdev from a request_queue.
+ */
+static inline struct wrapper_blk_dev* get_wdev_from_queue(
+	struct request_queue *q)
+{
+	struct wrapper_blk_dev* wdev;
 
-/* Pack work helper functions. */
-struct pack_work* create_pack_work(
-	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
-void destroy_pack_work(struct pack_work *work);
-
-/* Helper function for an original queuing feature. */
-struct pack_work* enqueue_task_if_necessary(
-	struct wrapper_blk_dev *wdev,
-	int nr, unsigned long *flags,
-	struct workqueue_struct *wq,
-	void (*task)(struct work_struct *));
-#if 0
-struct pack_work* enqueue_delayed_task_if_necessary(
-	struct wrapper_blk_dev *wdev,
-	int nr, unsigned long *flags,
-	struct workqueue_struct *wq, void (*task)(struct work_struct *),
-	unsigned int delay);
-#endif
+	ASSERT(q);
+	wdev = (struct wrapper_blk_dev *)q->queuedata;
+	return wdev;
+}
 
 #endif /* WALB_WRAPPER_BLK_H_KERNEL */

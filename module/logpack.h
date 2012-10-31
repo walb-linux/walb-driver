@@ -12,7 +12,7 @@
 #include <linux/workqueue.h>
 #include <linux/list.h>
 #include "walb/block_size.h"
-#include "kern.h"
+#include "walb/log_device.h"
 
 /*******************************************************************************
  * Data definitions.

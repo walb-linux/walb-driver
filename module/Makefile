@@ -59,17 +59,17 @@ MEMBLK_DATA_OBJS = memblk_data.o treemap.o
 mem-bio-mod-objs := $(BASE_BIO_OBJS) $(MEMBLK_DATA_OBJS) mem_bio.o
 mem-req-mod-objs := $(BASE_REQ_OBJS) $(MEMBLK_DATA_OBJS) mem_req.o
 
-wrapper-blk-mod-objs := wrapper_blk.o
+wrapper-blk-mod-objs := wrapper_blk.o pack_work.o
 
 WRAP_REQ_OBJS = wrap_req.o
 wrap-req-mod-objs := $(WRAP_REQ_OBJS)
 WRAP_BIO_OBJS = wrap_bio.o bio_entry.o
 wrap-bio-mod-objs := $(WRAP_BIO_OBJS)
 WALB_PROTO_REQ_OBJS = walb_proto_req.o \
-sector_io.o bio_entry.o req_entry.o logpack.o treemap.o worker.o
+sector_io.o bio_entry.o req_entry.o logpack.o treemap.o worker.o pack_work.o
 walb-proto-req-mod-objs := $(WALB_PROTO_REQ_OBJS)
 WALB_PROTO_BIO_OBJS = walb_proto_bio.o \
-sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o worker.o
+sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o worker.o pack_work.o
 walb-proto-bio-mod-objs := $(WALB_PROTO_BIO_OBJS)
 
 obj-m := \

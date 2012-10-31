@@ -92,7 +92,7 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
  */
 static struct memblk_data* get_mdata_from_queue(struct request_queue *q)
 {
-	return (struct memblk_data *)sdev_get_from_queue(q)->private_data;
+	return (struct memblk_data *)get_sdev_from_queue(q)->private_data;
 }
 
 /*******************************************************************************

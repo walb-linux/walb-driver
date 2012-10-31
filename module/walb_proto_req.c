@@ -25,6 +25,7 @@
 #include "bio_entry.h"
 #include "req_entry.h"
 #include "worker.h"
+#include "pack_work.h"
 
 /*******************************************************************************
  * Module variables definition.
@@ -482,11 +483,6 @@ static void stop_periodic_print_for_debug(void)
 /*******************************************************************************
  * Utility functions.
  *******************************************************************************/
-
-static inline struct pdata* pdata_get_from_wdev(struct wrapper_blk_dev *wdev)
-{
-	return (struct pdata *)wdev->private_data;
-}
 
 /**
  * Check two requests are overlapping.
@@ -1675,7 +1671,7 @@ static void logpack_list_submit(
 	bool ret;
 	ASSERT(wpack_list);
 	ASSERT(wdev);
-	pdata = pdata_get_from_wdev(wdev);
+	pdata = get_pdata_from_wdev(wdev);
 
 	blk_start_plug(&plug);
 	list_for_each_entry(wpack, wpack_list, list) {
@@ -1723,8 +1719,8 @@ static void logpack_list_submit(
 static void logpack_list_submit_task(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->wdev;
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct wrapper_blk_dev *wdev = pwork->data;
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	struct list_head wpack_list;
 	bool is_empty, is_working;
@@ -1856,7 +1852,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 	ASSERT(wdev);
 
 	/* Check read only mode. */
-	pdata = pdata_get_from_wdev(wdev);
+	pdata = get_pdata_from_wdev(wdev);
 	if (is_read_only_mode(pdata)) { is_failed = true; }
 	
 	/* Wait for logpack header bio or zero_flush pack bio. */
@@ -1974,7 +1970,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 	ASSERT(wdev);
 
 	/* Check read only mode. */
-	pdata = pdata_get_from_wdev(wdev);
+	pdata = get_pdata_from_wdev(wdev);
 	if (is_read_only_mode(pdata)) { is_failed = true; }
 	
 	/* Wait for logpack header bio or zero_flush pack bio. */
@@ -2053,8 +2049,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 static void logpack_list_wait_task(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->wdev;
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct wrapper_blk_dev *wdev = pwork->data;
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	bool is_empty, is_working;
 	struct list_head wpack_list;
@@ -2175,7 +2171,7 @@ static void write_req_task_fast(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
 	struct wrapper_blk_dev *wdev = reqe->wdev;
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct blk_plug plug;
 	const bool is_end_request = false;
 	const bool is_delete = false;
@@ -2254,7 +2250,7 @@ static void write_req_task_easy(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
 	struct wrapper_blk_dev *wdev = reqe->wdev;
-	UNUSED struct pdata *pdata = pdata_get_from_wdev(wdev);
+	UNUSED struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
@@ -2336,7 +2332,7 @@ static void read_req_task_fast(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
 	struct wrapper_blk_dev *wdev = reqe->wdev;
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
@@ -2388,7 +2384,7 @@ static void read_req_task_easy(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
 	struct wrapper_blk_dev *wdev = reqe->wdev;
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
@@ -3331,8 +3327,8 @@ static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entr
  */
 static void wrapper_blk_req_request_fn(struct request_queue *q)
 {
-	struct wrapper_blk_dev *wdev = wdev_get_from_queue(q);
-	struct pdata *pdata = pdata_get_from_wdev(wdev);
+	struct wrapper_blk_dev *wdev = get_wdev_from_queue(q);
+	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct request *req;
 	struct req_entry *reqe;
 	struct pack *wpack = NULL, *wpack_next;

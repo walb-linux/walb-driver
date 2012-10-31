@@ -141,7 +141,7 @@ static struct memblk_data* get_mdata_from_sdev(struct simple_blk_dev *sdev)
  */
 static struct memblk_data* get_mdata_from_queue(struct request_queue *q)
 {
-	return get_mdata_from_sdev(sdev_get_from_queue(q));
+	return get_mdata_from_sdev(get_sdev_from_queue(q));
 }
 
 /**
@@ -328,7 +328,7 @@ static void mdata_exec_req(struct memblk_data *mdata, struct request *req)
  */ 
 void simple_blk_req_request_fn(struct request_queue *q)
 {
-	struct simple_blk_dev *sdev = sdev_get_from_queue(q);
+	struct simple_blk_dev *sdev = get_sdev_from_queue(q);
 	struct request *req;
 	struct req_list_work *rlwork;
 	struct req_entry *reqe;

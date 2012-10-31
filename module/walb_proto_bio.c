@@ -27,6 +27,7 @@
 #include "bio_entry.h"
 #include "bio_wrapper.h"
 #include "worker.h"
+#include "pack_work.h"
 
 /*******************************************************************************
  * Module variables definition.
@@ -182,7 +183,7 @@ struct pdata
 					      logpack_gc_queue_lock
 					      must be held. */
 
-	struct worker_data gc_worker_data_; /* for gc worker. */
+	struct worker_data gc_worker_data; /* for gc worker. */
 
 	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
 					This will be used for logpack size
@@ -404,6 +405,7 @@ static struct bio_entry* logpack_create_bio_entry(
 static void logpack_submit_flush(
 	struct block_device *bdev, struct list_head *bioe_list);
 static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list);
+static void dequeue_and_gc_logpack_list(struct pdata *pdata);
 
 /* Pending data functions. */
 #ifdef WALB_FAST_ALGORITHM
@@ -677,13 +679,13 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	atomic_set(&pdata->n_pending_bio, 0);
 
 	/* Prepare GC worker. */
-	ret = snprintf(pdata->gc_worker_data_.name, WORKER_NAME_MAX_LEN,
+	ret = snprintf(pdata->gc_worker_data.name, WORKER_NAME_MAX_LEN,
 		"%s/%u", WORKER_NAME_GC, wdev->minor);
 	if (ret >= WORKER_NAME_MAX_LEN) {
 		LOGe("Thread name size too long.\n");
 		goto error4;
 	}
-	initialize_worker(&pdata->gc_worker_data_,
+	initialize_worker(&pdata->gc_worker_data,
 			run_gc_logpack_list, (void *)wdev);
 	
 	return true;
@@ -722,7 +724,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 	ASSERT(pdata);
 
 	/* Finalize worker. */
-	finalize_worker(&pdata->gc_worker_data_);
+	finalize_worker(&pdata->gc_worker_data);
 
 	/* sync super block.
 	   The locks are not required because
@@ -1819,7 +1821,7 @@ static void wait_for_logpack_and_submit_datapack(
 static void task_submit_logpack_list(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct wrapper_blk_dev *wdev = pwork->data;
 	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	struct list_head wpack_list;
@@ -1889,7 +1891,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 static void task_wait_for_logpack_list(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct wrapper_blk_dev *wdev = pwork->data;
 	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	bool is_empty, is_working;
@@ -1936,7 +1938,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		spin_unlock(&pdata->logpack_gc_queue_lock);
 
 		/* Wakeup the gc task. */
-		wakeup_worker(&pdata->gc_worker_data_);
+		wakeup_worker(&pdata->gc_worker_data);
 	}
 }
 
@@ -2209,7 +2211,7 @@ static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
 static void task_submit_bio_wrapper_list(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->wdev;
+	struct wrapper_blk_dev *wdev = pwork->data;
 	struct pdata *pdata = get_pdata_from_wdev(wdev);
 	bool is_empty, ret;
 	struct list_head biow_list;
@@ -2285,13 +2287,13 @@ static void task_restart_queue(struct work_struct *work)
 {
 	struct delayed_work *dwork = container_of(work, struct delayed_work, work);
 	struct pack_work *pwork = container_of(dwork, struct pack_work, dwork);
-	struct pdata *pdata = get_pdata_from_wdev(pwork->wdev);
+	struct pdata *pdata = get_pdata_from_wdev(pwork->data);
 	int ret;
 	
 	LOGn("restart queue.\n");
 	ret = test_and_clear_bit(PDATA_STATE_QUEUE_STOPPED, &pdata->flags);
 	ASSERT(ret);
-	enqueue_submit_task_if_necessary(pwork->wdev);
+	enqueue_submit_task_if_necessary(pwork->data);
 	destroy_pack_work(pwork);
 }
 #endif
@@ -3249,7 +3251,7 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 
 	ASSERT(q);
 	ASSERT(bio);
-	wdev = wdev_get_from_queue(q);
+	wdev = get_wdev_from_queue(q);
 	ASSERT(wdev);
 	pdata = get_pdata_from_wdev(wdev);
 	ASSERT(pdata);

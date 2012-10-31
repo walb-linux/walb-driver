@@ -44,15 +44,9 @@ extern struct workqueue_struct *wq_misc_;
  */
 struct walb_dev
 {
-	u64 size;			/* Device size in bytes */
-	u8 *data;			/* The data array */
-	int users;			/* How many users */
-	spinlock_t lock;		/* For queue access. */
-	struct request_queue *queue;	/* The device request queue */
-	struct gendisk *gd;		/* The gendisk structure */
-
-	atomic_t is_read_only;		/* Write always fails if true */
-
+	dev_t devt; /* Wrapper device id. */
+	
+	atomic_t is_read_only; /* Write always fails if true */
 	struct list_head list; /* member of all_wdevs_ */
 	
 	/* Max number of snapshots.
@@ -63,53 +57,65 @@ struct walb_dev
 	u64 ldev_size;
 	u64 ddev_size;
 	
-	/* You can get sector size with
-	   bdev_logical_block_size(bdev) and
+	/* You can get physical sector size [byte] with
 	   bdev_physical_block_size(bdev).
 
 	   Those of underlying log device and data device
-	   must be same.
+	   must be the same.
+	   
+	   This may be 512 or 4096.
 	*/
-	u16 logical_bs;
 	u16 physical_bs;
 
-	/* Wrapper device id. */
-	dev_t devt;
-	
 	/* Underlying block devices */
 	struct block_device *ldev;
 	struct block_device *ddev;
 
-	/* Latest lsid and its lock. */
-	spinlock_t latest_lsid_lock;
-	u64 latest_lsid;
-
-	/* Spinlock for lsuper0 access.
-	   Irq handler must not lock this.
-	   Use spin_lock().
-	*/
-	spinlock_t lsuper0_lock;
 	/* Super sector of log device. */
+	spinlock_t lsuper0_lock;
 	struct sector_data *lsuper0;
 
-	/* Oldest lsid to manage log area overflow. */
+	/*
+	 * lsid indicators.
+	 * Each variable must be accessed with its own lock held.
+	 *
+	 * latest_lsid:
+	 *   This is used to generate new logpack.
+	 * oldest_lsid:
+	 *   All logpacks with lsid < oldest_lsid
+	 *   on the log device can be overwritten.
+	 * completed_lsid:
+	 *   All logpacks with lsid < completed_lsid
+	 *   has been written to the log device.
+	 *
+	 * oldest_lsid <= written_lsid <= completed_lsid <= latest_lsid.
+	 */
+	spinlock_t latest_lsid_lock;
+	u64 latest_lsid;
 	spinlock_t oldest_lsid_lock;
 	u64 oldest_lsid;
-
 #ifdef WALB_FAST_ALGORITHM
 	spinlock_t completed_lsid_lock;
 	u64 completed_lsid;
 #endif
 	
 	/*
+	 * For wrapper device.
+	 */
+	struct request_queue *queue;
+	struct gendisk *gd;
+	atomic_t n_users; /* number of users */
+
+	/*
 	 * For wrapper log device.
 	 */
-	/* spinlock_t log_queue_lock; */
 	struct request_queue *log_queue;
 	struct gendisk *log_gd;
+	atomic_t log_n_users;
 
 	/*
 	 * For checkpointing.
+	 * written_lsid is contained.
 	 */
 	struct checkpoint_data cpd;
 	

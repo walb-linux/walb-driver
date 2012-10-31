@@ -635,7 +635,7 @@ static void enqueue_work_list(struct list_head *listh, struct request_queue *q)
  */
 static void wrapper_blk_req_request_fn(struct request_queue *q)
 {
-	struct wrapper_blk_dev *wdev = wdev_get_from_queue(q);
+	struct wrapper_blk_dev *wdev = get_wdev_from_queue(q);
 	struct request *req;
 	struct req_entry *reqe;
 	struct req_list_work *work;
