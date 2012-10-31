@@ -1167,16 +1167,37 @@ static void finalize_workqueues(void)
 static int walb_prepare_device(struct walb_dev *wdev, unsigned int minor,
 			const char *name)
 {
+	struct request_queue *lq, *dq;
+	
 	/* Using bio interface */
 	wdev->queue = blk_alloc_queue(GFP_KERNEL);
 	if (!wdev->queue)
 		goto out;
 	blk_queue_make_request(wdev->queue, walb_make_request);
-
-	/* logical/physical block size. */
-	blk_queue_logical_block_size(wdev->queue, 512);
-	blk_queue_physical_block_size(wdev->queue, wdev->physical_bs);
 	wdev->queue->queuedata = wdev;
+
+	/* Queue limits. */
+	blk_set_default_limits(&wdev->queue->limits);
+	blk_queue_logical_block_size(wdev->queue, LOGICAL_BLOCK_SIZE);
+	blk_queue_physical_block_size(wdev->queue, wdev->physical_bs);
+	lq = bdev_get_queue(wdev->ldev);
+	dq = bdev_get_queue(wdev->ddev);
+	blk_queue_stack_limits(wdev->queue, lq);
+	blk_queue_stack_limits(wdev->queue, dq);
+	
+	/* Chunk size. */
+	if (queue_io_min(lq) > wdev->physical_bs) {
+		wdev->ldev_chunk_sectors = queue_io_min(lq) / LOGICAL_BLOCK_SIZE;
+	} else {
+		wdev->ldev_chunk_sectors = 0;
+	}
+	if (queue_io_min(dq) > wdev->physical_bs) {
+		wdev->ddev_chunk_sectors = queue_io_min(dq) / LOGICAL_BLOCK_SIZE;
+	} else {
+		wdev->ddev_chunk_sectors = 0;
+	}
+	LOGn("chunk_sectors ldev %u ddev %u.\n",
+		wdev->ldev_chunk_sectors, wdev->ddev_chunk_sectors);
 
 	/* Allocate a gendisk and set parameters. */
 	wdev->gd = alloc_disk(1);
@@ -1235,15 +1256,21 @@ static void walb_finalize_device(struct walb_dev *wdev)
 static int walblog_prepare_device(struct walb_dev *wdev,
 				unsigned int minor, const char* name)
 {
+	struct request_queue *lq;
+	
 	wdev->log_queue = blk_alloc_queue(GFP_KERNEL);
 	if (!wdev->log_queue)
 		goto error0;
 
 	blk_queue_make_request(wdev->log_queue, walblog_make_request);
-
-	blk_queue_logical_block_size(wdev->log_queue, 512);
-	blk_queue_physical_block_size(wdev->log_queue, wdev->physical_bs);
 	wdev->log_queue->queuedata = wdev;
+
+	/* Queue limits. */
+	lq = bdev_get_queue(wdev->ldev);
+	blk_set_default_limits(&wdev->log_queue->limits);
+	blk_queue_logical_block_size(wdev->log_queue, LOGICAL_BLOCK_SIZE);
+	blk_queue_physical_block_size(wdev->log_queue, wdev->physical_bs);
+	blk_queue_stack_limits(wdev->log_queue, lq);
 
 	/* Allocate a gendisk and set parameters. */
 	wdev->log_gd = alloc_disk(1);
@@ -1561,6 +1588,7 @@ struct walb_dev* prepare_wdev(
 	u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
 	char *dev_name;
 	struct checkpoint_data *cpd;
+	struct walb_super_sector *super;
 
 	/* Minor id check. */
 	if (minor == WALB_DYNAMIC_MINOR) {
@@ -1591,7 +1619,7 @@ struct walb_dev* prepare_wdev(
 			MAJOR(ldevt), MINOR(ldevt));
 		goto out_free;
 	}
-	wdev->ldev_size = get_capacity(wdev->ldev->bd_disk);
+	wdev->ldev_size = wdev->ldev->bd_part->nr_sects;
 	ldev_lbs = bdev_logical_block_size(wdev->ldev);
 	ldev_pbs = bdev_physical_block_size(wdev->ldev);
 	ASSERT(ldev_lbs == LOGICAL_BLOCK_SIZE);
@@ -1611,7 +1639,7 @@ struct walb_dev* prepare_wdev(
 			MAJOR(ddevt), MINOR(ddevt));
 		goto out_ldev;
 	}
-	wdev->ddev_size = get_capacity(wdev->ddev->bd_disk);
+	wdev->ddev_size = wdev->ddev->bd_part->nr_sects;
 	ddev_lbs = bdev_logical_block_size(wdev->ddev);
 	ddev_pbs = bdev_physical_block_size(wdev->ddev);
 	ASSERT(ddev_lbs == LOGICAL_BLOCK_SIZE);
@@ -1635,16 +1663,29 @@ struct walb_dev* prepare_wdev(
 		LOGe("ldev init failed.\n");
 		goto out_ddev;
 	}
-	init_checkpointing(cpd, get_super_sector(wdev->lsuper0)->written_lsid);
-	wdev->oldest_lsid = get_super_sector(wdev->lsuper0)->oldest_lsid;
+	super = get_super_sector(wdev->lsuper0);
+	ASSERT(super);
+	init_checkpointing(cpd, super->written_lsid);
+	wdev->oldest_lsid = super->oldest_lsid;
+	wdev->ring_buffer_size = super->ring_buffer_size;
+	wdev->ring_buffer_off = get_ring_buffer_offset_2(super);
 
+	/* now editing begin */
+	wdev->max_logpack_pb = 256 * 1024 / wdev->physical_bs;
+#ifdef WALB_FAST_ALGORITHM
+	wdev->max_pending_sectors = 64 * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
+	wdev->min_pending_sectors = 32 * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
+	wdev->queue_stop_timeout_ms = 100;
+#endif
+	/* now editing end */
+	
 	/* Set device name. */
 	if (walb_set_name(wdev, minor, name) != 0) {
 		LOGe("Set device name failed.\n");
 		goto out_ldev_init;
 	}
 	ASSERT_SECTOR_DATA(wdev->lsuper0);
-	dev_name = get_super_sector(wdev->lsuper0)->name;
+	dev_name = super->name;
 
 	/* Setup iocore data. */
 	if (!iocore_initialize(wdev)) {
@@ -1674,7 +1715,7 @@ struct walb_dev* prepare_wdev(
 	 */
 	if (walb_prepare_device(wdev, minor, dev_name) != 0) {
 		LOGe("walb_prepare_device() failed.\n");
-		goto out_ldev_init;
+		goto out_iocore_init;
 	}
 	
 	/*

@@ -82,12 +82,27 @@ struct walb_dev
 	u16 physical_bs;
 
 	/* Underlying block devices */
-	struct block_device *ldev;
-	struct block_device *ddev;
+	struct block_device *ldev; /* log device */
+	struct block_device *ddev; /* data device */
+
+	/*
+	 * chunk sectors [logical block].
+	 * if chunk_sectors > 0:
+	 *   (1) bio size must not exceed the size.
+	 *   (2) bio must not cross over multiple chunks.
+	 * else:
+	 *   no limitation.
+	 */
+	unsigned int ldev_chunk_sectors;
+	unsigned int ddev_chunk_sectors;
 
 	/* Super sector of log device. */
 	spinlock_t lsuper0_lock;
 	struct sector_data *lsuper0;
+
+	/* To avoid lock lsuper0 during request processing. */
+	u64 ring_buffer_off; 
+	u64 ring_buffer_size;
 
 	/*
 	 * lsid indicators.
@@ -138,6 +153,27 @@ struct walb_dev
 	 */
 	struct snapshot_data *snapd;
 
+	/* Maximum logpack size [physical block].
+	   This will be used for logpack size
+	   not to be too long
+	   This will avoid decrease of
+	   sequential write performance. */
+	unsigned int max_logpack_pb;
+
+#ifdef WALB_FAST_ALGORITHM
+	/* max_pending_sectors < pending_sectors
+	   we must stop the queue. */
+	unsigned int max_pending_sectors; 
+
+	/* min_pending_sectors > pending_sectors
+	   we can restart the queue. */	
+	unsigned int min_pending_sectors;
+
+	/* queue stopped period must not exceed
+	   queue_stop_time_ms. */
+	unsigned int queue_stop_timeout_ms; 
+#endif
+	
 	/*
 	 * For IOcore.
 	 */
