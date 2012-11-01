@@ -127,8 +127,10 @@ static struct cmdhelp cmdhelps_[] = {
 	  "Delete snapshot." },
 	{ "num_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
 	  "Get number of snapshots." },
-	{ "list_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
+	{ "list_snapshot WDEV",
 	  "Get list of snapshots." },
+	{ "list_snapshot_range WDEV (LRANGE | TRANGE | SRANGE)",
+	  "Get list of snapshots with a range." },
 	{ "check_snapshot LDEV",
 	  "Check snapshot metadata." },
 	{ "clean_snapshot LDEV",
@@ -218,6 +220,7 @@ static bool do_create_snapshot(const struct config *cfg);
 static bool do_delete_snapshot(const struct config *cfg);
 static bool do_num_snapshot(const struct config *cfg);
 static bool do_list_snapshot(const struct config *cfg);
+static bool do_list_snapshot_range(const struct config *cfg);
 static bool do_check_snapshot(const struct config *cfg);
 static bool do_clean_snapshot(const struct config *cfg);
 static bool do_take_checkpoint(const struct config *cfg);
@@ -715,6 +718,7 @@ static bool dispatch(const struct config *cfg)
 		{ "delete_snapshot", do_delete_snapshot },
 		{ "num_snapshot", do_num_snapshot },
 		{ "list_snapshot", do_list_snapshot },
+		{ "list_snapshot_range", do_list_snapshot_range },
 		{ "check_snapshot", do_check_snapshot },
 		{ "clean_snapshot", do_clean_snapshot },
 		{ "take_checkpoint", do_take_checkpoint },
@@ -1256,14 +1260,63 @@ error0:
 }
 
 /**
- * List snapshots.
- *
- * Specify lsid range.
+ * List all snapshots.
  */
 static bool do_list_snapshot(const struct config *cfg)
 {
 	int error = 0;
 	ASSERT(strcmp(cfg->cmd_str, "list_snapshot") == 0);
+	int n_rec, i;
+	u32 snapshot_id = 0;
+
+	u8 buf[PAGE_SIZE];
+	struct walb_snapshot_record *srec =
+		(struct walb_snapshot_record *)buf;
+
+	/* Check config. */
+	if (check_bdev(cfg->wdev_name) < 0) {
+		LOGe("Check target walb device failed.\n");
+		goto error0;
+	}
+
+	n_rec = -1;
+	while (n_rec) {
+		/* Prepare control data. */
+		struct walb_ctl ctl = {
+			.command = WALB_IOCTL_LIST_SNAPSHOT_FROM,
+			.val_u32 = snapshot_id,
+			.u2k = { .buf_size = 0, },
+			.k2u = { .buf_size = PAGE_SIZE,
+				 .buf = &buf[0] },
+		};
+	
+		if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
+			error = ctl.error;
+			goto error0;
+		}
+		n_rec = ctl.val_int;
+		for (i = 0; i < n_rec; i++) {
+			print_snapshot_record(&srec[i]);
+		}
+		snapshot_id = ctl.val_u32;
+		LOGd("Next snapshot_id %"PRIu32".\n", snapshot_id);
+	}
+	return true;
+
+error0:
+	LOGe("List snapshots ioctl failed: %d.\n", error);
+	return false;
+}
+
+/**
+ * List snapshots.
+ *
+ * Specify lsid range.
+ */
+static bool do_list_snapshot_range(const struct config *cfg)
+{
+	int error = 0;
+	ASSERT(strcmp(cfg->cmd_str, "list_snapshot_range") == 0);
 	int n_rec, i;
 
 	u8 buf[PAGE_SIZE];

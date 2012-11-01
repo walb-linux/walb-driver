@@ -114,6 +114,7 @@ static int ioctl_wdev_delete_snapshot_range(struct walb_dev *wdev, struct walb_c
 static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl);
+static int ioctl_wdev_list_snapshot_from(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl);
@@ -341,6 +342,9 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		break;
 	case WALB_IOCTL_LIST_SNAPSHOT_RANGE:
 		ret = ioctl_wdev_list_snapshot_range(wdev, ctl);
+		break;
+	case WALB_IOCTL_LIST_SNAPSHOT_FROM:
+		ret = ioctl_wdev_list_snapshot_from(wdev, ctl);
 		break;
 	case WALB_IOCTL_SEARCH_LSID:
 		ret = ioctl_wdev_search_lsid(wdev, ctl);
@@ -768,6 +772,51 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 	} else {
 		ctl->val_u64 = INVALID_LSID;
 	}
+	return 0;
+
+error0:
+	return -EFAULT;
+}
+
+/**
+ * List snapshots from a snapshot_id.
+ *
+ * @wdev walb dev.
+ * @ctl ioctl data.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_wdev_list_snapshot_from(struct walb_dev *wdev, struct walb_ctl *ctl)
+{
+	struct walb_snapshot_record *srec;
+	size_t size;
+	int n_rec, ret;
+	u32 sid, next_sid;
+	
+	LOGn("WALB_IOCTL_LIST_SNAPSHOT_FROM\n");
+	ASSERT(ctl->command == WALB_IOCTL_LIST_SNAPSHOT_FROM);
+
+	sid = ctl->val_u32;
+	srec = (struct walb_snapshot_record *)ctl->k2u.__buf;
+	size = ctl->k2u.buf_size / sizeof(struct walb_snapshot_record);
+	if (size == 0) {
+		LOGe("Buffer is to small for results.\n");
+		goto error0;
+	}
+	ret = snapshot_list_from(wdev->snapd, srec, size, sid);
+	if (ret < 0) {
+		ctl->error = ret;
+		goto error0;
+	}
+	n_rec = ret;
+	ctl->val_int = n_rec;
+	if (n_rec > 0) {
+		ASSERT(srec[n_rec - 1].snapshot_id != INVALID_SNAPSHOT_ID);
+		next_sid = srec[n_rec - 1].snapshot_id + 1;
+	} else {
+		next_sid = INVALID_SNAPSHOT_ID;
+	}
+	ctl->val_u32 = next_sid;
 	return 0;
 
 error0:

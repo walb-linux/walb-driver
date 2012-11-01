@@ -1922,4 +1922,73 @@ int snapshot_list(struct snapshot_data *snapd,
 	return snapshot_list_range(snapd, buf, buf_size, 0, MAX_LSID + 1);
 }
 
+/**
+ * Get list of snapshot from a snapshot_id.
+ *
+ * You will get limited records without enough buffer.
+ *
+ * @snapd snapshot data.
+ * @buf buffer to store result record array.
+ * @buf buffer size [walb_snapshot_record]
+ * @snapshot_id starting snapshot id.
+ *
+ * RETURN:
+ *   n records stored to @buf. n >= 0 in success, or -1.
+ */
+int snapshot_list_from_nolock(
+	struct snapshot_data *snapd,
+	struct walb_snapshot_record *buf, size_t buf_size,
+	u32 snapshot_id)
+{
+	int idx = 0;
+	struct map_cursor cur;
+	int ret;
+	u32 sid;
+	struct walb_snapshot_record *rec;
+
+	ASSERT(snapd);
+	ASSERT(buf);
+	ASSERT(buf_size > 0);
+	ASSERT(snapshot_id != INVALID_SNAPSHOT_ID);
+
+	map_cursor_init(snapd->id_idx, &cur);
+	ret = map_cursor_search(&cur, snapshot_id, MAP_SEARCH_GE);
+	while (ret && idx < buf_size) {
+		/* Get the record. */
+		sid = (u32)map_cursor_key(&cur);
+		ASSERT(sid != INVALID_SNAPSHOT_ID);
+		rec = get_record_by_id(snapd, sid);
+		if (!rec) { goto error0; }
+		ASSERT(is_valid_snapshot_record(rec));
+
+		/* Copy */
+		memcpy(&buf[idx], rec, sizeof(struct walb_snapshot_record));
+
+		/* Iterate. */
+		idx++;
+		ret = map_cursor_next(&cur);
+	}
+	return idx; /* number of found/copied records. */
+
+error0:
+	return -1;
+}
+
+/**
+ * snapshot_list_from_nolock() with lock.
+ */
+int snapshot_list_from(
+	struct snapshot_data *snapd,
+	struct walb_snapshot_record *buf, size_t buf_size,
+	u32 snapshot_id)
+{
+	int n_rec;
+
+	snapshot_read_lock(snapd);
+	n_rec = snapshot_list_from_nolock(
+		snapd, buf, buf_size, snapshot_id);
+	snapshot_read_unlock(snapd);
+	return n_rec;
+}
+
 MODULE_LICENSE("Dual BSD/GPL");

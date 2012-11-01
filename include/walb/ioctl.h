@@ -343,6 +343,24 @@ enum {
 	WALB_IOCTL_LIST_SNAPSHOT_RANGE,
 
 	/*
+	 * Get snapshot records from a specified id.
+	 *
+	 * INPUT:
+	 *   ctl->val_u32 as the starting snapshot id.
+	 * OUTPUT:
+	 *   ctl->k2u.buf as struct walb_snapshot_record *rec.
+	 *     If the buffer size is small,
+	 *     all matched records will not be filled.
+	 *   ctl->val_int as the number of filled records.
+	 *   ctl->val_u32 as the next starting snapshot id.
+	 *     You can get all snapshots by using the id
+	 *     as next starting snapshot id respectively.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_LIST_SNAPSHOT_FROM,
+	
+	/*
 	 * Get checkpoint interval.
 	 *
 	 * INPUT:
