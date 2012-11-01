@@ -277,14 +277,12 @@ static void init_config(struct config* cfg)
 {
 	ASSERT(cfg != NULL);
 
-	/* memset(cfg, 0, sizeof(struct config)); */
+	memset(cfg, 0, sizeof(struct config));
 	
 	cfg->n_snapshots = 10000;
 
 	cfg->lsid0 = (u64)(-1);
 	cfg->lsid1 = (u64)(-1);
-
-	cfg->name = NULL;
 
 	cfg->size = (size_t)(-1);
 }
@@ -993,13 +991,11 @@ static bool do_create_wdev(const struct config *cfg)
 	 * Check devices.
 	 */
 	if (check_bdev(cfg->ldev_name) < 0) {
-		LOGe("create_wdev: check log device failed %s.\n",
-			cfg->ldev_name);
+		LOGe("create_wdev: check log device failed.\n");
 		goto error0;
 	}
 	if (check_bdev(cfg->ddev_name) < 0) {
-		LOGe("create_wdev: check data device failed %s.\n",
-			cfg->ddev_name);
+		LOGe("create_wdev: check data device failed.\n");
 		goto error0;
 	}
 
@@ -1076,8 +1072,7 @@ static bool do_delete_wdev(const struct config *cfg)
 	 * Check devices.
 	 */
 	if (check_bdev(cfg->wdev_name) < 0) {
-		LOGe("delete_wdev: check walb device failed %s.\n",
-			cfg->wdev_name);
+		LOGe("Check target walb device failed.\n");
 		goto error0;
 	}
 	dev_t wdevt = get_bdev_devt(cfg->wdev_name);
@@ -1132,15 +1127,23 @@ static bool do_create_snapshot(const struct config *cfg)
 	ASSERT(strcmp(cfg->cmd_str, "create_snapshot") == 0);
 
 	char name[SNAPSHOT_NAME_MAX_LEN];
+	name[0] = '\0';
 	time_t timestamp = time(0);
 
 	/* Check config. */
+	if (check_bdev(cfg->wdev_name) < 0) {
+		LOGe("Check target walb device failed.\n");
+		goto error0;
+	}
 	if (cfg->name) {
 		snprintf(name, SNAPSHOT_NAME_MAX_LEN, "%s", cfg->name);
 	} else {
-		UNUSED bool retb;
+		bool retb;
 		retb = get_datetime_str(timestamp, name, SNAPSHOT_NAME_MAX_LEN);
-		ASSERT(retb);
+		if (!retb) {
+			LOGe("Getting datetime string failed.\n");
+			goto error0;
+		}
 	}
 	if (!is_valid_snapshot_name(name)) {
 		LOGe("snapshot name %s is not valid.\n", name);
@@ -1181,19 +1184,26 @@ error0:
  */
 static bool do_delete_snapshot(const struct config *cfg)
 {
-	bool ret = false;
+	bool ret;
 	ASSERT(strcmp(cfg->cmd_str, "delete_snapshot") == 0);
 	
 	/* Check config. */
+	if (check_bdev(cfg->wdev_name) < 0) {
+		LOGe("Check target walb device failed.\n");
+		goto error0;
+	}
 	if (cfg->name) {
 		ret = delete_snapshot_by_name(cfg);
 	} else if (is_lsid_range_valid(cfg->lsid0, cfg->lsid1)) {
 		ret = delete_snapshot_by_lsid_range(cfg);
 	} else {
 		LOGe("Specify snapshot name or lsid range to delete.\n");
-		ret = false;
+		goto error0;
 	}
 	return ret;
+	
+error0:
+	return false;
 }
 
 /**
@@ -1208,6 +1218,12 @@ static bool do_num_snapshot(const struct config *cfg)
 	int error = 0;
 	ASSERT(strcmp(cfg->cmd_str, "num_snapshot") == 0);
 
+	/* Check config. */
+	if (check_bdev(cfg->wdev_name) < 0) {
+		LOGe("Check target walb device failed.\n");
+		goto error0;
+	}
+	
 	/* Decide lsid range. */
 	u64 lsid[2];
 	decide_lsid_range(cfg, lsid);
@@ -1216,7 +1232,7 @@ static bool do_num_snapshot(const struct config *cfg)
 			lsid[0], lsid[1]);
 		goto error0;
 	}
-	
+
 	/* Prepare control data. */
 	struct walb_ctl ctl = {
 		.command = WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE,
@@ -1224,7 +1240,7 @@ static bool do_num_snapshot(const struct config *cfg)
 			 .buf = (u8 *)&lsid[0] },
 		.k2u = { .buf_size = 0 },
 	};
-	
+
 	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
 		error = ctl.error;
 		goto error0;
@@ -1254,6 +1270,12 @@ static bool do_list_snapshot(const struct config *cfg)
 	struct walb_snapshot_record *srec =
 		(struct walb_snapshot_record *)buf;
 
+	/* Check config. */
+	if (check_bdev(cfg->wdev_name) < 0) {
+		LOGe("Check target walb device failed.\n");
+		goto error0;
+	}
+	
 	/* Decide lsid range. */
 	u64 lsid[2];
 	decide_lsid_range(cfg, lsid);
@@ -1262,8 +1284,8 @@ static bool do_list_snapshot(const struct config *cfg)
 			lsid[0], lsid[1]);
 		goto error0;
 	}
+	LOGd("Scan lsid (%"PRIu64", %"PRIu64")\n", lsid[0], lsid[1]);
 	while (lsid[0] < lsid[1]) {
-	
 		/* Prepare control data. */
 		struct walb_ctl ctl = {
 			.command = WALB_IOCTL_LIST_SNAPSHOT_RANGE,
@@ -1282,6 +1304,7 @@ static bool do_list_snapshot(const struct config *cfg)
 			print_snapshot_record(&srec[i]);
 		}
 		lsid[0] = ctl.val_u64; /* the first lsid of remaining. */
+		LOGd("Next lsid %"PRIu64".\n", lsid[0]);
 	}
 	return true;
 

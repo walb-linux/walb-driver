@@ -336,6 +336,7 @@ enum {
 	 *   If the buffer size is small,
 	 *   all matched records will not be filled.
 	 *   ctl->val_int as the number of filled records.
+	 *   ctl->val_u64 as the last found lsid.
 	 * RETURN:
 	 *   0 in success, or -EFAULT.
 	 */

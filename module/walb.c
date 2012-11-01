@@ -539,7 +539,11 @@ static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ct
 		srec->lsid = get_completed_lsid(wdev);
 		ASSERT(srec->lsid != INVALID_LSID);
 	}
-	srec->name[DISK_NAME_LEN - 1] = '\0';
+
+	if (!is_valid_snapshot_name(srec->name)) {
+		LOGe("Snapshot name is invalid.\n");
+		goto error0;
+	}
 	LOGn("Create snapshot name %s lsid %"PRIu64" ts %"PRIu64"\n",
 		srec->name, srec->lsid, srec->timestamp);
 	error = snapshot_add(wdev->snapd, srec->name, srec->lsid, srec->timestamp);
@@ -578,6 +582,11 @@ static int ioctl_wdev_delete_snapshot(struct walb_dev *wdev, struct walb_ctl *ct
 		LOGe("Buffer must be walb_snapshot_record data.\n");
 		goto error0;
 	}
+	if (!is_valid_snapshot_name(srec->name)) {
+		LOGe("Invalid snapshot name.\n");
+		goto error0;
+	}
+	
 	error = snapshot_del(wdev->snapd, srec->name);
 	if (error) {
 		ctl->error = error;
