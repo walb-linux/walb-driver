@@ -68,6 +68,11 @@ struct config
 	char *snap1; /* to snapshot */
 
 	size_t size; /* (size_t)(-1) means undefined. */
+
+	/**
+	 * Parameters to create_wdev.
+	 */
+	struct walb_start_param param;
 };
 
 /**
@@ -92,15 +97,19 @@ static const char *helpstr_options_ =
 	"  N_SNAP: --n_snap [max number of snapshots]\n"
 	"  SIZE:   --size [size of stuff]\n"
 	"  LRANGE: --lsid0 [from lsid] --lsid1 [to lsid]\n"
-	"  TRANGE: --time0 [from time] --time1 [to time]\n"
-	"  SRANGE: --snap0 [from snapshot] --snap1 [to snapshot]\n"
+	"  (NYI)TRANGE: --time0 [from time] --time1 [to time]\n"
+	"  (NYI)SRANGE: --snap0 [from snapshot] --snap1 [to snapshot]\n"
 	"  LSID:   --lsid [lsid]\n"
 	"  DDEV:   --ddev [data device path]\n"
 	"  LDEV:   --ldev [log device path]\n"
 	"  WDEV:   --wdev [walb device path]\n"
 	"  WLDEV:  --wldev [walblog device path]\n"
 	"  NAME:   --name [name of stuff]\n"
-	"  WLOG:   walb log data as stream\n";
+	"  WLOG:   walb log data as stream\n"
+	"  MAX_LOGPACK_KB: --max_logpack_kb [size]\n"
+	"  MAX_PENDING_MB: --max_pending_mb [size] \n"
+	"  MIN_PENDING_MB: --min_pending_mb [size]\n"
+	"  QUEUE_STOP_TIMEOUT_MS: --queue_stop_timeout_ms [timeout]\n";
 
 /**
  * Helper data structure for help command.
@@ -117,7 +126,8 @@ struct cmdhelp
 static struct cmdhelp cmdhelps_[] = {
 	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (N_SNAP)", 
 	  "Format log device." },
-	{ "create_wdev LDEV DDEV (NAME)",
+	{ "create_wdev LDEV DDEV (NAME)"
+	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB) (QUEUE_STOP_TIMEOUT_MS)",
 	  "Make walb/walblog device." },
 	{ "delete_wdev WDEV",
 	  "Delete walb/walblog device." },
@@ -180,6 +190,10 @@ enum
 	OPT_SNAP0,
 	OPT_SNAP1,
 	OPT_SIZE,
+	OPT_MAX_LOGPACK_KB,
+	OPT_MAX_PENDING_MB,
+	OPT_MIN_PENDING_MB,
+	OPT_QUEUE_STOP_TIMEOUT_MS,
 	OPT_HELP,
 };
 
@@ -288,6 +302,11 @@ static void init_config(struct config* cfg)
 	cfg->lsid1 = (u64)(-1);
 
 	cfg->size = (size_t)(-1);
+
+	cfg->param.max_logpack_kb = 0;
+	cfg->param.max_pending_mb = 32;
+	cfg->param.min_pending_mb = 16;
+	cfg->param.queue_stop_timeout_ms = 100;
 }
 
 /**
@@ -312,6 +331,10 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			{"snap0", 1, 0, OPT_SNAP0}, /* begin */
 			{"snap1", 1, 0, OPT_SNAP1}, /* end */
 			{"size", 1, 0, OPT_SIZE},
+			{"max_logpack_kb", 1, 0, OPT_MAX_LOGPACK_KB},
+			{"max_pending_mb", 1, 0, OPT_MAX_PENDING_MB},
+			{"min_pending_mb", 1, 0, OPT_MIN_PENDING_MB},
+			{"queue_stop_timeout_ms", 1, 0, OPT_QUEUE_STOP_TIMEOUT_MS},
 			{"help", 0, 0, OPT_HELP},
 			{0, 0, 0, 0}
 		};
@@ -358,6 +381,18 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			break;
 		case OPT_SIZE:
 			cfg->size = atoll(optarg);
+			break;
+		case OPT_MAX_LOGPACK_KB:
+			cfg->param.max_logpack_kb = atoi(optarg);
+			break;
+		case OPT_MAX_PENDING_MB:
+			cfg->param.max_pending_mb = atoi(optarg);
+			break;
+		case OPT_MIN_PENDING_MB:
+			cfg->param.min_pending_mb = atoi(optarg);
+			break;
+		case OPT_QUEUE_STOP_TIMEOUT_MS:
+			cfg->param.queue_stop_timeout_ms = atoi(optarg);
 			break;
 		case OPT_HELP:
 			cfg->cmd_str = "help";
@@ -1020,8 +1055,8 @@ static bool do_create_wdev(const struct config *cfg)
 	/*
 	 * Make ioctl data.
 	 */
-	char u2k_buf[DISK_NAME_LEN];
-	char k2u_buf[DISK_NAME_LEN];
+	struct walb_start_param u2k_param;
+	struct walb_start_param k2u_param;
 	struct walb_ctl ctl = {
 		.command = WALB_IOCTL_START_DEV,
 		.u2k = { .wminor = WALB_DYNAMIC_MINOR,
@@ -1029,15 +1064,18 @@ static bool do_create_wdev(const struct config *cfg)
 			 .lminor = MINOR(ldevt),
 			 .dmajor = MAJOR(ddevt),
 			 .dminor = MINOR(ddevt),
-			 .buf_size = DISK_NAME_LEN, .buf = u2k_buf, },
-		.k2u = { .buf_size = DISK_NAME_LEN, .buf = k2u_buf, },
+			 .buf_size = sizeof(struct walb_start_param),
+			 .buf = (void *)&u2k_param, },
+		.k2u = { .buf_size = sizeof(struct walb_start_param),
+			 .buf = (void *)&k2u_param, },
 	};
+	memcpy(&u2k_param, &cfg->param, sizeof(struct walb_start_param));
 	if (cfg->name) {
-		snprintf(u2k_buf, DISK_NAME_LEN, "%s", cfg->name);
+		snprintf(u2k_param.name, DISK_NAME_LEN, "%s", cfg->name);
 	} else {
-		u2k_buf[0] = '\0';
+		u2k_param.name[0] = '\0';
 	}
-	
+
 	print_walb_ctl(&ctl); /* debug */
 	
 	int ret = ioctl(fd, WALB_IOCTL_CONTROL, &ctl);
@@ -1047,12 +1085,12 @@ static bool do_create_wdev(const struct config *cfg)
 		goto error1;
 	}
 	ASSERT(ctl.error == 0);
-	ASSERT(strnlen(ctl.k2u.buf, DISK_NAME_LEN) < DISK_NAME_LEN);
+	ASSERT(strnlen(k2u_param.name, DISK_NAME_LEN) < DISK_NAME_LEN);
 	printf("create_wdev is done successfully.\n"
 		"name: %s\n"
 		"major: %u\n"
 		"minor: %u\n",
-		(char *)ctl.k2u.buf,
+		k2u_param.name,
 		ctl.k2u.wmajor, ctl.k2u.wminor);
 	close(fd);
 	print_walb_ctl(&ctl); /* debug */

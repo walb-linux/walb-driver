@@ -45,7 +45,7 @@ struct walb_ctl_data {
 } __attribute__((packed));
 
 /**
- * Data structure for walb ioctl to /dev/walb/control.
+ * Data structure for walb ioctl.
  */
 struct walb_ctl {
 
@@ -152,6 +152,7 @@ enum {
 	 *     You can specify NULL and 0.
 	 *   ctl->u2k.wminor as walb device minor.
 	 *     Specify WALB_DYNAMIC_MINOR for automatic assign.
+	 *   ctl->u2k.buf as struct walb_start_param.
 	 * OUTPUT:
 	 *   ctl->k2u.wmajor, ctl->k2u.wminor as walb device major/minor.
 	 *   ctl->k2u.buf as device name (ctl->k2u.buf_size >= DISK_NAME_LEN).
@@ -458,6 +459,47 @@ enum {
 	WALB_IOCTL_FREEZE_TEMPORARILY,
 	
 	/* NIY means [N]ot [I]mplemented [Y]et. */
+};
+
+/**
+ * WALB_IOCTL_START_DEV
+ */
+struct walb_start_param
+{
+	/* Device name. Terminated by '\0'. */
+	char name[DISK_NAME_LEN];
+	
+	/* Pending data limit size [MB]. */
+	unsigned int max_pending_mb;
+	unsigned int min_pending_mb;
+
+	/* Queue stop timeout [msec]. */
+	unsigned int queue_stop_timeout_ms;
+
+	/* Maximum logpack size [KB].
+	   A logpack containing a requests can exceeds the limitation.
+	   This must be the integral multiple of physical block size.
+	   0 means there is no limitation of logpack size
+	   (practically limited by physical block size for logpack header). */
+	unsigned int max_logpack_kb;
+} __attribute__((packed));
+
+/**
+ * Check start parameter validness.
+ */
+static inline bool is_walb_start_param_valid(
+	const struct walb_start_param *param)
+{
+	CHECK(param);
+	CHECK(strnlen(param->name, DISK_NAME_LEN) < DISK_NAME_LEN);
+	CHECK(2 <= param->max_pending_mb);
+	CHECK(param->max_pending_mb <= MAX_PENDING_MB);
+	CHECK(1 <= param->min_pending_mb);
+	CHECK(param->min_pending_mb < param->max_pending_mb);
+	CHECK(1 <= param->queue_stop_timeout_ms);
+	return true;
+error:
+	return false;
 };
 
 #endif /* WALB_IOCTL_H */
