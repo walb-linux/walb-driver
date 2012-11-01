@@ -86,11 +86,14 @@ int check_bdev(const char* path)
 	UNUSED size_t dev_size;
 	UNUSED size_t size;
 	
-	if (path == NULL) {
+	if (!path) {
 		LOGe("path is null.\n");
 		return -1;
 	}
-	
+	if (*path == '\0') {
+		LOGe("path length is zero.\n");
+		return -1;
+	}
 	if (stat(path, &sb) == -1) {
 		LOGe("stat failed.\n");
 		perror("");

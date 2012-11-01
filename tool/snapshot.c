@@ -34,10 +34,10 @@
 /**
  * Print snapshot record for debug.
  */
-void print_snapshot_record(UNUSED const struct walb_snapshot_record* snap_rec)
+void print_snapshot_record(const struct walb_snapshot_record* snap_rec)
 {
 	ASSERT(snap_rec);
-	PRINT_D_SNAPSHOT_RECORD(snap_rec);
+	PRINT_I_SNAPSHOT_RECORD(snap_rec);
 }
 
 /**
@@ -55,7 +55,7 @@ void print_snapshot_sector_raw(
 	/* Print continuous snapshot records */
 	int i;
 	int max = get_max_n_records_in_snapshot_sector(sector_size);
-	for (i = 0; i < max; i ++) {
+	for (i = 0; i < max; i++) {
 		printf("snapshot record %d: ", i);
 		print_snapshot_record(&snap_sect->record[i]);
 	}

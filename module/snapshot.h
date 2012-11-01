@@ -158,6 +158,15 @@ int snapshot_list_range(struct snapshot_data *snapd,
 int snapshot_list(struct snapshot_data *snapd,
 		struct walb_snapshot_record *buf, size_t buf_size);
 
+int snapshot_list_from_nolock(
+	struct snapshot_data *snapd,
+	struct walb_snapshot_record *buf, size_t buf_size,
+	u32 snapshot_id);
+int snapshot_list_from(
+	struct snapshot_data *snapd,
+	struct walb_snapshot_record *buf, size_t buf_size,
+	u32 snapshot_id);
+
 /*******************************************************************************
  * Lock operations. We use a big lock.
  *******************************************************************************/
