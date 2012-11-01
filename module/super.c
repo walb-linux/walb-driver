@@ -32,9 +32,9 @@ int walb_sync_super_block(struct walb_dev *wdev)
 	spin_unlock(&cpd->written_lsid_lock);
 
 	/* Get oldest lsid. */
-	spin_lock(&wdev->oldest_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
 	oldest_lsid = wdev->oldest_lsid;
-	spin_unlock(&wdev->oldest_lsid_lock);
+	spin_unlock(&wdev->lsid_lock);
 
 	/* Allocate temporary super block. */
 	lsuper_tmp = sector_alloc(wdev->physical_bs, GFP_NOIO);
@@ -92,9 +92,9 @@ int walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
 	u64 latest_lsid;
 	struct checkpoint_data *cpd = &wdev->cpd;
 
-	spin_lock(&wdev->latest_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
 	latest_lsid = wdev->latest_lsid;
-	spin_unlock(&wdev->latest_lsid_lock);
+	spin_unlock(&wdev->lsid_lock);
 	
 	spin_lock(&cpd->written_lsid_lock);
 	cpd->written_lsid = latest_lsid;

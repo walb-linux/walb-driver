@@ -439,9 +439,9 @@ static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 	LOGn("WALB_IOCTL_GET_OLDEST_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_OLDEST_LSID);
 	
-	spin_lock(&wdev->oldest_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
 	oldest_lsid = wdev->oldest_lsid;
-	spin_unlock(&wdev->oldest_lsid_lock);
+	spin_unlock(&wdev->lsid_lock);
 
 	ctl->val_u64 = oldest_lsid;
 	return 0;
@@ -469,9 +469,9 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 		LOGe("lsid %llu is not valid.\n", lsid);
 		goto error0;
 	}
-	spin_lock(&wdev->oldest_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
 	wdev->oldest_lsid = lsid;
-	spin_unlock(&wdev->oldest_lsid_lock);
+	spin_unlock(&wdev->lsid_lock);
 			
 	walb_sync_super_block(wdev);
 	return 0;
@@ -1040,9 +1040,9 @@ static u64 get_completed_lsid(struct walb_dev *wdev)
 {
 #ifdef WALB_FAST_ALGORITHM
 	u64 ret;
-	spin_lock(&wdev->completed_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
 	ret = wdev->completed_lsid;
-	spin_unlock(&wdev->completed_lsid_lock);
+	spin_unlock(&wdev->lsid_lock);
 	return ret;
 #else /* WALB_FAST_ALGORITHM */
 	return get_written_lsid(wdev);
@@ -1075,20 +1075,16 @@ static int walb_set_name(struct walb_dev *wdev,
 	ASSERT(wdev);
 	ASSERT(wdev->lsuper0);
 	
-	name_len = strnlen(name, DISK_NAME_LEN);
 	dev_name = get_super_sector(wdev->lsuper0)->name;
-	
-	if (!name || name_len == 0) {
-		if (strnlen(dev_name, DISK_NAME_LEN) == 0) {
-			snprintf(dev_name, DISK_NAME_LEN, "%u", minor / 2);
-		}
-	} else {
-		strncpy(dev_name, name, DISK_NAME_LEN);
+
+	if (name && *name) {
+		snprintf(dev_name, DISK_NAME_LEN, "%s", name);
+	} else if (*dev_name == 0) {
+		snprintf(dev_name, DISK_NAME_LEN, "%u", minor / 2);
 	}
 	LOGd("minor %u dev_name: %s\n", minor, dev_name);
 
 	name_len = strnlen(dev_name, DISK_NAME_LEN);
-
 	if (name_len > WALB_DEV_NAME_MAX_LEN) {
 		LOGe("Device name is too long: %s.\n", name);
 		goto error0;
@@ -1605,7 +1601,7 @@ struct walb_dev* prepare_wdev(
 		goto out;
 	}
 	cpd = &wdev->cpd;
-	spin_lock_init(&wdev->latest_lsid_lock);
+	spin_lock_init(&wdev->lsid_lock);
 	spin_lock_init(&wdev->lsuper0_lock);
 	/* spin_lock_init(&wdev->logpack_list_lock); */
 	/* INIT_LIST_HEAD(&wdev->logpack_list); */
@@ -1705,6 +1701,10 @@ struct walb_dev* prepare_wdev(
 
 	/* latest_lsid is written_lsid after redo. */
 	wdev->latest_lsid = cpd->written_lsid;
+
+#ifdef WALB_FAST_ALGORITHM
+	wdev->completed_lsid = cpd->written_lsid;
+#endif
 	
 	/* For padding test in the end of ring buffer. */
 	/* 64KB ring buffer */

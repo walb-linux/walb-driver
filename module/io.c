@@ -304,6 +304,7 @@ static struct bio_wrapper* alloc_bio_wrapper_inc(
 	struct walb_dev *wdev, gfp_t gfp_mask);
 static void destroy_bio_wrapper_dec(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
+static void flush_all_wq(void);
 
 /* Overlapping data functions. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -1062,9 +1063,9 @@ static void create_logpack_list(
 	ASSERT(!list_empty(biow_list));
 
 	/* Load latest_lsid */
-	spin_lock(&wdev->latest_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
 	latest_lsid = wdev->latest_lsid;
-	spin_unlock(&wdev->latest_lsid_lock);
+	spin_unlock(&wdev->lsid_lock);
 	latest_lsid_old = latest_lsid;
 
 	/* Create logpack(s). */
@@ -1095,10 +1096,10 @@ static void create_logpack_list(
 
 	/* Store latest_lsid */
 	ASSERT(latest_lsid >= latest_lsid_old);
-	spin_lock(&wdev->latest_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
 	ASSERT(wdev->latest_lsid == latest_lsid_old);
 	wdev->latest_lsid = latest_lsid;
-	spin_unlock(&wdev->latest_lsid_lock);
+	spin_unlock(&wdev->lsid_lock);
 }
 
 /**
@@ -1674,17 +1675,20 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 		goto error0;
 	}
 
+	/* Flags. */
 	iocored->flags = 0;
-	
-	spin_lock_init(&iocored->logpack_submit_queue_lock);
-	spin_lock_init(&iocored->logpack_wait_queue_lock);
-	spin_lock_init(&iocored->datapack_submit_queue_lock);
-	spin_lock_init(&iocored->logpack_gc_queue_lock);
+
+	/* Queues and their locks. */
 	INIT_LIST_HEAD(&iocored->logpack_submit_queue);
 	INIT_LIST_HEAD(&iocored->logpack_wait_queue);
 	INIT_LIST_HEAD(&iocored->datapack_submit_queue);
 	INIT_LIST_HEAD(&iocored->logpack_gc_queue);
+	spin_lock_init(&iocored->logpack_submit_queue_lock);
+	spin_lock_init(&iocored->logpack_wait_queue_lock);
+	spin_lock_init(&iocored->datapack_submit_queue_lock);
+	spin_lock_init(&iocored->logpack_gc_queue_lock);
 
+	/* To wait all IO for underlying devices done. */
 	atomic_set(&iocored->n_pending_bio, 0);
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -2028,10 +2032,10 @@ static void wait_for_logpack_and_submit_datapack(
 #ifdef WALB_FAST_ALGORITHM
 	/* Update completed_lsid. */
 	if (!is_failed) {
-		spin_lock(&wdev->completed_lsid_lock);
+		spin_lock(&wdev->lsid_lock);
 		wdev->completed_lsid = 
 			get_next_lsid(get_logpack_header(wpack->logpack_header_sector));
-		spin_unlock(&wdev->completed_lsid_lock);
+		spin_unlock(&wdev->lsid_lock);
 	}
 #endif
 }
@@ -2725,6 +2729,13 @@ static void destroy_bio_wrapper_dec(
 	atomic_dec(&iocored->n_pending_bio);
 }
 
+static void flush_all_wq(void)
+{
+	flush_workqueue(wq_logpack_);
+	flush_workqueue(wq_io_);
+	flush_workqueue(wq_ol_);
+}
+
 /**
  * Increment n_users of treemap memory manager and
  * iniitialize mmgr_ if necessary.
@@ -2809,47 +2820,66 @@ static struct walb_iocore_operations iocore_ops_ = {
  */
 bool iocore_initialize(struct walb_dev *wdev)
 {
-	/* now editing */
-	
 	int ret;
 	struct iocore_data *iocored;
 
-	iocored = create_iocore_data(GFP_KERNEL);
-	if (!iocored) {
-		LOGe("Memory allocation failed.\n");
-		goto error0;
-	}
-	wdev->private_data = iocored;
-	
 	if (!treemap_memory_manager_get()) {
 		LOGe("Treemap memory manager inc failed.\n");
-		goto error1;
+		goto error0;
 	}
 
 	if (!pack_cache_get()) {
 		LOGe("Failed to create a kmem_cache for pack.\n");
+		goto error1;
+	}
+
+	if (!bio_entry_init()) {
+		LOGe("Failed to init bio_entry.\n");
 		goto error2;
 	}
 
+	if (!bio_wrapper_init()) {
+		LOGe("Failed to init bio_wrapper.\n");
+		goto error3;
+	}
+
+	if (!pack_work_init()) {
+		LOGe("Failed to init pack_work.\n");
+		goto error4;
+	}
+
+	iocored = create_iocore_data(GFP_KERNEL);
+	if (!iocored) {
+		LOGe("Memory allocation failed.\n");
+		goto error5;
+	}
+	wdev->private_data = iocored;
+	
 	/* Decide gc worker name and start it. */
 	ret = snprintf(iocored->gc_worker_data.name, WORKER_NAME_MAX_LEN,
 		"%s/%u", WORKER_NAME_GC, MINOR(wdev->devt));
 	if (ret >= WORKER_NAME_MAX_LEN) {
 		LOGe("Thread name size too long.\n");
-		goto error3;
+		goto error6;
 	}
 	initialize_worker(&iocored->gc_worker_data,
 			run_gc_logpack_list, (void *)wdev);
 	
 	return true;
 
-error3:
-	pack_cache_put();
-error2:
-	treemap_memory_manager_put();
-error1:
+error6:
 	destroy_iocore_data(iocored);
 	wdev->private_data = NULL;
+error5:
+	pack_work_exit();
+error4:
+	bio_wrapper_exit();
+error3:
+	bio_entry_exit();
+error2:
+	pack_cache_put();
+error1:
+	treemap_memory_manager_put();
 error0:
 	return false;
 }
@@ -2859,14 +2889,15 @@ error0:
  */
 void iocore_finalize(struct walb_dev *wdev)
 {
-	/* now editing */
-	
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	
 	finalize_worker(&iocored->gc_worker_data);
 	destroy_iocore_data(iocored);
 	wdev->private_data = NULL;
 
+	pack_work_exit();
+	bio_entry_exit();
+	bio_wrapper_exit();
 	pack_cache_put();
 	treemap_memory_manager_put();
 }
@@ -2881,7 +2912,7 @@ void iocore_finalize(struct walb_dev *wdev)
  */
 void iocore_stop(struct walb_dev *wdev)
 {
-	/* now editing */
+	/* not yet implemented */
 }
 
 /**
@@ -2889,7 +2920,7 @@ void iocore_stop(struct walb_dev *wdev)
  */
 void iocore_start(struct walb_dev *wdev)
 {
-	/* now editing */
+	/* not yet implemented */
 }
 
 /**
@@ -2969,8 +3000,9 @@ void iocore_flush(struct walb_dev *wdev)
 		LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
 		msleep(100);
 	}
-	/* flush_all_wq(); */
 	LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
+
+	flush_all_wq();
 }
 
 /**
@@ -2982,15 +3014,13 @@ void walb_make_request(struct request_queue *q, struct bio *bio)
 	UNUSED struct walb_dev *wdev = get_wdev_from_queue(q);
 
 	/* Set a clock ahead. */
-	spin_lock(&wdev->latest_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
 	wdev->latest_lsid++;
-	spin_unlock(&wdev->latest_lsid_lock);
-
 #ifdef WALB_FAST_ALGORITHM
-	spin_lock(&wdev->completed_lsid_lock);
 	wdev->completed_lsid++;
-	spin_unlock(&wdev->completed_lsid_lock);
 #endif
+	spin_unlock(&wdev->lsid_lock);
+
 	spin_lock(&wdev->cpd.written_lsid_lock);
 	wdev->cpd.written_lsid++;
 	spin_unlock(&wdev->cpd.written_lsid_lock);

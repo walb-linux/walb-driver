@@ -106,7 +106,7 @@ struct walb_dev
 
 	/*
 	 * lsid indicators.
-	 * Each variable must be accessed with its own lock held.
+	 * Each variable must be accessed with lsid_lock held.
 	 *
 	 * latest_lsid:
 	 *   This is used to generate new logpack.
@@ -119,12 +119,10 @@ struct walb_dev
 	 *
 	 * oldest_lsid <= written_lsid <= completed_lsid <= latest_lsid.
 	 */
-	spinlock_t latest_lsid_lock;
+	spinlock_t lsid_lock;
 	u64 latest_lsid;
-	spinlock_t oldest_lsid_lock;
 	u64 oldest_lsid;
 #ifdef WALB_FAST_ALGORITHM
-	spinlock_t completed_lsid_lock;
 	u64 completed_lsid;
 #endif
 	
