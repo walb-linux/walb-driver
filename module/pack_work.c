@@ -18,6 +18,7 @@
  */
 #define KMEM_CACHE_PACK_WORK_NAME "pack_work_cache"
 static struct kmem_cache *pack_work_cache_ = NULL;
+static atomic_t n_users_ = ATOMIC_INIT(0);
 
 /*******************************************************************************
  * Global function definitions.
@@ -149,23 +150,26 @@ retry:
 
 bool pack_work_init(void)
 {
-	/* Prepare kmem_cache data. */
-	pack_work_cache_ = kmem_cache_create(
-		KMEM_CACHE_PACK_WORK_NAME,
-		sizeof(struct pack_work), 0, 0, NULL);
-	if (!pack_work_cache_) {
-		LOGe("failed to create a kmem_cache (pack_work).\n");
-		goto error0;
+	if (atomic_inc_return(&n_users_) == 1) {
+		/* Prepare kmem_cache data. */
+		pack_work_cache_ = kmem_cache_create(
+			KMEM_CACHE_PACK_WORK_NAME,
+			sizeof(struct pack_work), 0, 0, NULL);
+		if (!pack_work_cache_) {
+			goto error0;
+		}
 	}
 	return true;
 
 error0:
+	atomic_dec(&n_users_);
 	return false;
 }
 
 void pack_work_exit(void)
 {
-	if (pack_work_cache_) {
+	if (atomic_dec_return(&n_users_) == 0) {
+		ASSERT(pack_work_cache_);
 		kmem_cache_destroy(pack_work_cache_);
 		pack_work_cache_ = NULL;
 	}
