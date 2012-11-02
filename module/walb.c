@@ -259,12 +259,16 @@ error0:
 static int walb_open(struct block_device *bdev, fmode_t mode)
 {
 	struct walb_dev *wdev = get_wdev_from_gd(bdev->bd_disk);
-	
-	if (atomic_inc_return(&wdev->n_users) == 1) {
+	int n_users;
+
+	n_users = atomic_inc_return(&wdev->n_users);
+	if (n_users == 1) {
+#if 0
 		LOGn("This is the first time to open walb device %d"
 			" and check_disk_change() will be called.\n",
 			MINOR(wdev->devt));
 		check_disk_change(bdev);
+#endif
 	}
 	return 0;
 }
@@ -1017,12 +1021,16 @@ static struct block_device_operations walb_ops = {
 static int walblog_open(struct block_device *bdev, fmode_t mode)
 {
 	struct walb_dev *wdev = get_wdev_from_gd(bdev->bd_disk);
+	int n_users;
 	
-	if (atomic_inc_return(&wdev->log_n_users) == 1) {
+	n_users = atomic_inc_return(&wdev->log_n_users);
+	if (n_users == 1) {
+#if 0
 		LOGn("This is the first time to open walblog device %d"
 			" and check_disk_change() will be called.\n",
 			MINOR(wdev->devt));
 		check_disk_change(bdev);
+#endif
 	}
 	return 0;
 }
