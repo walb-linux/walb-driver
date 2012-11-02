@@ -50,8 +50,7 @@ void print_req_entry(const char *level, struct req_entry *reqe)
  * Create req_entry struct.
  */
 struct req_entry* create_req_entry(
-	struct request *req,
-	struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
+	struct request *req, void *data, gfp_t gfp_mask)
 {
 	struct req_entry *reqe;
 
@@ -62,7 +61,7 @@ struct req_entry* create_req_entry(
 	INIT_LIST_HEAD(&reqe->list);
 
 	/* INIT_WORK(&reqe->work, NULL); */
-	reqe->wdev = wdev;
+	reqe->data = data;
 	
 	ASSERT(req);
 	reqe->req = req;

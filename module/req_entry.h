@@ -25,7 +25,7 @@ struct req_entry
 	 * These are used for workqueue.
 	 */
 	struct work_struct work;
-	struct wrapper_blk_dev *wdev;
+	void *data;
 
 	/**
 	 * Target request and related bio_entry list for data device.
@@ -51,7 +51,7 @@ UNUSED void print_req_entry(const char *level, struct req_entry *reqe);
 
 /* req_entry related. */
 struct req_entry* create_req_entry(
-	struct request *req, struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
+	struct request *req, void *data, gfp_t gfp_mask);
 void destroy_req_entry(struct req_entry *reqe);
 UNUSED void req_entry_get(struct req_entry *reqe);
 UNUSED void req_entry_put(struct req_entry *reqe);
