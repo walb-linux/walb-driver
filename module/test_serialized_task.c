@@ -192,7 +192,7 @@ static void benchmark_normal_list(
 	bool is_empty;
 	ASSERT(n_tasks > 0);
 	
-	for (i = 0; i < n_tasks; i ++) {
+	for (i = 0; i < n_tasks; i++) {
 		w = create_test_work(GFP_KERNEL);
 		w->countp = countp;
 		ASSERT(w);
@@ -215,7 +215,7 @@ static void benchmark_normal_mutex(
 	struct test_work *w;
 	ASSERT(n_tasks > 0);
 
-	for (i = 0; i < n_tasks; i ++) {
+	for (i = 0; i < n_tasks; i++) {
 		w = create_test_work(GFP_KERNEL);
 		w->countp = countp;
 		ASSERT(w);
@@ -232,7 +232,7 @@ static void benchmark_normal(
 	struct test_work *w;
 	ASSERT(n_tasks > 0);
 
-	for (i = 0; i < n_tasks; i ++) {
+	for (i = 0; i < n_tasks; i++) {
 		w = create_test_work(GFP_KERNEL);
 		w->countp = countp;
 		ASSERT(w);
@@ -252,7 +252,7 @@ static void benchmark_single(
 	ASSERT(n_tasks > 0);
 
 	getnstimeofday(&bgn_ts);
-	for (i = 0; i < n_tasks; i ++) {
+	for (i = 0; i < n_tasks; i++) {
 		w = create_test_work(GFP_KERNEL);
 		w->countp = countp;
 		ASSERT(w);
@@ -275,7 +275,7 @@ static void malloc_and_free(unsigned int n_tasks)
 	ASSERT(n_tasks > 0);
 
 	getnstimeofday(&bgn_ts);
-	for (i = 0; i < n_tasks; i ++) {
+	for (i = 0; i < n_tasks; i++) {
 		w = create_test_work(GFP_KERNEL);
 		ASSERT(w);
 		destroy_test_work(w);

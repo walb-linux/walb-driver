@@ -999,14 +999,14 @@ static void print_pack(const char *level, struct pack *pack)
 	
 	i = 0;
 	list_for_each_entry(reqe, &pack->req_ent_list, list) {
-		i ++;
+		i++;
 		print_req_entry(level, reqe);
 	}
 	printk("%s""number of req_entry in req_ent_list: %u.\n", level, i);
 
 	i = 0;
 	list_for_each_entry(bioe, &pack->bio_ent_list, list) {
-		i ++;
+		i++;
 		print_bio_entry(level, bioe);
 	}
 	printk("%s""number of bio_entry in bio_ent_list: %u.\n", level, i);
@@ -1041,7 +1041,7 @@ static void print_pack_list(const char *level, struct list_head *wpack_list)
 	list_for_each_entry(pack, wpack_list, list) {
 		LOGd("%u: ", i);
 		print_pack(level, pack);
-		i ++;
+		i++;
 	}
 	printk("%s""print_pack_list %p end.\n", level, wpack_list);
 }
@@ -1303,7 +1303,7 @@ static bool is_zero_flush_only(struct pack *pack)
 		if (!((reqe->req->cmd_flags & REQ_FLUSH) && blk_rq_sectors(reqe->req) == 0)) {
 			return false;
 		}
-		i ++;
+		i++;
 	}
 	return i == 1;
 }
@@ -2514,8 +2514,8 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		if (lrec->is_padding) {
 			LOGd_("padding found.\n"); /* debug */
 			total_pb += capacity_pb(pbs, lrec->io_size);
-			n_padding ++;
-			i ++;
+			n_padding++;
+			i++;
 
 			/* The padding record is not the last. */
 			CHECK(i < lhead->n_records);
@@ -2533,7 +2533,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		CHECK(blk_rq_sectors(reqe->req) == lrec->io_size);
 		total_pb += capacity_pb(pbs, lrec->io_size);
 		
-		i ++;
+		i++;
 	}
 	CHECK(i == lhead->n_records);
 	CHECK(total_pb == lhead->total_io_size);
@@ -2601,8 +2601,8 @@ static void logpack_calc_checksum(
 	list_for_each_entry(reqe, req_ent_list, list) {
 
 		if (lhead->record[i].is_padding) {
-			n_padding ++;
-			i ++;
+			n_padding++;
+			i++;
 			/* A padding record is not the last in the logpack header. */
 		}
 		
@@ -2624,7 +2624,7 @@ static void logpack_calc_checksum(
 		}
 
 		lhead->record[i].checksum = checksum_finish(sum);
-		i ++;
+		i++;
 	}
 	
 	ASSERT(n_padding <= 1);
@@ -2945,7 +2945,7 @@ static bool logpack_submit(
 			   because logpack header bio already has REQ_FLUSH. */
 		} else {
 			if (lhead->record[i].is_padding) {
-				i ++;
+				i++;
 				/* padding record never come last. */
 			}
 			ASSERT(i < lhead->n_records);
@@ -2961,7 +2961,7 @@ static bool logpack_submit(
 				goto failed;
 			}
 		}
-		i ++;
+		i++;
 	}
 	return true;
 
@@ -3017,7 +3017,7 @@ static bool overlapping_check_and_insert(
 		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
 		ASSERT(reqe_tmp);
 		if (is_overlap_req_entry(reqe, reqe_tmp)) {
-			reqe->n_overlapping ++;
+			reqe->n_overlapping++;
 		}
 		if (!multimap_cursor_next(&cur)) {
 			break;
@@ -3101,7 +3101,7 @@ static void overlapping_delete_and_notify(
 		ASSERT(reqe_tmp);
 		if (is_overlap_req_entry(reqe, reqe_tmp)) {
 			ASSERT(reqe_tmp->n_overlapping > 0);
-			reqe_tmp->n_overlapping --;
+			reqe_tmp->n_overlapping--;
 			if (reqe_tmp->n_overlapping == 0) {
 				/* There is no overlapping request before it. */
 				complete(&reqe_tmp->overlapping_done);

@@ -122,7 +122,7 @@ static void log_bi_rw_flag(struct bio *bio)
 static void mdata_exec_discard(struct memblk_data *mdata, u64 block_id, unsigned int n_blocks)
 {
 	unsigned int i;
-	for (i = 0; i < n_blocks; i ++) {
+	for (i = 0; i < n_blocks; i++) {
 		memset(mdata_get_block(mdata, block_id + i), 0, mdata->block_size);
 	}
 }

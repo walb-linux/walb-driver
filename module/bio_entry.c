@@ -327,7 +327,7 @@ static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
 	if (!bio_cursor_is_end(cur)) {
 		cur->off += bio_cursor_size_to_boundary(cur);
 		cur->off_in = 0;
-		cur->idx ++;
+		cur->idx++;
 	}
 
 	ASSERT(bio_cursor_is_boundary(cur));

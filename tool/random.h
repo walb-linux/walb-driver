@@ -73,7 +73,7 @@ static inline int get_random(int max)
 static inline void memset_random(u8 *data, size_t size)
 {
 	size_t i;
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 		data[i] = (u8)get_random(255);
 	}
 }
@@ -85,7 +85,7 @@ static inline void memset_random(u8 *data, size_t size)
 static inline void test_random()
 {
 	int i;
-	for (i = 0; i < 100000; i ++) {
+	for (i = 0; i < 100000; i++) {
 		printf("%d\n", get_random(10));
 	}
 }

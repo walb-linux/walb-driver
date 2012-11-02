@@ -238,7 +238,7 @@ static void init_devices(void)
 {
 	int i;
 	
-	for (i = 0; i < MAX_N_DEVICES; i ++) {
+	for (i = 0; i < MAX_N_DEVICES; i++) {
 		devices_.wdev[i] = NULL;
 	}
 	devices_.n_active_devices = 0;
@@ -258,7 +258,7 @@ static bool add_to_devices(struct wrapper_blk_dev *wdev)
 
 	spin_lock(&devices_.lock);
 	devices_.wdev[wdev->minor] = wdev;
-	devices_.n_active_devices ++;
+	devices_.n_active_devices++;
 	ASSERT(devices_.n_active_devices >= 0);
 	spin_unlock(&devices_.lock);
 	return true;
@@ -277,7 +277,7 @@ static struct wrapper_blk_dev* del_from_devices(unsigned int minor)
 	wdev = devices_.wdev[minor];
 	if (wdev) {
 		devices_.wdev[minor] = NULL;
-		devices_.n_active_devices --;
+		devices_.n_active_devices--;
 		ASSERT(devices_.n_active_devices >= 0);
 	}
 	spin_unlock(&devices_.lock);
@@ -513,7 +513,7 @@ static void stop_and_unregister_all_devices(void)
 	int i;
 	struct wrapper_blk_dev *wdev;
 	
-	for (i = 0; i < MAX_N_DEVICES; i ++) {
+	for (i = 0; i < MAX_N_DEVICES; i++) {
 		wdev = get_from_devices(i);
 		if (wdev) {
 			wdev_stop(i);

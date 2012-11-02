@@ -45,7 +45,7 @@ static inline int sprint_hex(char *str, int str_size, const void* data, int size
 	ASSERT(str_size >= size * 3 + 1);
 
 	str[0] = '\0';
-	for (i = 0; i < size; i ++ ) {
+	for (i = 0; i < size; i++ ) {
 		if (str_size < (i + 1) * 3 + 1) { return 0; }
 		sprintf(tmp, "%02X ", ((u8 *)data)[i]);
 		strcat(str, tmp);

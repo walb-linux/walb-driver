@@ -27,11 +27,11 @@ static int __init test_init(void)
 	test_scatterlist(256, 4096);
 	test_scatterlist(1024, 4096);
 
-	for (i = 0; i < 100; i ++) {
+	for (i = 0; i < 100; i++) {
 		test_sg_pos();
 	}
 	
-	for (i = 0; i < 100; i ++) {
+	for (i = 0; i < 100; i++) {
 		test_sg_util();
 	}
 	

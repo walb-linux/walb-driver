@@ -53,13 +53,13 @@ static void make_sorted_random_array_index(
 	size_t *ary, size_t size, size_t max_value, size_t align_size)
 {
 	size_t i, j;
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 		int retry = 1;
 		while (retry) {
 			ary[i] = 1 + get_random(max_value/align_size - 1);
 
 			retry = 0;
-			for (j = 0; j < i; j ++) {
+			for (j = 0; j < i; j++) {
 				if (ary[j] == ary[i]) {
 					retry = 1;
 					break;
@@ -68,14 +68,14 @@ static void make_sorted_random_array_index(
 		}
 	}
 	qsort(ary, size, sizeof(size_t), comp);
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 		ary[i] *= align_size;
 		/* printf("%zu\n", ary[i]); */
 	}
 	ary[0] = 0;
 	ary[size - 1] = max_value;
 
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 		printf("idx: %zu\n", ary[i]);
 	}
 }
@@ -111,7 +111,7 @@ int main()
 
 	csum2tmp = 0;
 	s2 = 0;
-	for (i = 0; i < MID_SIZE - 1; i ++) {
+	for (i = 0; i < MID_SIZE - 1; i++) {
 		size_t tmp_size = mid[i + 1] - mid[i];
 		s2 += tmp_size;
 		printf("idx: %zu size: %zu\n", mid[i], tmp_size);

@@ -954,14 +954,14 @@ static void print_pack(const char *level, struct pack *pack)
 	
 	i = 0;
 	list_for_each_entry(biow, &pack->biow_list, list) {
-		i ++;
+		i++;
 		print_bio_wrapper(level, biow);
 	}
 	printk("%s""number of bio_wrapper in biow_list: %u.\n", level, i);
 
 	i = 0;
 	list_for_each_entry(bioe, &pack->bioe_list, list) {
-		i ++;
+		i++;
 		print_bio_entry(level, bioe);
 	}
 	printk("%s""number of bio_entry in bioe_list: %u.\n", level, i);
@@ -996,7 +996,7 @@ static void print_pack_list(const char *level, struct list_head *wpack_list)
 	list_for_each_entry(pack, wpack_list, list) {
 		LOGd("%u: ", i);
 		print_pack(level, pack);
-		i ++;
+		i++;
 	}
 	printk("%s""print_pack_list %p end.\n", level, wpack_list);
 }
@@ -1237,7 +1237,7 @@ static bool is_zero_flush_only(struct pack *pack)
 		if (!((biow->bio->bi_rw & REQ_FLUSH) && biow->len == 0)) {
 			return false;
 		}
-		i ++;
+		i++;
 	}
 	return i == 1;
 }
@@ -1852,7 +1852,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 		list_for_each_entry_safe(biow, biow_next,
 					&pdata->logpack_submit_queue, list) {
 			list_move_tail(&biow->list, &biow_list);
-			n_io ++;
+			n_io++;
 			if (n_io >= N_IO_BULK) { break; }
 		}
 		spin_unlock(&pdata->logpack_submit_queue_lock);
@@ -1918,7 +1918,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		list_for_each_entry_safe(wpack, wpack_next,
 					&pdata->logpack_wait_queue, list) {
 			list_move_tail(&wpack->list, &wpack_list);
-			n_pack ++;
+			n_pack++;
 			if (n_pack >= N_PACK_BULK) { break; }
 		}
 		spin_unlock(&pdata->logpack_wait_queue_lock);
@@ -2013,7 +2013,7 @@ static void dequeue_and_gc_logpack_list(struct pdata *pdata)
 		list_for_each_entry_safe(wpack, wpack_next,
 					&pdata->logpack_gc_queue, list) {
 			list_move_tail(&wpack->list, &wpack_list);
-			n_pack ++;
+			n_pack++;
 			if (n_pack >= N_PACK_BULK) { break; }
 		}
 		spin_unlock(&pdata->logpack_gc_queue_lock);
@@ -2242,7 +2242,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		list_for_each_entry_safe(biow, biow_next,
 					&pdata->datapack_submit_queue, list2) {
 			list_move_tail(&biow->list2, &biow_list);
-			n_io ++;
+			n_io++;
 			if (n_io == N_IO_BULK) { break; }
 		}
 		spin_unlock(&pdata->datapack_submit_queue_lock);
@@ -2358,8 +2358,8 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		if (lrec->is_padding) {
 			LOGd_("padding found.\n"); /* debug */
 			total_pb += capacity_pb(pbs, lrec->io_size);
-			n_padding ++;
-			i ++;
+			n_padding++;
+			i++;
 
 			/* The padding record is not the last. */
 			CHECK(i < lhead->n_records);
@@ -2377,7 +2377,7 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		CHECK(biow->len == lrec->io_size);
 		total_pb += capacity_pb(pbs, lrec->io_size);
 		
-		i ++;
+		i++;
 	}
 	CHECK(i == lhead->n_records);
 	CHECK(total_pb == lhead->total_io_size);
@@ -2438,8 +2438,8 @@ static void logpack_calc_checksum(
 	list_for_each_entry(biow, biow_list, list) {
 
 		if (logh->record[i].is_padding) {
-			n_padding ++;
-			i ++;
+			n_padding++;
+			i++;
 			/* A padding record is not the last in the logpack header. */
 		}
 		
@@ -2453,7 +2453,7 @@ static void logpack_calc_checksum(
 		}
 
 		logh->record[i].checksum = biow->csum;
-		i ++;
+		i++;
 	}
 	
 	ASSERT(n_padding <= 1);
@@ -2768,7 +2768,7 @@ static void submit_logpack(
 			   because logpack header bio already has REQ_FLUSH. */
 		} else {
 			if (logh->record[i].is_padding) {
-				i ++;
+				i++;
 				/* padding record never come last. */
 			}
 			ASSERT(i < logh->n_records);
@@ -2780,7 +2780,7 @@ static void submit_logpack(
 				pbs, ldev, ring_buffer_off, ring_buffer_size,
 				chunk_sectors);
 		}
-		i ++;
+		i++;
 	}
 }
 
@@ -2902,7 +2902,7 @@ static bool overlapping_check_and_insert(
 		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
 		ASSERT(biow_tmp);
 		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
-			biow->n_overlapping ++;
+			biow->n_overlapping++;
 		}
 		if (!multimap_cursor_next(&cur)) {
 			break;
@@ -2985,7 +2985,7 @@ static void overlapping_delete_and_notify(
 		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
 		ASSERT(biow_tmp);
 		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
-			biow_tmp->n_overlapping --;
+			biow_tmp->n_overlapping--;
 			if (biow_tmp->n_overlapping == 0) {
 				/* There is no overlapping request before it. */
 				complete(&biow_tmp->overlapping_done);

@@ -264,7 +264,7 @@ static void show_shorthelp()
 		"COMMAND:\n");
 	int size = sizeof(cmdhelps_) / sizeof(struct cmdhelp);
 	int i;
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 		printf("  %s\n", cmdhelps_[i].cmdline);
 	}
 	printf("%s"
@@ -278,7 +278,7 @@ static void show_help()
 		"COMMAND:\n");
 	int size = sizeof(cmdhelps_) / sizeof(struct cmdhelp);
 	int i;
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 		printf("  %s\n"
 			"      %s\n",
 			cmdhelps_[i].cmdline,
@@ -781,7 +781,7 @@ static bool dispatch(const struct config *cfg)
 	int array_size = sizeof(map)/sizeof(map[0]);
 
 	int i;
-	for (i = 0; i < array_size; i ++) {
+	for (i = 0; i < array_size; i++) {
 		if (strcmp(cfg->cmd_str, map[i].str) == 0) {
 			ret = (*map[i].fn)(cfg);
 			break;

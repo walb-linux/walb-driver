@@ -19,7 +19,7 @@ void test(int size)
 	/* Create a bitmap. */
 	bmp = walb_bitmap_create(size);
 
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 		ASSERT(! walb_bitmap_get(bmp, i));
 	}
 	ASSERT(walb_bitmap_is_all_off(bmp));
@@ -47,7 +47,7 @@ void test(int size)
 	ASSERT(walb_bitmap_get(bmp, size - 3));
 
 	/* Make all bits on. */
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 		walb_bitmap_on(bmp, i);
 	}
 	walb_bitmap_print(bmp);

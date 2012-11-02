@@ -69,7 +69,7 @@ static inline void walb_bitmap_clear(struct walb_bitmap *bmp)
 	size_t i;
 	size_t ary_size;
 	ary_size = (bmp->size + 7) / 8;
-	for (i = 0; i < ary_size; i ++) {
+	for (i = 0; i < ary_size; i++) {
 		bmp->ary[i] = 0;
 	}
 }
@@ -125,11 +125,11 @@ static inline int walb_bitmap_is_all_on(struct walb_bitmap *bmp)
 	if (n_bit_in_last_byte == 0)
 		n_bit_in_last_byte = 8;
 	
-	for (i = 0; i < ary_size - 1; i ++)
+	for (i = 0; i < ary_size - 1; i++)
 		if (bmp->ary[i] != 0xff)
 			return 0;
 	
-	for (i = 0; i < n_bit_in_last_byte; i ++) {
+	for (i = 0; i < n_bit_in_last_byte; i++) {
 		if (! (bmp->ary[ary_size - 1] & (1 << i))) {
 			return 0;
 		}
@@ -152,11 +152,11 @@ static inline int walb_bitmap_is_all_off(struct walb_bitmap *bmp)
 	if (n_bit_in_last_byte == 0)
 		n_bit_in_last_byte = 8;
 	
-	for (i = 0; i < ary_size - 1; i ++)
+	for (i = 0; i < ary_size - 1; i++)
 		if (bmp->ary[i] != 0)
 			return 0;
 	
-	for (i = 0; i < n_bit_in_last_byte; i ++) {
+	for (i = 0; i < n_bit_in_last_byte; i++) {
 		if ((bmp->ary[ary_size - 1] & (1 << i))) {
 			return 0;
 		}
@@ -192,7 +192,7 @@ static inline int walb_bitmap_is_any_off(struct walb_bitmap *bmp)
 static inline void walb_bitmap_print(struct walb_bitmap *bmp)
 {
 	size_t i;
-	for (i = 0; i < bmp->size; i ++) {
+	for (i = 0; i < bmp->size; i++) {
 		int bit = (walb_bitmap_get(bmp, i) == 0 ? 0 : 1);
 		PRINT(KERN_INFO, "%d", bit);
 		if (i % 64 == 63) PRINT(KERN_INFO, "\n");

@@ -25,7 +25,7 @@
 void dump_memory(u8 *data, size_t size)
 {
 	size_t i;
-	for (i = 0; i < size; i ++) {
+	for (i = 0; i < size; i++) {
 		printf("%02X ", data[i]);
 		if (i % 32 == 32 - 1) {
 			printf("\n");
@@ -63,7 +63,7 @@ int main(int argc, char* argv[])
 	}
 
 	int num = atoi(nblocks_str);
-	for (i = 0; i < num; i ++) {
+	for (i = 0; i < num; i++) {
 		memset_random(block[0], BLOCK_SIZE);
 		memcpy(block[2], block[0], BLOCK_SIZE);
 		memset(block[1], 0, BLOCK_SIZE);
@@ -86,7 +86,7 @@ int main(int argc, char* argv[])
 	}
 
 	close(fd);
-	for (i = 0; i < 3; i ++) {
+	for (i = 0; i < 3; i++) {
 		free(block[i]);
 	}	 
 	return 0;

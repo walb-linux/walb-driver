@@ -22,14 +22,14 @@ static int __init test_init(void)
 
 	LOGe("BUILD_DATE %s\n", BUILD_DATE);
 
-	/* for (i = 0; i < loop; i ++) { */
+	/* for (i = 0; i < loop; i++) { */
 	/*	   test_memblk_data_simple(128, 512); */
 	/*	   test_memblk_data_simple(128, 1024); */
 	/*	   test_memblk_data_simple(128, 2048); */
 	/*	   test_memblk_data_simple(128, 4096); */
 	/* } */
 
-	for (i = 0; i < loop; i ++) {
+	for (i = 0; i < loop; i++) {
 		test_memblk_data(128, 512);
 		test_memblk_data(128, 1024);
 		test_memblk_data(128, 2048);
