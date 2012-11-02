@@ -79,7 +79,7 @@ struct req_list_work
 {
 	struct work_struct work;
 	struct list_head list; /* list entry */
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	struct request *flush_req; /* flush request if flush */
 	int is_restart_queue; /* If non-zero, the task must restart queue. */
 	struct list_head req_entry_list; /* list head of req_entry */
@@ -136,7 +136,7 @@ static void print_req_flags(struct request *req);
 /* req_list_work related. */
 static struct req_list_work* create_req_list_work(
 	struct request *flush_req,
-	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
+	struct wrapper_blk_dev *wrdev, gfp_t gfp_mask);
 static void destroy_req_list_work(struct req_list_work *work);
 
 /* req_entry related. */
@@ -154,7 +154,7 @@ static void req_list_work_task(struct work_struct *work);
 static void req_flush_task(struct work_struct *work);
 
 /* Helper functions. */
-static bool create_bio_entry_list(struct req_entry *reqe, struct wrapper_blk_dev *wdev);
+static bool create_bio_entry_list(struct req_entry *reqe, struct wrapper_blk_dev *wrdev);
 static void submit_req_entry(struct req_entry *reqe);
 static void wait_for_req_entry(struct req_entry *reqe);
 
@@ -163,12 +163,12 @@ static bool pre_register(void);
 /* Called after unregister. */
 static void post_unregister(void);
 
-/* Create private data for wdev. */
-static bool create_private_data(struct wrapper_blk_dev *wdev);
+/* Create private data for wrdev. */
+static bool create_private_data(struct wrapper_blk_dev *wrdev);
 /* Destroy private data for ssev. */
-static void destroy_private_data(struct wrapper_blk_dev *wdev);
-/* Customize wdev after register before start. */
-static void customize_wdev(struct wrapper_blk_dev *wdev);
+static void destroy_private_data(struct wrapper_blk_dev *wrdev);
+/* Customize wrdev after register before start. */
+static void customize_wrdev(struct wrapper_blk_dev *wrdev);
 
 static unsigned int get_minor(unsigned int id);
 static bool register_dev(void);
@@ -237,19 +237,19 @@ static void print_req_flags(struct request *req)
  */
 static struct req_list_work* create_req_list_work(
 	struct request *flush_req,
-	struct wrapper_blk_dev *wdev,
+	struct wrapper_blk_dev *wrdev,
 	gfp_t gfp_mask)
 {
 	struct req_list_work *work;
 
-	ASSERT(wdev);
+	ASSERT(wrdev);
 	ASSERT(req_list_work_cache_);
 
 	work = kmem_cache_alloc(req_list_work_cache_, gfp_mask);
 	if (!work) {
 		goto error0;
 	}
-	work->wdev = wdev;
+	work->wrdev = wrdev;
 	INIT_LIST_HEAD(&work->req_entry_list);
 	work->flush_req = flush_req;
 	work->is_restart_queue = 0;
@@ -273,7 +273,7 @@ static void destroy_req_list_work(struct req_list_work *work)
 		}
 #ifdef WALB_DEBUG
 		work->flush_req = NULL;
-		work->wdev = NULL;
+		work->wrdev = NULL;
 		INIT_LIST_HEAD(&work->req_entry_list);
 #endif
 		kmem_cache_free(req_list_work_cache_, work);
@@ -416,16 +416,16 @@ static void destroy_bio_entry(struct bio_entry *bioe)
  * CONTEXT:
  *     Non-IRQ. Non-atomic.
  */
-static bool create_bio_entry_list(struct req_entry *reqe, struct wrapper_blk_dev *wdev)
+static bool create_bio_entry_list(struct req_entry *reqe, struct wrapper_blk_dev *wrdev)
 
 {
 	struct bio_entry *bioe, *next;
 	struct bio *bio;
-	struct block_device *bdev = wdev->private_data;
+	struct block_device *bdev = wrdev->private_data;
 	
 	ASSERT(reqe);
 	ASSERT(reqe->req);
-	ASSERT(wdev);
+	ASSERT(wrdev);
 	ASSERT(list_empty(&reqe->bio_entry_list));
 	
 	/* clone all bios. */
@@ -517,7 +517,7 @@ static void blk_finish_plug_p(struct blk_plug *plug, bool pred)
 static void req_list_work_task(struct work_struct *work)
 {
 	struct req_list_work *rlwork = container_of(work, struct req_list_work, work);
-	struct wrapper_blk_dev *wdev = rlwork->wdev;
+	struct wrapper_blk_dev *wrdev = rlwork->wrdev;
 	struct req_entry *reqe, *next;
 	struct blk_plug plug;
 
@@ -528,7 +528,7 @@ static void req_list_work_task(struct work_struct *work)
 	/* prepare and submit */
 	blk_start_plug_p(&plug, isPlugPerPlug());
 	list_for_each_entry(reqe, &rlwork->req_entry_list, list) {
-		if (!create_bio_entry_list(reqe, wdev)) {
+		if (!create_bio_entry_list(reqe, wrdev)) {
 			LOGe("create_bio_entry_list failed.\n");
 			goto error0;
 		}
@@ -569,7 +569,7 @@ error0:
 static void req_flush_task(struct work_struct *work)
 {
 	struct req_list_work *rlwork = container_of(work, struct req_list_work, work);
-	struct request_queue *q = rlwork->wdev->queue;
+	struct request_queue *q = rlwork->wrdev->queue;
 	int is_restart_queue = rlwork->is_restart_queue;
 	unsigned long flags;
 	
@@ -635,7 +635,7 @@ static void enqueue_work_list(struct list_head *listh, struct request_queue *q)
  */
 static void wrapper_blk_req_request_fn(struct request_queue *q)
 {
-	struct wrapper_blk_dev *wdev = get_wdev_from_queue(q);
+	struct wrapper_blk_dev *wrdev = get_wrdev_from_queue(q);
 	struct request *req;
 	struct req_entry *reqe;
 	struct req_list_work *work;
@@ -646,7 +646,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	/*	in_interrupt(), in_atomic()); */
 
 	INIT_LIST_HEAD(&listh);
-	work = create_req_list_work(NULL, wdev, GFP_ATOMIC);
+	work = create_req_list_work(NULL, wrdev, GFP_ATOMIC);
 	if (!work) { goto error0; }
 	
 	while ((req = blk_fetch_request(q)) != NULL) {
@@ -662,7 +662,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 			LOGd_("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
 
 			list_add_tail(&work->list, &listh);
-			work = create_req_list_work(req, wdev, GFP_ATOMIC);
+			work = create_req_list_work(req, wrdev, GFP_ATOMIC);
 			if (!work) {
 				errorOccurd = true;
 				__blk_end_request_all(req, -EIO);
@@ -762,8 +762,8 @@ static void post_unregister(void)
 	req_list_work_cache_ = NULL;
 }
 
-/* Create private data for wdev. */
-static bool create_private_data(struct wrapper_blk_dev *wdev)
+/* Create private data for wrdev. */
+static bool create_private_data(struct wrapper_blk_dev *wrdev)
 {
 	struct block_device *bdev;
 	unsigned int lbs, pbs;
@@ -778,11 +778,11 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		LOGe("open %s failed.", device_str_);
 		return false;
 	}
-	wdev->private_data = bdev;
+	wrdev->private_data = bdev;
 
 	/* capacity */
-	wdev->capacity = bdev->bd_part->nr_sects;
-	set_capacity(wdev->gd, wdev->capacity);
+	wrdev->capacity = bdev->bd_part->nr_sects;
+	set_capacity(wrdev->gd, wrdev->capacity);
 
 	/* Block size */
 	lbs = bdev_logical_block_size(bdev);
@@ -791,35 +791,35 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	if (lbs != LOGICAL_BLOCK_SIZE) {
 		goto error0;
 	}
-	wdev->pbs = pbs;
-	blk_queue_logical_block_size(wdev->queue, lbs);
-	blk_queue_physical_block_size(wdev->queue, pbs);
+	wrdev->pbs = pbs;
+	blk_queue_logical_block_size(wrdev->queue, lbs);
+	blk_queue_physical_block_size(wrdev->queue, pbs);
 
-	blk_queue_stack_limits(wdev->queue, bdev_get_queue(bdev));
+	blk_queue_stack_limits(wrdev->queue, bdev_get_queue(bdev));
 
 	return true;
 error0:
-	blkdev_put(wdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+	blkdev_put(wrdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 	return false;
 }
 
 /* Destroy private data for ssev. */
-static void destroy_private_data(struct wrapper_blk_dev *wdev)
+static void destroy_private_data(struct wrapper_blk_dev *wrdev)
 {
 	LOGd("destoroy_private_data called.");
 
 	/* close underlying device. */
-	blkdev_put(wdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+	blkdev_put(wrdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 }
 
-/* Customize wdev after register before start. */
-static void customize_wdev(struct wrapper_blk_dev *wdev)
+/* Customize wrdev after register before start. */
+static void customize_wrdev(struct wrapper_blk_dev *wrdev)
 {
 	struct request_queue *q, *uq;
-	ASSERT(wdev);
-	q = wdev->queue;
+	ASSERT(wrdev);
+	q = wrdev->queue;
 
-	uq = bdev_get_queue(wdev->private_data);
+	uq = bdev_get_queue(wrdev->private_data);
 	/* Accept REQ_FLUSH and REQ_FUA. */
 	if (uq->flush_flags & REQ_FLUSH) {
 		if (uq->flush_flags & REQ_FUA) {
@@ -858,22 +858,22 @@ static bool register_dev(void)
 	unsigned int i = 0;
 	u64 capacity = 0;
 	bool ret;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 
 	LOGe("register_dev begin");
 	
 	/* capacity must be set lator. */
-	ret = wdev_register_with_req(get_minor(i), capacity, physical_block_size_,
+	ret = wrdev_register_with_req(get_minor(i), capacity, physical_block_size_,
 				wrapper_blk_req_request_fn);
 		
 	if (!ret) {
 		goto error;
 	}
-	wdev = wdev_get(get_minor(i));
-	if (!create_private_data(wdev)) {
+	wrdev = wrdev_get(get_minor(i));
+	if (!create_private_data(wrdev)) {
 		goto error;
 	}
-	customize_wdev(wdev);
+	customize_wrdev(wrdev);
 
 	LOGe("register_dev end");
 
@@ -886,13 +886,13 @@ error:
 static void unregister_dev(void)
 {
 	unsigned int i = 0;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	
-	wdev = wdev_get(get_minor(i));
-	wdev_unregister(get_minor(i));
-	if (wdev) {
-		destroy_private_data(wdev);
-		FREE(wdev);
+	wrdev = wrdev_get(get_minor(i));
+	wrdev_unregister(get_minor(i));
+	if (wrdev) {
+		destroy_private_data(wrdev);
+		FREE(wrdev);
 	}
 }
 
@@ -900,7 +900,7 @@ static bool start_dev(void)
 {
 	unsigned int i = 0;
 
-	if (!wdev_start(get_minor(i))) {
+	if (!wrdev_start(get_minor(i))) {
 		goto error;
 	}
 	return true;
@@ -914,7 +914,7 @@ static void stop_dev(void)
 {
 	unsigned int i = 0;
 	
-	wdev_stop(get_minor(i));
+	wrdev_stop(get_minor(i));
 }
 
 static void set_policy(void)

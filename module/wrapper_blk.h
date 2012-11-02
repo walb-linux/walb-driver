@@ -45,7 +45,7 @@ struct wrapper_blk_dev
 	
 	spinlock_t lock; /* Lock data for this struct and queue if need. */
 	struct request_queue *queue; /* request queue */
-	bool use_make_request_fn; /* true if using wdev_register_with_bio(). */
+	bool use_make_request_fn; /* true if using wrdev_register_with_bio(). */
 	union {
 		/* for bio. */
 		make_request_fn *make_request_fn;
@@ -64,32 +64,35 @@ struct wrapper_blk_dev
  *******************************************************************************/
 
 /* (Un)register a new block device. */
-bool wdev_register_with_bio(
+bool wrdev_register_with_bio(
 	unsigned int minor, u64 capacity, unsigned int pbs,
 	make_request_fn *make_request_fn);
-bool wdev_register_with_req(
+bool wrdev_register_with_req(
 	unsigned int minor, u64 capacity, unsigned int pbs,
 	request_fn_proc *request_fn_proc);
-bool wdev_unregister(unsigned int minor);
+bool wrdev_unregister(unsigned int minor);
 
 /* Start/stop a registered device. */
-bool wdev_start(unsigned int minor);
-bool wdev_stop(unsigned int minor);
+bool wrdev_start(unsigned int minor);
+bool wrdev_stop(unsigned int minor);
+
+/* Get major number. */
+unsigned int wrdev_get_major(void);
 
 /* Get a device. */
-struct wrapper_blk_dev* wdev_get(unsigned minor);
+struct wrapper_blk_dev* wrdev_get(unsigned minor);
 
 /**
- * Get wdev from a request_queue.
+ * Get wrdev from a request_queue.
  */
-static inline struct wrapper_blk_dev* get_wdev_from_queue(
+static inline struct wrapper_blk_dev* get_wrdev_from_queue(
 	struct request_queue *q)
 {
-	struct wrapper_blk_dev* wdev;
+	struct wrapper_blk_dev* wrdev;
 
 	ASSERT(q);
-	wdev = (struct wrapper_blk_dev *)q->queuedata;
-	return wdev;
+	wrdev = (struct wrapper_blk_dev *)q->queuedata;
+	return wrdev;
 }
 
 #endif /* WALB_WRAPPER_BLK_H_KERNEL */

@@ -72,7 +72,8 @@ wrap-bio-mod-objs := $(WRAP_BIO_OBJS)
 WALB_PROTO_REQ_OBJS = walb_proto_req.o \
 sector_io.o bio_entry.o req_entry.o logpack.o treemap.o worker.o pack_work.o
 walb-proto-req-mod-objs := $(WALB_PROTO_REQ_OBJS)
-WALB_PROTO_BIO_OBJS = walb_proto_bio.o \
+WALB_PROTO_BIO_OBJS = \
+walb_proto_bio.o io.o checkpoint.o super.o \
 sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o worker.o pack_work.o
 walb-proto-bio-mod-objs := $(WALB_PROTO_BIO_OBJS)
 

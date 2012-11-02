@@ -243,7 +243,7 @@ static struct treemap_memory_manager mmgr_;
 #define PDATA_STATE_WAIT_TASK_WORKING	2
 #define PDATA_STATE_FAILURE		 3
 
-#define get_pdata_from_wdev(wdev) ((struct pdata *)wdev->private_data)
+#define get_pdata_from_wrdev(wrdev) ((struct pdata *)wrdev->private_data)
 
 #define N_PACK_BULK 32
 
@@ -266,12 +266,12 @@ static void pre_destroy_private_data(void);
 /* Called after unregister. */
 static void post_unregister(void);
 
-/* Create private data for wdev. */
-static bool create_private_data(struct wrapper_blk_dev *wdev);
+/* Create private data for wrdev. */
+static bool create_private_data(struct wrapper_blk_dev *wrdev);
 /* Destroy private data for ssev. */
-static void destroy_private_data(struct wrapper_blk_dev *wdev);
-/* Customize wdev after register before start. */
-static void customize_wdev(struct wrapper_blk_dev *wdev);
+static void destroy_private_data(struct wrapper_blk_dev *wrdev);
+/* Customize wrdev after register before start. */
+static void customize_wrdev(struct wrapper_blk_dev *wrdev);
 
 static unsigned int get_minor(unsigned int id);
 static bool register_dev(void);
@@ -308,10 +308,10 @@ static bool is_pack_size_exceeds(
 static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
 	u64 ring_buffer_size, unsigned int max_logpack_pb, u64 *latest_lsidp,
-	struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
+	struct wrapper_blk_dev *wrdev, gfp_t gfp_mask);
 static bool is_flush_first_req_entry(struct list_head *req_ent_list);
 static struct req_entry* create_req_entry_inc(
-	struct request *req, struct wrapper_blk_dev *wdev, gfp_t gfp_mask);
+	struct request *req, struct wrapper_blk_dev *wrdev, gfp_t gfp_mask);
 static void destroy_req_entry_dec(struct req_entry *reqe);
 
 /* Workqueue tasks. */
@@ -327,7 +327,7 @@ static void dequeue_and_gc_logpack_list(struct pdata *pdata);
 
 /* Helper functions for tasks. */
 static void logpack_list_submit(
-	struct wrapper_blk_dev *wdev, struct list_head *wpack_list);
+	struct wrapper_blk_dev *wrdev, struct list_head *wpack_list);
 #ifdef WALB_FAST_ALGORITHM
 static void read_req_task_fast(struct work_struct *work);
 static void write_req_task_fast(struct work_struct *work);
@@ -382,13 +382,13 @@ static bool logpack_submit(
 /* Logpack-datapack related functions. */
 static int wait_for_bio_entry_list(struct list_head *bio_ent_list);
 static void wait_logpack_and_enqueue_datapack_tasks(
-	struct pack *wpack, struct wrapper_blk_dev *wdev);
+	struct pack *wpack, struct wrapper_blk_dev *wrdev);
 #ifdef WALB_FAST_ALGORITHM
 static void wait_logpack_and_enqueue_datapack_tasks_fast(
-	struct pack *wpack, struct wrapper_blk_dev *wdev);
+	struct pack *wpack, struct wrapper_blk_dev *wrdev);
 #else
 static void wait_logpack_and_enqueue_datapack_tasks_easy(
-	struct pack *wpack, struct wrapper_blk_dev *wdev);
+	struct pack *wpack, struct wrapper_blk_dev *wrdev);
 #endif
 
 /* Overlapping data functions. */
@@ -525,8 +525,8 @@ static inline void clear_read_only_mode(struct pdata *pdata)
  * Static functions definition.
  *******************************************************************************/
 
-/* Create private data for wdev. */
-static bool create_private_data(struct wrapper_blk_dev *wdev)
+/* Create private data for wrdev. */
+static bool create_private_data(struct wrapper_blk_dev *wrdev)
 {
 	struct pdata *pdata;
 	struct block_device *ldev, *ddev;
@@ -617,12 +617,12 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 			bdev_physical_block_size(ldev), pbs);
 		goto error4;
 	}
-	wdev->pbs = pbs;
-	blk_set_default_limits(&wdev->queue->limits);
-	blk_queue_logical_block_size(wdev->queue, lbs);
-	blk_queue_physical_block_size(wdev->queue, pbs);
-	/* blk_queue_io_min(wdev->queue, pbs); */
-	/* blk_queue_io_opt(wdev->queue, pbs); */
+	wrdev->pbs = pbs;
+	blk_set_default_limits(&wrdev->queue->limits);
+	blk_queue_logical_block_size(wrdev->queue, lbs);
+	blk_queue_physical_block_size(wrdev->queue, pbs);
+	/* blk_queue_io_min(wrdev->queue, pbs); */
+	/* blk_queue_io_opt(wrdev->queue, pbs); */
 
 	/* Set max_logpack_pb. */
 	ASSERT(max_logpack_size_kb_ >= 0);
@@ -634,7 +634,7 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	/* Set underlying devices. */
 	pdata->ldev = ldev;
 	pdata->ddev = ddev;
-	wdev->private_data = pdata;
+	wrdev->private_data = pdata;
 
 	/* Load super block. */
 	pdata->lsuper0 = sector_alloc(pbs, GFP_KERNEL);
@@ -654,15 +654,15 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 	pdata->flags = 0;
 	
 	/* capacity */
-	wdev->capacity = ddev->bd_part->nr_sects;
-	set_capacity(wdev->gd, wdev->capacity);
-	LOGn("capacity %"PRIu64"\n", wdev->capacity);
+	wrdev->capacity = ddev->bd_part->nr_sects;
+	set_capacity(wrdev->gd, wrdev->capacity);
+	LOGn("capacity %"PRIu64"\n", wrdev->capacity);
 
 	/* Set limit. */
 	lq = bdev_get_queue(ldev);
 	dq = bdev_get_queue(ddev);
-	blk_queue_stack_limits(wdev->queue, lq);
-	blk_queue_stack_limits(wdev->queue, dq);
+	blk_queue_stack_limits(wrdev->queue, lq);
+	blk_queue_stack_limits(wrdev->queue, dq);
 	LOGn("ldev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
 		lq->limits.logical_block_size,
 		lq->limits.physical_block_size,
@@ -679,22 +679,22 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		dq->limits.max_hw_sectors,
 		dq->limits.max_sectors,
 		dq->limits.alignment_offset);
-	LOGn("wdev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
-		wdev->queue->limits.logical_block_size,
-		wdev->queue->limits.physical_block_size,
-		wdev->queue->limits.io_min,
-		wdev->queue->limits.io_opt,
-		wdev->queue->limits.max_hw_sectors,
-		wdev->queue->limits.max_sectors,
-		wdev->queue->limits.alignment_offset);
+	LOGn("wrdev limits: lbs %u pbs %u io_min %u io_opt %u max_hw_sec %u max_sectors %u align %u\n",
+		wrdev->queue->limits.logical_block_size,
+		wrdev->queue->limits.physical_block_size,
+		wrdev->queue->limits.io_min,
+		wrdev->queue->limits.io_opt,
+		wrdev->queue->limits.max_hw_sectors,
+		wrdev->queue->limits.max_sectors,
+		wrdev->queue->limits.alignment_offset);
 
 	/* Chunk size. */
-	if (queue_io_min(lq) > wdev->pbs) {
+	if (queue_io_min(lq) > wrdev->pbs) {
 		pdata->ldev_chunk_sectors = queue_io_min(lq) / LOGICAL_BLOCK_SIZE;
 	} else {
 		pdata->ldev_chunk_sectors = 0;
 	}
-	if (queue_io_min(dq) > wdev->pbs) {
+	if (queue_io_min(dq) > wrdev->pbs) {
 		pdata->ddev_chunk_sectors = queue_io_min(dq) / LOGICAL_BLOCK_SIZE;
 	} else {
 		pdata->ddev_chunk_sectors = 0;
@@ -720,13 +720,13 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 
 	/* Prepare GC worker. */
 	ret = snprintf(pdata->gc_worker_data.name, WORKER_NAME_MAX_LEN,
-		"%s/%u", WORKER_NAME_GC, wdev->minor);
+		"%s/%u", WORKER_NAME_GC, wrdev->minor);
 	if (ret >= WORKER_NAME_MAX_LEN) {
 		LOGe("Thread name size too long.\n");
 		goto error5;
 	}
 	initialize_worker(&pdata->gc_worker_data,
-			run_gc_logpack_list, (void *)wdev);
+			run_gc_logpack_list, (void *)wrdev);
 	
 	return true;
 
@@ -746,20 +746,20 @@ error11:
 	multimap_destroy(pdata->overlapping_data);
 #endif
 	kfree(pdata);
-	wdev->private_data = NULL;
+	wrdev->private_data = NULL;
 error0:
 	return false;
 }
 
 /* Destroy private data for ssev. */
-static void destroy_private_data(struct wrapper_blk_dev *wdev)
+static void destroy_private_data(struct wrapper_blk_dev *wrdev)
 {
 	struct pdata *pdata;
 	struct walb_super_sector *ssect;
 
 	LOGd("destoroy_private_data called.");
 	
-	pdata = wdev->private_data;
+	pdata = wrdev->private_data;
 	if (!pdata) { return; }
 	ASSERT(pdata);
 
@@ -788,17 +788,17 @@ static void destroy_private_data(struct wrapper_blk_dev *wdev)
 	multimap_destroy(pdata->overlapping_data);
 #endif
 	kfree(pdata);
-	wdev->private_data = NULL;
+	wrdev->private_data = NULL;
 }
 
-/* Customize wdev after register before start. */
-static void customize_wdev(struct wrapper_blk_dev *wdev)
+/* Customize wrdev after register before start. */
+static void customize_wrdev(struct wrapper_blk_dev *wrdev)
 {
 	struct request_queue *q, *lq, *dq;
 	struct pdata *pdata;
-	ASSERT(wdev);
-	q = wdev->queue;
-	pdata = wdev->private_data;
+	ASSERT(wrdev);
+	q = wrdev->queue;
+	pdata = wrdev->private_data;
 
 	lq = bdev_get_queue(pdata->ldev);
 	dq = bdev_get_queue(pdata->ddev);
@@ -842,23 +842,23 @@ static bool register_dev(void)
 	unsigned int i = 0;
 	u64 capacity = 0;
 	bool ret;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 
 	LOGn("begin\n");
 	
 	/* capacity must be set lator. */
-	ret = wdev_register_with_req(get_minor(i), capacity,
+	ret = wrdev_register_with_req(get_minor(i), capacity,
 				physical_block_size_,
 				wrapper_blk_req_request_fn);
 		
 	if (!ret) {
 		goto error;
 	}
-	wdev = wdev_get(get_minor(i));
-	if (!create_private_data(wdev)) {
+	wrdev = wrdev_get(get_minor(i));
+	if (!create_private_data(wrdev)) {
 		goto error;
 	}
-	customize_wdev(wdev);
+	customize_wrdev(wrdev);
 
 	LOGn("end\n");
 
@@ -871,16 +871,16 @@ error:
 static void unregister_dev(void)
 {
 	unsigned int i = 0;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 
 	LOGn("begin\n");
 	
-	wdev = wdev_get(get_minor(i));
-	wdev_unregister(get_minor(i));
-	if (wdev) {
+	wrdev = wrdev_get(get_minor(i));
+	wrdev_unregister(get_minor(i));
+	if (wrdev) {
 		pre_destroy_private_data();
-		destroy_private_data(wdev);
-		FREE(wdev);
+		destroy_private_data(wrdev);
+		FREE(wrdev);
 	}
 	
 	LOGn("end\n");
@@ -890,16 +890,16 @@ static bool start_dev(void)
 {
 	unsigned int i = 0;
 	unsigned int minor;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 
 	minor = get_minor(i);
-	wdev = wdev_get(minor);
-	ASSERT(wdev);
+	wrdev = wrdev_get(minor);
+	ASSERT(wrdev);
 	
 #ifdef PERIODIC_DEBUG
-	start_periodic_print_for_debug(get_pdata_from_wdev(wdev));
+	start_periodic_print_for_debug(get_pdata_from_wrdev(wrdev));
 #endif
-	if (!wdev_start(minor)) {
+	if (!wrdev_start(minor)) {
 		goto error;
 	}
 	return true;
@@ -913,7 +913,7 @@ static void stop_dev(void)
 {
 	unsigned int i = 0;
 	unsigned int minor;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	struct pdata *pdata;
 
 #ifdef PERIODIC_DEBUG
@@ -921,10 +921,10 @@ static void stop_dev(void)
 #endif
 	
 	minor = get_minor(i);
-	wdev_stop(minor);
-	wdev = wdev_get(minor);
-	ASSERT(wdev);
-	pdata = get_pdata_from_wdev(wdev);
+	wrdev_stop(minor);
+	wrdev = wrdev_get(minor);
+	ASSERT(wrdev);
+	pdata = get_pdata_from_wrdev(wrdev);
 	ASSERT(pdata);
 
 	/* Flush all pending IOs. */
@@ -1341,7 +1341,7 @@ static bool is_pack_size_exceeds(
  * @ring_buffer_size ring buffer size [physical block]
  * @latest_lsidp pointer to the latest_lsid value.
  *   *latest_lsidp must be always (*wpackp)->logpack_lsid.
- * @wdev wrapper block device.
+ * @wrdev wrapper block device.
  * @gfp_mask memory allocation mask.
  *
  * RETURN:
@@ -1352,7 +1352,7 @@ static bool is_pack_size_exceeds(
 static bool writepack_add_req(
 	struct list_head *wpack_list, struct pack **wpackp, struct request *req,
 	u64 ring_buffer_size, unsigned int max_logpack_pb,
-	u64 *latest_lsidp, struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
+	u64 *latest_lsidp, struct wrapper_blk_dev *wrdev, gfp_t gfp_mask)
 {
 	struct req_entry *reqe;
 	struct pack *pack;
@@ -1366,12 +1366,12 @@ static bool writepack_add_req(
 	ASSERT(wpackp);
 	ASSERT(req);
 	ASSERT(req->cmd_flags & REQ_WRITE);
-	ASSERT(wdev);
-	pbs = wdev->pbs;
+	ASSERT(wrdev);
+	pbs = wrdev->pbs;
 	ASSERT_PBS(pbs);
 	
 	pack = *wpackp;
-	reqe = create_req_entry_inc(req, wdev, gfp_mask);
+	reqe = create_req_entry_inc(req, wrdev, gfp_mask);
 	if (!reqe) { goto error0; }
 
 	if (!pack) {
@@ -1468,15 +1468,15 @@ static bool is_flush_first_req_entry(struct list_head *req_ent_list)
  * Create a request entry and increment n_pending_req.
  */
 static struct req_entry* create_req_entry_inc(
-	struct request *req, struct wrapper_blk_dev *wdev, gfp_t gfp_mask)
+	struct request *req, struct wrapper_blk_dev *wrdev, gfp_t gfp_mask)
 {
 	struct req_entry *reqe;
 
-	reqe = create_req_entry(req, wdev, gfp_mask);
+	reqe = create_req_entry(req, wrdev, gfp_mask);
 	if (!reqe) {
 		goto error0;
 	}
-	atomic_inc(&get_pdata_from_wdev(wdev)->n_pending_req);
+	atomic_inc(&get_pdata_from_wrdev(wrdev)->n_pending_req);
 	return reqe;
 	
 error0:
@@ -1488,7 +1488,8 @@ error0:
  */
 static void destroy_req_entry_dec(struct req_entry *reqe)
 {
-	struct pdata *pdata = get_pdata_from_wdev(reqe->wdev);
+	struct wrapper_blk_dev *wrdev = reqe->data;
+	struct pdata *pdata = get_pdata_from_wrdev(wrdev);
 
 	ASSERT(pdata);
 	destroy_req_entry(reqe);
@@ -1662,7 +1663,7 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
  * Submit all write packs in a list to the log device.
  */
 static void logpack_list_submit(
-	struct wrapper_blk_dev *wdev, struct list_head *wpack_list)
+	struct wrapper_blk_dev *wrdev, struct list_head *wpack_list)
 {
 	struct pdata *pdata;
 	struct pack *wpack;
@@ -1670,8 +1671,8 @@ static void logpack_list_submit(
 	struct walb_logpack_header *lhead;
 	bool ret;
 	ASSERT(wpack_list);
-	ASSERT(wdev);
-	pdata = get_pdata_from_wdev(wdev);
+	ASSERT(wrdev);
+	pdata = get_pdata_from_wrdev(wrdev);
 
 	blk_start_plug(&plug);
 	list_for_each_entry(wpack, wpack_list, list) {
@@ -1685,11 +1686,11 @@ static void logpack_list_submit(
 			ret = logpack_submit_flush(pdata->ldev, &wpack->bio_ent_list);
 		} else {
 			ASSERT(lhead->n_records > 0);
-			logpack_calc_checksum(lhead, wdev->pbs, &wpack->req_ent_list);
+			logpack_calc_checksum(lhead, wrdev->pbs, &wpack->req_ent_list);
 			ret = logpack_submit(
 				lhead, wpack->is_fua,
 				&wpack->req_ent_list, &wpack->bio_ent_list,
-				wdev->pbs, pdata->ldev, pdata->ring_buffer_off,
+				wrdev->pbs, pdata->ldev, pdata->ring_buffer_off,
 				pdata->ring_buffer_size, pdata->ldev_chunk_sectors);
 		}
 		wpack->is_logpack_failed = !ret;
@@ -1719,8 +1720,8 @@ static void logpack_list_submit(
 static void logpack_list_submit_task(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->data;
-	struct pdata *pdata = get_pdata_from_wdev(wdev);
+	struct wrapper_blk_dev *wrdev = pwork->data;
+	struct pdata *pdata = get_pdata_from_wrdev(wrdev);
 	struct pack *wpack, *wpack_next;
 	struct list_head wpack_list;
 	bool is_empty, is_working;
@@ -1748,7 +1749,7 @@ static void logpack_list_submit_task(struct work_struct *work)
 		if (is_empty) { break; }
 
 		/* Submit. */
-		logpack_list_submit(wdev, &wpack_list);
+		logpack_list_submit(wrdev, &wpack_list);
 
 		/* Enqueue logpack list to the wait queue. */
 		spin_lock(&pdata->logpack_wait_queue_lock);
@@ -1761,7 +1762,7 @@ static void logpack_list_submit_task(struct work_struct *work)
 
 		/* Run task. */
 		enqueue_task_if_necessary(
-			wdev,
+			wrdev,
 			PDATA_STATE_WAIT_TASK_WORKING,
 			&pdata->flags,
 			wq_logpack_,
@@ -1818,23 +1819,23 @@ static int wait_for_bio_entry_list(struct list_head *bio_ent_list)
  * Request success -> enqueue datapack.
  * Request failure-> all subsequent requests must fail.
  *
- * If any write failed, wdev will be read-only mode.
+ * If any write failed, wrdev will be read-only mode.
  */
 static void wait_logpack_and_enqueue_datapack_tasks(
-	struct pack *wpack, struct wrapper_blk_dev *wdev)
+	struct pack *wpack, struct wrapper_blk_dev *wrdev)
 {
 #ifdef WALB_FAST_ALGORITHM
 	wait_logpack_and_enqueue_datapack_tasks_fast(
-		wpack, wdev);
+		wpack, wrdev);
 #else
 	wait_logpack_and_enqueue_datapack_tasks_easy(
-		wpack, wdev);
+		wpack, wrdev);
 #endif
 }
 
 #ifdef WALB_FAST_ALGORITHM
 static void wait_logpack_and_enqueue_datapack_tasks_fast(
-	struct pack *wpack, struct wrapper_blk_dev *wdev)
+	struct pack *wpack, struct wrapper_blk_dev *wrdev)
 {
 	int bio_error;
 	struct req_entry *reqe, *next_reqe;
@@ -1849,10 +1850,10 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 	unsigned long flags;
 
 	ASSERT(wpack);
-	ASSERT(wdev);
+	ASSERT(wrdev);
 
 	/* Check read only mode. */
-	pdata = get_pdata_from_wdev(wdev);
+	pdata = get_pdata_from_wrdev(wrdev);
 	if (is_read_only_mode(pdata)) { is_failed = true; }
 	
 	/* Wait for logpack header bio or zero_flush pack bio. */
@@ -1905,9 +1906,9 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
 				LOGd("stop queue.\n");
-				spin_lock_irqsave(&wdev->lock, flags);
-				blk_stop_queue(wdev->queue);
-				spin_unlock_irqrestore(&wdev->lock, flags);
+				spin_lock_irqsave(&wrdev->lock, flags);
+				blk_stop_queue(wrdev->queue);
+				spin_unlock_irqrestore(&wrdev->lock, flags);
 			}
 
 			/* call end_request where with fast algorithm
@@ -1928,9 +1929,9 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 				pdata->pending_sectors -= reqe->req_sectors;
 				spin_unlock(&pdata->pending_data_lock);
 				if (is_stop_queue) {
-					spin_lock_irqsave(&wdev->lock, flags);
-					blk_start_queue(wdev->queue);
-					spin_unlock_irqrestore(&wdev->lock, flags);
+					spin_lock_irqsave(&wrdev->lock, flags);
+					blk_start_queue(wrdev->queue);
+					spin_unlock_irqrestore(&wrdev->lock, flags);
 				}
 				goto failed2;
 			}
@@ -1947,7 +1948,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 	failed0:
 		is_failed = true;
 		set_read_only_mode(pdata);
-		LOGe("WalB changes device minor:%u to read-only mode.\n", wdev->minor);
+		LOGe("WalB changes device minor:%u to read-only mode.\n", wrdev->minor);
 		blk_end_request_all(req, -EIO);
 		list_del(&reqe->list);
 		destroy_req_entry_dec(reqe);
@@ -1955,7 +1956,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 }
 #else /* WALB_FAST_ALGORITHM */
 static void wait_logpack_and_enqueue_datapack_tasks_easy(
-	struct pack *wpack, struct wrapper_blk_dev *wdev)
+	struct pack *wpack, struct wrapper_blk_dev *wrdev)
 {
 	int bio_error;
 	struct req_entry *reqe, *next_reqe;
@@ -1967,10 +1968,10 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 #endif
 
 	ASSERT(wpack);
-	ASSERT(wdev);
+	ASSERT(wrdev);
 
 	/* Check read only mode. */
-	pdata = get_pdata_from_wdev(wdev);
+	pdata = get_pdata_from_wrdev(wrdev);
 	if (is_read_only_mode(pdata)) { is_failed = true; }
 	
 	/* Wait for logpack header bio or zero_flush pack bio. */
@@ -2049,8 +2050,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 static void logpack_list_wait_task(struct work_struct *work)
 {
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct wrapper_blk_dev *wdev = pwork->data;
-	struct pdata *pdata = get_pdata_from_wdev(wdev);
+	struct wrapper_blk_dev *wrdev = pwork->data;
+	struct pdata *pdata = get_pdata_from_wrdev(wrdev);
 	struct pack *wpack, *wpack_next;
 	bool is_empty, is_working;
 	struct list_head wpack_list;
@@ -2079,7 +2080,7 @@ static void logpack_list_wait_task(struct work_struct *work)
 		
 		/* Wait logpack completion and submit datapacks. */
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
-			wait_logpack_and_enqueue_datapack_tasks(wpack, wdev);
+			wait_logpack_and_enqueue_datapack_tasks(wpack, wrdev);
 		}
 
 		/* Put packs into the gc queue. */
@@ -2170,8 +2171,8 @@ static void write_req_task(struct work_struct *work)
 static void write_req_task_fast(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
-	struct wrapper_blk_dev *wdev = reqe->wdev;
-	struct pdata *pdata = get_pdata_from_wdev(wdev);
+	struct wrapper_blk_dev *wrdev = reqe->data;
+	struct pdata *pdata = get_pdata_from_wrdev(wrdev);
 	struct blk_plug plug;
 	const bool is_end_request = false;
 	const bool is_delete = false;
@@ -2225,9 +2226,9 @@ static void write_req_task_fast(struct work_struct *work)
 	/* Check queue restart is required. */
 	if (is_start_queue) {
 		LOGd("restart queue.\n");
-		spin_lock_irqsave(&wdev->lock, flags);
-		blk_start_queue(wdev->queue);
-		spin_unlock_irqrestore(&wdev->lock, flags);
+		spin_lock_irqsave(&wrdev->lock, flags);
+		blk_start_queue(wrdev->queue);
+		spin_unlock_irqrestore(&wrdev->lock, flags);
 	}
 
 	/* put related bio(s). */
@@ -2249,8 +2250,8 @@ static void write_req_task_fast(struct work_struct *work)
 static void write_req_task_easy(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
-	struct wrapper_blk_dev *wdev = reqe->wdev;
-	UNUSED struct pdata *pdata = get_pdata_from_wdev(wdev);
+	struct wrapper_blk_dev *wrdev = reqe->data;
+	UNUSED struct pdata *pdata = get_pdata_from_wrdev(wrdev);
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
@@ -2331,8 +2332,8 @@ static void read_req_task(struct work_struct *work)
 static void read_req_task_fast(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
-	struct wrapper_blk_dev *wdev = reqe->wdev;
-	struct pdata *pdata = get_pdata_from_wdev(wdev);
+	struct wrapper_blk_dev *wrdev = reqe->data;
+	struct pdata *pdata = get_pdata_from_wrdev(wrdev);
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
@@ -2383,8 +2384,8 @@ fin:
 static void read_req_task_easy(struct work_struct *work)
 {
 	struct req_entry *reqe = container_of(work, struct req_entry, work);
-	struct wrapper_blk_dev *wdev = reqe->wdev;
-	struct pdata *pdata = get_pdata_from_wdev(wdev);
+	struct wrapper_blk_dev *wrdev = reqe->data;
+	struct pdata *pdata = get_pdata_from_wrdev(wrdev);
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
@@ -2424,10 +2425,10 @@ fin:
  */
 static void run_gc_logpack_list(void *data)
 {
-	struct wrapper_blk_dev *wdev = (struct wrapper_blk_dev *)data;
-	ASSERT(wdev);
+	struct wrapper_blk_dev *wrdev = (struct wrapper_blk_dev *)data;
+	ASSERT(wrdev);
 
-	dequeue_and_gc_logpack_list(get_pdata_from_wdev(wdev));
+	dequeue_and_gc_logpack_list(get_pdata_from_wrdev(wrdev));
 }
 
 /**
@@ -3327,8 +3328,8 @@ static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entr
  */
 static void wrapper_blk_req_request_fn(struct request_queue *q)
 {
-	struct wrapper_blk_dev *wdev = get_wdev_from_queue(q);
-	struct pdata *pdata = get_pdata_from_wdev(wdev);
+	struct wrapper_blk_dev *wrdev = get_wrdev_from_queue(q);
+	struct pdata *pdata = get_pdata_from_wrdev(wrdev);
 	struct request *req;
 	struct req_entry *reqe;
 	struct pack *wpack = NULL, *wpack_next;
@@ -3339,7 +3340,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 
 	LOGd_("wrapper_blk_req_request_fn: begin.\n");
 
-	if (!test_bit(0, &wdev->is_started)) {
+	if (!test_bit(0, &wrdev->is_started)) {
 		goto error0;
 	}
 	if (test_bit(PDATA_STATE_FAILURE, &pdata->flags)) {
@@ -3370,11 +3371,11 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 			ret = writepack_add_req(&wpack_list, &wpack, req,
 						pdata->ring_buffer_size,
 						pdata->max_logpack_pb,
-						&latest_lsid, wdev, GFP_ATOMIC);
+						&latest_lsid, wrdev, GFP_ATOMIC);
 			if (!ret) { goto req_error; }
 		} else {
 			/* Read request */
-			reqe = create_req_entry_inc(req, wdev, GFP_ATOMIC);
+			reqe = create_req_entry_inc(req, wrdev, GFP_ATOMIC);
 			if (!reqe) { goto req_error; }
 			INIT_WORK(&reqe->work, read_req_task);
 			queue_work(wq_read_, &reqe->work);
@@ -3415,7 +3416,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 
 		/* Run task. */
 		enqueue_task_if_necessary(
-			wdev,
+			wrdev,
 			PDATA_STATE_SUBMIT_TASK_WORKING,
 			&pdata->flags,
 			wq_logpack_,

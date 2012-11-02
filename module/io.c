@@ -220,6 +220,10 @@ static bool is_pack_size_too_large(
 	struct walb_logpack_header *lhead,
 	unsigned int pbs, unsigned int max_logpack_pb,
 	struct bio_wrapper *biow);
+UNUSED static void print_pack(
+	const char *level, struct pack *pack);
+UNUSED static void print_pack_list(
+	const char *level, struct list_head *wpack_list);
 
 /* Workqueue tasks. */
 static void task_submit_logpack_list(struct work_struct *work);
@@ -756,6 +760,68 @@ static bool is_pack_size_too_large(
 
 	pb = (unsigned int)capacity_pb(pbs, biow->len);
 	return pb + (unsigned int)lhead->total_io_size > max_logpack_pb;
+}
+
+/**
+ * Print a pack data for debug.
+ */
+static void print_pack(const char *level, struct pack *pack)
+{
+	struct walb_logpack_header *lhead;
+	struct bio_wrapper *biow;
+	struct bio_entry *bioe;
+	unsigned int i;
+	ASSERT(level);
+	ASSERT(pack);
+
+	printk("%s""print_pack %p begin\n", level, pack);
+	
+	i = 0;
+	list_for_each_entry(biow, &pack->biow_list, list) {
+		i++;
+		print_bio_wrapper(level, biow);
+	}
+	printk("%s""number of bio_wrapper in biow_list: %u.\n", level, i);
+
+	i = 0;
+	list_for_each_entry(bioe, &pack->bioe_list, list) {
+		i++;
+		print_bio_entry(level, bioe);
+	}
+	printk("%s""number of bio_entry in bioe_list: %u.\n", level, i);
+
+	/* logpack header */
+	if (pack->logpack_header_sector) {
+		lhead = get_logpack_header(pack->logpack_header_sector);
+		walb_logpack_header_print(level, lhead);
+	} else {
+		printk("%s""logpack_header_sector is NULL.\n", level);
+	}
+
+	printk("%s""is_fua: %u\nis_logpack_failed: %u\n",
+		level,
+		pack->is_fua, pack->is_logpack_failed);
+
+	printk("%s""print_pack %p end\n", level, pack);
+}
+
+/**
+ * Print a list of pack data for debug.
+ */
+static void print_pack_list(const char *level, struct list_head *wpack_list)
+{
+	struct pack *pack;
+	unsigned int i = 0;
+	ASSERT(level);
+	ASSERT(wpack_list);
+	
+	printk("%s""print_pack_list %p begin.\n", level, wpack_list);
+	list_for_each_entry(pack, wpack_list, list) {
+		LOGd("%u: ", i);
+		print_pack(level, pack);
+		i++;
+	}
+	printk("%s""print_pack_list %p end.\n", level, wpack_list);
 }
 
 /**

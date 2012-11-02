@@ -27,9 +27,9 @@ int wrapper_blk_major_ = 0;
 
 /* Devices. */
 #define MAX_N_DEVICES 32
-struct wdev_devices
+struct wrdev_devices
 {
-	struct wrapper_blk_dev *wdev[MAX_N_DEVICES];
+	struct wrapper_blk_dev *wrdev[MAX_N_DEVICES];
 	unsigned int n_active_devices; /* Number of active devices. */
 	spinlock_t lock; /* Lock for access to devices_. */
 
@@ -45,7 +45,7 @@ module_param_named(wrapper_blk_major, wrapper_blk_major_, int, S_IRUGO);
  * Macro definitions.
  *******************************************************************************/
 
-#define ASSERT_WRAPPER_BLK_DEV(wdev) assert_wrapper_blk_dev(wdev)
+#define ASSERT_WRAPPER_BLK_DEV(wrdev) assert_wrapper_blk_dev(wrdev)
 
 /*******************************************************************************
  * Static functions prototype.
@@ -59,21 +59,21 @@ static int wrapper_blk_ioctl(struct block_device *bdev, fmode_t mode,
 
 /* Operations with devices_. */
 static void init_devices(void);
-static bool add_to_devices(struct wrapper_blk_dev *wdev);
+static bool add_to_devices(struct wrapper_blk_dev *wrdev);
 static struct wrapper_blk_dev* del_from_devices(unsigned int minor);
 static struct wrapper_blk_dev* get_from_devices(unsigned int minor);
 
 /* Utilities */
-static bool wdev_register_detail(
+static bool wrdev_register_detail(
 	unsigned int minor, u64 capacity, unsigned int pbs,
 	make_request_fn *make_request_fn,
 	request_fn_proc *request_fn_proc);
-static struct wrapper_blk_dev* alloc_and_partial_init_wdev(
+static struct wrapper_blk_dev* alloc_and_partial_init_wrdev(
 	unsigned int minor, u64 capacity, unsigned int pbs);
 
-static bool init_queue_and_disk(struct wrapper_blk_dev *wdev);
-static void fin_queue_and_disk(struct wrapper_blk_dev *wdev);
-static void assert_wrapper_blk_dev(struct wrapper_blk_dev *wdev);
+static bool init_queue_and_disk(struct wrapper_blk_dev *wrdev);
+static void fin_queue_and_disk(struct wrapper_blk_dev *wrdev);
+static void assert_wrapper_blk_dev(struct wrapper_blk_dev *wrdev);
 
 /* For exit. */
 static void stop_and_unregister_all_devices(void);
@@ -99,89 +99,89 @@ static struct block_device_operations wrapper_blk_ops_ = {
 /**
  * Register new block device with bio interface.
  */
-bool wdev_register_with_bio(unsigned int minor, u64 capacity,
+bool wrdev_register_with_bio(unsigned int minor, u64 capacity,
 			unsigned int pbs,
 			make_request_fn *make_request_fn)
 {
-	return wdev_register_detail(minor, capacity, pbs, make_request_fn, NULL);
+	return wrdev_register_detail(minor, capacity, pbs, make_request_fn, NULL);
 }
-EXPORT_SYMBOL_GPL(wdev_register_with_bio);
+EXPORT_SYMBOL_GPL(wrdev_register_with_bio);
 
 /**
  * Register new block device with request interface.
  */
-bool wdev_register_with_req(unsigned int minor, u64 capacity,
+bool wrdev_register_with_req(unsigned int minor, u64 capacity,
 			unsigned int pbs,
 			request_fn_proc *request_fn_proc)
 {
-	return wdev_register_detail(minor, capacity, pbs, NULL, request_fn_proc);
+	return wrdev_register_detail(minor, capacity, pbs, NULL, request_fn_proc);
 }
-EXPORT_SYMBOL_GPL(wdev_register_with_req);
+EXPORT_SYMBOL_GPL(wrdev_register_with_req);
 
 /**
  * Unregister a block device.
  */
-bool wdev_unregister(unsigned int minor)
+bool wrdev_unregister(unsigned int minor)
 {
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 
-	wdev = del_from_devices(minor);
-	if (!wdev) {
+	wrdev = del_from_devices(minor);
+	if (!wrdev) {
 		LOGe("Not found device with minor %u.\n", minor);
 		return false;
 	}	 
-	fin_queue_and_disk(wdev);
+	fin_queue_and_disk(wrdev);
 	return true;
 }
-EXPORT_SYMBOL_GPL(wdev_unregister);
+EXPORT_SYMBOL_GPL(wrdev_unregister);
 
 /**
  * Start a block device.
- * Call this after @wdev_register_XXX().
+ * Call this after @wrdev_register_XXX().
  */
-bool wdev_start(unsigned int minor)
+bool wrdev_start(unsigned int minor)
 {
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	
-	wdev = get_from_devices(minor);
-	if (!wdev) {
+	wrdev = get_from_devices(minor);
+	if (!wrdev) {
 		LOGe("Not found device with minor %u.\n", minor);
 		goto error0;
 	}
-	ASSERT_WRAPPER_BLK_DEV(wdev);
+	ASSERT_WRAPPER_BLK_DEV(wrdev);
 		
-	if (test_and_set_bit(0, &wdev->is_started)) {
+	if (test_and_set_bit(0, &wrdev->is_started)) {
 		LOGe("Device with minor %u already started.\n", minor);
 		goto error0;
 	} else {
-		add_disk(wdev->gd);
+		add_disk(wrdev->gd);
 		LOGi("Start device with minor %u.\n", minor);
 	}
 	return true;
 error0:
 	return false;
 }
-EXPORT_SYMBOL_GPL(wdev_start);
+EXPORT_SYMBOL_GPL(wrdev_start);
 
 /**
  * Stop a block device.
- * Call this before @wdev_unregister().
+ * Call this before @wrdev_unregister().
  */
-bool wdev_stop(unsigned int minor)
+bool wrdev_stop(unsigned int minor)
 {
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	
-	wdev = get_from_devices(minor);
-	if (!wdev) {
+	wrdev = get_from_devices(minor);
+	if (!wrdev) {
 		LOGe("Not found device with minor %u.\n", minor);
 		goto error0;
 	}
 
-	ASSERT_WRAPPER_BLK_DEV(wdev);
+	ASSERT_WRAPPER_BLK_DEV(wrdev);
 	
-	if (test_and_clear_bit(0, &wdev->is_started)) {
-		ASSERT(wdev->gd);
-		del_gendisk(wdev->gd);
+	if (test_and_clear_bit(0, &wrdev->is_started)) {
+		ASSERT(wrdev->gd);
+		del_gendisk(wrdev->gd);
 		LOGn("Stop device with minor %u.\n", minor);
 	} else {
 		LOGe("Device wit minor %u is already stopped.\n", minor);
@@ -191,16 +191,25 @@ bool wdev_stop(unsigned int minor)
 error0:
 	return false;
 }
-EXPORT_SYMBOL_GPL(wdev_stop);
+EXPORT_SYMBOL_GPL(wrdev_stop);
 
 /**
- * Get wdev with a minor number.
+ * Get major number.
  */
-struct wrapper_blk_dev* wdev_get(unsigned int minor)
+unsigned int wrdev_get_major(void)
+{
+	return (unsigned int)max(wrapper_blk_major_, 0);
+}
+EXPORT_SYMBOL_GPL(wrdev_get_major);
+
+/**
+ * Get wrdev with a minor number.
+ */
+struct wrapper_blk_dev* wrdev_get(unsigned int minor)
 {
 	return get_from_devices(minor);
 }
-EXPORT_SYMBOL_GPL(wdev_get);
+EXPORT_SYMBOL_GPL(wrdev_get);
 
 /*******************************************************************************
  * Static functions definition.
@@ -232,14 +241,14 @@ static int wrapper_blk_ioctl(struct block_device *bdev, fmode_t mode,
 }
 
 /**
- * Initialize wdev_devices and realted data.
+ * Initialize wrdev_devices and realted data.
  */
 static void init_devices(void)
 {
 	int i;
 	
 	for (i = 0; i < MAX_N_DEVICES; i++) {
-		devices_.wdev[i] = NULL;
+		devices_.wrdev[i] = NULL;
 	}
 	devices_.n_active_devices = 0;
 	spin_lock_init(&devices_.lock);
@@ -248,16 +257,16 @@ static void init_devices(void)
 /**
  * Add a specified device.
  */
-static bool add_to_devices(struct wrapper_blk_dev *wdev)
+static bool add_to_devices(struct wrapper_blk_dev *wrdev)
 {
-	ASSERT(wdev);
+	ASSERT(wrdev);
 
-	if (get_from_devices(wdev->minor)) {
+	if (get_from_devices(wrdev->minor)) {
 		return false;
 	}
 
 	spin_lock(&devices_.lock);
-	devices_.wdev[wdev->minor] = wdev;
+	devices_.wrdev[wrdev->minor] = wrdev;
 	devices_.n_active_devices++;
 	ASSERT(devices_.n_active_devices >= 0);
 	spin_unlock(&devices_.lock);
@@ -269,19 +278,19 @@ static bool add_to_devices(struct wrapper_blk_dev *wdev)
  */
 static struct wrapper_blk_dev* del_from_devices(unsigned int minor)
 {
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 
 	ASSERT(minor < MAX_N_DEVICES);
 
 	spin_lock(&devices_.lock);
-	wdev = devices_.wdev[minor];
-	if (wdev) {
-		devices_.wdev[minor] = NULL;
+	wrdev = devices_.wrdev[minor];
+	if (wrdev) {
+		devices_.wrdev[minor] = NULL;
 		devices_.n_active_devices--;
 		ASSERT(devices_.n_active_devices >= 0);
 	}
 	spin_unlock(&devices_.lock);
-	return wdev;
+	return wrdev;
 }
 
 /**
@@ -292,15 +301,15 @@ static struct wrapper_blk_dev* del_from_devices(unsigned int minor)
  */
 static struct wrapper_blk_dev* get_from_devices(unsigned int minor)
 {
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	
 	if (minor >= MAX_N_DEVICES) {
 		return NULL;
 	}
 	spin_lock(&devices_.lock);
-	wdev = devices_.wdev[minor];
+	wrdev = devices_.wrdev[minor];
 	spin_unlock(&devices_.lock);
-	return wdev;
+	return wrdev;
 }
 
 /**
@@ -309,37 +318,37 @@ static struct wrapper_blk_dev* get_from_devices(unsigned int minor)
  * @minor minor device number.
  * @capacity Device capacity [logical block]
  * RETURN:
- * Created wdev in success, or NULL.
+ * Created wrdev in success, or NULL.
  * NOTE:
- * Call this before @register_wdev();
+ * Call this before @register_wrdev();
  */
-static struct wrapper_blk_dev* alloc_and_partial_init_wdev(
+static struct wrapper_blk_dev* alloc_and_partial_init_wrdev(
 	unsigned int minor, u64 capacity, unsigned int pbs)
 {
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	
 	/* Allocate */
-	wdev = ZALLOC(sizeof(struct wrapper_blk_dev), GFP_KERNEL);
-	if (wdev == NULL) {
+	wrdev = ZALLOC(sizeof(struct wrapper_blk_dev), GFP_KERNEL);
+	if (wrdev == NULL) {
 		LOGe("memory allocation failed.\n");
 		goto error0;
 	}
 	
 	/* Initialize */
-	wdev->minor = minor;
-	wdev->capacity = capacity;
-	snprintf(wdev->name, WRAPPER_BLK_DEV_NAME_MAX_LEN, "%d", minor);
-	wdev->pbs = pbs;
+	wrdev->minor = minor;
+	wrdev->capacity = capacity;
+	snprintf(wrdev->name, WRAPPER_BLK_DEV_NAME_MAX_LEN, "%d", minor);
+	wrdev->pbs = pbs;
 
-	spin_lock_init(&wdev->lock);
-	wdev->queue = NULL;
+	spin_lock_init(&wrdev->lock);
+	wrdev->queue = NULL;
 	/* use_make_request_fn is not initialized here. */
 	/* make_request_fn and request_fn_proc is not initialized here. */
-	wdev->gd = NULL;
-	wdev->is_started = false;
-	wdev->private_data = NULL;
+	wrdev->gd = NULL;
+	wrdev->is_started = false;
+	wrdev->private_data = NULL;
 
-	return wdev;
+	return wrdev;
 error0:
 	return NULL;
 }
@@ -356,46 +365,46 @@ error0:
  * RETURN:
  * true in success, or false.
  */
-static bool wdev_register_detail(unsigned int minor, u64 capacity,
+static bool wrdev_register_detail(unsigned int minor, u64 capacity,
 				unsigned int pbs,
 				make_request_fn *make_request_fn,
 				request_fn_proc *request_fn_proc)
 {
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 
 	/* Allocate and initialize partially. */
-	wdev = alloc_and_partial_init_wdev(minor, capacity, pbs);
-	if (!wdev) {
+	wrdev = alloc_and_partial_init_wrdev(minor, capacity, pbs);
+	if (!wrdev) {
 		LOGe("Memory allocation failed.\n");
 		goto error0;
 	}
 
 	/* Set request callback. */
 	if (make_request_fn) {
-		wdev->use_make_request_fn = true;
-		wdev->make_request_fn = make_request_fn;
+		wrdev->use_make_request_fn = true;
+		wrdev->make_request_fn = make_request_fn;
 	} else {
-		wdev->use_make_request_fn = false;
-		wdev->request_fn_proc = request_fn_proc;
+		wrdev->use_make_request_fn = false;
+		wrdev->request_fn_proc = request_fn_proc;
 	}
 
 	/* Init quene and disk. */
-	if (!init_queue_and_disk(wdev)) {
+	if (!init_queue_and_disk(wrdev)) {
 		LOGe("init_queue_and_disk() failed.\n");
 		goto error1;
 	}
 
 	/* Add the device to global variables. */
-	if (!add_to_devices(wdev)) {
-		LOGe("Already device with minor %u registered.\n", wdev->minor);
+	if (!add_to_devices(wrdev)) {
+		LOGe("Already device with minor %u registered.\n", wrdev->minor);
 		goto error2;
 	}
 	return true;
 
 error2:
-	fin_queue_and_disk(wdev);
+	fin_queue_and_disk(wrdev);
 error1:
-	FREE(wdev);
+	FREE(wrdev);
 error0:
 	return false;
 }
@@ -408,27 +417,27 @@ error0:
  * RETURN:
  * true in success, or false.
  */
-static bool init_queue_and_disk(struct wrapper_blk_dev *wdev)
+static bool init_queue_and_disk(struct wrapper_blk_dev *wrdev)
 {
 	struct request_queue *q;
 	struct gendisk *gd;
 	
-	ASSERT(wdev);
+	ASSERT(wrdev);
 
 	/* Cleanup */
-	wdev->queue = NULL;
-	wdev->gd = NULL;
+	wrdev->queue = NULL;
+	wrdev->gd = NULL;
 
 	/* Allocate and initialize queue. */
-	if (wdev->use_make_request_fn) {
+	if (wrdev->use_make_request_fn) {
 		q = blk_alloc_queue(GFP_KERNEL);
 		if (!q) {
 			LOGe("blk_alloc_queue failed.\n");
 			goto error0;
 		}
-		blk_queue_make_request(q, wdev->make_request_fn);
+		blk_queue_make_request(q, wrdev->make_request_fn);
 	} else {
-		q = blk_init_queue(wdev->request_fn_proc, &wdev->lock);
+		q = blk_init_queue(wrdev->request_fn_proc, &wrdev->lock);
 		if (!q) {
 			LOGe("blk_init_queue failed.\n");
 			goto error0;
@@ -439,10 +448,10 @@ static bool init_queue_and_disk(struct wrapper_blk_dev *wdev)
 			goto error0;
 		}
 	}
-	/* blk_queue_physical_block_size(q, wdev->pbs); */
+	/* blk_queue_physical_block_size(q, wrdev->pbs); */
 	/* blk_queue_logical_block_size(q, LOGICAL_BLOCK_SIZE); */
-	/* blk_queue_io_min(q, wdev->pbs); */
-	/* blk_queue_io_opt(q, wdev->pbs); */
+	/* blk_queue_io_min(q, wrdev->pbs); */
+	/* blk_queue_io_opt(q, wrdev->pbs); */
 
 	/* Accept REQ_DISCARD. */
 	/* Do nothing. */
@@ -450,8 +459,8 @@ static bool init_queue_and_disk(struct wrapper_blk_dev *wdev)
 	/* Accept REQ_FLUSH and REQ_FUA. */
 	/* Do nothing. */
 	
-	q->queuedata = wdev;
-	wdev->queue = q;
+	q->queuedata = wrdev;
+	wrdev->queue = q;
 
 	/* Allocate and initialize disk. */
 	gd = alloc_disk(1);
@@ -460,20 +469,20 @@ static bool init_queue_and_disk(struct wrapper_blk_dev *wdev)
 		goto error1;
 	}
 	gd->major = wrapper_blk_major_;
-	gd->first_minor = wdev->minor;
+	gd->first_minor = wrdev->minor;
 	
 	gd->fops = &wrapper_blk_ops_;
-	gd->queue = wdev->queue;
-	gd->private_data = wdev;
-	set_capacity(gd, wdev->capacity);
+	gd->queue = wrdev->queue;
+	gd->private_data = wrdev;
+	set_capacity(gd, wrdev->capacity);
 	snprintf(gd->disk_name, DISK_NAME_LEN,
-		"%s/%s", WRAPPER_BLK_DIR_NAME, wdev->name);
-	wdev->gd = gd;
+		"%s/%s", WRAPPER_BLK_DIR_NAME, wrdev->name);
+	wrdev->gd = gd;
 
 	return true;
 
 error1:
-	fin_queue_and_disk(wdev);
+	fin_queue_and_disk(wrdev);
 error0:
 	return false;
 }
@@ -484,41 +493,41 @@ error0:
  * CONTEXT:
  * Non-IRQ.
  */
-static void fin_queue_and_disk(struct wrapper_blk_dev *wdev)
+static void fin_queue_and_disk(struct wrapper_blk_dev *wrdev)
 {
-	ASSERT(wdev);
+	ASSERT(wrdev);
 
-	if (wdev->gd) {
-		put_disk(wdev->gd);
-		wdev->gd = NULL;
+	if (wrdev->gd) {
+		put_disk(wrdev->gd);
+		wrdev->gd = NULL;
 	}
-	if (wdev->queue) {
-		blk_cleanup_queue(wdev->queue);
-		wdev->queue = NULL;
+	if (wrdev->queue) {
+		blk_cleanup_queue(wrdev->queue);
+		wrdev->queue = NULL;
 	}
 }
 
-static void assert_wrapper_blk_dev(struct wrapper_blk_dev *wdev)
+static void assert_wrapper_blk_dev(struct wrapper_blk_dev *wrdev)
 {
-	ASSERT(wdev);
-	ASSERT(wdev->capacity > 0);
-	ASSERT_PBS(wdev->pbs);
-	ASSERT(strlen(wdev->name) > 0);
-	ASSERT(wdev->queue);
-	ASSERT(wdev->gd);
+	ASSERT(wrdev);
+	ASSERT(wrdev->capacity > 0);
+	ASSERT_PBS(wrdev->pbs);
+	ASSERT(strlen(wrdev->name) > 0);
+	ASSERT(wrdev->queue);
+	ASSERT(wrdev->gd);
 }
 
 static void stop_and_unregister_all_devices(void)
 {
 	int i;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	
 	for (i = 0; i < MAX_N_DEVICES; i++) {
-		wdev = get_from_devices(i);
-		if (wdev) {
-			wdev_stop(i);
-			wdev_unregister(i);
-			FREE(wdev);
+		wrdev = get_from_devices(i);
+		if (wrdev) {
+			wrdev_stop(i);
+			wrdev_unregister(i);
+			FREE(wrdev);
 		}
 	}
 }
@@ -547,10 +556,7 @@ static int __init wrapper_blk_init(void)
 	init_devices();
 
 	return 0;
-#if 0
-error1:
-	kmem_cache_destroy(pack_work_cache_);
-#endif
+	
 error0:
 	unregister_blkdev(wrapper_blk_major_, WRAPPER_BLK_NAME);
 	return -ENOMEM;

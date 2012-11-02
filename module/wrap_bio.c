@@ -56,12 +56,12 @@ static void bio_entry_end_io(struct bio *bio, int error);
 /* make_request. */
 static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio);
 
-/* Create private data for wdev. */
-static bool create_private_data(struct wrapper_blk_dev *wdev);
+/* Create private data for wrdev. */
+static bool create_private_data(struct wrapper_blk_dev *wrdev);
 /* Destroy private data for ssev. */
-static void destroy_private_data(struct wrapper_blk_dev *wdev);
-/* Customize wdev after register before start. */
-static void customize_wdev(struct wrapper_blk_dev *wdev);
+static void destroy_private_data(struct wrapper_blk_dev *wrdev);
+/* Customize wrdev after register before start. */
+static void customize_wrdev(struct wrapper_blk_dev *wrdev);
 
 static unsigned int get_minor(unsigned int id);
 static bool register_dev(void);
@@ -101,13 +101,13 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 {
 	struct bio_entry *bioe = NULL;
 	struct bio *clone = NULL;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	struct block_device *bdev;
 	ASSERT(q);
 	ASSERT(bio);
-	wdev = get_wdev_from_queue(q);
-	ASSERT(wdev);
-	bdev = wdev->private_data;
+	wrdev = get_wrdev_from_queue(q);
+	ASSERT(wrdev);
+	bdev = wrdev->private_data;
 	ASSERT(bdev);
 
 	LOGd_("bio rw %lu pos %"PRIu64" size %u\n",
@@ -135,8 +135,8 @@ error0:
 	bio_endio(bio, -EIO);
 }
 
-/* Create private data for wdev. */
-static bool create_private_data(struct wrapper_blk_dev *wdev)
+/* Create private data for wrdev. */
+static bool create_private_data(struct wrapper_blk_dev *wrdev)
 {
 	struct block_device *bdev;
 	unsigned int lbs, pbs;
@@ -151,11 +151,11 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 		LOGe("open %s failed.", device_str_);
 		return false;
 	}
-	wdev->private_data = bdev;
+	wrdev->private_data = bdev;
 
 	/* capacity */
-	wdev->capacity = bdev->bd_part->nr_sects;
-	set_capacity(wdev->gd, wdev->capacity);
+	wrdev->capacity = bdev->bd_part->nr_sects;
+	set_capacity(wrdev->gd, wrdev->capacity);
 
 	/* Block size */
 	lbs = bdev_logical_block_size(bdev);
@@ -168,35 +168,35 @@ static bool create_private_data(struct wrapper_blk_dev *wdev)
 			physical_block_size_, pbs);
 		goto error0;
 	}
-	wdev->pbs = pbs;
-	blk_queue_logical_block_size(wdev->queue, lbs);
-	blk_queue_physical_block_size(wdev->queue, pbs);
+	wrdev->pbs = pbs;
+	blk_queue_logical_block_size(wrdev->queue, lbs);
+	blk_queue_physical_block_size(wrdev->queue, pbs);
 
-	blk_queue_stack_limits(wdev->queue, bdev_get_queue(bdev));
+	blk_queue_stack_limits(wrdev->queue, bdev_get_queue(bdev));
 
 	return true;
 error0:
-	blkdev_put(wdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+	blkdev_put(wrdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 	return false;
 }
 
 /* Destroy private data for ssev. */
-static void destroy_private_data(struct wrapper_blk_dev *wdev)
+static void destroy_private_data(struct wrapper_blk_dev *wrdev)
 {
 	LOGd("destoroy_private_data called.");
 
 	/* close underlying device. */
-	blkdev_put(wdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
+	blkdev_put(wrdev->private_data, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 }
 
-/* Customize wdev after register before start. */
-static void customize_wdev(struct wrapper_blk_dev *wdev)
+/* Customize wrdev after register before start. */
+static void customize_wrdev(struct wrapper_blk_dev *wrdev)
 {
 	struct request_queue *q, *uq;
-	ASSERT(wdev);
-	q = wdev->queue;
+	ASSERT(wrdev);
+	q = wrdev->queue;
 
-	uq = bdev_get_queue(wdev->private_data);
+	uq = bdev_get_queue(wrdev->private_data);
 	/* Accept REQ_FLUSH and REQ_FUA. */
 	if (uq->flush_flags & REQ_FLUSH) {
 		if (uq->flush_flags & REQ_FUA) {
@@ -235,23 +235,23 @@ static bool register_dev(void)
 	unsigned int i = 0;
 	u64 capacity = 0;
 	bool ret;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 
 	LOGe("register_dev begin");
 	
 	/* capacity must be set lator. */
-	ret = wdev_register_with_bio(get_minor(i),
+	ret = wrdev_register_with_bio(get_minor(i),
 				capacity, physical_block_size_,
 				wrapper_blk_make_request_fn);
 		
 	if (!ret) {
 		goto error;
 	}
-	wdev = wdev_get(get_minor(i));
-	if (!create_private_data(wdev)) {
+	wrdev = wrdev_get(get_minor(i));
+	if (!create_private_data(wrdev)) {
 		goto error;
 	}
-	customize_wdev(wdev);
+	customize_wrdev(wrdev);
 
 	LOGe("register_dev end");
 
@@ -264,13 +264,13 @@ error:
 static void unregister_dev(void)
 {
 	unsigned int i = 0;
-	struct wrapper_blk_dev *wdev;
+	struct wrapper_blk_dev *wrdev;
 	
-	wdev = wdev_get(get_minor(i));
-	wdev_unregister(get_minor(i));
-	if (wdev) {
-		destroy_private_data(wdev);
-		FREE(wdev);
+	wrdev = wrdev_get(get_minor(i));
+	wrdev_unregister(get_minor(i));
+	if (wrdev) {
+		destroy_private_data(wrdev);
+		FREE(wrdev);
 	}
 }
 
@@ -278,7 +278,7 @@ static bool start_dev(void)
 {
 	unsigned int i = 0;
 
-	if (!wdev_start(get_minor(i))) {
+	if (!wrdev_start(get_minor(i))) {
 		goto error;
 	}
 	return true;
@@ -292,7 +292,7 @@ static void stop_dev(void)
 {
 	unsigned int i = 0;
 	
-	wdev_stop(get_minor(i));
+	wrdev_stop(get_minor(i));
 }
 
 /*******************************************************************************
