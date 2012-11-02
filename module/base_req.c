@@ -84,7 +84,7 @@ static bool register_alldevs(void)
 	bool ret;
 	struct simple_blk_dev *sdev;
 	
-	for (i = 0; i < n_devices_; i ++) {
+	for (i = 0; i < n_devices_; i++) {
 		capacity = sizlist_nth_size(device_size_list_str_, i)
 			/ LOGICAL_BLOCK_SIZE;
 		ASSERT(capacity > 0);
@@ -114,7 +114,7 @@ static void unregister_alldevs(void)
 	
 	ASSERT(n_devices_ > 0);
 	
-	for (i = 0; i < n_devices_; i ++) {
+	for (i = 0; i < n_devices_; i++) {
 
 		sdev = sdev_get(get_minor(i));
 		if (sdev) {
@@ -129,7 +129,7 @@ static bool start_alldevs(void)
 	unsigned int i;
 
 	ASSERT(n_devices_ > 0);
-	for (i = 0; i < n_devices_; i ++) {
+	for (i = 0; i < n_devices_; i++) {
 		if (!sdev_start(get_minor(i))) {
 			goto error;
 		}
@@ -146,7 +146,7 @@ static void stop_alldevs(void)
 	unsigned int i;
 	ASSERT(n_devices_ > 0);
 	
-	for (i = 0; i < n_devices_; i ++) {
+	for (i = 0; i < n_devices_; i++) {
 		sdev_stop(get_minor(i));
 	}
 }

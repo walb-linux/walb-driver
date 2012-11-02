@@ -37,15 +37,15 @@ void test_kmem_cache(void)
 	cache_ = kmem_cache_create("test_kmem_cache_some_data",
 				sizeof(struct some_data), 0, 0, init_some_data);
 
-	for (i = 0; i < 10; i ++) {
+	for (i = 0; i < 10; i++) {
 		some_data[i] = (struct some_data *)kmem_cache_alloc(cache_, GFP_KERNEL);
 	}
-	for (i = 0; i < 10; i ++) {
+	for (i = 0; i < 10; i++) {
 		ASSERT(some_data[i]->a == 1);
 		ASSERT(some_data[i]->b == 2);
 	}
 
-	for (i = 0; i < 10; i ++) {
+	for (i = 0; i < 10; i++) {
 		kmem_cache_free(cache_, some_data[i]);
 	}
 	kmem_cache_destroy(cache_);

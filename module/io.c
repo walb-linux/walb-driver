@@ -728,7 +728,7 @@ static bool is_zero_flush_only(struct pack *pack)
 		if (!((biow->bio->bi_rw & REQ_FLUSH) && biow->len == 0)) {
 			return false;
 		}
-		i ++;
+		i++;
 	}
 	return i == 1;
 }
@@ -1165,8 +1165,8 @@ static void logpack_calc_checksum(
 	list_for_each_entry(biow, biow_list, list) {
 
 		if (logh->record[i].is_padding) {
-			n_padding ++;
-			i ++;
+			n_padding++;
+			i++;
 			/* A padding record is not the last in the logpack header. */
 		}
 		
@@ -1180,7 +1180,7 @@ static void logpack_calc_checksum(
 		}
 
 		logh->record[i].checksum = biow->csum;
-		i ++;
+		i++;
 	}
 	
 	ASSERT(n_padding <= 1);
@@ -1243,7 +1243,7 @@ static void submit_logpack(
 			   because logpack header bio already has REQ_FLUSH. */
 		} else {
 			if (logh->record[i].is_padding) {
-				i ++;
+				i++;
 				/* padding record never come last. */
 			}
 			ASSERT(i < logh->n_records);
@@ -1255,7 +1255,7 @@ static void submit_logpack(
 				pbs, ldev, ring_buffer_off, ring_buffer_size,
 				chunk_sectors);
 		}
-		i ++;
+		i++;
 	}
 }
 
@@ -1606,8 +1606,8 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		if (lrec->is_padding) {
 			LOGd_("padding found.\n"); /* debug */
 			total_pb += capacity_pb(pbs, lrec->io_size);
-			n_padding ++;
-			i ++;
+			n_padding++;
+			i++;
 
 			/* The padding record is not the last. */
 			CHECK(i < lhead->n_records);
@@ -1625,7 +1625,7 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		CHECK(biow->len == lrec->io_size);
 		total_pb += capacity_pb(pbs, lrec->io_size);
 		
-		i ++;
+		i++;
 	}
 	CHECK(i == lhead->n_records);
 	CHECK(total_pb == lhead->total_io_size);
@@ -2420,7 +2420,7 @@ static bool overlapping_check_and_insert(
 		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
 		ASSERT(biow_tmp);
 		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
-			biow->n_overlapping ++;
+			biow->n_overlapping++;
 		}
 		if (!multimap_cursor_next(&cur)) {
 			break;
@@ -2503,7 +2503,7 @@ static void overlapping_delete_and_notify(
 		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
 		ASSERT(biow_tmp);
 		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
-			biow_tmp->n_overlapping --;
+			biow_tmp->n_overlapping--;
 			if (biow_tmp->n_overlapping == 0) {
 				/* There is no overlapping request before it. */
 				complete(&biow_tmp->overlapping_done);

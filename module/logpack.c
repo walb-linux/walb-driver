@@ -30,7 +30,7 @@ void walb_logpack_header_print(const char *level,
 		lhead->n_padding,
 		lhead->total_io_size,
 		lhead->logpack_lsid);
-	for (i = 0; i < lhead->n_records; i ++) {
+	for (i = 0; i < lhead->n_records; i++) {
 		printk("%srecord %d\n"
 			"  checksum: %08x\n"
 			"  lsid: %llu\n"
@@ -125,12 +125,12 @@ bool walb_logpack_header_add_req(
 		lhead->record[idx].is_padding = 1;
 		lhead->record[idx].offset = 0;
 		lhead->record[idx].io_size = (u16)capacity_lb(pbs, padding_pb);
-		lhead->n_padding ++;
-		lhead->n_records ++;
+		lhead->n_padding++;
+		lhead->n_records++;
 		lhead->total_io_size += padding_pb;
 
 		req_lsid += padding_pb;
-		idx ++;
+		idx++;
 		
 		if (lhead->n_records == max_n_rec) {
 			LOGd("no more request can not be added.\n");
@@ -151,11 +151,11 @@ bool walb_logpack_header_add_req(
 	lhead->record[idx].is_padding = 0;
 	lhead->record[idx].offset = (u64)blk_rq_pos(req);
 	lhead->record[idx].io_size = (u16)req_lb;
-	lhead->n_records ++;
+	lhead->n_records++;
 	lhead->total_io_size += req_pb;
 
 	req_lsid += req_pb;
-	idx ++;
+	idx++;
 	
 	return true;
 error0:
@@ -239,12 +239,12 @@ bool walb_logpack_header_add_bio(
 		lhead->record[idx].is_padding = 1;
 		lhead->record[idx].offset = 0;
 		lhead->record[idx].io_size = (u16)capacity_lb(pbs, padding_pb);
-		lhead->n_padding ++;
-		lhead->n_records ++;
+		lhead->n_padding++;
+		lhead->n_records++;
 		lhead->total_io_size += padding_pb;
 
 		bio_lsid += padding_pb;
-		idx ++;
+		idx++;
 		
 		if (lhead->n_records == max_n_rec) {
 			LOGd_(no_mor_bio_msg);
@@ -265,11 +265,11 @@ bool walb_logpack_header_add_bio(
 	lhead->record[idx].is_padding = 0;
 	lhead->record[idx].offset = (u64)bio->bi_sector;
 	lhead->record[idx].io_size = (u16)bio_lb;
-	lhead->n_records ++;
+	lhead->n_records++;
 	lhead->total_io_size += bio_pb;
 
 	bio_lsid += bio_pb;
-	idx ++;
+	idx++;
 	
 	return true;
 error0:

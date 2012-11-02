@@ -67,7 +67,7 @@ static unsigned int get_n_bits(u32 val)
 		return 1;
 	}
 	
-	for (i = 1; i < 32; i ++) {
+	for (i = 1; i < 32; i++) {
 		if (val >> i == 1) {
 			return i + 1;
 		}
@@ -152,7 +152,7 @@ static u32 get_sum(const u8* data, int size)
 
 	ASSERT(n * sizeof(u32) + m == size);
 
-	for (i = 0; i < n; i ++) {
+	for (i = 0; i < n; i++) {
 		sum += *(u32 *)(data + (sizeof(u32) * i));
 	}
 
@@ -401,7 +401,7 @@ struct hash_tbl* hashtbl_create(int bucket_size, gfp_t gfp_mask)
 	htbl->bucket = kzalloc(sizeof(struct hlist_head) * bucket_size, gfp_mask);
 	if (htbl->bucket == NULL) { goto error1; }
 
-	for (i = 0; i < htbl->bucket_size; i ++) {
+	for (i = 0; i < htbl->bucket_size; i++) {
 		INIT_HLIST_HEAD(&htbl->bucket[i]);
 	}
 
@@ -439,7 +439,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
 	LOGd("hashtbl_empty begin\n");
 	ASSERT_HASHTBL(htbl);
 	
-	for (i = 0; i < htbl->bucket_size; i ++) {
+	for (i = 0; i < htbl->bucket_size; i++) {
 
 		hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
 
@@ -557,7 +557,7 @@ int hashtbl_is_empty(const struct hash_tbl *htbl)
 	
 	ASSERT_HASHTBL(htbl);
 	
-	for (i = 0; i < htbl->bucket_size; i ++) {
+	for (i = 0; i < htbl->bucket_size; i++) {
 		if (! hlist_empty(&htbl->bucket[i])) {
 			return 0;
 		}
@@ -585,14 +585,14 @@ int hashtbl_n_items(const struct hash_tbl *htbl)
 
 	ASSERT_HASHTBL(htbl);
 	
-	for (i = 0; i < htbl->bucket_size; i ++) {
+	for (i = 0; i < htbl->bucket_size; i++) {
 
 		n_local = 0;
 		hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
 
 			ASSERT_HASHCELL(cell);
-			n_local ++;
-			n ++;
+			n_local++;
+			n++;
 		}
 		if (n_local < n_min) { n_min = n_local; }
 		if (n_max < n_local) { n_max = n_local; }
@@ -636,7 +636,7 @@ int hashtbl_test(void)
 	WALB_CHECK(hashtbl_is_empty(htbl));
 
 	/* Insert */
-	for (i = 0; i < 100000; i ++) {
+	for (i = 0; i < 100000; i++) {
 		snprintf(buf, 10, "abcd%05d", i);
 		WALB_CHECK(hashtbl_add(htbl, buf, 9, i, GFP_KERNEL) == 0);
 	}
@@ -645,7 +645,7 @@ int hashtbl_test(void)
 	WALB_CHECK(! hashtbl_is_empty(htbl));
 
 	/* Lookup */
-	for (i = 0; i < 100000; i ++) {
+	for (i = 0; i < 100000; i++) {
 		snprintf(buf, 10, "abcd%05d", i);
 		val = hashtbl_lookup(htbl, buf, 9);
 		WALB_CHECK(val ==  i);
@@ -655,7 +655,7 @@ int hashtbl_test(void)
 	WALB_CHECK(! hashtbl_is_empty(htbl));
 
 	/* Delete */
-	for (i = 0; i < 100000; i ++) {
+	for (i = 0; i < 100000; i++) {
 		snprintf(buf, 10, "abcd%05d", i);
 		if (i % 2 == 0) {
 			val = hashtbl_del(htbl, buf, 9);
@@ -685,7 +685,7 @@ int hashtbl_test(void)
 	WALB_CHECK(hashtbl_is_empty(htbl));
 
 	/* Insert */
-	for (i = 0; i < 100; i ++) {
+	for (i = 0; i < 100; i++) {
 		snprintf(buf, 10, "abcd%05d", i);
 		WALB_CHECK(hashtbl_add(htbl, buf, 9, i, GFP_KERNEL) == 0);
 	}
@@ -756,7 +756,7 @@ static int search_next_head_index(const struct hash_tbl *htbl, int start_idx)
 	ASSERT_HASHTBL(htbl);
 	ASSERT(0 <= start_idx && start_idx <= htbl->bucket_size);
 
-	for (i = start_idx; i < htbl->bucket_size; i ++) {
+	for (i = start_idx; i < htbl->bucket_size; i++) {
 		
 		if (! hlist_empty(&htbl->bucket[i])) {
 			break;
@@ -1035,7 +1035,7 @@ int hashtbl_cursor_test(void)
 
 	/* Prepare hash table data. */
 	LOGd("Prepare hash table data.\n");
-	for (i = 0; i < 10; i ++) {
+	for (i = 0; i < 10; i++) {
 		key = i;
 		val = i;
 		memcpy(buf, &key, sizeof(int));
@@ -1057,7 +1057,7 @@ int hashtbl_cursor_test(void)
 		val = hashtbl_cursor_val(&curt);
 		WALB_CHECK(val != HASHTBL_INVALID_VAL);
 		LOGd("i %d key %d val %lu\n", i, key, val);
-		i ++;
+		i++;
 	}
 	LOGd("i: %d\n", i);
 	WALB_CHECK(i == 10);
@@ -1075,10 +1075,10 @@ int hashtbl_cursor_test(void)
 		WALB_CHECK(val != HASHTBL_INVALID_VAL);
 		if (val % 2 == 0) {
 			WALB_CHECK(hashtbl_cursor_del(&curt) == val);
-			j ++;
+			j++;
 			WALB_CHECK(curt.state == HASHTBL_CURSOR_DELETED);
 		}
-		i ++;
+		i++;
 	}
 	WALB_CHECK(i == 10);
 	WALB_CHECK(j == 5);
@@ -1104,7 +1104,7 @@ int hashtbl_cursor_test(void)
 
 	/* Prepare hash table data. */
 	LOGd("Prepare hash table data.\n");
-	for (i = 0; i < 1000; i ++) {
+	for (i = 0; i < 1000; i++) {
 		key = i;
 		val = i;
 		memcpy(buf, &key, sizeof(int));
@@ -1124,7 +1124,7 @@ int hashtbl_cursor_test(void)
 		memcpy(&key, hashtbl_cursor_key(&curt), sizeof(int));
 		val = hashtbl_cursor_val(&curt);
 		WALB_CHECK(val != HASHTBL_INVALID_VAL);
-		i ++;
+		i++;
 	}
 	LOGd("i: %d\n", i);
 	WALB_CHECK(i == 1000);
@@ -1141,10 +1141,10 @@ int hashtbl_cursor_test(void)
 		WALB_CHECK(val != HASHTBL_INVALID_VAL);
 		if (val % 2 == 0) {
 			WALB_CHECK(hashtbl_cursor_del(&curt) == val);
-			j ++;
+			j++;
 			WALB_CHECK(curt.state == HASHTBL_CURSOR_DELETED);
 		}
-		i ++;
+		i++;
 	}
 	WALB_CHECK(i == 1000);
 	WALB_CHECK(j == 500);

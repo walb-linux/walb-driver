@@ -102,7 +102,7 @@ static void __memblk_data_copy(
 	}
 	remaining = size - tmp_size;
 	count += tmp_size;
-	block_addr ++;
+	block_addr++;
 
 	/* Copy remaining blocks */
 	while (remaining > 0) {
@@ -116,7 +116,7 @@ static void __memblk_data_copy(
 		}
 		remaining -= tmp_size;
 		count += tmp_size;
-		block_addr ++;
+		block_addr++;
 	}
 	LOGd("data copy size %zu count %zu remaining %zu.\n",
 		size, count, remaining); /* debug */
@@ -137,7 +137,7 @@ static void __memblk_data_blocks_io(struct memblk_data *mdata, u64 block_id, u32
 	
 	ASSERT(mdata);
 	ASSERT(data);
-	for (ui = 0; ui < n_blocks; ui ++) {
+	for (ui = 0; ui < n_blocks; ui++) {
 		if (block_id + ui >= mdata->capacity) {
 			LOGe("Access to outside the capacity %"PRIu64" addr %"PRIu64".",
 				block_id + ui, mdata->capacity);
@@ -209,7 +209,7 @@ struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask,
 	/* Allocate each block */
 	n_pages = mdata_get_required_n_pages(capacity, block_size);
 	/* LOGd("n_pages: %"PRIu64"\n", n_pages); */
-	for (ui = 0; ui < n_pages; ui ++) {
+	for (ui = 0; ui < n_pages; ui++) {
 		addr = __get_free_page(gfp_mask); CNT_INC();
 		/* LOGd("allocate a page addr %p.\n", (void *)addr); */
 		if (!addr) {
@@ -245,7 +245,7 @@ void mdata_destroy(struct memblk_data *mdata)
 	if (mdata->index) {
 		n_pages = mdata_get_required_n_pages(
 			mdata->capacity, mdata->block_size);
-		for (page_id = 0; page_id < n_pages; page_id ++) {
+		for (page_id = 0; page_id < n_pages; page_id++) {
 			addr = map_del(mdata->index, page_id);
 			ASSERT(addr != TREEMAP_INVALID_VAL);
 			/* LOGd("page_id %"PRIu64" n_pages %"PRIu64" addr %p\n", */
@@ -403,7 +403,7 @@ bool test_memblk_data_simple(u64 capacity, const u32 block_size)
 		LOGe("create_memblk_data failed.\n");
 		goto error1;
 	}
-	for (b_id = 0; b_id < mdata->capacity; b_id ++) {
+	for (b_id = 0; b_id < mdata->capacity; b_id++) {
 		data = mdata_get_block(mdata, b_id);
 		LOGd("b_id %"PRIu64" capacity %"PRIu64" data %p\n",
 			b_id, mdata->capacity, data);
@@ -487,7 +487,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 	}
 	
 	/* Random area */
-	for (i = 0; i < 10; i ++) {
+	for (i = 0; i < 10; i++) {
 		
 		addr = get_random_addr(capacity - 4);
 		get_random_bytes(data1, PAGE_SIZE);

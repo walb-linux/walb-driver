@@ -348,12 +348,12 @@ static inline void init_snapshot_sector(struct sector_data *sect)
 	snap_sect = get_snapshot_sector(sect);
 	snap_sect->sector_type = SECTOR_TYPE_SNAPSHOT;
 	
-	for (i = 0; i < n_records; i ++) {
+	for (i = 0; i < n_records; i++) {
 		snapshot_record_init(&snap_sect->record[i]);
 	}
 	
 #ifdef WALB_DEBUG
-	for (i = 0; i < n_records; i ++) {
+	for (i = 0; i < n_records; i++) {
 		ASSERT(!is_alloc_snapshot_record(i, sect));
 	}
 #endif
@@ -519,9 +519,9 @@ static inline int get_n_records_in_snapshot_sector_detail(
 	snap_sect = get_snapshot_sector(sect);
 	
 	n = 0;
-	for (i = 0; i < max_n; i ++) {
+	for (i = 0; i < max_n; i++) {
 		if (test_u64bits(i, &snap_sect->bitmap)) {
-			n ++;
+			n++;
 		}
 	}
 	ASSERT(0 <= n && n <= 64);
@@ -578,11 +578,11 @@ static inline int is_valid_snapshot_sector(const struct sector_data *sect)
 
 		if (is_alloc_snapshot_record(i, sect)) {
 			if (! is_valid_snapshot_record(rec)) {
-				count ++;
+				count++;
 			}
 		} else {
 			if (rec->snapshot_id != INVALID_SNAPSHOT_ID) {
-				count ++;
+				count++;
 			}
 		}
 	}

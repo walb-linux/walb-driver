@@ -24,7 +24,7 @@ static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
 
 	ASSERT(size % sizeof(u32) == 0);
 
-	for (i = 0; i < n; i ++) {
+	for (i = 0; i < n; i++) {
 		sum += *(u32 *)(data + (sizeof(u32) * i));
 	}
 	return sum;

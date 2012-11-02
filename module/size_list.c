@@ -29,10 +29,10 @@ unsigned int sizlist_length(const char* sizlist_str)
 		return 0; /* No data. */
 	}
 	n = 1;
-	for (i = 0; i < len; i ++) {
+	for (i = 0; i < len; i++) {
 		if (sizlist_str[i] == ',' && 
 			sizlist_str[i + 1] != '\0') {
-			n ++;
+			n++;
 		}
 	}
 	ASSERT(n > 0);
@@ -59,7 +59,7 @@ u64 sizlist_nth_size(const char* sizlist_str, unsigned int n)
 	ASSERT(n >= 0);
 
 	/* Skip ',' for n times. */
-	for (i = 0; i < n; i ++) {
+	for (i = 0; i < n; i++) {
 		p = strchr(p, ',') + 1;
 	}
 	ASSERT(p != NULL);
@@ -74,7 +74,7 @@ u64 sizlist_nth_size(const char* sizlist_str, unsigned int n)
 
 	/* Parse number (with suffix). */
 	capacity = 0;
-	for (i = 0; i < len; i ++) {
+	for (i = 0; i < len; i++) {
 
 		if ('0' <= p[i] && p[i] <= '9') {
 			capacity *= 10;

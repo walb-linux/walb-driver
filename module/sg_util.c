@@ -440,7 +440,7 @@ void test_scatterlist(unsigned int nents, unsigned int entsize)
 	/* Prepare temporary data where all bit is 1. */
 	tmp_data = (u8 *)__get_free_page(GFP_KERNEL);
 	ASSERT(tmp_data);
-	for (i = 0; i < PAGE_SIZE; i ++) {
+	for (i = 0; i < PAGE_SIZE; i++) {
 		tmp_data[i] = 0xff;
 	}
 	
@@ -460,7 +460,7 @@ void test_scatterlist(unsigned int nents, unsigned int entsize)
 	sg_copy_to_buffer(sgt.sgl, sgt.nents, tmp_data, PAGE_SIZE);
 
 	/* Check data. */
-	for (i = 0; i < PAGE_SIZE; i ++) {
+	for (i = 0; i < PAGE_SIZE; i++) {
 		ASSERT(tmp_data[i] == 0xff);
 	}
 	sg_off = 0;
@@ -469,13 +469,13 @@ void test_scatterlist(unsigned int nents, unsigned int entsize)
 		/*	i, sg->offset, sg->length); */
 		/* LOGd("alloc iteration %d\n", i); */
 
-		for (j = 0; j < entsize; j ++) {
+		for (j = 0; j < entsize; j++) {
 			if (sg_off < PAGE_SIZE) {
 				ASSERT(((u8 *)page_address(sg_page(sg)))[j] == 0xff);
 			} else {
 				ASSERT(((u8 *)page_address(sg_page(sg)))[j] == 0);
 			}
-			sg_off ++;
+			sg_off++;
 		}
 	}
 	ASSERT(sg_off == sgt.nents * entsize);
@@ -583,7 +583,7 @@ void test_sg_pos(void)
 	sg_copy_from_buffer(sgt.sgl, sgt.nents, tmp_data, PAGE_SIZE);
 
 	/* Check functionality of sg_pos_get() and sg_pos_fragment_size(). */
-	for (ui = 0; ui < PAGE_SIZE; ui ++) {
+	for (ui = 0; ui < PAGE_SIZE; ui++) {
 		sg_pos_get(&sgt, &pos, ui);
 		ASSERT(pos.total_offset == ui);
 		ASSERT(*(u8 *)sg_pos_virt(&pos) == tmp_data[ui]);
@@ -605,7 +605,7 @@ void test_sg_pos(void)
 		sg_pos_go_forward(&pos, PAGE_SIZE);
 		ASSERT(ret);
 	}
-	for (i = 0; i < 100; i ++) {
+	for (i = 0; i < 100; i++) {
 		/* Randomly */
 		ret = sg_pos_get(&sgt, &pos, get_random_u32_max(PAGE_SIZE));
 		ASSERT(ret);

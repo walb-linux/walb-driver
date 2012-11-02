@@ -327,7 +327,7 @@ static int hlist_len(const struct hlist_head *head)
 	if (head == NULL) { return -1; }
 
 	hlist_for_each(node, head) {
-		count ++;
+		count++;
 	}
 	return count;
 }
@@ -417,7 +417,7 @@ static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *n
 	found = 0;
 	hlist_for_each_entry_safe(cell, hlnode, hlnext, hlhead, list) {
 		ASSERT_TREECELL(cell);
-		if (cell->val == newcell->val) { found ++; break; }
+		if (cell->val == newcell->val) { found++; break; }
 	}
 	if (found == 0) {
 		hlist_add_head(&newcell->list, hlhead);
@@ -844,7 +844,7 @@ int map_n_items(const struct map *tmap)
 	
 	node = rb_first(&tmap->root);
 	while (node) {
-		count ++;
+		count++;
 		node = rb_next(node);
 	}
 	
@@ -889,7 +889,7 @@ int map_test(void)
 	WALB_CHECK(map_add(tmap, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) == -EINVAL);
 
 	/* Insert records. */
-	for (i = 0; i < 10000; i ++) {
+	for (i = 0; i < 10000; i++) {
 		key = (u64)i;
 		/* Succeed. */
 		WALB_CHECK(map_add(tmap, key, key + i, GFP_KERNEL) == 0);
@@ -901,7 +901,7 @@ int map_test(void)
 	WALB_CHECK(! map_is_empty(tmap));
 
 	/* Delete records. */
-	for (i = 0; i < 10000; i ++) {
+	for (i = 0; i < 10000; i++) {
 		key = (u64)i;
 		
 		if (i % 2 == 0) {
@@ -933,10 +933,10 @@ int map_test(void)
 
 	/* Random insert. */
 	count = 0;
-	for (i = 0; i < 10000; i ++) {
+	for (i = 0; i < 10000; i++) {
 		key = get_random_u32() % 10000;
 		if(map_add(tmap, key, key + i, GFP_KERNEL) == 0) {
-			count ++;
+			count++;
 		}
 	}
 	n = map_n_items(tmap);
@@ -1697,7 +1697,7 @@ unsigned long multimap_del(struct multimap *tmap, u64 key, unsigned long val)
 	hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
 		ASSERT_TREECELL(cell);
 		if (cell->val == val) {
-			found ++;
+			found++;
 			hlist_del(&cell->list);
 			retval = cell->val;
 			free_cell(tmap->mmgr, cell);
@@ -1736,7 +1736,7 @@ int multimap_del_key(struct multimap *tmap, u64 key)
 
 	hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
 		ASSERT_TREECELL(cell);
-		found ++;
+		found++;
 		hlist_del(&cell->list);
 		free_cell(tmap->mmgr, cell);
 	}
@@ -1868,7 +1868,7 @@ int multimap_test(void)
 
 	/* Insert records. */
 	LOGd("Insert records.\n");
-	for (i = 0; i < 10000; i ++) {
+	for (i = 0; i < 10000; i++) {
 		key = (u64) i;
 		/* Succeed. */
 		WALB_CHECK(multimap_add(tm, key, key + i, GFP_KERNEL) == 0);
@@ -1883,7 +1883,7 @@ int multimap_test(void)
 
 	/* Delete records. */
 	LOGd("Delete records.\n");
-	for (i = 0; i < 10000; i ++) {
+	for (i = 0; i < 10000; i++) {
 		key = (u64) i;
 
 		n = multimap_lookup_n(tm, key);
@@ -1929,7 +1929,7 @@ int multimap_test(void)
 
 	/* Delete multiple records. */
 	LOGd("Delete multiple records.\n");
-	for (i = 0; i < 10000; i ++) {
+	for (i = 0; i < 10000; i++) {
 		key = (u64) i;
 		if (i % 2 != 0) {
 			n = multimap_del_key(tm, key);
@@ -1956,11 +1956,11 @@ int multimap_test(void)
 	/* Random insert. */
 	LOGd("Random insert.\n");
 	count = 0;
-	for (i = 0; i < 10000; i ++) {
+	for (i = 0; i < 10000; i++) {
 		key = get_random_u32() % 1000;
 		val = get_random_u32() % 10;
 		if (multimap_add(tm, key, val, GFP_KERNEL) == 0) {
-			count ++;
+			count++;
 		}
 	}
 	n = multimap_n_items(tm);
@@ -2429,7 +2429,7 @@ int __init multimap_cursor_test(void)
 	WALB_CHECK(multimap_cursor_is_valid(&curt));
 	WALB_CHECK(multimap_cursor_is_begin(&curt));
 	WALB_CHECK(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
-	for (i = 0; i < 10; i ++) {
+	for (i = 0; i < 10; i++) {
 		WALB_CHECK(multimap_cursor_next(&curt));
 		key = multimap_cursor_key(&curt);
 		val = multimap_cursor_val(&curt);
@@ -2449,7 +2449,7 @@ int __init multimap_cursor_test(void)
 	WALB_CHECK(multimap_cursor_is_valid(&curt));
 	WALB_CHECK(multimap_cursor_is_end(&curt));
 	WALB_CHECK(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
-	for (i = 10 - 1; i >= 0; i --) {
+	for (i = 10 - 1; i >= 0; i--) {
 		WALB_CHECK(multimap_cursor_prev(&curt));
 		key = multimap_cursor_key(&curt);
 		val = multimap_cursor_val(&curt);

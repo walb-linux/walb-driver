@@ -58,7 +58,7 @@ static void run_kthread_test(unsigned int n_threads)
 	LOGd("run_test begin.\n");
 	ASSERT(n_threads > 0);
 
-	for (i = 0; i < n_threads; i ++) {
+	for (i = 0; i < n_threads; i++) {
 		tdata_[i].id = i;
 		clear_bit(THREAD_WAKEUP, &tdata_[i].flags);
 		init_waitqueue_head(&tdata_[i].wait_q);
@@ -71,7 +71,7 @@ static void run_kthread_test(unsigned int n_threads)
 
 	msleep_interruptible(1000);
 	
-	for (i = 0; i < n_threads; i ++) {
+	for (i = 0; i < n_threads; i++) {
 		LOGd("wake up tdata_[%u].\n", i);
 		set_bit(THREAD_WAKEUP, &tdata_[i].flags);
 		wake_up_interruptible(&tdata_[i].wait_q);
@@ -79,7 +79,7 @@ static void run_kthread_test(unsigned int n_threads)
 	
 	msleep_interruptible(1000);
 	
-	for (i = 0; i < n_threads; i ++) {
+	for (i = 0; i < n_threads; i++) {
 		kthread_stop(tdata_[i].tsk);
 	}
 

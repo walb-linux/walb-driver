@@ -189,7 +189,7 @@ static void init_workqueue(void)
 {
 	int i;
 	
-	for (i = 0; i < N_WQ; i ++) {
+	for (i = 0; i < N_WQ; i++) {
 		wq_name_[i] = (char *)MALLOC(64, GFP_KERNEL);
 		ASSERT(wq_name_[i]);
 		snprintf(wq_name_[i], 64, WQ_NAME_PREFIX "%d", i);
@@ -222,7 +222,7 @@ static void fin_workqueue(void)
 {
 	int i;
 	
-	for (i = 0; i < N_WQ; i ++) {
+	for (i = 0; i < N_WQ; i++) {
 		flush_workqueue(wq_[i]);
 		destroy_workqueue(wq_[i]);
 		wq_[i] = NULL;
@@ -263,7 +263,7 @@ static void tail_recur_task(struct work_struct *work)
 
 	LOGn("i: %d\n", trwork->i);
 	if (trwork->i > 0) {
-		trwork->i --;
+		trwork->i--;
 		INIT_WORK(&trwork->work, tail_recur_task);
 		queue_work(wq_[0], &trwork->work);
 	} else {
@@ -320,7 +320,7 @@ static void test_wq_single(void)
 	struct timespec bgn_ts, end_ts, sub_ts;
 
 	getnstimeofday(&bgn_ts);
-	for (i = 0; i < N_TRIAL; i ++) {
+	for (i = 0; i < N_TRIAL; i++) {
 		w = create_test_work(GFP_KERNEL);
 		ASSERT(w);
 		w->msec_sleep = 100;
@@ -347,7 +347,7 @@ static void test_spinlock(void)
 	
 	spin_lock_init(&lock);
 	getnstimeofday(&bgn_ts);
-	for (i = 0; i < N_TRIAL; i ++) {
+	for (i = 0; i < N_TRIAL; i++) {
 		spin_lock(&lock);
 		spin_unlock(&lock);
 	}

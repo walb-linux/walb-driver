@@ -60,7 +60,7 @@ static void create_test_data(u64 capacity)
 	mdata_ = mdata_create(capacity, BLOCK_SIZE, GFP_KERNEL, &mmgr_);
 	ASSERT(mdata_);
 
-	for (i = 0; i < MAX_N_THREADS; i ++) {
+	for (i = 0; i < MAX_N_THREADS; i++) {
 		buffer_[i] = (u8 *)__get_free_page(GFP_KERNEL);
 		ASSERT(buffer_[i]);
 	}
@@ -70,7 +70,7 @@ static void destroy_test_data(void)
 {
 	unsigned int i;
 
-	for (i = 0; i < MAX_N_THREADS; i ++) {
+	for (i = 0; i < MAX_N_THREADS; i++) {
 		ASSERT(buffer_[i]);
 		free_page((unsigned long)buffer_[i]);
 	}
@@ -128,7 +128,7 @@ int worker(void *data)
 	LOGd("worker %u start.\n", tdata->id);
 	
 	set_bit(THREAD_WORKING, &tdata->flags);
-	for (i = 0; i < tdata->n_io; i ++) {
+	for (i = 0; i < tdata->n_io; i++) {
 		random_io(tdata->id, tdata->mode);
 	};
 	set_bit(THREAD_DONE, &tdata->flags);
@@ -148,7 +148,7 @@ static void run_benchmark(unsigned int n_threads, unsigned int n_io, enum io_mod
 
 	getnstimeofday(&ts_bgn);
 
-	for (i = 0; i < n_threads; i ++) {
+	for (i = 0; i < n_threads; i++) {
 		tdata_[i].id = i;
 		clear_bit(THREAD_DONE, &tdata_[i].flags);
 		clear_bit(THREAD_WORKING, &tdata_[i].flags);
@@ -162,7 +162,7 @@ static void run_benchmark(unsigned int n_threads, unsigned int n_io, enum io_mod
 		ASSERT(tdata_[i].tsk);
 	}
 
-	for (i = 0; i < n_threads; i ++) {
+	for (i = 0; i < n_threads; i++) {
 
 		while (!test_bit(THREAD_WORKING, &tdata_[i].flags));
 		wait_event_interruptible(
@@ -187,14 +187,14 @@ static int __init test_init(void)
 	LOGe("BUILD_DATE %s\n", BUILD_DATE);
 
 	create_test_data(1048576);
-	for (j = 0; j < 5; j ++) {
-		for (i = 1; i <= 8; i ++) {
+	for (j = 0; j < 5; j++) {
+		for (i = 1; i <= 8; i++) {
 			run_benchmark(i,  1000000, IO_READ);
 		}
-		for (i = 1; i <= 8; i ++) {
+		for (i = 1; i <= 8; i++) {
 			run_benchmark(i,  1000000, IO_WRITE);
 		}
-		for (i = 1; i <= 8; i ++) {
+		for (i = 1; i <= 8; i++) {
 			run_benchmark(i,  1000000, IO_RW);
 		}
 	}
