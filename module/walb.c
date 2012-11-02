@@ -259,12 +259,16 @@ error0:
 static int walb_open(struct block_device *bdev, fmode_t mode)
 {
 	struct walb_dev *wdev = get_wdev_from_gd(bdev->bd_disk);
-	
-	if (atomic_inc_return(&wdev->n_users) == 1) {
+	int n_users;
+
+	n_users = atomic_inc_return(&wdev->n_users);
+	if (n_users == 1) {
+#if 0
 		LOGn("This is the first time to open walb device %d"
 			" and check_disk_change() will be called.\n",
 			MINOR(wdev->devt));
 		check_disk_change(bdev);
+#endif
 	}
 	return 0;
 }
@@ -1017,12 +1021,16 @@ static struct block_device_operations walb_ops = {
 static int walblog_open(struct block_device *bdev, fmode_t mode)
 {
 	struct walb_dev *wdev = get_wdev_from_gd(bdev->bd_disk);
+	int n_users;
 	
-	if (atomic_inc_return(&wdev->log_n_users) == 1) {
+	n_users = atomic_inc_return(&wdev->log_n_users);
+	if (n_users == 1) {
+#if 0
 		LOGn("This is the first time to open walblog device %d"
 			" and check_disk_change() will be called.\n",
 			MINOR(wdev->devt));
 		check_disk_change(bdev);
+#endif
 	}
 	return 0;
 }
@@ -1630,13 +1638,13 @@ static void walb_exit(void)
  *	  walblog device minor will be (minor + 1).
  * @ldevt device id of log device.
  * @ddevt device id of data device.
- * @name name of the device, or NULL to use default.
+ * @param parameters. (this will be updated)
  *
  * @return allocated and prepared walb_dev data, or NULL.
  */
 struct walb_dev* prepare_wdev(
-	unsigned int minor,
-	dev_t ldevt, dev_t ddevt, const char* name)
+	unsigned int minor, dev_t ldevt, dev_t ddevt,
+	struct walb_start_param *param)
 {
 	struct walb_dev *wdev;
 	u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
@@ -1644,6 +1652,8 @@ struct walb_dev* prepare_wdev(
 	struct checkpoint_data *cpd;
 	struct walb_super_sector *super;
 
+	ASSERT(is_walb_start_param_valid(param));
+	
 	/* Minor id check. */
 	if (minor == WALB_DYNAMIC_MINOR) {
 		LOGe("Do not specify WALB_DYNAMIC_MINOR.\n");
@@ -1724,29 +1734,27 @@ struct walb_dev* prepare_wdev(
 	wdev->ring_buffer_size = super->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(super);
 
-	/* now editing begin */
-	wdev->max_logpack_pb = 256 * 1024 / wdev->physical_bs;
+	/* Set parameters. */
+	wdev->max_logpack_pb = param->max_logpack_kb * 1024 / wdev->physical_bs;
 #ifdef WALB_FAST_ALGORITHM
-	wdev->max_pending_sectors = 64 * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
-	wdev->min_pending_sectors = 32 * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
-	wdev->queue_stop_timeout_ms = 100;
+	ASSERT(0 < param->min_pending_mb);
+	ASSERT(param->min_pending_mb < param->max_pending_mb);
+	wdev->max_pending_sectors
+		= param->max_pending_mb * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
+	wdev->min_pending_sectors
+		= param->min_pending_mb * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
+	wdev->queue_stop_timeout_ms = param->queue_stop_timeout_ms;
 #endif
-	/* now editing end */
 	
 	/* Set device name. */
-	if (walb_set_name(wdev, minor, name) != 0) {
+	if (walb_set_name(wdev, minor, param->name) != 0) {
 		LOGe("Set device name failed.\n");
 		goto out_ldev_init;
 	}
 	ASSERT_SECTOR_DATA(wdev->lsuper0);
 	dev_name = super->name;
+	memcpy(param->name, dev_name, DISK_NAME_LEN);
 
-	/* Setup iocore data. */
-	if (!iocore_initialize(wdev)) {
-		LOGe("iocore initialization failed.\n");
-		goto out_ldev_init;
-	}
-	
 	/*
 	 * Redo
 	 * 1. Read logpack from written_lsid.
@@ -1773,7 +1781,7 @@ struct walb_dev* prepare_wdev(
 	 */
 	if (walb_prepare_device(wdev, minor, dev_name) != 0) {
 		LOGe("walb_prepare_device() failed.\n");
-		goto out_iocore_init;
+		goto out_ldev_init;
 	}
 	
 	/*
@@ -1783,14 +1791,22 @@ struct walb_dev* prepare_wdev(
 		goto out_walbdev;
 	}
 
+	/* Setup iocore data. */
+	if (!iocore_initialize(wdev)) {
+		LOGe("iocore initialization failed.\n");
+		goto out_walblogdev;
+	}
+
 	return wdev;
 
-/* out_walblogdev: */
-/*	   walblog_finalize_device(wdev); */
-out_walbdev:
-	walb_finalize_device(wdev);
+#if 0
 out_iocore_init:
 	iocore_finalize(wdev);
+#endif
+out_walblogdev:
+	walblog_finalize_device(wdev);
+out_walbdev:
+	walb_finalize_device(wdev);
 out_ldev_init:
 	walb_ldev_finalize(wdev);
 out_ddev:

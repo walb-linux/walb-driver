@@ -55,14 +55,16 @@ static long walb_ctl_compat_ioctl(
  *		   WALB_DYNAMIC_MINOR means automatic assignment),
  *	    lmajor, lminor,
  *	    dmajor, dminor,
- *	    buf_size (<= DISK_NAME_LEN),
- *	    (char *)__buf (name of walb device. terminated by '\0').
+ *	    buf_size (sizeof(struct walb_start_param)),
+ *	    (struct walb_start_param *)__buf
+ *            Parameters to start a walb device.
  *	Output:
  *	  error: 0 in success.
  *	  k2u
  *	    wmajor, wminor
- *	    buf_size (<= DISK_NAME_LEN)
- *	    (char *)__buf (name of walb device. terminated by '\0')
+ *	    buf_size (sizeof(struct walb_start_param)),
+ *	    (struct walb_start_param *)__buf
+ *            Parameters set really.
  *
  * @return 0 in success, or -EFAULT.
  */
@@ -71,7 +73,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	dev_t ldevt, ddevt;
 	unsigned int wminor;
 	struct walb_dev *wdev;
-	char *name;
+	struct walb_start_param *param0, *param1;
 	
 	ASSERT(ctl->command == WALB_IOCTL_START_DEV);
 
@@ -82,53 +84,71 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	LOGd("(ldevt %u:%u) (ddevt %u:%u)\n",
 		MAJOR(ldevt), MINOR(ldevt),
 		MAJOR(ddevt), MINOR(ddevt));
-	if (ctl->u2k.buf_size > 0) {
-		name = (char *)ctl->u2k.__buf;
-		LOGd("name len: %zu\n", strnlen(name, DISK_NAME_LEN));
-	} else {
-		name = NULL;
-	}
 
+	if (ctl->u2k.buf_size != sizeof(struct walb_start_param)) {
+		LOGe("ctl->u2k.buf_size is invalid.\n");
+		ctl->error = -1;
+		goto error0;
+	}
+	if (ctl->k2u.buf_size != sizeof(struct walb_start_param)) {
+		LOGe("ctl->k2u.buf_size is invalid.\n");
+		ctl->error = -2;
+		goto error0;
+	}
+	param0 = (struct walb_start_param *)ctl->u2k.__buf;
+	param1 = (struct walb_start_param *)ctl->k2u.__buf;
+	ASSERT(param0);
+	ASSERT(param1);
+	if (!is_walb_start_param_valid(param0)) {
+		LOGe("walb start param is invalid.\n");
+		ctl->error = -3;
+		goto error0;
+	}
+	
+	/* Lock */
 	alldevs_write_lock();
 	
 	if (ctl->u2k.wminor == WALB_DYNAMIC_MINOR) {
 		wminor = get_free_minor();
 	} else {
 		wminor = ctl->u2k.wminor;
-		if (wminor % 2 != 0) { wminor --; }
+		if (wminor % 2 != 0) { wminor--; }
 	}
 	LOGd("wminor: %u\n", wminor);
 	
-	wdev = prepare_wdev(wminor, ldevt, ddevt, name);
-	if (wdev == NULL) {
+	wdev = prepare_wdev(wminor, ldevt, ddevt, param0);
+	if (!wdev) {
 		alldevs_write_unlock();
-		ctl->error = -1;
+		LOGe("prepare wdev failed.\n");
+		ctl->error = -4;
 		goto error0;
 	}
 	
 	if (alldevs_add(wdev) != 0) {
 		alldevs_write_unlock();
-		ctl->error = -2;
+		LOGe("alldevs_add failed.\n");
+		ctl->error = -5;
 		goto error1;
 	}
 	
 	register_wdev(wdev);
+
+	/* Unlock */
 	alldevs_write_unlock();
 
 	/* Return values to userland. */
 	ctl->k2u.wmajor = walb_major_;
 	ctl->k2u.wminor = wminor;
-	strncpy(ctl->k2u.__buf, get_super_sector(wdev->lsuper0)->name,
-		DISK_NAME_LEN);
+	memcpy(param1, param0, sizeof(struct walb_start_param));
 	ctl->error = 0;
 
 	print_walb_ctl(ctl); /* debug */
 	return 0;
 	
-	/* not tested */
-
-/* error2: */
-/*	   alldevs_dell(wdev); */
+#if 0
+error2:
+	alldevs_dell(wdev);
+#endif
 error1:
 	destroy_wdev(wdev);
 error0:

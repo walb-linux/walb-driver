@@ -16,6 +16,7 @@
 
 #include "walb/log_device.h"
 #include "walb/sector.h"
+#include "walb/ioctl.h"
 #include "checkpoint.h"
 #include "util.h"
 
@@ -210,8 +211,9 @@ static inline struct walb_dev* get_wdev_from_checkpoint_data(
  * Prototypes defined in walb.c
  *******************************************************************************/
 
-struct walb_dev* prepare_wdev(unsigned int minor,
-			dev_t ldevt, dev_t ddevt, const char* name);
+struct walb_dev* prepare_wdev(
+	unsigned int minor, dev_t ldevt, dev_t ddevt,
+	struct walb_start_param *param);
 void destroy_wdev(struct walb_dev *wdev);
 void register_wdev(struct walb_dev *wdev);
 void unregister_wdev(struct walb_dev *wdev);

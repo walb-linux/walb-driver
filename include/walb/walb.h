@@ -55,4 +55,9 @@ static inline bool is_lsid_range_valid(u64 lsid0, u64 lsid1)
 	return lsid0 < lsid1 && lsid1 <= MAX_LSID + 1;
 }
 
+/**
+ * Maximum pending data size allowed.
+ */
+#define MAX_PENDING_MB 16384 /* 16GB */
+
 #endif /* WALB_H */

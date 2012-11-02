@@ -3482,6 +3482,11 @@ static bool pre_register(void)
 		goto error7;
 	}
 
+	if (!pack_work_init()) {
+		LOGe("pack_work init failed.\n");
+		goto error8;
+	}
+
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	LOGn("WalB Overlapping Detection supported.\n");
 #else
@@ -3496,9 +3501,11 @@ static bool pre_register(void)
 	return true;
 
 #if 0
+error9:
+	pack_work_exit();
+#endif
 error8:
 	treemap_memory_manager_dec();
-#endif
 error7:
 	destroy_workqueue(wq_read_);
 error6:
@@ -3545,6 +3552,7 @@ static void post_unregister(void)
 {
 	LOGd_("begin\n");
 
+	pack_work_exit();
 	treemap_memory_manager_dec();
 	
 	/* finalize workqueue data. */
