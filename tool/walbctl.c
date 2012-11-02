@@ -603,7 +603,12 @@ static bool init_snapshot_metadata(
 			LOGe("read snapshot sector %d failed.\n", i);
 			goto error1;
 		}
+		if (!is_valid_snapshot_sector(snap_sect)) {
+			LOGw("snapshot sector %d invalid.\n", i);
+		}
+#if 0
 		print_snapshot_sector(snap_sect);
+#endif
 	}
 #endif
 
