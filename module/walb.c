@@ -137,6 +137,7 @@ static u64 get_completed_lsid(struct walb_dev *wdev);
 static u64 get_log_capacity(struct walb_dev *wdev);
 static int walb_set_name(struct walb_dev *wdev, unsigned int minor,
 			const char *name);
+static void walb_decide_flush_support(struct walb_dev *wdev);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -1162,6 +1163,50 @@ error0:
 }
 
 /**
+ * Decide flush support or not.
+ */
+static void walb_decide_flush_support(struct walb_dev *wdev)
+{
+	struct request_queue *q, *lq, *dq;
+	ASSERT(wdev);
+
+	/* Get queues. */
+	q = wdev->queue;
+	ASSERT(q);
+	lq = bdev_get_queue(wdev->ldev);
+	dq = bdev_get_queue(wdev->ddev);
+	
+	/* Accept REQ_FLUSH and REQ_FUA. */
+	if (lq->flush_flags & REQ_FLUSH && dq->flush_flags & REQ_FLUSH) {
+		if (lq->flush_flags & REQ_FUA && dq->flush_flags & REQ_FUA) {
+			LOGn("Supports REQ_FLUSH | REQ_FUA.");
+			blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
+		} else {
+			LOGn("Supports REQ_FLUSH.");
+			blk_queue_flush(q, REQ_FLUSH);
+		}
+		blk_queue_flush_queueable(q, true);
+	} else {
+		LOGn("Supports neither REQ_FLUSH nor REQ_FUA.");
+	}
+
+#if 0
+	if (blk_queue_discard(dq)) {
+		/* Accept REQ_DISCARD. */
+		LOGn("Supports REQ_DISCARD.");
+		q->limits.discard_granularity = PAGE_SIZE;
+		q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
+		q->limits.max_discard_sectors = UINT_MAX;
+		q->limits.discard_zeroes_data = 1;
+		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+		/* queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q); */
+	} else {
+		LOGn("Not support REQ_DISCARD.");
+	}
+#endif
+}
+	
+/**
  * Initialize workqueues.
  *
  * RETURN:
@@ -1280,8 +1325,12 @@ static int walb_prepare_device(struct walb_dev *wdev, unsigned int minor,
 		"%s/%s", WALB_DIR_NAME, name);
 	LOGd("device path: %s, device name: %s\n",
 		wdev->gd->disk_name, name);
-	
+
+	/* Number of users. */
 	atomic_set(&wdev->n_users, 0);
+
+	/* Flush support. */
+	walb_decide_flush_support(wdev);
 	
 	return 0;
 
