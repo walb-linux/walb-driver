@@ -1755,12 +1755,6 @@ struct walb_dev* prepare_wdev(
 	dev_name = super->name;
 	memcpy(param->name, dev_name, DISK_NAME_LEN);
 
-	/* Setup iocore data. */
-	if (!iocore_initialize(wdev)) {
-		LOGe("iocore initialization failed.\n");
-		goto out_ldev_init;
-	}
-	
 	/*
 	 * Redo
 	 * 1. Read logpack from written_lsid.
@@ -1787,7 +1781,7 @@ struct walb_dev* prepare_wdev(
 	 */
 	if (walb_prepare_device(wdev, minor, dev_name) != 0) {
 		LOGe("walb_prepare_device() failed.\n");
-		goto out_iocore_init;
+		goto out_ldev_init;
 	}
 	
 	/*
@@ -1797,14 +1791,22 @@ struct walb_dev* prepare_wdev(
 		goto out_walbdev;
 	}
 
+	/* Setup iocore data. */
+	if (!iocore_initialize(wdev)) {
+		LOGe("iocore initialization failed.\n");
+		goto out_walblogdev;
+	}
+
 	return wdev;
 
-/* out_walblogdev: */
-/*	   walblog_finalize_device(wdev); */
-out_walbdev:
-	walb_finalize_device(wdev);
+#if 0
 out_iocore_init:
 	iocore_finalize(wdev);
+#endif
+out_walblogdev:
+	walblog_finalize_device(wdev);
+out_walbdev:
+	walb_finalize_device(wdev);
 out_ldev_init:
 	walb_ldev_finalize(wdev);
 out_ddev:
