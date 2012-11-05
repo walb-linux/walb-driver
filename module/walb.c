@@ -967,9 +967,53 @@ static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *c
  */
 static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	/* not yet implemented */
+	u64 ddev_size;
+	u64 new_size;
+	u64 old_size;
+	struct block_device *bdev;
 	
-	LOGn("WALB_IOCTL_RESIZE is not supported currently.\n");
+	LOGn("WALB_IOCTL_RESIZE.\n");
+	ASSERT(ctl->command == WALB_IOCTL_RESIZE);
+
+	old_size = get_capacity(wdev->gd);
+	new_size = ctl->val_u64;
+	ddev_size = wdev->ddev->bd_part->nr_sects;
+	
+	if (new_size == 0) {
+		new_size = ddev_size;
+	}
+	if (new_size < old_size) {
+		LOGe("Shrink size from %"PRIu64" to %"PRIu64" is not supported.\n",
+			old_size, new_size);
+		goto error0;
+	}
+	if (new_size > ddev_size) {
+		LOGe("new_size %"PRIu64" > data device capacity %"PRIu64".\n",
+			new_size, ddev_size);
+		goto error0;
+	}
+	if (new_size == old_size) {
+		LOGn("No need to resize.\n");
+		goto fin;
+	}
+
+	bdev = bdget_disk(wdev->gd, 0);
+	if (!bdev) {
+		LOGe("bdget_disk failed.\n");
+		goto error0;
+	}
+	wdev->ddev_size = new_size;
+
+	/* Do not call revalidate_disk(), instead, i_size_write(). */
+	set_capacity(wdev->gd, new_size);
+	mutex_lock(&bdev->bd_mutex);
+	i_size_write(bdev->bd_inode, (loff_t)new_size << 9);
+	mutex_unlock(&bdev->bd_mutex);
+	bdput(bdev);
+	
+fin:
+	return 0;
+error0:
 	return -EFAULT;
 }
 

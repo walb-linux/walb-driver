@@ -430,13 +430,16 @@ enum {
 	WALB_IOCTL_GET_LOG_CAPACITY,
 
 	/*
-	 * NOT YET IMPLEMENTED.
-	 *
 	 * Resize walb device.
 	 *
 	 * INPUT:
+	 *   ctl->val_u64 as new device capacity [logical block].
+	 *     This must be equal to or larger than the old size.
+	 *     0 means auto-detect new size.
 	 * OUTPUT:
+	 *   None.
 	 * RETURN:
+	 *   0 in success, or -EFAULT.
 	 */
 	WALB_IOCTL_RESIZE,
 

@@ -169,6 +169,9 @@ static struct cmdhelp cmdhelps_[] = {
 	  "Get log usage in the log device." },
 	{ "get_log_capacity WDEV",
 	  "Get log capacity in the log device." },
+	{ "resize WDEV SIZE",
+	  "Resize device capacity [logical block] (Only grow is allowed)."
+	  " Specify --size 0 to auto-detect the size." },
 	{ "get_version",
 	  "Get walb version."},
 };
@@ -251,6 +254,7 @@ static bool do_get_written_lsid(const struct config *cfg);
 static bool do_get_completed_lsid(const struct config *cfg);
 static bool do_get_log_usage(const struct config *cfg);
 static bool do_get_log_capacity(const struct config *cfg);
+static bool do_resize(const struct config *cfg);
 static bool do_get_version(const struct config *cfg);
 static bool do_help(const struct config *cfg);
 
@@ -775,6 +779,7 @@ static bool dispatch(const struct config *cfg)
 		{ "get_completed_lsid", do_get_completed_lsid },
 		{ "get_log_usage", do_get_log_usage },
 		{ "get_log_capacity", do_get_log_capacity },
+		{ "resize", do_resize },
 		{ "get_version", do_get_version },
 		{ "help", do_help },
 	};
@@ -2314,6 +2319,35 @@ static bool do_get_log_capacity(const struct config *cfg)
 
 	printf("%"PRIu64"\n", log_capacity);
 	return true;
+}
+
+/**
+ * Resize the disk.
+ */
+static bool do_resize(const struct config *cfg)
+{
+	ASSERT(strcmp(cfg->cmd_str, "resize") == 0);
+
+	if (check_bdev(cfg->wdev_name) < 0) {
+		LOGe("device check failed.\n");
+		goto error0;
+	}
+	
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_RESIZE,
+		.val_u64 = cfg->size,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+	
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
+		LOGe("ioctl failed.\n");
+		goto error0;
+	}
+	
+	return true;
+error0:
+	return false;
 }
 
 /**
