@@ -14,9 +14,9 @@
  * Sync down super block.
  *
  * RETURN:
- *   0 in success, or -1.
+ *   true in success, or false.
  */
-int walb_sync_super_block(struct walb_dev *wdev)
+bool walb_sync_super_block(struct walb_dev *wdev)
 {
 	u64 written_lsid, oldest_lsid;
 	struct sector_data *lsuper_tmp;
@@ -44,7 +44,7 @@ int walb_sync_super_block(struct walb_dev *wdev)
 
 	/* Allocate temporary super block. */
 	lsuper_tmp = sector_alloc(wdev->physical_bs, GFP_NOIO);
-	if (lsuper_tmp == NULL) {
+	if (!lsuper_tmp) {
 		goto error0;
 	}
 	ASSERT_SECTOR_DATA(lsuper_tmp);
@@ -73,12 +73,12 @@ int walb_sync_super_block(struct walb_dev *wdev)
 	cpd->prev_written_lsid = written_lsid;
 	spin_unlock(&cpd->written_lsid_lock);
 	
-	return 0;
+	return true;
 
 error1:
 	sector_free(lsuper_tmp);
 error0:
-	return -1;
+	return false;
 }
 
 /**
@@ -86,9 +86,10 @@ error0:
  *
  * @wdev walb device.
  *
- * @return 0 in success, or -1.
+ * RETURN:
+ *   true in success, or false.
  */
-int walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
+bool walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
 {
 	/* 
 	 * 1. Wait for all related IO are finished.
@@ -109,16 +110,16 @@ int walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
 
 	if (is_superblock_sync) {
 		LOGn("is_superblock_sync is on\n");
-		if (walb_sync_super_block(wdev) != 0) {
+		if (!walb_sync_super_block(wdev)) {
 			goto error0;
 		}
 	} else {
 		LOGn("is_superblock_sync is off\n");
 	}
-	return 0;
+	return true;
 
 error0:
-	return -1;
+	return false;
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

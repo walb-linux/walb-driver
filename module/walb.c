@@ -121,7 +121,7 @@ static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb
 static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
+static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
 static int ioctl_wdev_freeze_temporarily(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
 
@@ -482,7 +482,7 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 	wdev->oldest_lsid = lsid;
 	spin_unlock(&wdev->lsid_lock);
 			
-	if (walb_sync_super_block(wdev)) {
+	if (!walb_sync_super_block(wdev)) {
 		LOGe("sync super block failed.\n");
 		goto error0;
 	}
@@ -1018,7 +1018,7 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 	bdput(bdev);
 
 	/* Sync super block for super->device_size */
-	if (walb_sync_super_block(wdev)) {
+	if (!walb_sync_super_block(wdev)) {
 		LOGe("superblock sync failed.\n");
 		goto error0;
 	}
@@ -1610,7 +1610,9 @@ static void walb_ldev_finalize(struct walb_dev *wdev)
 	snapshot_data_finalize(wdev->snapd);
 	snapshot_data_destroy(wdev->snapd);
 	
-	walb_finalize_super_block(wdev, is_sync_superblock_);
+	if (!walb_finalize_super_block(wdev, is_sync_superblock_)) {
+		LOGe("finalize super block failed.\n");
+	}
 	sector_free(wdev->lsuper0);
 }
 
