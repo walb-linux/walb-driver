@@ -144,8 +144,8 @@ static bool initialize_workqueues(void);
 static void finalize_workqueues(void);
 
 /* Prepare/finalize. */
-static int walb_prepare_device(struct walb_dev *wdev, unsigned int minor,
-			const char *name);
+static int walb_prepare_device(
+	struct walb_dev *wdev, unsigned int minor, const char *name);
 static void walb_finalize_device(struct walb_dev *wdev);
 static int walblog_prepare_device(struct walb_dev *wdev, unsigned int minor,
 				const char* name);
@@ -482,7 +482,10 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 	wdev->oldest_lsid = lsid;
 	spin_unlock(&wdev->lsid_lock);
 			
-	walb_sync_super_block(wdev);
+	if (walb_sync_super_block(wdev)) {
+		LOGe("sync super block failed.\n");
+		goto error0;
+	}
 	return 0;
 error0:
 	return -EFAULT;
@@ -967,9 +970,62 @@ static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *c
  */
 static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	/* not yet implemented */
+	u64 ddev_size;
+	u64 new_size;
+	u64 old_size;
+	struct block_device *bdev;
 	
-	LOGn("WALB_IOCTL_RESIZE is not supported currently.\n");
+	LOGn("WALB_IOCTL_RESIZE.\n");
+	ASSERT(ctl->command == WALB_IOCTL_RESIZE);
+
+	old_size = get_capacity(wdev->gd);
+	new_size = ctl->val_u64;
+	ddev_size = wdev->ddev->bd_part->nr_sects;
+	
+	if (new_size == 0) {
+		new_size = ddev_size;
+	}
+	if (new_size < old_size) {
+		LOGe("Shrink size from %"PRIu64" to %"PRIu64" is not supported.\n",
+			old_size, new_size);
+		goto error0;
+	}
+	if (new_size > ddev_size) {
+		LOGe("new_size %"PRIu64" > data device capacity %"PRIu64".\n",
+			new_size, ddev_size);
+		goto error0;
+	}
+	if (new_size == old_size) {
+		LOGn("No need to resize.\n");
+		goto fin;
+	}
+
+	bdev = bdget_disk(wdev->gd, 0);
+	if (!bdev) {
+		LOGe("bdget_disk failed.\n");
+		goto error0;
+	}
+	spin_lock(&wdev->size_lock);
+	wdev->size = new_size;
+	wdev->ddev_size = ddev_size;
+	spin_unlock(&wdev->size_lock);
+
+	/* Do not call revalidate_disk(), instead, i_size_write(). */
+	set_capacity(wdev->gd, new_size);
+	mutex_lock(&bdev->bd_mutex);
+	i_size_write(bdev->bd_inode, (loff_t)new_size << 9);
+	mutex_unlock(&bdev->bd_mutex);
+	bdput(bdev);
+
+	/* Sync super block for super->device_size */
+	if (walb_sync_super_block(wdev)) {
+		LOGe("superblock sync failed.\n");
+		goto error0;
+	}
+	
+fin:
+	return 0;
+error0:
 	return -EFAULT;
 }
 
@@ -1270,9 +1326,13 @@ static void finalize_workqueues(void)
 
 /**
  * Initialize walb block device.
+ *
+ * @wdev walb_dev.
+ * @minor minor id.
+ * @name disk name.
  */
-static int walb_prepare_device(struct walb_dev *wdev, unsigned int minor,
-			const char *name)
+static int walb_prepare_device(
+	struct walb_dev *wdev, unsigned int minor, const char *name)
 {
 	struct request_queue *lq, *dq;
 	
@@ -1318,7 +1378,7 @@ static int walb_prepare_device(struct walb_dev *wdev, unsigned int minor,
 	wdev->gd->fops = &walb_ops;
 	wdev->gd->queue = wdev->queue;
 	wdev->gd->private_data = wdev;
-	set_capacity(wdev->gd, wdev->ddev_size);
+	set_capacity(wdev->gd, wdev->size);
 	
 	/* Set a name. */
 	snprintf(wdev->gd->disk_name, DISK_NAME_LEN,
@@ -1720,6 +1780,7 @@ struct walb_dev* prepare_wdev(
 	cpd = &wdev->cpd;
 	spin_lock_init(&wdev->lsid_lock);
 	spin_lock_init(&wdev->lsuper0_lock);
+	spin_lock_init(&wdev->size_lock);
 	/* spin_lock_init(&wdev->logpack_list_lock); */
 	/* INIT_LIST_HEAD(&wdev->logpack_list); */
 	atomic_set(&wdev->is_read_only, 0);
@@ -1782,6 +1843,11 @@ struct walb_dev* prepare_wdev(
 	wdev->oldest_lsid = super->oldest_lsid;
 	wdev->ring_buffer_size = super->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(super);
+	wdev->size = super->device_size;
+	if (wdev->size > wdev->ddev_size) {
+		LOGe("device size > underlying data device size.\n");
+		goto out_ldev_init;
+	}
 
 	/* Set parameters. */
 	wdev->max_logpack_pb = param->max_logpack_kb * 1024 / wdev->physical_bs;
@@ -1810,13 +1876,10 @@ struct walb_dev* prepare_wdev(
 	 * 2. Write the corresponding data of the logpack to data device.
 	 * 3. Update written_lsid and latest_lsid;
 	 */
-
 	/* Redo feature is not implemented yet. */
-
-
+	
 	/* latest_lsid is written_lsid after redo. */
 	wdev->latest_lsid = cpd->written_lsid;
-
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid = cpd->written_lsid;
 #endif
