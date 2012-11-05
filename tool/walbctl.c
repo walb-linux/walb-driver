@@ -1953,9 +1953,6 @@ static bool do_redo(const struct config *cfg)
 	struct walb_logpack_header *lhead
 		= get_logpack_header(lhead_sectd);
 
-	/* now editing */
-	
-	
 	u64 lsid = super->written_lsid;
 	u64 begin_lsid = lsid;
 	/* Read logpack header */
