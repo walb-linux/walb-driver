@@ -1951,6 +1951,7 @@ void destroy_wdev(struct walb_dev *wdev)
 		MAJOR(wdev->ddev->bd_dev),
 		MINOR(wdev->ddev->bd_dev));
 
+	iocore_set_failure(wdev);
 	iocore_flush(wdev);
 	
 	walblog_finalize_device(wdev);

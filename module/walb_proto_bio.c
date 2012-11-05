@@ -526,6 +526,7 @@ static void stop_dev(void)
 	ASSERT(wdev);
 
 	/* Flush all remaining IOs for underlying devices. */
+	iocore_set_failure(wdev);
 	iocore_flush(wdev);
 }
 

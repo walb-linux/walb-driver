@@ -22,5 +22,6 @@ void iocore_start(struct walb_dev *wdev);
 void iocore_make_request(struct walb_dev *wdev, struct bio *bio);
 void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio);
 void iocore_flush(struct walb_dev *wdev);
+void iocore_set_failure(struct walb_dev *wdev);
 
 #endif /* WALB_IO_H_KERNEL */
