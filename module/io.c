@@ -884,6 +884,17 @@ static void task_submit_logpack_list(struct work_struct *work)
 		spin_unlock(&iocored->logpack_submit_queue_lock);
 		if (is_empty) { break; }
 
+		/* Failure mode. */
+		if (test_bit(IOCORE_STATE_FAILURE, &iocored->flags)) {
+			list_for_each_entry_safe(
+				biow, biow_next, biow_list, list) {
+				bio_endio(biow->bio, -EIO);
+				list_del(&biow->list);
+				destroy_bio_wrapper_dec(wdev, biow);
+			}
+			continue;
+		}
+
 		/* Create and submit. */
 		create_logpack_list(wdev, &biow_list, &wpack_list);
 		submit_logpack_list(wdev, &wpack_list);

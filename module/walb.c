@@ -138,6 +138,8 @@ static u64 get_log_capacity(struct walb_dev *wdev);
 static int walb_set_name(struct walb_dev *wdev, unsigned int minor,
 			const char *name);
 static void walb_decide_flush_support(struct walb_dev *wdev);
+static bool grow_disk(struct gendisk *gd, u64 new_size);
+static bool invalidate_lsid(struct walb_dev *wdev);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -1000,23 +1002,15 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 		goto fin;
 	}
 
-	bdev = bdget_disk(wdev->gd, 0);
-	if (!bdev) {
-		LOGe("bdget_disk failed.\n");
-		goto error0;
-	}
 	spin_lock(&wdev->size_lock);
 	wdev->size = new_size;
 	wdev->ddev_size = ddev_size;
 	spin_unlock(&wdev->size_lock);
 
-	/* Do not call revalidate_disk(), instead, i_size_write(). */
-	set_capacity(wdev->gd, new_size);
-	mutex_lock(&bdev->bd_mutex);
-	i_size_write(bdev->bd_inode, (loff_t)new_size << 9);
-	mutex_unlock(&bdev->bd_mutex);
-	bdput(bdev);
-
+	if (!grow_disk(wdev->gd, new_size)) {
+		goto error0;
+	}
+	
 	/* Sync super block for super->device_size */
 	if (!walb_sync_super_block(wdev)) {
 		LOGe("superblock sync failed.\n");
@@ -1039,9 +1033,114 @@ error0:
  */
 static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	/* not yet implemented */
+	u64 new_ldev_size, old_ldev_size;
+	u8 new_uuid[16], old_uuid[16];
+	unsigned int pbs = wdev->physical_bs;
+	bool is_grown = false;
+	int ret;
+	struct sector_data *zero_sector;
+	struct walb_super_sector *super;
+	u64 lsid0_off;
+
+	ASSERT(ctl->commnad == WALB_IOCTL_CLEAR_LOG);
+	LOGn("WALB_IOCTL_CLEAR_LOG.\n");
+
+	/* Freeze. */
+	iocore_stop(wdev);
+	stop_checkpointing(&wdev->cpd);
+
+	/* Update superblock. */
+	old_ldev_size = wdev->ldev_size;
+	new_ldev_size = wdev->ldev->bd_disk->nr_sects;
+
+	if (old_ldev_size > new_ldev_size) {
+		LOGe("Log device shrink not supported.\n");
+		goto error0;
+	}
+	if (old_ldev_size < new_ldev_size) {
+		LOGn("Detect log device size change.\n");
+
+		/* Grow the disk. */
+		is_grown = true;
+		if (!grow_disk(wdev->log_gd, new_ldev_size)) {
+			LOGe("grow disk failed.\n");
+			iocore_set_failure(wdev);
+			goto error1;
+		}
+		
+		/* Currently you can not change n_snapshots. */
+		
+		/* Recalculate ring buffer size. */
+		old_ring_buffer_size = wdev->ring_buffer_size;
+		wdev->ring_buffer_size =
+			addr_pb(pbs, new_ldev_size)
+			- get_ring_buffer_offset(pbs, wdev->n_snapshots);
+	}
 	
-	LOGn("WALB_IOCTL_CLEAR_LOG is not supported currently.\n");
+	/* Initialize lsid(s). */
+	spin_lock(&wdev->lsid_lock);
+	wdev->latest_lsid = 0;
+	wdev->oldest_lsid = 0;
+#ifdef WALB_FAST_ALGORITHM
+	wdev->completed_lsid = 0;
+#endif
+	spin_unlock(&wdev->lsid_lock);
+	spin_lock(&&wdev->cpd.written_lsid_lock);
+	wdev->cpd.written_lsid = 0;
+	wdev->cpd.prev_written_lsid = 0;
+	spin_unlock(&&wdev->cpd.written_lsid_lock);
+
+	/* Generate new uuid. */
+	get_random_bytes(new_uuid, 16);
+	spin_lock(&wdev->lsuper0_lock);
+	super = get_super_sector(wdev->lsuper0);
+	memcpy(old_uuid, super->uuid, 16);
+	memcpy(super->uuid, new_uuid, 16);
+	super->ring_buffer_size = wdev->ring_buffer_size;
+	/* super->snapshot_metadata_size; */
+	lsid0_off = get_offset_of_lsid_2(super, 0);
+	spin_unlock(&wdev->lsuper0_lock);
+
+	/* Sync super sector. */
+	if (!walb_sync_super_block(wdev)) {
+		LOGe("sync superblock failed.\n");
+		iocore_set_failure(wdev);
+		goto error1;
+	}
+
+	/* Update uuid index of alldev data. */
+	alldevs_write_lock();
+	ret = alldevs_update_uuid(old_uuid, new_uuid);
+	alldevs_write_unlock();
+	if (ret) {
+		LOGe("Update alldevs index failed.\n");
+		iocore_set_failure(wdev);
+		goto error1;
+	}
+		
+	/* Delete all snapshots. */
+	snapshot_del_range(wdev->snapd, 0, MAX_LSID + 1);
+	ASSERT(snapshot_n_records(wdev->snapd) == 0);
+
+	/* Invalidate first logpack */
+	if (!invalidate_lsid(wdev, 0)) {
+		LOGe("invalidate lsid 0 failed.\n");
+		iocore_set_failure(wdev);
+		goto error1;
+	}
+	
+	/* now editing */
+		
+	/* Melt. */
+	start_checkpointing(&wdev->cpd);
+	iocore_start(wdev);
+
+	return 0;
+
+error1:
+	start_checkpointing(&wdev->cpd);
+	iocore_start(wdev);
+error0:
 	return -EFAULT;
 }
 
@@ -1261,7 +1360,67 @@ static void walb_decide_flush_support(struct walb_dev *wdev)
 	}
 #endif
 }
+
+/**
+ * Grow disk size.
+ */
+static bool grow_disk(struct gendisk *gd, u64 new_size)
+{
+	struct block_device *bdev;
 	
+	bdev = bdget_disk(gd, 0);
+	if (!bdev) {
+		LOGe("bdget_disk failed.\n");
+		goto error0;
+	}
+	set_capacity(wdev->gd, new_size);
+	mutex_lock(&bdev->bd_mutex);
+	i_size_write(bdev->bd_inode, (loff_t)new_size << 9);
+	mutex_unlock(&bdev->bd_mutex);
+	bdput(bdev);
+
+	return true;
+error0:
+	return false;
+}
+
+/**
+ * Invalidate lsid inside ring buffer.
+ */
+static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
+{
+	struct sector_data *zero_sector;
+	struct walb_super_sector *super;
+	u64 off;
+	
+	ASSERT(lsid != INVALID_LSID);
+
+	zero_sector = sector_alloc(pbs, GFP_KERNEL | __GFP_ZERO);
+	if (!zero_sector) {
+		LOGe("sector allocation failed.\n");
+		goto error0;
+	}
+	
+	spin_lock(&wdev->lsuper0_lock);
+	super = get_super_sector(wdev->lsuper0);
+	off = get_offset_of_lsid_2(super, lsid);
+	spin_unlock(&wdev->lsuper0_lock);
+	
+	if (!sector_io(WRITE, wdev->ldev, off, zero_sector)) {
+		LOGe("sector write failed.\n");
+		iocore_set_failure(wdev);
+		goto error1;
+	}
+	
+	sector_free(zero_sector);
+	return false;
+
+error1:
+	sector_free(zero_sector);
+error0:
+	return false;
+}
+
 /**
  * Initialize workqueues.
  *

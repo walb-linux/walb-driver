@@ -462,6 +462,50 @@ struct walb_dev* alldevs_pop(void)
 }
 
 /**
+ * Update uuid of a walb device.
+ *
+ * RETURN:
+ *   0 in success, or -1.
+ *   
+ * @LOCK write lock required.
+ */
+int alldevs_update_uuid(
+	const u8 *old_uuid, const u8 *new_uuid)
+{
+	struct walb_dev *wdev;
+	const int buf_size = 16 * 3 + 1;
+	char buf[buf_size];
+
+	wdev = (struct walb_dev *)hashtbl_del(
+		htbl_uuid_, old_uuid, 16);
+	if (!wdev) {
+		LOGe("Specified uuid not found.\n");
+		goto error0;
+	}
+	ret = hashtbl_add(
+		htbl_uuid_,
+		new_uuid, 16,
+		(unsigned long)wdev, GFP_KERNEL);
+	if (ret != 0) {
+		if (ret == -EPERM) {
+			sprint_uuid(buf, buf_size, new_uuid);
+			LOGe("alldevs_add: uuid %s is already registered.\n",
+				buf);
+		}
+		goto error1;
+	}
+	return 0;
+
+error1:
+	ret = hashtbl_add(htbl_uuid_, old_uuid, 16);
+	if (ret != 0) {
+		LOGe("Failed to re-add.\n");
+	}
+error0:
+	return -1;
+}
+
+/**
  * Get free minor id.
  *
  * @LOCK read lock required.
