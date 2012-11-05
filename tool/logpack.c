@@ -194,8 +194,8 @@ bool read_logpack_data_from_wldev(
 		if (lhead->record[i].is_padding == 0) {
 			/* Read data for the log record. */
 			if (!sector_array_pread(
-					fd, total_pb, sect_ary,
-					log_off, log_pb)) {
+					fd, log_off, sect_ary,
+					total_pb, log_pb)) {
 				LOGe("read sectors failed.\n");
 				goto error0;
 			}
