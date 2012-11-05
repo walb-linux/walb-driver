@@ -30,7 +30,7 @@ void alldevs_del(struct walb_dev* wdev);
 struct walb_dev* alldevs_pop(void);
 
 /* Update uuid. */
-int alldevs_update_uuid(u8 *old_uuid, u8 *new_uuid);
+int alldevs_update_uuid(const u8 *old_uuid, const u8 *new_uuid);
 
 /* Search */
 struct walb_dev* search_wdev_with_minor(unsigned int minor);

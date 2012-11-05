@@ -475,6 +475,7 @@ int alldevs_update_uuid(
 	struct walb_dev *wdev;
 	const int buf_size = 16 * 3 + 1;
 	char buf[buf_size];
+	int ret;
 
 	wdev = (struct walb_dev *)hashtbl_del(
 		htbl_uuid_, old_uuid, 16);
@@ -483,8 +484,7 @@ int alldevs_update_uuid(
 		goto error0;
 	}
 	ret = hashtbl_add(
-		htbl_uuid_,
-		new_uuid, 16,
+		htbl_uuid_, new_uuid, 16,
 		(unsigned long)wdev, GFP_KERNEL);
 	if (ret != 0) {
 		if (ret == -EPERM) {
@@ -497,7 +497,8 @@ int alldevs_update_uuid(
 	return 0;
 
 error1:
-	ret = hashtbl_add(htbl_uuid_, old_uuid, 16);
+	ret = hashtbl_add(
+		htbl_uuid_, old_uuid, 16, (unsigned long)wdev, GFP_KERNEL);
 	if (ret != 0) {
 		LOGe("Failed to re-add.\n");
 	}

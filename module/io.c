@@ -887,7 +887,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 		/* Failure mode. */
 		if (test_bit(IOCORE_STATE_FAILURE, &iocored->flags)) {
 			list_for_each_entry_safe(
-				biow, biow_next, biow_list, list) {
+				biow, biow_next, &biow_list, list) {
 				bio_endio(biow->bio, -EIO);
 				list_del(&biow->list);
 				destroy_bio_wrapper_dec(wdev, biow);
