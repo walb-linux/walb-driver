@@ -145,8 +145,7 @@ static void finalize_workqueues(void);
 
 /* Prepare/finalize. */
 static int walb_prepare_device(
-	struct walb_dev *wdev, unsigned int minor,
-	const char *name, u64 device_size);
+	struct walb_dev *wdev, unsigned int minor, const char *name);
 static void walb_finalize_device(struct walb_dev *wdev);
 static int walblog_prepare_device(struct walb_dev *wdev, unsigned int minor,
 				const char* name);
@@ -483,7 +482,10 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 	wdev->oldest_lsid = lsid;
 	spin_unlock(&wdev->lsid_lock);
 			
-	walb_sync_super_block(wdev);
+	if (walb_sync_super_block(wdev)) {
+		LOGe("sync super block failed.\n");
+		goto error0;
+	}
 	return 0;
 error0:
 	return -EFAULT;
@@ -1004,7 +1006,8 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 		goto error0;
 	}
 	spin_lock(&wdev->size_lock);
-	wdev->ddev_size = new_size;
+	wdev->size = new_size;
+	wdev->ddev_size = ddev_size;
 	spin_unlock(&wdev->size_lock);
 
 	/* Do not call revalidate_disk(), instead, i_size_write(). */
@@ -1013,6 +1016,12 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 	i_size_write(bdev->bd_inode, (loff_t)new_size << 9);
 	mutex_unlock(&bdev->bd_mutex);
 	bdput(bdev);
+
+	/* Sync super block for super->device_size */
+	if (walb_sync_super_block(wdev)) {
+		LOGe("superblock sync failed.\n");
+		goto error0;
+	}
 	
 fin:
 	return 0;
@@ -1321,11 +1330,9 @@ static void finalize_workqueues(void)
  * @wdev walb_dev.
  * @minor minor id.
  * @name disk name.
- * @device_size [logical block].
  */
 static int walb_prepare_device(
-	struct walb_dev *wdev, unsigned int minor,
-	const char *name, u64 device_size)
+	struct walb_dev *wdev, unsigned int minor, const char *name)
 {
 	struct request_queue *lq, *dq;
 	
@@ -1371,7 +1378,7 @@ static int walb_prepare_device(
 	wdev->gd->fops = &walb_ops;
 	wdev->gd->queue = wdev->queue;
 	wdev->gd->private_data = wdev;
-	set_capacity(wdev->gd, device_size);
+	set_capacity(wdev->gd, wdev->size);
 	
 	/* Set a name. */
 	snprintf(wdev->gd->disk_name, DISK_NAME_LEN,
@@ -1836,8 +1843,8 @@ struct walb_dev* prepare_wdev(
 	wdev->oldest_lsid = super->oldest_lsid;
 	wdev->ring_buffer_size = super->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(super);
-	device_size = super->device_size;
-	if (device_size > wdev->ddev_size) {
+	wdev->size = super->device_size;
+	if (wdev->size > wdev->ddev_size) {
 		LOGe("device size > underlying data device size.\n");
 		goto out_ldev_init;
 	}
@@ -1884,7 +1891,7 @@ struct walb_dev* prepare_wdev(
 	/*
 	 * Prepare walb block device.
 	 */
-	if (walb_prepare_device(wdev, minor, dev_name, device_size) != 0) {
+	if (walb_prepare_device(wdev, minor, dev_name) != 0) {
 		LOGe("walb_prepare_device() failed.\n");
 		goto out_ldev_init;
 	}

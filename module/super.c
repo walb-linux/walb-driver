@@ -39,7 +39,7 @@ int walb_sync_super_block(struct walb_dev *wdev)
 
 	/* device size. */
 	spin_lock(&wdev->size_lock);
-	device_size = wdev->ddev_size;
+	device_size = wdev->size;
 	spin_unlock(&wdev->size_lock);
 
 	/* Allocate temporary super block. */
