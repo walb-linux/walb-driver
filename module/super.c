@@ -22,6 +22,7 @@ int walb_sync_super_block(struct walb_dev *wdev)
 	struct sector_data *lsuper_tmp;
 	struct walb_super_sector *sect, *sect_tmp;
 	struct checkpoint_data *cpd;
+	u64 device_size;
 
 	ASSERT(wdev);
 	cpd = &wdev->cpd;
@@ -35,6 +36,11 @@ int walb_sync_super_block(struct walb_dev *wdev)
 	spin_lock(&wdev->lsid_lock);
 	oldest_lsid = wdev->oldest_lsid;
 	spin_unlock(&wdev->lsid_lock);
+
+	/* device size. */
+	spin_lock(&wdev->size_lock);
+	device_size = wdev->ddev_size;
+	spin_unlock(&wdev->size_lock);
 
 	/* Allocate temporary super block. */
 	lsuper_tmp = sector_alloc(wdev->physical_bs, GFP_NOIO);
@@ -51,6 +57,7 @@ int walb_sync_super_block(struct walb_dev *wdev)
 	sect = get_super_sector(wdev->lsuper0);
 	sect->oldest_lsid = oldest_lsid;
 	sect->written_lsid = written_lsid;
+	sect->device_size = device_size;
 	sector_copy(lsuper_tmp, wdev->lsuper0);
 	spin_unlock(&wdev->lsuper0_lock);
 	

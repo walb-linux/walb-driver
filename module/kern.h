@@ -71,6 +71,7 @@ struct walb_dev
 	/* Size of underlying devices. [logical block] */
 	u64 ldev_size;
 	u64 ddev_size;
+	spinlock_t size_lock;
 	
 	/* You can get physical sector size [byte] with
 	   bdev_physical_block_size(bdev).
