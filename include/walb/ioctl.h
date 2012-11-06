@@ -421,6 +421,16 @@ enum {
 	WALB_IOCTL_GET_COMPLETED_LSID,
 
 	/*
+	 * Get log space usage.
+	 * INPUT:
+	 *   None
+	 * OUTPUT:
+	 *   ctl->val_u64 as log space usage [physical block].
+	 *     log space usage > log capacity means log overflow.
+	 */
+	WALB_IOCTL_GET_LOG_USAGE,
+
+	/*
 	 * Get log space capacity.
 	 * INPUT:
 	 *   None
@@ -458,6 +468,19 @@ enum {
 	 *   0 in success, or -EFAULT.
 	 */
 	WALB_IOCTL_CLEAR_LOG,
+
+	/*
+	 * Check log space overflow.
+	 *
+	 * INPUT:
+	 *   None
+	 * OUTPUT:
+	 *   ctl->val_int as result.
+	 *     Non-zero in overflowed, or 0.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_IS_LOG_OVERFLOW,
 
 	/*
 	 * NOT YET IMPLEMENTED.

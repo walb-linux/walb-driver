@@ -25,5 +25,7 @@ void iocore_flush(struct walb_dev *wdev);
 void iocore_set_failure(struct walb_dev *wdev);
 void iocore_set_readonly(struct walb_dev *wdev);
 bool iocore_is_readonly(struct walb_dev *wdev);
+void iocore_clear_log_overflow(struct walb_dev *wdev);
+bool iocore_is_log_overflow(struct walb_dev *wdev);
 
 #endif /* WALB_IO_H_KERNEL */

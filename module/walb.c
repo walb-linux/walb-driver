@@ -133,9 +133,11 @@ static int ioctl_wdev_get_checkpoint_interval(struct walb_dev *wdev, struct walb
 static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
+static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl);
+static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_freeze_temporarily(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
 
 /* Walblog device open/close/ioctl. */
@@ -147,6 +149,7 @@ static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 /* Utility functions for walb_dev. */
 static u64 get_written_lsid(struct walb_dev *wdev);
 static u64 get_completed_lsid(struct walb_dev *wdev);
+static u64 get_log_usage(struct walb_dev *wdev);
 static u64 get_log_capacity(struct walb_dev *wdev);
 static int walb_set_name(struct walb_dev *wdev, unsigned int minor,
 			const char *name);
@@ -344,6 +347,9 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 	case WALB_IOCTL_GET_COMPLETED_LSID:
 		ret = ioctl_wdev_get_completed_lsid(wdev, ctl);
 		break;
+	case WALB_IOCTL_GET_LOG_USAGE:
+		ret = ioctl_wdev_get_log_usage(wdev, ctl);
+		break;
 	case WALB_IOCTL_GET_LOG_CAPACITY:
 		ret = ioctl_wdev_get_log_capacity(wdev, ctl);
 		break;
@@ -379,6 +385,9 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		break;
 	case WALB_IOCTL_CLEAR_LOG:
 		ret = ioctl_wdev_clear_log(wdev, ctl);
+		break;
+	case WALB_IOCTL_IS_LOG_OVERFLOW:
+		ret = ioctl_wdev_is_log_overflow(wdev, ctl);
 		break;
 	case WALB_IOCTL_FREEZE_TEMPORARILY:
 		ret = ioctl_wdev_freeze_temporarily(wdev, ctl);
@@ -961,6 +970,23 @@ static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl 
 }
 
 /**
+ * Get log usage.
+ *
+ * @wdev walb dev.
+ * @ctl ioctl data.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl)
+{
+	LOGn("WALB_IOCTL_GET_LOG_USAGE\n");
+	ASSERT(ctl->command == WALB_IOCTL_GET_LOG_USAGE);
+	
+	ctl->val_u64 = get_log_usage(wdev);
+	return 0;
+}
+
+/**
  * Get log capacity.
  *
  * @wdev walb dev.
@@ -1156,6 +1182,9 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	ASSERT(snapshot_n_records(wdev->snapd) == 0);
 	LOGn("Delete all snapshots done.\n");
 
+	/* Clear log overflow. */
+	iocore_clear_log_overflow(wdev);
+	
 	/* Melt iocore and checkpointing. */
 	start_checkpointing(&wdev->cpd);
 	iocore_melt(wdev);
@@ -1176,6 +1205,23 @@ error1:
 	iocore_melt(wdev);
 error0:
 	return -EFAULT;
+}
+
+/**
+ * Check log space overflow.
+ *
+ * @wdev walb dev.
+ * @ctl ioctl data.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ctl)
+{
+	ASSERT(ctl->command == WALB_IOCTL_IS_LOG_OVERFLOW);
+	LOGn("WALB_IOCTL_IS_LOG_OVERFLOW.\n");
+	
+	ctl->val_int = iocore_is_log_overflow(wdev);
+	return 0;
 }
 
 /**
@@ -1301,6 +1347,25 @@ static u64 get_completed_lsid(struct walb_dev *wdev)
 #else /* WALB_FAST_ALGORITHM */
 	return get_written_lsid(wdev);
 #endif /* WALB_FAST_ALGORITHM */
+}
+
+/**
+ * Get log usage.
+ *
+ * RETURN:
+ *   Log usage [physical block].
+ */
+static u64 get_log_usage(struct walb_dev *wdev)
+{
+	u64 latest_lsid, oldest_lsid;
+	
+	spin_lock(&wdev->lsid_lock);
+	latest_lsid = wdev->latest_lsid;
+	oldest_lsid = wdev->oldest_lsid;
+	spin_unlock(&wdev->lsid_lock);
+
+	ASSERT(latest_lsid >= oldest_lsid);
+	return latest_lsid - oldest_lsid;
 }
 
 /**

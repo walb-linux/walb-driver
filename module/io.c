@@ -26,6 +26,7 @@
 enum {
 	IOCORE_STATE_FAILURE = 0,
 	IOCORE_STATE_READ_ONLY,
+	IOCORE_STATE_LOG_OVERFLOW,
 	IOCORE_STATE_SUBMIT_TASK_WORKING,
 	IOCORE_STATE_WAIT_TASK_WORKING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
@@ -178,6 +179,7 @@ static inline struct iocore_data* get_iocored_from_wdev(
  */
 static inline bool is_read_only_mode(struct iocore_data *iocored)
 {
+	ASSERT(iocored);
 	return test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
 }
 
@@ -186,6 +188,7 @@ static inline bool is_read_only_mode(struct iocore_data *iocored)
  */
 static inline void set_read_only_mode(struct iocore_data *iocored)
 {
+	ASSERT(iocored);
 	set_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
 }
 
@@ -194,7 +197,17 @@ static inline void set_read_only_mode(struct iocore_data *iocored)
  */
 static inline void clear_read_only_mode(struct iocore_data *iocored)
 {
+	ASSERT(iocored);
 	clear_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
+}
+
+/**
+ * Set log overflow flag.
+ */
+static inline void set_log_overflow(struct iocore_data *iocored)
+{
+	ASSERT(iocored);
+	set_bit(IOCORE_STATE_LOG_OVERFLOW, &iocored->flags);
 }
 
 /*******************************************************************************
@@ -1146,7 +1159,7 @@ static void create_logpack_list(
 	struct iocore_data *iocored;
 	struct bio_wrapper *biow, *biow_next;
 	struct pack *wpack = NULL;
-	u64 latest_lsid, latest_lsid_old;
+	u64 latest_lsid, latest_lsid_old, oldest_lsid;
 	bool ret;
 
 	ASSERT(wdev);
@@ -1158,6 +1171,7 @@ static void create_logpack_list(
 	/* Load latest_lsid */
 	spin_lock(&wdev->lsid_lock);
 	latest_lsid = wdev->latest_lsid;
+	oldest_lsid = wdev->oldest_lsid;
 	spin_unlock(&wdev->lsid_lock);
 	latest_lsid_old = latest_lsid;
 
@@ -1193,6 +1207,14 @@ static void create_logpack_list(
 	ASSERT(wdev->latest_lsid == latest_lsid_old);
 	wdev->latest_lsid = latest_lsid;
 	spin_unlock(&wdev->lsid_lock);
+
+	/* Check ring buffer overflow. */
+	ASSERT(latest_lsid >= oldest_lsid);
+	if (latest_lsid - oldest_lsid > wdev->ring_buffer_size) {
+		set_log_overflow(iocored);
+		LOGw("Ring buffer for log has been overflowed."
+			" reset_wal is required.\n");
+	}
 }
 
 /**
@@ -3205,6 +3227,26 @@ void iocore_set_failure(struct walb_dev *wdev)
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 
 	set_bit(IOCORE_STATE_FAILURE, &iocored->flags);
+}
+
+/**
+ * Clear ring buffer overflow state bit.
+ */
+void iocore_clear_log_overflow(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	
+	clear_bit(IOCORE_STATE_LOG_OVERFLOW, &iocored->flags);
+}
+
+/**
+ * Check ring buffer has been overflow.
+ */
+bool iocore_is_log_overflow(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	
+	return test_bit(IOCORE_STATE_LOG_OVERFLOW, &iocored->flags);
 }
 
 /**

@@ -174,6 +174,8 @@ static struct cmdhelp cmdhelps_[] = {
 	  " Specify --size 0 to auto-detect the size." },
 	{ "reset_wal WDEV",
 	  "Reset log device (and detect new log device size) online." },
+	{ "is_log_overflow WDEV",
+	  "Check log space overflow." },
 	{ "get_version",
 	  "Get walb version."},
 };
@@ -223,6 +225,7 @@ static bool invoke_ioctl(
 static u64 get_oldest_lsid(const char* wdev_name);
 static u64 get_written_lsid(const char* wdev_name);
 static u64 get_completed_lsid(const char* wdev_name);
+static u64 get_log_usage(const char* wdev_name);
 static u64 get_log_capacity(const char* wdev_name);
 static bool dispatch(const struct config *cfg);
 static bool delete_snapshot_by_name(const struct config *cfg);
@@ -258,6 +261,7 @@ static bool do_get_log_usage(const struct config *cfg);
 static bool do_get_log_capacity(const struct config *cfg);
 static bool do_resize(const struct config *cfg);
 static bool do_reset_wal(const struct config *cfg);
+static bool do_is_log_overflow(const struct config *cfg);
 static bool do_get_version(const struct config *cfg);
 static bool do_help(const struct config *cfg);
 
@@ -730,6 +734,27 @@ static u64 get_completed_lsid(const char* wdev_name)
 }
 
 /**
+ * Get log usage.
+ *
+ * RETURN:
+ *   log usage [physical block] in success, or (u64)(-1).
+ */
+static u64 get_log_usage(const char* wdev_name)
+{
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_GET_LOG_USAGE,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+	
+	if (invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
+		return ctl.val_u64;
+	} else {
+		return (u64)(-1);
+	}
+}
+
+/**
  * Get log capacity.
  *
  * @return log capacity [physical sector] in success, or (u64)(-1).
@@ -784,6 +809,7 @@ static bool dispatch(const struct config *cfg)
 		{ "get_log_capacity", do_get_log_capacity },
 		{ "resize", do_resize },
 		{ "reset_wal", do_reset_wal },
+		{ "is_log_overflow", do_is_log_overflow },
 		{ "get_version", do_get_version },
 		{ "help", do_help },
 	};
@@ -2237,12 +2263,13 @@ static bool do_get_oldest_lsid(const struct config *cfg)
 	ASSERT(strcmp(cfg->cmd_str, "get_oldest_lsid") == 0);
 	
 	u64 oldest_lsid = get_oldest_lsid(cfg->wdev_name);
-	if (oldest_lsid != (u64)(-1)) {
-		printf("%"PRIu64"\n", oldest_lsid);
-		return true;
-	} else {
-		return false;
+	if (oldest_lsid == (u64)(-1)) {
+		goto error0;
 	}
+	printf("%"PRIu64"\n", oldest_lsid);
+	return true;
+error0:
+	return false;
 }	 
 
 /**
@@ -2253,12 +2280,13 @@ static bool do_get_written_lsid(const struct config *cfg)
 	ASSERT(strcmp(cfg->cmd_str, "get_written_lsid") == 0);
 	
 	u64 written_lsid = get_written_lsid(cfg->wdev_name);
-	if (written_lsid != (u64)(-1)) {
-		printf("%"PRIu64"\n", written_lsid);
-		return true;
-	} else {
-		return false;
+	if (written_lsid == (u64)(-1)) {
+		goto error0;
 	}
+	printf("%"PRIu64"\n", written_lsid);
+	return true;
+error0:
+	return false;
 }
 
 /**
@@ -2269,12 +2297,13 @@ static bool do_get_completed_lsid(const struct config *cfg)
 	ASSERT(strcmp(cfg->cmd_str, "get_completed_lsid") == 0);
 
 	u64 lsid = get_completed_lsid(cfg->wdev_name);
-	if (lsid != (u64)(-1)) {
-		printf("%"PRIu64"\n", lsid);
-		return true;
-	} else {
-		return false;
+	if (lsid == (u64)(-1)) {
+		goto error0;
 	}
+	printf("%"PRIu64"\n", lsid);	
+	return true;
+error0:
+	return false;
 }
 
 /**
@@ -2284,24 +2313,13 @@ static bool do_get_log_usage(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "get_log_usage") == 0);
 
-	/* This is not strict usage, because
-	   there is no method to get oldest_lsid and
-	   written_lsid atomically. */
-	u64 oldest_lsid = get_oldest_lsid(cfg->wdev_name);
-	u64 written_lsid = get_written_lsid(cfg->wdev_name);
+	u64 log_usage = get_log_usage(cfg->wdev_name);
 
-	if (oldest_lsid == (u64)(-1) || written_lsid == (u64)(-1)) {
-		LOGe("Geting oldest_lsid or written_lsid is failed.\n");
+	if (log_usage == (u64)(-1)) {
+		LOGe("Getting log usage failed.\n");
 		goto error0;
 	}
-	if (oldest_lsid > written_lsid) {
-		LOGe("This does not satisfy oldest_lsid <= written_lsid "
-			"%"PRIu64" %"PRIu64"\n",
-			oldest_lsid, written_lsid);
-		goto error0;
-	}
-
-	printf("%"PRIu64"\n", written_lsid - oldest_lsid);
+	printf("%"PRIu64"\n", log_usage);
 	return true;
 error0:
 	return false;
@@ -2318,11 +2336,14 @@ static bool do_get_log_capacity(const struct config *cfg)
 
 	if (log_capacity == (u64)(-1)) {
 		LOGe("Getting log_capacity failed.\n");
-		return false;
+		goto error0;
 	}
 
 	printf("%"PRIu64"\n", log_capacity);
+	
 	return true;
+error0:
+	return false;
 }
 
 /**
@@ -2375,6 +2396,29 @@ static bool do_reset_wal(const struct config *cfg)
 		LOGe("ioctl failed.\n");
 		goto error0;
 	}
+
+	return true;
+error0:
+	return false;
+}
+
+/**
+ * Check log overflow.
+ */
+static bool do_is_log_overflow(const struct config *cfg)
+{
+	ASSERT(strcmp(cfg->cmd_str, "is_log_overflow") == 0);
+
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_IS_LOG_OVERFLOW,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDONLY)) {
+		LOGe("ioctl failed.\n");
+		goto error0;
+	}
+	printf("%d\n", ctl.val_int);
 
 	return true;
 error0:
