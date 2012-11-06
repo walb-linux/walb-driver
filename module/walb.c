@@ -1311,8 +1311,8 @@ static u64 get_completed_lsid(struct walb_dev *wdev)
 static u64 get_log_capacity(struct walb_dev *wdev)
 {
 	ASSERT(wdev);
-	ASSERT_SECTOR_DATA(wdev->lsuper0);
-	return get_super_sector(wdev->lsuper0)->ring_buffer_size;
+	
+	return wdev->ring_buffer_size;
 }
 
 /**
