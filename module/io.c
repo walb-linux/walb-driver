@@ -24,9 +24,8 @@
  * iocored->flags bit.
  */
 enum {
+	IOCORE_STATE_FAILURE = 0,
 	IOCORE_STATE_READ_ONLY = 0,
-	IOCORE_STATE_FAILURE,
-	IOCORE_STATE_QUEUE_STOPPED,
 	IOCORE_STATE_SUBMIT_TASK_WORKING,
 	IOCORE_STATE_WAIT_TASK_WORKING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
@@ -61,6 +60,9 @@ struct iocore_data
 	/* See IOCORE_STATE_XXXXX */
 	unsigned long flags;
 
+	/* IO core can process IOs during only stopper is 0. */
+	atomic_t n_stoppers;
+
 	/*
 	 * There are four queues.
 	 * Each queue must be accessed with its own lock held.
@@ -83,11 +85,17 @@ struct iocore_data
 	spinlock_t logpack_gc_queue_lock;
 	struct list_head logpack_gc_queue;
 
+	/* Number of pending bio(s). */
+	atomic_t n_pending_bio;
+	/* Number of started write bio(s).
+	   n_started_write_bio <= n_pending_write_bio.
+	   n_pending_write_bio + n_pending_read_bio = n_pending_bio. */
+	atomic_t n_started_write_bio;
+	/* Number of pending packs to be garbage-collected. */
+	atomic_t n_pending_gc;
+
 	/* for gc worker. */
 	struct worker_data gc_worker_data;
-
-	atomic_t n_pending_bio; /* Number of pending bio(s).
-				   This is used for device exit. */
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	/**
@@ -125,7 +133,7 @@ struct iocore_data
 	unsigned long queue_restart_jiffies; 
 
 	/* true if queue is stopped. */
-	bool is_queue_stopped; 
+	bool is_under_throttling;
 
 #endif
 
@@ -161,13 +169,14 @@ static const unsigned long completion_timeo_ms_ = 10000; /* 10 seconds. */
 static inline struct iocore_data* get_iocored_from_wdev(
 	struct walb_dev *wdev)
 {
+	ASSERT(wdev);
 	return (struct iocore_data *)wdev->private_data;
 }
 
 /**
  * Check read-only mode.
  */
-static inline int is_read_only_mode(struct iocore_data *iocored)
+static inline bool is_read_only_mode(struct iocore_data *iocored)
 {
 	return test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
 }
@@ -306,8 +315,13 @@ static void enqueue_wait_task_if_necessary(struct walb_dev *wdev);
 static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev);
 static struct bio_wrapper* alloc_bio_wrapper_inc(
 	struct walb_dev *wdev, gfp_t gfp_mask);
+static void start_write_bio_wrapper(
+	struct walb_dev *wdev, struct bio_wrapper *biow);
 static void destroy_bio_wrapper_dec(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
+static void wait_for_all_pending_io_done(struct walb_dev *wdev);
+static void wait_for_all_started_write_io_done(struct walb_dev *wdev);
+static void wait_for_all_pending_gc_done(struct walb_dev *wdev);
 static void flush_all_wq(void);
 
 /* Overlapping data functions. */
@@ -874,11 +888,23 @@ static void task_submit_logpack_list(struct work_struct *work)
 		list_for_each_entry_safe(biow, biow_next,
 					&iocored->logpack_submit_queue, list) {
 			list_move_tail(&biow->list, &biow_list);
+			start_write_bio_wrapper(wdev, biow);
 			n_io++;
 			if (n_io >= N_IO_BULK) { break; }
 		}
 		spin_unlock(&iocored->logpack_submit_queue_lock);
 		if (is_empty) { break; }
+
+		/* Failure mode. */
+		if (test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags)) {
+			list_for_each_entry_safe(
+				biow, biow_next, &biow_list, list) {
+				bio_endio(biow->bio, -EIO);
+				list_del(&biow->list);
+				destroy_bio_wrapper_dec(wdev, biow);
+			}
+			continue;
+		}
 
 		/* Create and submit. */
 		create_logpack_list(wdev, &biow_list, &wpack_list);
@@ -953,6 +979,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		enqueue_submit_data_task_if_necessary(wdev);
 
 		/* Put packs into the gc queue. */
+		atomic_add(n_pack, &iocored->n_pending_gc);
 		spin_lock(&iocored->logpack_gc_queue_lock);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			list_move_tail(&wpack->list, &iocored->logpack_gc_queue);
@@ -1583,9 +1610,9 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 
 	/* Update written_lsid. */
 	ASSERT(written_lsid != INVALID_LSID);
-	spin_lock(&wdev->cpd.written_lsid_lock);
-	wdev->cpd.written_lsid = written_lsid;
-	spin_unlock(&wdev->cpd.written_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
+	wdev->written_lsid = written_lsid;
+	spin_unlock(&wdev->lsid_lock);
 }
 
 /**
@@ -1621,6 +1648,7 @@ static void dequeue_and_gc_logpack_list(struct walb_dev *wdev)
 		/* Gc */
 		gc_logpack_list(wdev, &wpack_list);
 		ASSERT(list_empty(&wpack_list));
+		atomic_sub(n_pack, &iocored->n_pending_gc);
 	}
 }
 
@@ -1744,6 +1772,9 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	/* Flags. */
 	iocored->flags = 0;
 
+	/* Stoppers */
+	atomic_set(&iocored->n_stoppers, 0);
+
 	/* Queues and their locks. */
 	INIT_LIST_HEAD(&iocored->logpack_submit_queue);
 	INIT_LIST_HEAD(&iocored->logpack_wait_queue);
@@ -1755,7 +1786,9 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	spin_lock_init(&iocored->logpack_gc_queue_lock);
 
 	/* To wait all IO for underlying devices done. */
+	atomic_set(&iocored->n_started_write_bio, 0);
 	atomic_set(&iocored->n_pending_bio, 0);
+	atomic_set(&iocored->n_pending_gc, 0);
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	spin_lock_init(&iocored->overlapping_data_lock);
@@ -1776,7 +1809,7 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	}
 	iocored->pending_sectors = 0;
 	iocored->queue_restart_jiffies = jiffies;
-	iocored->is_queue_stopped = false;
+	iocored->is_under_throttling = false;
 	iocored->max_sectors_in_pending = 0;
 #endif
 	return iocored;
@@ -2020,10 +2053,7 @@ static void wait_for_logpack_and_submit_datapack(
 			LOGd_("pending_sectors %u\n", iocored->pending_sectors);
 			is_stop_queue = should_stop_queue(wdev, biow);
 			if (is_stop_queue) {
-				ret = test_and_set_bit(
-					IOCORE_STATE_QUEUE_STOPPED,
-					&iocored->flags);
-				ASSERT(!ret);
+				atomic_inc(&iocored->n_stoppers);
 			}
 			iocored->pending_sectors += biow->len;
 			is_pending_insert_succeeded =
@@ -2119,7 +2149,6 @@ static void wait_for_write_bio_wrapper(
 	const bool is_endio = false;
 	const bool is_delete = false;
 	bool is_start_queue;
-	bool ret;
 #else
 	const bool is_endio = true;
 	const bool is_delete = true;
@@ -2142,18 +2171,11 @@ static void wait_for_write_bio_wrapper(
 	spin_lock(&iocored->pending_data_lock);
 	is_start_queue = should_start_queue(wdev, biow);
 	if (is_start_queue) {
-		ret = test_and_clear_bit(
-			IOCORE_STATE_QUEUE_STOPPED, &iocored->flags);
-		ASSERT(ret);
+		iocore_melt(wdev);
 	}
 	iocored->pending_sectors -= biow->len;
 	pending_delete(iocored->pending_data, &iocored->max_sectors_in_pending, biow);
 	spin_unlock(&iocored->pending_data_lock);
-
-	if (is_start_queue) {
-		LOGd_("restart queue.\n");
-		enqueue_submit_task_if_necessary(wdev);
-	}
 
 	/* put related bio(s). */
 	put_bio_entry_list(&biow->bioe_list);
@@ -2416,7 +2438,8 @@ static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
 }
 
 /**
- * Allocate a bio wrapper and increment n_pending_bio.
+ * Allocate a bio wrapper and increment
+ * n_pending_read_bio or n_pending_write_bio.
  */
 static struct bio_wrapper* alloc_bio_wrapper_inc(
 	struct walb_dev *wdev, gfp_t gfp_mask)
@@ -2432,10 +2455,48 @@ static struct bio_wrapper* alloc_bio_wrapper_inc(
 	if (!biow) {
 		goto error0;
 	}
+
 	atomic_inc(&iocored->n_pending_bio);
+	biow->started = false;
 	return biow;
 error0:
 	return NULL;
+}
+
+/**
+ * Start to processing write bio_wrapper.
+ */
+static void start_write_bio_wrapper(
+	struct walb_dev *wdev, struct bio_wrapper *biow)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	ASSERT(biow);
+
+	biow->started = true;
+	atomic_inc(&iocored->n_started_write_bio);
+}
+
+/**
+ * Destroy a bio wrapper and decrement n_pending_bio.
+ */
+static void destroy_bio_wrapper_dec(
+	struct walb_dev *wdev, struct bio_wrapper *biow)
+{
+	struct iocore_data *iocored;
+	bool started;
+
+	ASSERT(wdev);
+	iocored = get_iocored_from_wdev(wdev);
+	ASSERT(iocored);
+	ASSERT(biow);
+
+	started = biow->started;
+	destroy_bio_wrapper(biow);
+	
+	atomic_dec(&iocored->n_pending_bio);
+	if (started) {
+		atomic_dec(&iocored->n_started_write_bio);
+	}
 }
 
 /**
@@ -2721,7 +2782,7 @@ static inline bool should_stop_queue(
 	iocored = get_iocored_from_wdev(wdev);
 	ASSERT(iocored);
 
-	if (iocored->is_queue_stopped) {
+	if (iocored->is_under_throttling) {
 		return false;
 	}
 
@@ -2731,7 +2792,7 @@ static inline bool should_stop_queue(
 	if (should_stop) {
 		iocored->queue_restart_jiffies = jiffies +
 			msecs_to_jiffies(wdev->queue_stop_timeout_ms);
-		iocored->is_queue_stopped = true;
+		iocored->is_under_throttling = true;
 		return true;
 	} else {
 		return false;
@@ -2761,7 +2822,7 @@ static inline bool should_start_queue(
 
 	ASSERT(iocored->pending_sectors >= biow->len);
 
-	if (!iocored->is_queue_stopped) {
+	if (!iocored->is_under_throttling) {
 		return false;
 	}
 	
@@ -2770,7 +2831,7 @@ static inline bool should_start_queue(
 	is_timeout = time_is_before_jiffies(iocored->queue_restart_jiffies);
 
 	if (is_size || is_timeout) {
-		iocored->is_queue_stopped = false;
+		iocored->is_under_throttling = false;
 		return true;
 	} else {
 		return false;
@@ -2779,22 +2840,53 @@ static inline bool should_start_queue(
 #endif
 
 /**
- * Destroy a bio wrapper and decrement n_pending_bio.
+ * Wait for all pending IO(s) done.
  */
-static void destroy_bio_wrapper_dec(
-	struct walb_dev *wdev, struct bio_wrapper *biow)
+static void wait_for_all_pending_io_done(struct walb_dev *wdev)
 {
-	struct iocore_data *iocored;
-
-	ASSERT(wdev);
-	iocored = get_iocored_from_wdev(wdev);
-	ASSERT(iocored);
-	ASSERT(biow);
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	
-	destroy_bio_wrapper(biow);
-	atomic_dec(&iocored->n_pending_bio);
+	while (atomic_read(&iocored->n_pending_bio) > 0) {
+		LOGn("n_pending_bio %d\n",
+			atomic_read(&iocored->n_pending_bio));
+		msleep(100);
+	}
+	LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
 }
 
+/**
+ * Wait for all data write IO(s) done.
+ */
+static void wait_for_all_started_write_io_done(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	
+	while (atomic_read(&iocored->n_started_write_bio) > 0) {
+		LOGn("n_started_write_bio %d\n",
+			atomic_read(&iocored->n_started_write_bio));
+		msleep(100);
+	}
+	LOGn("n_started_write_bio %d\n", atomic_read(&iocored->n_started_write_bio));
+}
+
+/**
+ * Wait for all gc task done.
+ */
+static void wait_for_all_pending_gc_done(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	
+	while (atomic_read(&iocored->n_pending_gc) > 0) {
+		LOGn("n_pending_gc %d\n",
+			atomic_read(&iocored->n_pending_gc));
+		msleep(100);
+	}
+	LOGn("n_pending_gc %d\n", atomic_read(&iocored->n_pending_gc));
+}
+
+/**
+ * Flush all workqueues for IO.
+ */
 static void flush_all_wq(void)
 {
 	flush_workqueue(wq_logpack_);
@@ -2923,7 +3015,7 @@ bool iocore_initialize(struct walb_dev *wdev)
 	
 	/* Decide gc worker name and start it. */
 	ret = snprintf(iocored->gc_worker_data.name, WORKER_NAME_MAX_LEN,
-		"%s/%u", WORKER_NAME_GC, MINOR(wdev->devt));
+		"%s/%u", WORKER_NAME_GC, MINOR(wdev->devt) / 2);
 	if (ret >= WORKER_NAME_MAX_LEN) {
 		LOGe("Thread name size too long.\n");
 		goto error6;
@@ -2969,24 +3061,45 @@ void iocore_finalize(struct walb_dev *wdev)
 }
 
 /**
- * Stop IO processing.
+ * Stop (write) IO processing.
  *
  * After stopped, there is no IO pending underlying
  * data/log devices.
  * Upper layer can submit IOs but the walb driver
  * just queues them and does not start processing during stopped.
  */
-void iocore_stop(struct walb_dev *wdev)
+void iocore_freeze(struct walb_dev *wdev)
 {
-	/* not yet implemented */
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+
+	might_sleep();
+
+	if (atomic_inc_return(&iocored->n_stoppers) == 1) {
+		LOGn("iocore frozen.\n");
+	}
+
+	/* Wait for all started write io done. */
+	wait_for_all_started_write_io_done(wdev);
+
+	/* Wait for all pending gc task done
+	   which update wdev->written_lsid. */
+	wait_for_all_pending_gc_done(wdev);
 }
 
 /**
- * (Re)start IO processing.
+ * (Re)start (write) IO processing.
  */
-void iocore_start(struct walb_dev *wdev)
+void iocore_melt(struct walb_dev *wdev)
 {
-	/* not yet implemented */
+	struct iocore_data *iocored;
+
+	might_sleep();
+	iocored = get_iocored_from_wdev(wdev);
+
+	if (atomic_dec_return(&iocored->n_stoppers) == 0) {
+		LOGn("iocore melted.\n");
+		enqueue_submit_task_if_necessary(wdev);
+	}
 }
 
 /**
@@ -2997,13 +3110,15 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	struct bio_wrapper *biow;
 	int error = -EIO;
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	unsigned long is_write = bio->bi_rw & REQ_WRITE;
 
-	/* Failure state. */
-	if (test_bit(IOCORE_STATE_FAILURE, &iocored->flags)) {
-		bio_endio(bio, -EIO);
-		return;
+	/* Failure/Read-only state check. */
+	if (test_bit(IOCORE_STATE_FAILURE, &iocored->flags) ||
+		(is_write && is_read_only_mode(iocored))) {
+		error = -EIO;
+		goto error0;
 	}
-
+	
 	/* Create bio wrapper. */
 	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
 	if (!biow) {
@@ -3013,7 +3128,7 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	init_bio_wrapper(biow, bio);
 	biow->private_data = wdev;
 
-	if (biow->bio->bi_rw & REQ_WRITE) {
+	if (is_write) {
 		/* Calculate checksum. */
 		biow->csum = bio_calc_checksum(biow->bio);
 		
@@ -3023,10 +3138,10 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 		spin_unlock(&iocored->logpack_submit_queue_lock);
 
 		/* Enqueue logpack-submit task. */
-		if (!test_bit(IOCORE_STATE_QUEUE_STOPPED, &iocored->flags)) {
+		if (atomic_read(&iocored->n_stoppers) == 0) {
 			enqueue_submit_task_if_necessary(wdev);
 		}
-	} else { /* read */
+	} else {
 		submit_read_bio_wrapper(wdev, biow);
 
 		/* TODO: support IOCORE_STATE_QUEUE_STOPPED for read also. */
@@ -3058,17 +3173,38 @@ void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio)
  */
 void iocore_flush(struct walb_dev *wdev)
 {
+	wait_for_all_pending_io_done(wdev);
+	flush_all_wq();
+}
+
+/**
+ * Set read-only mode.
+ */
+void iocore_set_readonly(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+
+	set_read_only_mode(iocored);
+}
+
+/**
+ * Check read-only mode.
+ */
+bool iocore_is_readonly(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+
+	return is_read_only_mode(iocored);
+}
+
+/**
+ * Set failure mode.
+ */
+void iocore_set_failure(struct walb_dev *wdev)
+{
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 
 	set_bit(IOCORE_STATE_FAILURE, &iocored->flags);
-	LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
-	while (atomic_read(&iocored->n_pending_bio) > 0) {
-		LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
-		msleep(100);
-	}
-	LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
-
-	flush_all_wq();
 }
 
 /**
@@ -3085,11 +3221,8 @@ void walb_make_request(struct request_queue *q, struct bio *bio)
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid++;
 #endif
+	wdev->written_lsid++;
 	spin_unlock(&wdev->lsid_lock);
-
-	spin_lock(&wdev->cpd.written_lsid_lock);
-	wdev->cpd.written_lsid++;
-	spin_unlock(&wdev->cpd.written_lsid_lock);
 
 	/* not yet implemented. */
 	set_bit(BIO_UPTODATE, &bio->bi_flags);

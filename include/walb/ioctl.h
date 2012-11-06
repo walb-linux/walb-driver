@@ -444,13 +444,18 @@ enum {
 	WALB_IOCTL_RESIZE,
 
 	/*
-	 * NOT YET IMPLEMENTED.
-	 *
 	 * Clear all logs.
 	 *
 	 * This will revalidate the log space size
 	 * when log device size has changed.
 	 * This will create a new UUID.
+	 *
+	 * INPUT:
+	 *   None
+	 * OUTPUT:
+	 *   None
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
 	 */
 	WALB_IOCTL_CLEAR_LOG,
 

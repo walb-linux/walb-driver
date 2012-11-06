@@ -77,6 +77,19 @@ struct workqueue_struct *wq_misc_ = NULL;
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
+/**
+ * Lsid data for backup/restore.
+ */
+struct lsid_set
+{
+	u64 latest_lsid;
+#ifdef WALB_FAST_ALGORITHM
+	u64 completed_lsid;
+#endif
+	u64 written_lsid;
+	u64 prev_written_lsid;
+	u64 oldest_lsid;
+};
 
 /*******************************************************************************
  * Macro definition.
@@ -122,7 +135,7 @@ static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *c
 static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
+static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_freeze_temporarily(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
 
 /* Walblog device open/close/ioctl. */
@@ -138,6 +151,10 @@ static u64 get_log_capacity(struct walb_dev *wdev);
 static int walb_set_name(struct walb_dev *wdev, unsigned int minor,
 			const char *name);
 static void walb_decide_flush_support(struct walb_dev *wdev);
+static bool grow_disk(struct gendisk *gd, u64 new_size);
+static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid);
+static void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids);
+static void restore_lsid_set(struct walb_dev *wdev, const struct lsid_set *lsids);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -973,7 +990,6 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 	u64 ddev_size;
 	u64 new_size;
 	u64 old_size;
-	struct block_device *bdev;
 	
 	LOGn("WALB_IOCTL_RESIZE.\n");
 	ASSERT(ctl->command == WALB_IOCTL_RESIZE);
@@ -1000,23 +1016,15 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 		goto fin;
 	}
 
-	bdev = bdget_disk(wdev->gd, 0);
-	if (!bdev) {
-		LOGe("bdget_disk failed.\n");
-		goto error0;
-	}
 	spin_lock(&wdev->size_lock);
 	wdev->size = new_size;
 	wdev->ddev_size = ddev_size;
 	spin_unlock(&wdev->size_lock);
 
-	/* Do not call revalidate_disk(), instead, i_size_write(). */
-	set_capacity(wdev->gd, new_size);
-	mutex_lock(&bdev->bd_mutex);
-	i_size_write(bdev->bd_inode, (loff_t)new_size << 9);
-	mutex_unlock(&bdev->bd_mutex);
-	bdput(bdev);
-
+	if (!grow_disk(wdev->gd, new_size)) {
+		goto error0;
+	}
+	
 	/* Sync super block for super->device_size */
 	if (!walb_sync_super_block(wdev)) {
 		LOGe("superblock sync failed.\n");
@@ -1039,9 +1047,134 @@ error0:
  */
 static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	/* not yet implemented */
+	u64 new_ldev_size, old_ldev_size;
+	u8 new_uuid[16], old_uuid[16];
+	unsigned int pbs = wdev->physical_bs;
+	bool is_grown = false;
+	int ret;
+	struct walb_super_sector *super;
+	u64 lsid0_off;
+	struct lsid_set lsids;
+	u64 old_ring_buffer_size;
+
+	ASSERT(ctl->command == WALB_IOCTL_CLEAR_LOG);
+	LOGn("WALB_IOCTL_CLEAR_LOG.\n");
+
+	/* Freeze iocore and checkpointing.  */
+	iocore_freeze(wdev);
+	stop_checkpointing(&wdev->cpd);
+
+	/* Get old/new log device size. */
+	old_ldev_size = wdev->ldev_size;
+	new_ldev_size = wdev->ldev->bd_part->nr_sects;
+
+	if (old_ldev_size > new_ldev_size) {
+		LOGe("Log device shrink not supported.\n");
+		goto error0;
+	}
 	
-	LOGn("WALB_IOCTL_CLEAR_LOG is not supported currently.\n");
+	/* Backup variables. */
+	old_ring_buffer_size = wdev->ring_buffer_size;
+	backup_lsid_set(wdev, &lsids);
+	
+	/* Initialize lsid(s). */
+	spin_lock(&wdev->lsid_lock);
+	wdev->latest_lsid = 0;
+#ifdef WALB_FAST_ALGORITHM
+	wdev->completed_lsid = 0;
+#endif
+	wdev->written_lsid = 0;
+	wdev->prev_written_lsid = 0;
+	wdev->oldest_lsid = 0;
+	spin_unlock(&wdev->lsid_lock);
+
+	/* Grow the walblog device. */
+	if (old_ldev_size < new_ldev_size) {
+		LOGn("Detect log device size change.\n");
+
+		/* Grow the disk. */
+		is_grown = true;
+		if (!grow_disk(wdev->log_gd, new_ldev_size)) {
+			LOGe("grow disk failed.\n");
+			iocore_set_readonly(wdev);
+			goto error1;
+		}
+		LOGn("Grown log device size from %"PRIu64" to %"PRIu64".\n",
+			old_ldev_size, new_ldev_size);
+		wdev->ldev_size = new_ldev_size;
+		
+		/* Currently you can not change n_snapshots. */
+		
+		/* Recalculate ring buffer size. */
+		wdev->ring_buffer_size =
+			addr_pb(pbs, new_ldev_size)
+			- get_ring_buffer_offset(pbs, wdev->n_snapshots);
+	}
+
+	/* Generate new uuid. */
+	get_random_bytes(new_uuid, 16);
+	spin_lock(&wdev->lsuper0_lock);
+	super = get_super_sector(wdev->lsuper0);
+	memcpy(old_uuid, super->uuid, 16);
+	memcpy(super->uuid, new_uuid, 16);
+	super->ring_buffer_size = wdev->ring_buffer_size;
+	/* super->snapshot_metadata_size; */
+	lsid0_off = get_offset_of_lsid_2(super, 0);
+	spin_unlock(&wdev->lsuper0_lock);
+
+	/* Sync super sector. */
+	if (!walb_sync_super_block(wdev)) {
+		LOGe("sync superblock failed.\n");
+		iocore_set_readonly(wdev);
+		goto error2;
+	}
+
+	/* Update uuid index of alldev data. */
+	alldevs_write_lock();
+	ret = alldevs_update_uuid(old_uuid, new_uuid);
+	alldevs_write_unlock();
+	if (ret) {
+		LOGe("Update alldevs index failed.\n");
+		iocore_set_readonly(wdev);
+		goto error2;
+	}
+		
+	/* Invalidate first logpack */
+	if (!invalidate_lsid(wdev, 0)) {
+		LOGe("invalidate lsid 0 failed.\n");
+		iocore_set_readonly(wdev);
+		goto error2;
+	}
+	
+	/* Delete all snapshots. */
+	if (snapshot_del_range(wdev->snapd, 0, MAX_LSID + 1) < 0) {
+		LOGe("Delete all snapshots failed.\n");
+		iocore_set_readonly(wdev);
+		goto error2;
+		
+	}
+	ASSERT(snapshot_n_records(wdev->snapd) == 0);
+	LOGn("Delete all snapshots done.\n");
+
+	/* Melt iocore and checkpointing. */
+	start_checkpointing(&wdev->cpd);
+	iocore_melt(wdev);
+
+	return 0;
+
+error2:
+	restore_lsid_set(wdev, &lsids);
+	wdev->ring_buffer_size = old_ring_buffer_size;
+#if 0
+	wdev->ldev_size = old_ldev_size;
+	if (!grow_disk(wdev->log_gd, old_ldev_size)) {
+		LOGe("grow_disk to shrink failed.\n");
+	}
+#endif
+error1:
+	start_checkpointing(&wdev->cpd);
+	iocore_melt(wdev);
+error0:
 	return -EFAULT;
 }
 
@@ -1141,14 +1274,12 @@ static struct block_device_operations walblog_ops = {
 static u64 get_written_lsid(struct walb_dev *wdev)
 {
 	u64 ret;
-	struct checkpoint_data *cpd;
 
 	ASSERT(wdev);
-	cpd = &wdev->cpd;
 
-	spin_lock(&cpd->written_lsid_lock);
-	ret = cpd->written_lsid;
-	spin_unlock(&cpd->written_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
+	ret = wdev->written_lsid;
+	spin_unlock(&wdev->lsid_lock);
 	
 	return ret;
 }
@@ -1261,7 +1392,104 @@ static void walb_decide_flush_support(struct walb_dev *wdev)
 	}
 #endif
 }
+
+/**
+ * Grow disk size.
+ */
+static bool grow_disk(struct gendisk *gd, u64 new_size)
+{
+	struct block_device *bdev;
 	
+	bdev = bdget_disk(gd, 0);
+	if (!bdev) {
+		LOGe("bdget_disk failed.\n");
+		goto error0;
+	}
+	set_capacity(gd, new_size);
+	mutex_lock(&bdev->bd_mutex);
+	i_size_write(bdev->bd_inode, (loff_t)new_size << 9);
+	mutex_unlock(&bdev->bd_mutex);
+	bdput(bdev);
+
+	return true;
+error0:
+	return false;
+}
+
+/**
+ * Invalidate lsid inside ring buffer.
+ */
+static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
+{
+	struct sector_data *zero_sector;
+	struct walb_super_sector *super;
+	u64 off;
+	
+	ASSERT(lsid != INVALID_LSID);
+
+	zero_sector = sector_alloc(
+		wdev->physical_bs, GFP_KERNEL | __GFP_ZERO);
+	if (!zero_sector) {
+		LOGe("sector allocation failed.\n");
+		goto error0;
+	}
+	
+	spin_lock(&wdev->lsuper0_lock);
+	super = get_super_sector(wdev->lsuper0);
+	off = get_offset_of_lsid_2(super, lsid);
+	spin_unlock(&wdev->lsuper0_lock);
+	
+	if (!sector_io(WRITE, wdev->ldev, off, zero_sector)) {
+		LOGe("sector write failed.\n");
+		iocore_set_readonly(wdev);
+		goto error1;
+	}
+	
+	sector_free(zero_sector);
+	return true;
+
+error1:
+	sector_free(zero_sector);
+error0:
+	return false;
+}
+
+/**
+ * Backup lsids.
+ */
+static void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids)
+{
+	spin_lock(&wdev->lsid_lock);
+
+	lsids->latest_lsid = wdev->latest_lsid;
+#ifdef WALB_FAST_ALGORITHM
+	lsids->completed_lsid = wdev->completed_lsid;
+#endif
+	lsids->written_lsid = wdev->written_lsid;
+	lsids->prev_written_lsid = wdev->prev_written_lsid;
+	lsids->oldest_lsid = wdev->oldest_lsid;
+	
+	spin_unlock(&wdev->lsid_lock);
+}
+
+/**
+ * Restore lsids.
+ */
+static void restore_lsid_set(struct walb_dev *wdev, const struct lsid_set *lsids)
+{
+	spin_lock(&wdev->lsid_lock);
+
+	wdev->latest_lsid = lsids->latest_lsid;
+#ifdef WALB_FAST_ALGORITHM
+	wdev->completed_lsid = lsids->completed_lsid;
+#endif
+	wdev->written_lsid = lsids->written_lsid;
+	wdev->prev_written_lsid = lsids->prev_written_lsid;
+	wdev->oldest_lsid = lsids->oldest_lsid;
+	
+	spin_unlock(&wdev->lsid_lock);
+}
+
 /**
  * Initialize workqueues.
  *
@@ -1760,7 +1988,6 @@ struct walb_dev* prepare_wdev(
 	struct walb_dev *wdev;
 	u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
 	char *dev_name;
-	struct checkpoint_data *cpd;
 	struct walb_super_sector *super;
 
 	ASSERT(is_walb_start_param_valid(param));
@@ -1779,7 +2006,6 @@ struct walb_dev* prepare_wdev(
 		LOGe("kmalloc failed.\n");
 		goto out;
 	}
-	cpd = &wdev->cpd;
 	spin_lock_init(&wdev->lsid_lock);
 	spin_lock_init(&wdev->lsuper0_lock);
 	spin_lock_init(&wdev->size_lock);
@@ -1841,8 +2067,17 @@ struct walb_dev* prepare_wdev(
 	}
 	super = get_super_sector(wdev->lsuper0);
 	ASSERT(super);
-	init_checkpointing(cpd, super->written_lsid);
+	init_checkpointing(&wdev->cpd);
+
+	/* Set lsids. */
 	wdev->oldest_lsid = super->oldest_lsid;
+	wdev->written_lsid = super->written_lsid;
+	wdev->prev_written_lsid = wdev->written_lsid;
+	wdev->latest_lsid = wdev->written_lsid;
+#ifdef WALB_FAST_ALGORITHM
+	wdev->completed_lsid = wdev->written_lsid;
+#endif
+	
 	wdev->ring_buffer_size = super->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(super);
 	wdev->size = super->device_size;
@@ -1881,10 +2116,6 @@ struct walb_dev* prepare_wdev(
 	/* Redo feature is not implemented yet. */
 	
 	/* latest_lsid is written_lsid after redo. */
-	wdev->latest_lsid = cpd->written_lsid;
-#ifdef WALB_FAST_ALGORITHM
-	wdev->completed_lsid = cpd->written_lsid;
-#endif
 	
 	/* For padding test in the end of ring buffer. */
 	/* 64KB ring buffer */
@@ -1951,6 +2182,7 @@ void destroy_wdev(struct walb_dev *wdev)
 		MAJOR(wdev->ddev->bd_dev),
 		MINOR(wdev->ddev->bd_dev));
 
+	iocore_set_failure(wdev);
 	iocore_flush(wdev);
 	
 	walblog_finalize_device(wdev);

@@ -113,21 +113,32 @@ struct walb_dev
 	 *
 	 * latest_lsid:
 	 *   This is used to generate new logpack.
+	 * completed_lsid:
+	 *   All logpacks with lsid < completed_lsid
+	 *   have been written to the log device.
+	 * written_lsid:
+	 *   All logpacks with lsid < written_lsid
+	 *   have been written to the data device.
+	 * prev_written_lsid:
+	 *   Previously synced written_lsid to the superblock.
+	 *   You do not need to sync superblock
+	 *   while written_lsid == prev_written_lsid.
 	 * oldest_lsid:
 	 *   All logpacks with lsid < oldest_lsid
 	 *   on the log device can be overwritten.
-	 * completed_lsid:
-	 *   All logpacks with lsid < completed_lsid
-	 *   has been written to the log device.
 	 *
-	 * oldest_lsid <= written_lsid <= completed_lsid <= latest_lsid.
+	 * oldest_lsid <= prev_written_lsid <= written_lsid
+	 * <= completed_lsid <= latest_lsid.
 	 */
 	spinlock_t lsid_lock;
+	
 	u64 latest_lsid;
-	u64 oldest_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
+	u64 written_lsid;
+	u64 prev_written_lsid;
+	u64 oldest_lsid;
 	
 	/*
 	 * For wrapper device.
