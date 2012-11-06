@@ -9,22 +9,18 @@
 #include <linux/module.h>
 #include "super.h"
 #include "checkpoint.h"
+#include "kern.h"
 
 /**
  * Initialize checkpointing.
  */
-void init_checkpointing(struct checkpoint_data *cpd, u64 written_lsid)
+void init_checkpointing(struct checkpoint_data *cpd)
 {
 	ASSERT(cpd);
-	ASSERT(written_lsid != INVALID_LSID);
 	
 	init_rwsem(&cpd->lock);
 	cpd->interval = WALB_DEFAULT_CHECKPOINT_INTERVAL;
 	cpd->state = CP_STOPPED;
-
-	spin_lock_init(&cpd->written_lsid_lock);
-	cpd->written_lsid = written_lsid;
-	cpd->prev_written_lsid = written_lsid;
 }
 
 /**
@@ -37,18 +33,19 @@ void init_checkpointing(struct checkpoint_data *cpd, u64 written_lsid)
  */
 bool take_checkpoint(struct checkpoint_data *cpd)
 {
-	struct walb_dev *wdev;
 	u64 written_lsid, prev_written_lsid;
 	bool ret;
+	struct walb_dev *wdev;
+
 	ASSERT(cpd);
 	wdev = get_wdev_from_checkpoint_data(cpd);
 	ASSERT(wdev);
 
 	/* Get written_lsid and prev_written_lsid. */
-	spin_lock(&cpd->written_lsid_lock);
-	written_lsid = cpd->written_lsid;
-	prev_written_lsid = cpd->prev_written_lsid;
-	spin_unlock(&cpd->written_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
+	written_lsid = wdev->written_lsid;
+	prev_written_lsid = wdev->prev_written_lsid;
+	spin_unlock(&wdev->lsid_lock);
 
 	/* Write superblock if necessary. */
 	if (written_lsid == prev_written_lsid) {

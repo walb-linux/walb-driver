@@ -24,8 +24,8 @@
  * iocored->flags bit.
  */
 enum {
+	IOCORE_STATE_FAILURE = 0,
 	IOCORE_STATE_READ_ONLY = 0,
-	IOCORE_STATE_FAILURE,
 	IOCORE_STATE_SUBMIT_TASK_WORKING,
 	IOCORE_STATE_WAIT_TASK_WORKING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
@@ -170,7 +170,7 @@ static inline struct iocore_data* get_iocored_from_wdev(
 /**
  * Check read-only mode.
  */
-static inline int is_read_only_mode(struct iocore_data *iocored)
+static inline bool is_read_only_mode(struct iocore_data *iocored)
 {
 	return test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
 }
@@ -885,7 +885,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 		if (is_empty) { break; }
 
 		/* Failure mode. */
-		if (test_bit(IOCORE_STATE_FAILURE, &iocored->flags)) {
+		if (test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags)) {
 			list_for_each_entry_safe(
 				biow, biow_next, &biow_list, list) {
 				bio_endio(biow->bio, -EIO);
@@ -1598,9 +1598,9 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 
 	/* Update written_lsid. */
 	ASSERT(written_lsid != INVALID_LSID);
-	spin_lock(&wdev->cpd.written_lsid_lock);
-	wdev->cpd.written_lsid = written_lsid;
-	spin_unlock(&wdev->cpd.written_lsid_lock);
+	spin_lock(&wdev->lsid_lock);
+	wdev->written_lsid = written_lsid;
+	spin_unlock(&wdev->lsid_lock);
 }
 
 /**
@@ -3040,13 +3040,15 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	struct bio_wrapper *biow;
 	int error = -EIO;
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	unsigned long is_write = bio->bi_rw & REQ_WRITE;
 
-	/* Failure state. */
-	if (test_bit(IOCORE_STATE_FAILURE, &iocored->flags)) {
-		bio_endio(bio, -EIO);
-		return;
+	/* Failure/Read-only state check. */
+	if (test_bit(IOCORE_STATE_FAILURE, &iocored->flags) ||
+		(is_write && is_read_only_mode(iocored))) {
+		error = -EIO;
+		goto error0;
 	}
-
+	
 	/* Create bio wrapper. */
 	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
 	if (!biow) {
@@ -3056,7 +3058,7 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	init_bio_wrapper(biow, bio);
 	biow->private_data = wdev;
 
-	if (biow->bio->bi_rw & REQ_WRITE) {
+	if (is_write) {
 		/* Calculate checksum. */
 		biow->csum = bio_calc_checksum(biow->bio);
 		
@@ -3069,7 +3071,7 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 		if (atomic_read(&iocored->n_stoppers) == 0) {
 			enqueue_submit_task_if_necessary(wdev);
 		}
-	} else { /* read */
+	} else {
 		submit_read_bio_wrapper(wdev, biow);
 
 		/* TODO: support IOCORE_STATE_QUEUE_STOPPED for read also. */
@@ -3106,12 +3108,32 @@ void iocore_flush(struct walb_dev *wdev)
 }
 
 /**
- * Set failure.
+ * Set read-only mode.
+ */
+void iocore_set_readonly(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+
+	set_read_only_mode(iocored);
+}
+
+/**
+ * Check read-only mode.
+ */
+bool iocore_is_readonly(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+
+	return is_read_only_mode(iocored);
+}
+
+/**
+ * Set failure mode.
  */
 void iocore_set_failure(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-	
+
 	set_bit(IOCORE_STATE_FAILURE, &iocored->flags);
 }
 
@@ -3129,11 +3151,8 @@ void walb_make_request(struct request_queue *q, struct bio *bio)
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid++;
 #endif
+	wdev->written_lsid++;
 	spin_unlock(&wdev->lsid_lock);
-
-	spin_lock(&wdev->cpd.written_lsid_lock);
-	wdev->cpd.written_lsid++;
-	spin_unlock(&wdev->cpd.written_lsid_lock);
 
 	/* not yet implemented. */
 	set_bit(BIO_UPTODATE, &bio->bi_flags);

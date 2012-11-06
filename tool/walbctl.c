@@ -172,6 +172,8 @@ static struct cmdhelp cmdhelps_[] = {
 	{ "resize WDEV SIZE",
 	  "Resize device capacity [logical block] (Only grow is allowed)."
 	  " Specify --size 0 to auto-detect the size." },
+	{ "reset_wal WDEV",
+	  "Reset log device (and detect new log device size) online." },
 	{ "get_version",
 	  "Get walb version."},
 };
@@ -255,6 +257,7 @@ static bool do_get_completed_lsid(const struct config *cfg);
 static bool do_get_log_usage(const struct config *cfg);
 static bool do_get_log_capacity(const struct config *cfg);
 static bool do_resize(const struct config *cfg);
+static bool do_reset_wal(const struct config *cfg);
 static bool do_get_version(const struct config *cfg);
 static bool do_help(const struct config *cfg);
 
@@ -780,6 +783,7 @@ static bool dispatch(const struct config *cfg)
 		{ "get_log_usage", do_get_log_usage },
 		{ "get_log_capacity", do_get_log_capacity },
 		{ "resize", do_resize },
+		{ "reset_wal", do_reset_wal },
 		{ "get_version", do_get_version },
 		{ "help", do_help },
 	};
@@ -2345,6 +2349,33 @@ static bool do_resize(const struct config *cfg)
 		goto error0;
 	}
 	
+	return true;
+error0:
+	return false;
+}
+
+/**
+ * Reset WAL.
+ */
+static bool do_reset_wal(const struct config *cfg)
+{
+	ASSERT(strcmp(cfg->cmd_str, "reset_wal"));
+
+	if (check_bdev(cfg->wdev_name) < 0) {
+		LOGe("device check failed.\n");
+		goto error0;
+	}
+
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_CLEAR_LOG,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
+		LOGe("ioctl failed.\n");
+		goto error0;
+	}
+
 	return true;
 error0:
 	return false;

@@ -7,7 +7,6 @@
 #define WALB_CHECKPOINT_H_KERNEL
 
 #include "check_kernel.h"
-#include "kern.h"
 
 /*
  * Default checkpoint interval [ms]
@@ -62,22 +61,9 @@ struct checkpoint_data
 	 * serialized by checkpoint_state.
 	 */
 	struct delayed_work dwork;
-
-	/*
-	 * Checkpointing updates written_lsid
-	 * where log and data has been already persistent
-	 * for all lsid < written_lsid.
-	 *
-	 * Checkpointing functionality will not sync superblock
-	 * when written_lsid == prev_written_lsid
-	 * that means any write IO did not occur from previous checkpointing.
-	 */
-	spinlock_t written_lsid_lock;
-	u64 written_lsid;
-	u64 prev_written_lsid;
 };
 
-void init_checkpointing(struct checkpoint_data *cpd, u64 written_lsid);
+void init_checkpointing(struct checkpoint_data *cpd);
 bool take_checkpoint(struct checkpoint_data *cpd);
 void task_do_checkpointing(struct work_struct *work);
 void start_checkpointing(struct checkpoint_data *cpd);
