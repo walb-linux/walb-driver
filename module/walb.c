@@ -1061,7 +1061,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	LOGn("WALB_IOCTL_CLEAR_LOG.\n");
 
 	/* Freeze iocore and checkpointing.  */
-	iocore_stop(wdev);
+	iocore_freeze(wdev);
 	stop_checkpointing(&wdev->cpd);
 
 	/* Get old/new log device size. */
@@ -1154,10 +1154,11 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 		
 	}
 	ASSERT(snapshot_n_records(wdev->snapd) == 0);
+	LOGn("Delete all snapshots done.\n");
 
 	/* Melt iocore and checkpointing. */
 	start_checkpointing(&wdev->cpd);
-	iocore_start(wdev);
+	iocore_melt(wdev);
 
 	return 0;
 
@@ -1172,7 +1173,7 @@ error2:
 #endif
 error1:
 	start_checkpointing(&wdev->cpd);
-	iocore_start(wdev);
+	iocore_melt(wdev);
 error0:
 	return -EFAULT;
 }

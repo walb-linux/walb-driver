@@ -29,6 +29,7 @@ struct bio_wrapper
 	u32 csum; /* checksum for write IO. */
 	int error;
 	struct completion done;
+	bool started;
 	
 	struct list_head bioe_list; /* list head of bio_entry */
 

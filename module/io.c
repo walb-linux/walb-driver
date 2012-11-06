@@ -85,11 +85,17 @@ struct iocore_data
 	spinlock_t logpack_gc_queue_lock;
 	struct list_head logpack_gc_queue;
 
+	/* Number of pending bio(s). */
+	atomic_t n_pending_bio;
+	/* Number of started write bio(s).
+	   n_started_write_bio <= n_pending_write_bio.
+	   n_pending_write_bio + n_pending_read_bio = n_pending_bio. */
+	atomic_t n_started_write_bio;
+	/* Number of pending packs to be garbage-collected. */
+	atomic_t n_pending_gc;
+
 	/* for gc worker. */
 	struct worker_data gc_worker_data;
-
-	atomic_t n_pending_bio; /* Number of pending bio(s).
-				   This is used for device exit. */
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	/**
@@ -309,9 +315,13 @@ static void enqueue_wait_task_if_necessary(struct walb_dev *wdev);
 static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev);
 static struct bio_wrapper* alloc_bio_wrapper_inc(
 	struct walb_dev *wdev, gfp_t gfp_mask);
+static void start_write_bio_wrapper(
+	struct walb_dev *wdev, struct bio_wrapper *biow);
 static void destroy_bio_wrapper_dec(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 static void wait_for_all_pending_io_done(struct walb_dev *wdev);
+static void wait_for_all_started_write_io_done(struct walb_dev *wdev);
+static void wait_for_all_pending_gc_done(struct walb_dev *wdev);
 static void flush_all_wq(void);
 
 /* Overlapping data functions. */
@@ -878,6 +888,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 		list_for_each_entry_safe(biow, biow_next,
 					&iocored->logpack_submit_queue, list) {
 			list_move_tail(&biow->list, &biow_list);
+			start_write_bio_wrapper(wdev, biow);
 			n_io++;
 			if (n_io >= N_IO_BULK) { break; }
 		}
@@ -968,6 +979,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		enqueue_submit_data_task_if_necessary(wdev);
 
 		/* Put packs into the gc queue. */
+		atomic_add(n_pack, &iocored->n_pending_gc);
 		spin_lock(&iocored->logpack_gc_queue_lock);
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			list_move_tail(&wpack->list, &iocored->logpack_gc_queue);
@@ -1636,6 +1648,7 @@ static void dequeue_and_gc_logpack_list(struct walb_dev *wdev)
 		/* Gc */
 		gc_logpack_list(wdev, &wpack_list);
 		ASSERT(list_empty(&wpack_list));
+		atomic_sub(n_pack, &iocored->n_pending_gc);
 	}
 }
 
@@ -1773,7 +1786,9 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	spin_lock_init(&iocored->logpack_gc_queue_lock);
 
 	/* To wait all IO for underlying devices done. */
+	atomic_set(&iocored->n_started_write_bio, 0);
 	atomic_set(&iocored->n_pending_bio, 0);
+	atomic_set(&iocored->n_pending_gc, 0);
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	spin_lock_init(&iocored->overlapping_data_lock);
@@ -2156,7 +2171,7 @@ static void wait_for_write_bio_wrapper(
 	spin_lock(&iocored->pending_data_lock);
 	is_start_queue = should_start_queue(wdev, biow);
 	if (is_start_queue) {
-		iocore_start(wdev);
+		iocore_melt(wdev);
 	}
 	iocored->pending_sectors -= biow->len;
 	pending_delete(iocored->pending_data, &iocored->max_sectors_in_pending, biow);
@@ -2423,7 +2438,8 @@ static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
 }
 
 /**
- * Allocate a bio wrapper and increment n_pending_bio.
+ * Allocate a bio wrapper and increment
+ * n_pending_read_bio or n_pending_write_bio.
  */
 static struct bio_wrapper* alloc_bio_wrapper_inc(
 	struct walb_dev *wdev, gfp_t gfp_mask)
@@ -2439,10 +2455,48 @@ static struct bio_wrapper* alloc_bio_wrapper_inc(
 	if (!biow) {
 		goto error0;
 	}
+
 	atomic_inc(&iocored->n_pending_bio);
+	biow->started = false;
 	return biow;
 error0:
 	return NULL;
+}
+
+/**
+ * Start to processing write bio_wrapper.
+ */
+static void start_write_bio_wrapper(
+	struct walb_dev *wdev, struct bio_wrapper *biow)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	ASSERT(biow);
+
+	biow->started = true;
+	atomic_inc(&iocored->n_started_write_bio);
+}
+
+/**
+ * Destroy a bio wrapper and decrement n_pending_bio.
+ */
+static void destroy_bio_wrapper_dec(
+	struct walb_dev *wdev, struct bio_wrapper *biow)
+{
+	struct iocore_data *iocored;
+	bool started;
+
+	ASSERT(wdev);
+	iocored = get_iocored_from_wdev(wdev);
+	ASSERT(iocored);
+	ASSERT(biow);
+
+	started = biow->started;
+	destroy_bio_wrapper(biow);
+	
+	atomic_dec(&iocored->n_pending_bio);
+	if (started) {
+		atomic_dec(&iocored->n_started_write_bio);
+	}
 }
 
 /**
@@ -2786,37 +2840,48 @@ static inline bool should_start_queue(
 #endif
 
 /**
- * Destroy a bio wrapper and decrement n_pending_bio.
- */
-static void destroy_bio_wrapper_dec(
-	struct walb_dev *wdev, struct bio_wrapper *biow)
-{
-	struct iocore_data *iocored;
-
-	ASSERT(wdev);
-	iocored = get_iocored_from_wdev(wdev);
-	ASSERT(iocored);
-	ASSERT(biow);
-	
-	destroy_bio_wrapper(biow);
-	atomic_dec(&iocored->n_pending_bio);
-}
-
-/**
  * Wait for all pending IO(s) done.
  */
 static void wait_for_all_pending_io_done(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-
-	might_sleep();
-
-	LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
+	
 	while (atomic_read(&iocored->n_pending_bio) > 0) {
-		LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
+		LOGn("n_pending_bio %d\n",
+			atomic_read(&iocored->n_pending_bio));
 		msleep(100);
 	}
 	LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
+}
+
+/**
+ * Wait for all data write IO(s) done.
+ */
+static void wait_for_all_started_write_io_done(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	
+	while (atomic_read(&iocored->n_started_write_bio) > 0) {
+		LOGn("n_started_write_bio %d\n",
+			atomic_read(&iocored->n_started_write_bio));
+		msleep(100);
+	}
+	LOGn("n_started_write_bio %d\n", atomic_read(&iocored->n_started_write_bio));
+}
+
+/**
+ * Wait for all gc task done.
+ */
+static void wait_for_all_pending_gc_done(struct walb_dev *wdev)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	
+	while (atomic_read(&iocored->n_pending_gc) > 0) {
+		LOGn("n_pending_gc %d\n",
+			atomic_read(&iocored->n_pending_gc));
+		msleep(100);
+	}
+	LOGn("n_pending_gc %d\n", atomic_read(&iocored->n_pending_gc));
 }
 
 /**
@@ -2950,7 +3015,7 @@ bool iocore_initialize(struct walb_dev *wdev)
 	
 	/* Decide gc worker name and start it. */
 	ret = snprintf(iocored->gc_worker_data.name, WORKER_NAME_MAX_LEN,
-		"%s/%u", WORKER_NAME_GC, MINOR(wdev->devt));
+		"%s/%u", WORKER_NAME_GC, MINOR(wdev->devt) / 2);
 	if (ret >= WORKER_NAME_MAX_LEN) {
 		LOGe("Thread name size too long.\n");
 		goto error6;
@@ -3003,23 +3068,28 @@ void iocore_finalize(struct walb_dev *wdev)
  * Upper layer can submit IOs but the walb driver
  * just queues them and does not start processing during stopped.
  */
-void iocore_stop(struct walb_dev *wdev)
+void iocore_freeze(struct walb_dev *wdev)
 {
-	struct iocore_data *iocored;
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 
 	might_sleep();
-	iocored = get_iocored_from_wdev(wdev);
 
 	if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-		LOGn("iocore stopped.\n");
+		LOGn("iocore frozen.\n");
 	}
-	wait_for_all_pending_io_done(wdev);
+
+	/* Wait for all started write io done. */
+	wait_for_all_started_write_io_done(wdev);
+
+	/* Wait for all pending gc task done
+	   which update wdev->written_lsid. */
+	wait_for_all_pending_gc_done(wdev);
 }
 
 /**
  * (Re)start (write) IO processing.
  */
-void iocore_start(struct walb_dev *wdev)
+void iocore_melt(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored;
 
@@ -3027,7 +3097,7 @@ void iocore_start(struct walb_dev *wdev)
 	iocored = get_iocored_from_wdev(wdev);
 
 	if (atomic_dec_return(&iocored->n_stoppers) == 0) {
-		LOGn("iocore restarted.\n");
+		LOGn("iocore melted.\n");
 		enqueue_submit_task_if_necessary(wdev);
 	}
 }
