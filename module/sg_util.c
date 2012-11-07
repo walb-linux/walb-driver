@@ -252,23 +252,6 @@ bool sg_copy_to_sg_offset(
 
 /**
  * Fill zero data to a scatterlist.
- *
- * Simple implementation.
- */
-DEPRECATED UNUSED
-static void sg_fill_zero_old(struct sg_table *sgt)
-{
-	struct scatterlist *sg;
-	int i;
-
-	ASSERT(sgt);
-	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
-		memset(sg_virt(sg), 0, sg->length);
-	}
-}
-
-/**
- * Fill zero data to a scatterlist.
  */
 void sg_fill_zero(struct sg_table *sgt)
 {

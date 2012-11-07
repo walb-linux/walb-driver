@@ -79,15 +79,6 @@ void mdata_write_blocks(
 	struct memblk_data *mdata,
 	u64 block_id, u32 n_blocks, const u8 *src);
 
-DEPRECATED
-void mdata_copy_from(
-	struct memblk_data *mdata, u64 block_addr, u32 offset,
-	void *buf, size_t size);
-DEPRECATED
-void mdata_copy_to(
-	struct memblk_data *mdata, u64 block_addr, u32 offset,
-	const void *buf, size_t size);
-
 UNUSED
 bool test_memblk_data(u64 capacity, const u32 block_size);
 UNUSED

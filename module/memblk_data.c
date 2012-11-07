@@ -286,46 +286,6 @@ u8* mdata_get_block(struct memblk_data *mdata, u64 block_addr)
 }
 
 /**
- * Copy data from memblk_data to a buffer.
- *
- * @mdata memblk data.
- * @block_addr block address in the mdata [blocks].
- * @offset offset in the block [bytes].
- * @buf buffer pointer to copy data to.
- * @size copy size [bytes].
- */
-void mdata_copy_from(
-	struct memblk_data *mdata, u64 block_addr, u32 offset,
-	void *buf, size_t size)
-{
-	LOGd("memblk_data_copy_from() begin\n"); /* debug */
-	__memblk_data_copy(mdata, block_addr, offset,
-			buf, size, true);
-	LOGd("memblk_data_copy_from() end\n"); /* debug */
-}
-
-/**
- * Copy data from a buffer to memblk_data.
- *
- * @mdata memblk data.
- * @block_addr block address in the mdata [blocks].
- * @offset offset in the block [bytes].
- * @buf buffer pointer to copy data from.
- * @size copy size [bytes]. Satisfy size <= block_size.
- */
-void mdata_copy_to(
-	struct memblk_data *mdata, u64 block_addr, u32 offset,
-	const void *buf, size_t size)
-{
-	LOGd("memblk_data_copy_to() begin block_addr %"PRIu64" offset %"PRIu32" size %zu\n",
-		block_addr, offset, size); /* debug */
-
-	__memblk_data_copy(mdata, block_addr, offset,
-			(void *)buf, size, false);
-	LOGd("memblk_data_copy_to() end\n"); /* debug */
-}
-
-/**
  * Read a block.
  */
 void mdata_read_block(const struct memblk_data *mdata, u64 block_id, u8 *dst)
