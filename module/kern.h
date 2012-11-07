@@ -13,6 +13,7 @@
 #include <linux/spinlock.h>
 #include <linux/kernel.h>
 #include <linux/blkdev.h>
+#include <linux/mutex.h>
 
 #include "walb/log_device.h"
 #include "walb/sector.h"
@@ -185,6 +186,13 @@ struct walb_dev
 	   queue_stop_time_ms. */
 	unsigned int queue_stop_timeout_ms; 
 #endif
+
+	/*
+	 * For freeze/melt.
+	 */
+	struct mutex freeze_lock;
+	u8 freeze_state;
+	struct delayed_work freeze_dwork;
 	
 	/*
 	 * For IOcore.

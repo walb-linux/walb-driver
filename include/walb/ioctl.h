@@ -239,7 +239,7 @@ enum {
 	WALB_IOCTL_SET_OLDEST_LSID,
 
 	/*
-	 * NOT YET IMPLEMENTED.
+	 * NOT YET IMPLEMENTED (NYI).
 	 * ???
 	 *
 	 * INPUT:
@@ -248,7 +248,7 @@ enum {
 	WALB_IOCTL_SEARCH_LSID,
 
 	/*
-	 * NOT YET IMPLEMENTED.
+	 * NOT YET IMPLEMENTED (NYI).
 	 * ???
 	 *
 	 * INPUT:
@@ -473,7 +473,7 @@ enum {
 	 * Check log space overflow.
 	 *
 	 * INPUT:
-	 *   None
+	 *   None.
 	 * OUTPUT:
 	 *   ctl->val_int as result.
 	 *     Non-zero in overflowed, or 0.
@@ -483,11 +483,33 @@ enum {
 	WALB_IOCTL_IS_LOG_OVERFLOW,
 
 	/*
-	 * NOT YET IMPLEMENTED.
+	 * Freeze the device temporary.
 	 *
 	 * Stop write IO processing for a specified period.
+	 * If the device has been frozen already,
+	 * reset the timeout.
+	 *
+	 * INPUT:
+	 *   ctl->val_u32 as timeout [second].
+	 *     0 means no timeout. You must melt by yourself.
+	 * OUTPUT:
+	 *   None.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
 	 */
-	WALB_IOCTL_FREEZE_TEMPORARILY,
+	WALB_IOCTL_FREEZE,
+
+	/*
+	 * Melt the frozen device.
+	 *
+	 * INPUT:
+	 *   None.
+	 * OUTPUT:
+	 *   None.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_MELT,
 	
 	/* NIY means [N]ot [I]mplemented [Y]et. */
 };
