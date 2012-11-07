@@ -36,17 +36,6 @@ void copy_uuid(u8* dst, const u8* src);
 void print_bitmap(const u8* bitmap, size_t size);
 void print_u32bitmap(const u32 bitmap);
 
-#if 0
-/* sector functions
-   These will be deprecated.
-   Use sector_alloc() instead. */
-DEPRECATED u8* alloc_sectors(int sector_size, int n);
-DEPRECATED u8* alloc_sectors_zero(int sector_size, int n);
-DEPRECATED bool realloc_sectors(u8** ptr, int sector_size, int n);
-DEPRECATED u8* alloc_sector(int sector_size);
-DEPRECATED u8* alloc_sector_zero(int sector_size);
-#endif
-
 /* Sector functions (will be obsolute). */
 bool read_sectors_raw(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n);
 bool read_sector_raw(int fd, u8* sector_buf, u32 sector_size, u64 offset);
@@ -107,7 +96,6 @@ void init_super_sector(
 void print_super_sector(const struct sector_data *sect);
 bool read_super_sector(int fd, struct sector_data *sect);
 bool write_super_sector(int fd, const struct sector_data *sect);
-
 
 /* basic IO functions. */
 bool read_data(int fd, u8* data, size_t size);

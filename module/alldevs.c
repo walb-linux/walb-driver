@@ -269,7 +269,7 @@ struct walb_dev* search_wdev_with_uuid(const u8* uuid)
  *   The range is minor0 <= minor < minor1.
  *
  * RETURN:
- *   Number of stored devices (0 <= return <= n).
+ *   Number of stored devices (0 <= return <= n) in success, or -1.
  */
 int get_wdev_list_range(
 	struct walb_disk_data *ddata_k,
@@ -310,7 +310,10 @@ int get_wdev_list_range(
 
 		/* Copy to the result buffer. */
 		if (ddata_u) {
-			copy_to_user(ddata_u, &ddata_t, sizeof(struct walb_disk_data));
+			if (copy_to_user(ddata_u, &ddata_t, sizeof(struct walb_disk_data))) {
+				LOGe("copy_to_user failed.\n");
+				goto error0;
+			}
 			ddata_u++;
 		}
 		if (ddata_k) {
@@ -323,6 +326,8 @@ int get_wdev_list_range(
 	}
 	ASSERT(n - remaining <= (size_t)INT_MAX);
 	return (int)(n - remaining);
+error0:
+	return -1;
 }
 
 /**

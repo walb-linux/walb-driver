@@ -234,6 +234,7 @@ void test_sector_io(unsigned int sect_size, unsigned int n_sectors)
 	struct sector_data_array *sect_ary0, *sect_ary1;
 	struct sector_data *sect0, UNUSED *sect1;
 	UNUSED bool ret;
+	UNUSED off_t off;
 
 	/* prepare */
 	sect_ary0 = sector_array_alloc(sect_size, n_sectors);
@@ -254,8 +255,12 @@ void test_sector_io(unsigned int sect_size, unsigned int n_sectors)
 	int fd = open(TEST_FILE, O_RDWR | O_TRUNC |O_CREAT, 00755);
 	ASSERT(fd > 0);
 
+	/* seek */
 	ret = sector_array_write(fd, sect_ary0, 0, n_sectors);
 	ASSERT(ret);
+
+	off = lseek(fd, 0, SEEK_SET);
+	ASSERT(off == 0);
 	
 	/* read */
 	ret = sector_array_read(fd, sect_ary1, 0, n_sectors);
