@@ -510,6 +510,19 @@ enum {
 	 *   0 in success, or -EFAULT.
 	 */
 	WALB_IOCTL_MELT,
+
+	/*
+	 * Check whether the device is frozen or not.
+	 *
+	 * INPUT:
+	 *   None.
+	 * OUTPUT:
+	 *   ctl->val_int as result.
+	 *     Non-zero in frozen, or 0.
+	 * RETURN:
+	 *   0 in success, or -EFAULT.
+	 */
+	WALB_IOCTL_IS_FROZEN,
 	
 	/* NIY means [N]ot [I]mplemented [Y]et. */
 };

@@ -155,6 +155,7 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl);
+static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl);
 
 /* Walblog device open/close/ioctl. */
@@ -412,6 +413,9 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		break;
 	case WALB_IOCTL_MELT:
 		ret = ioctl_wdev_melt(wdev, ctl);
+		break;
+	case WALB_IOCTL_IS_FROZEN:
+		ret = ioctl_wdev_is_frozen(wdev, ctl);
 		break;
 	default:
 		LOGn("WALB_IOCTL_WDEV %d is not supported.\n",
@@ -1321,6 +1325,29 @@ static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
 	return 0;
 error0:
 	return -EFAULT;
+}
+
+/**
+ * Check whether the device is frozen or not.
+ *
+ * @wdev walb dev.
+ * @ctl ioctl data.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl)
+{
+	int is_frozen = 0;
+	ASSERT(ctl->command == WALB_IOCTL_IS_FROZEN);
+	LOGn("WALB_IOCTL_IS_FROZEN\n");
+
+	mutex_lock(&wdev->freeze_lock);
+	is_frozen = (wdev->freeze_state == FRZ_MELTED) ? 0 : 1;
+	mutex_unlock(&wdev->freeze_lock);
+
+	ctl->val_int = is_frozen;
+	
+	return 0;
 }
 
 /**
