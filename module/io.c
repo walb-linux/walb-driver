@@ -1159,7 +1159,7 @@ static void create_logpack_list(
 	struct iocore_data *iocored;
 	struct bio_wrapper *biow, *biow_next;
 	struct pack *wpack = NULL;
-	u64 latest_lsid, latest_lsid_old, oldest_lsid;
+	u64 latest_lsid, latest_lsid_old, written_lsid, oldest_lsid;
 	bool ret;
 
 	ASSERT(wdev);
@@ -1172,6 +1172,7 @@ static void create_logpack_list(
 	spin_lock(&wdev->lsid_lock);
 	latest_lsid = wdev->latest_lsid;
 	oldest_lsid = wdev->oldest_lsid;
+	written_lsid = wdev->written_lsid;
 	spin_unlock(&wdev->lsid_lock);
 	latest_lsid_old = latest_lsid;
 
@@ -1214,6 +1215,13 @@ static void create_logpack_list(
 		set_log_overflow(iocored);
 		LOGw("Ring buffer for log has been overflowed."
 			" reset_wal is required.\n");
+	}
+
+	/* Check consistency. */
+	ASSERT(latest_lsid >= written_lsid);
+	if (latest_lsid - written_lsid > wdev->ring_buffer_size) {
+		LOGe("Ring buffer size is too small to keep consistency. "
+			"!!!PLEASE GROW THE LOG DEVICE SIZE.!!!\n");
 	}
 }
 

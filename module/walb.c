@@ -77,6 +77,7 @@ struct workqueue_struct *wq_misc_ = NULL;
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
+
 /**
  * Lsid data for backup/restore.
  */
@@ -89,6 +90,21 @@ struct lsid_set
 	u64 written_lsid;
 	u64 prev_written_lsid;
 	u64 oldest_lsid;
+};
+
+/**
+ * For (walb_dev *)->freeze_state.
+ *
+ * FRZ_MELTED -> FRZ_FREEZED
+ * FRZ_MELTED -> FRZ_FREEZED_WITH_TIMEOUT
+ * FRZ_FREEZED -> FRZ_FREEZED_WITH_TIMEOUT
+ * FRZ_FREEZED -> FRZ_MELTED
+ * FRZ_FREEZED_WITH_TIMEOUT -> FRZ_MELTED
+ */
+enum {
+	FRZ_MELTED = 0,
+	FRZ_FREEZED,
+	FRZ_FREEZED_WITH_TIMEOUT,
 };
 
 /*******************************************************************************
@@ -138,7 +154,9 @@ static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *c
 static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_freeze_temporarily(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
+static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl);
+static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl);
+static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl);
 
 /* Walblog device open/close/ioctl. */
 static int walblog_open(struct block_device *bdev, fmode_t mode);
@@ -158,6 +176,10 @@ static bool resize_disk(struct gendisk *gd, u64 new_size);
 static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid);
 static void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids);
 static void restore_lsid_set(struct walb_dev *wdev, const struct lsid_set *lsids);
+static void task_melt(struct work_struct *work);
+static void cancel_melt_work(struct walb_dev *wdev);
+static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec);
+static bool melt_if_frozen(struct walb_dev *wdev, bool restarts_checkpointing);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -323,7 +345,7 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		LOGe("walb_get_ctl failed.\n");
 		goto error0;
 	}
-	
+
 	/* Execute each command. */
 	switch(ctl->command) {
 	case WALB_IOCTL_GET_OLDEST_LSID:
@@ -389,8 +411,14 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 	case WALB_IOCTL_IS_LOG_OVERFLOW:
 		ret = ioctl_wdev_is_log_overflow(wdev, ctl);
 		break;
-	case WALB_IOCTL_FREEZE_TEMPORARILY:
-		ret = ioctl_wdev_freeze_temporarily(wdev, ctl);
+	case WALB_IOCTL_FREEZE:
+		ret = ioctl_wdev_freeze(wdev, ctl);
+		break;
+	case WALB_IOCTL_MELT:
+		ret = ioctl_wdev_melt(wdev, ctl);
+		break;
+	case WALB_IOCTL_IS_FROZEN:
+		ret = ioctl_wdev_is_frozen(wdev, ctl);
 		break;
 	default:
 		LOGn("WALB_IOCTL_WDEV %d is not supported.\n",
@@ -1225,18 +1253,82 @@ static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ct
 }
 
 /**
- * Freeze temporarily walb device.
+ * Freeze a walb device.
+ * Currently write IOs will be frozen but read IOs will not.
  *
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
  *   0 in success, or -EFAULT.
  */
-static int ioctl_wdev_freeze_temporarily(struct walb_dev *wdev, struct walb_ctl *ctl)
+static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	/* not yet implemented */
+	u32 timeout_sec;
+
+	ASSERT(ctl->command == WALB_IOCTL_FREEZE);
+	LOGn("WALB_IOCTL_FREEZE\n");
+
+	/* Clip timeout value. */
+	timeout_sec = ctl->val_u32;
+	if (timeout_sec > 86400) {
+		timeout_sec = 86400;
+		LOGn("Freeze timeout has been cut to %"PRIu32" seconds.\n",
+			timeout_sec);
+	}
+
+	cancel_melt_work(wdev);
+	if (!freeze_if_melted(wdev, timeout_sec)) {
+		goto error0;
+	}
 	
-	LOGn("WALB_IOCTL_FREEZE_TEMPORARILY is not supported currently.\n");
+	return 0;
+error0:
+	return -EFAULT;
+}
+
+/**
+ * Check whether the device is frozen or not.
+ *
+ * @wdev walb dev.
+ * @ctl ioctl data.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl)
+{
+	int is_frozen = 0;
+	ASSERT(ctl->command == WALB_IOCTL_IS_FROZEN);
+	LOGn("WALB_IOCTL_IS_FROZEN\n");
+
+	mutex_lock(&wdev->freeze_lock);
+	is_frozen = (wdev->freeze_state == FRZ_MELTED) ? 0 : 1;
+	mutex_unlock(&wdev->freeze_lock);
+
+	ctl->val_int = is_frozen;
+	
+	return 0;
+}
+
+/**
+ * Melt a frozen device.
+ *
+ * @wdev walb dev.
+ * @ctl ioctl data.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl)
+{
+	ASSERT(ctl->command == WALB_IOCTL_MELT);
+	LOGn("WALB_IOCTL_MELT\n");
+	
+	cancel_melt_work(wdev);
+	if (!melt_if_frozen(wdev, true)) {
+		goto error0;
+	}
+	
+	return 0;
+error0:
 	return -EFAULT;
 }
 
@@ -1249,7 +1341,6 @@ static struct block_device_operations walb_ops = {
 	.release	 = walb_release,
 	.ioctl		 = walb_ioctl
 };
-
 
 /**
  * Open a walb device.
@@ -1573,6 +1664,167 @@ static void restore_lsid_set(struct walb_dev *wdev, const struct lsid_set *lsids
 	wdev->oldest_lsid = lsids->oldest_lsid;
 	
 	spin_unlock(&wdev->lsid_lock);
+}
+
+/**
+ * Melt a frozen device.
+ */
+static void task_melt(struct work_struct *work)
+{
+	struct delayed_work *dwork
+		= container_of(work, struct delayed_work, work);
+	struct walb_dev *wdev
+		= container_of(dwork, struct walb_dev, freeze_dwork);
+	ASSERT(wdev);
+
+	mutex_lock(&wdev->freeze_lock);
+
+	switch (wdev->freeze_state) {
+	case FRZ_MELTED:
+		LOGn("FRZ_MELTED minor %u.\n", MINOR(wdev->devt));
+		break;
+	case FRZ_FREEZED:
+		LOGn("FRZ_FREEZED minor %u.\n", MINOR(wdev->devt));
+		break;
+	case FRZ_FREEZED_WITH_TIMEOUT:
+		LOGn("Melt walb device minor %u.\n", MINOR(wdev->devt));
+		start_checkpointing(&wdev->cpd);
+		iocore_melt(wdev);
+		wdev->freeze_state = FRZ_MELTED;
+		break;
+	default:
+		BUG();
+	}
+	
+	mutex_unlock(&wdev->freeze_lock);
+}
+
+/**
+ * Cancel the melt work if enqueued.
+ */
+static void cancel_melt_work(struct walb_dev *wdev)
+{
+	bool should_cancel_work = false;
+	
+	/* Check existance of the melt work. */
+	mutex_lock(&wdev->freeze_lock);
+	if (wdev->freeze_state == FRZ_FREEZED_WITH_TIMEOUT) {
+		should_cancel_work = true;
+		wdev->freeze_state = FRZ_FREEZED;
+	}
+	mutex_unlock(&wdev->freeze_lock);
+
+	/* Cancel the melt work if required. */
+	if (should_cancel_work) {
+		cancel_delayed_work_sync(&wdev->freeze_dwork);
+	}
+}
+
+
+/**
+ * Freeze if melted and enqueue a melting work if required.
+ *
+ * @wdev walb device.
+ * @timeout_sec timeout to melt the device [sec].
+ *   Specify 0 for no timeout.
+ * 
+ * RETURN:
+ *   true in success, or false (due to race condition).
+ */
+static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
+{
+	unsigned int minor;
+	int ret;
+	
+	ASSERT(wdev);
+	minor = MINOR(wdev->devt);
+	
+	/* Freeze and enqueue a melt work if required. */
+	mutex_lock(&wdev->freeze_lock);
+	switch (wdev->freeze_state) {
+	case FRZ_MELTED:
+		/* Freeze iocore and checkpointing. */
+		LOGn("Freeze walb device minor %u.\n", minor);
+		iocore_freeze(wdev);
+		stop_checkpointing(&wdev->cpd);
+		wdev->freeze_state = FRZ_FREEZED;
+		break;
+	case FRZ_FREEZED:
+		/* Do nothing. */
+		LOGn("Already frozen minor %u.\n", minor);
+		break;
+	case FRZ_FREEZED_WITH_TIMEOUT:
+		LOGe("Race condition occured.\n");
+		mutex_unlock(&wdev->freeze_lock);
+		goto error0;
+	default:
+		BUG();
+	}
+	ASSERT(wdev->freeze_state == FRZ_FREEZED);
+	if (timeout_sec > 0) {
+		LOGn("(Re)set frozen timeout to %"PRIu32" seconds.\n",
+			timeout_sec);
+		INIT_DELAYED_WORK(&wdev->freeze_dwork, task_melt);
+		ret = queue_delayed_work(
+			wq_misc_, &wdev->freeze_dwork,
+			msecs_to_jiffies(timeout_sec * 1000));
+		ASSERT(ret);
+		wdev->freeze_state = FRZ_FREEZED_WITH_TIMEOUT;
+	}
+	ASSERT(wdev->freeze_state != FRZ_MELTED);
+	mutex_unlock(&wdev->freeze_lock);
+
+	return true;
+error0:
+	return false;
+}	
+
+/**
+ * Melt a device if frozen.
+ *
+ * RETURN:
+ *   true in success, or false (due to race condition).
+ */
+static bool melt_if_frozen(
+	struct walb_dev *wdev, bool restarts_checkpointing)
+{
+	unsigned int minor;
+	
+	ASSERT(wdev);
+	minor = MINOR(wdev->devt);
+	
+	cancel_melt_work(wdev);
+
+	/* Melt the device if required. */
+	mutex_lock(&wdev->freeze_lock);
+	switch (wdev->freeze_state) {
+	case FRZ_MELTED:
+		/* Do nothing. */
+		LOGn("Already melted minor %u\n", minor);
+		break;
+	case FRZ_FREEZED:
+		/* Melt. */
+		LOGn("Melt walb device minor %u.\n", minor);
+		if (restarts_checkpointing) {
+			start_checkpointing(&wdev->cpd);
+		}
+		iocore_melt(wdev);
+		wdev->freeze_state = FRZ_MELTED;
+		break;
+	case FRZ_FREEZED_WITH_TIMEOUT:
+		/* Race condition. */
+		LOGe("Race condition occurred.\n");
+		mutex_unlock(&wdev->freeze_lock);
+		goto error0;
+	default:
+		BUG();
+	}
+	ASSERT(wdev->freeze_state == FRZ_MELTED);
+	mutex_unlock(&wdev->freeze_lock);
+
+	return true;
+error0:
+	return false;
 }
 
 /**
@@ -2094,9 +2346,9 @@ struct walb_dev* prepare_wdev(
 	spin_lock_init(&wdev->lsid_lock);
 	spin_lock_init(&wdev->lsuper0_lock);
 	spin_lock_init(&wdev->size_lock);
-	/* spin_lock_init(&wdev->logpack_list_lock); */
-	/* INIT_LIST_HEAD(&wdev->logpack_list); */
 	atomic_set(&wdev->is_read_only, 0);
+	mutex_init(&wdev->freeze_lock);
+	wdev->freeze_state = FRZ_MELTED;
 	
 	/*
 	 * Open underlying log device.
@@ -2268,6 +2520,7 @@ void destroy_wdev(struct walb_dev *wdev)
 		MINOR(wdev->ddev->bd_dev));
 
 	iocore_set_failure(wdev);
+	melt_if_frozen(wdev, false);
 	iocore_flush(wdev);
 	
 	walblog_finalize_device(wdev);

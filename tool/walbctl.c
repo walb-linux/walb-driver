@@ -176,6 +176,12 @@ static struct cmdhelp cmdhelps_[] = {
 	  "Reset log device (and detect new log device size) online." },
 	{ "is_log_overflow WDEV",
 	  "Check log space overflow." },
+	{ "freeze WDEV SIZE",
+	  "Freeze a device. Specify SIZE for timeout [sec]." },
+	{ "melt WDEV",
+	  "Melt a frozen device." },
+	{ "is_frozen WDEV",
+	  "Check the device is frozen or not." },
 	{ "get_version",
 	  "Get walb version."},
 };
@@ -262,6 +268,9 @@ static bool do_get_log_capacity(const struct config *cfg);
 static bool do_resize(const struct config *cfg);
 static bool do_reset_wal(const struct config *cfg);
 static bool do_is_log_overflow(const struct config *cfg);
+static bool do_freeze(const struct config *cfg);
+static bool do_melt(const struct config *cfg);
+static bool do_is_frozen(const struct config *cfg);
 static bool do_get_version(const struct config *cfg);
 static bool do_help(const struct config *cfg);
 
@@ -810,10 +819,13 @@ static bool dispatch(const struct config *cfg)
 		{ "resize", do_resize },
 		{ "reset_wal", do_reset_wal },
 		{ "is_log_overflow", do_is_log_overflow },
+		{ "freeze", do_freeze },
+		{ "melt", do_melt },
+		{ "is_frozen", do_is_frozen },
 		{ "get_version", do_get_version },
 		{ "help", do_help },
 	};
-	int array_size = sizeof(map)/sizeof(map[0]);
+	const int array_size = sizeof(map)/sizeof(map[0]);
 
 	int i;
 	for (i = 0; i < array_size; i++) {
@@ -2420,6 +2432,84 @@ static bool do_is_log_overflow(const struct config *cfg)
 	}
 	printf("%d\n", ctl.val_int);
 
+	return true;
+error0:
+	return false;
+}
+
+/**
+ * Freeze.
+ */
+static bool do_freeze(const struct config *cfg)
+{
+	ASSERT(strcmp(cfg->cmd_str, "freeze") == 0);
+	u32 timeout_sec;
+
+	if (cfg->size > UINT32_MAX) {
+		timeout_sec = 0;
+	} else {
+		timeout_sec = (u32)cfg->size;
+	}
+	
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_FREEZE,
+		.val_u32 = timeout_sec,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
+		LOGe("ioctl failed.\n");
+		goto error0;
+	}
+	
+	return true;
+error0:
+	return false;
+}
+
+/**
+ * Melt.
+ */
+static bool do_melt(const struct config *cfg)
+{
+	ASSERT(strcmp(cfg->cmd_str, "melt") == 0);
+
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_MELT,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
+		LOGe("ioctl failed.\n");
+		goto error0;
+	}
+	
+	return true;
+error0:
+	return false;
+}
+
+/**
+ * Check the device is frozen or not.
+ */
+static bool do_is_frozen(const struct config *cfg)
+{
+	ASSERT(strcmp(cfg->cmd_str, "is_frozen") == 0);
+	int is_frozen;
+
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_IS_FROZEN,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDONLY)) {
+		LOGe("ioctl failed.\n");
+		goto error0;
+	}
+
+	is_frozen = ctl.val_int;
+	printf("%d\n", is_frozen);
+	
 	return true;
 error0:
 	return false;
