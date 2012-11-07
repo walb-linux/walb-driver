@@ -177,6 +177,9 @@ static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid);
 static void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids);
 static void restore_lsid_set(struct walb_dev *wdev, const struct lsid_set *lsids);
 static void task_melt(struct work_struct *work);
+static void cancel_melt_work(struct walb_dev *wdev);
+static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec);
+static bool melt_if_frozen(struct walb_dev *wdev, bool restarts_checkpointing);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -1260,67 +1263,23 @@ static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ct
  */
 static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	u32 timeo; /* timeout [sec]. */
-	int ret;
-	bool should_cancel_work = false;
-	unsigned int minor = MINOR(wdev->devt);
+	u32 timeout_sec;
 
 	ASSERT(ctl->command == WALB_IOCTL_FREEZE);
 	LOGn("WALB_IOCTL_FREEZE\n");
 
 	/* Clip timeout value. */
-	timeo = ctl->val_u32;
-	if (timeo > 86400) {
-		timeo = 86400;
-		LOGn("Freeze timeout has been cut to 86400 seconds.\n");
+	timeout_sec = ctl->val_u32;
+	if (timeout_sec > 86400) {
+		timeout_sec = 86400;
+		LOGn("Freeze timeout has been cut to %"PRIu32" seconds.\n",
+			timeout_sec);
 	}
 
-	/* Check existance of the melt work. */
-	mutex_lock(&wdev->freeze_lock);
-	if (wdev->freeze_state == FRZ_FREEZED_WITH_TIMEOUT) {
-		should_cancel_work = true;
-		wdev->freeze_state = FRZ_FREEZED;
-	}
-	mutex_unlock(&wdev->freeze_lock);
-
-	/* Cancel the melt work if required. */
-	if (should_cancel_work) {
-		cancel_delayed_work_sync(&wdev->freeze_dwork);
-	}
-
-	/* Freeze and enqueue a melt work if required. */
-	mutex_lock(&wdev->freeze_lock);
-	switch (wdev->freeze_state) {
-	case FRZ_MELTED:
-		/* Freeze iocore and checkpointing. */
-		LOGn("Freeze walb device minor %u.\n", minor);
-		iocore_freeze(wdev);
-		stop_checkpointing(&wdev->cpd);
-		wdev->freeze_state = FRZ_FREEZED;
-		break;
-	case FRZ_FREEZED:
-		/* Do nothing. */
-		LOGn("Already frozen minor %u.\n", minor);
-		break;
-	case FRZ_FREEZED_WITH_TIMEOUT:
-		LOGe("Race condition occured.\n");
-		mutex_unlock(&wdev->freeze_lock);
+	cancel_melt_work(wdev);
+	if (!freeze_if_melted(wdev, timeout_sec)) {
 		goto error0;
-	default:
-		BUG();
 	}
-	ASSERT(wdev->freeze_state == FRZ_FREEZED);
-	if (timeo > 0) {
-		LOGn("(Re)set frozen timeout to %"PRIu32" seconds.\n", timeo);
-		INIT_DELAYED_WORK(&wdev->freeze_dwork, task_melt);
-		ret = queue_delayed_work(
-			wq_misc_, &wdev->freeze_dwork,
-			msecs_to_jiffies(timeo * 1000));
-		ASSERT(ret);
-		wdev->freeze_state = FRZ_FREEZED_WITH_TIMEOUT;
-	}
-	ASSERT(wdev->freeze_state != FRZ_MELTED);
-	mutex_unlock(&wdev->freeze_lock);
 	
 	return 0;
 error0:
@@ -1360,50 +1319,14 @@ static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl)
  */
 static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	bool should_cancel_work = false;
-	unsigned int minor = MINOR(wdev->devt);
-	
 	ASSERT(ctl->command == WALB_IOCTL_MELT);
 	LOGn("WALB_IOCTL_MELT\n");
 	
-	/* Check existance of the melt work. */
-	mutex_lock(&wdev->freeze_lock);
-	if (wdev->freeze_state == FRZ_FREEZED_WITH_TIMEOUT) {
-		should_cancel_work = true;
-		wdev->freeze_state = FRZ_FREEZED;
-	}
-	mutex_unlock(&wdev->freeze_lock);
-
-	/* Cancel the melt work if required. */
-	if (should_cancel_work) {
-		cancel_delayed_work_sync(&wdev->freeze_dwork);
-	}
-
-	/* Melt the device if required. */
-	mutex_lock(&wdev->freeze_lock);
-	switch (wdev->freeze_state) {
-	case FRZ_MELTED:
-		/* Do nothing. */
-		LOGn("Already melted minor %u\n", minor);
-		break;
-	case FRZ_FREEZED:
-		/* Melt. */
-		LOGn("Melt walb device minor %u.\n", minor);
-		start_checkpointing(&wdev->cpd);
-		iocore_melt(wdev);
-		wdev->freeze_state = FRZ_MELTED;
-		break;
-	case FRZ_FREEZED_WITH_TIMEOUT:
-		/* Race condition. */
-		LOGe("Race condition occurred.\n");
-		mutex_unlock(&wdev->freeze_lock);
+	cancel_melt_work(wdev);
+	if (!melt_if_frozen(wdev, true)) {
 		goto error0;
-	default:
-		BUG();
 	}
-	ASSERT(wdev->freeze_state == FRZ_MELTED);
-	mutex_unlock(&wdev->freeze_lock);
-
+	
 	return 0;
 error0:
 	return -EFAULT;
@@ -1418,7 +1341,6 @@ static struct block_device_operations walb_ops = {
 	.release	 = walb_release,
 	.ioctl		 = walb_ioctl
 };
-
 
 /**
  * Open a walb device.
@@ -1775,6 +1697,134 @@ static void task_melt(struct work_struct *work)
 	}
 	
 	mutex_unlock(&wdev->freeze_lock);
+}
+
+/**
+ * Cancel the melt work if enqueued.
+ */
+static void cancel_melt_work(struct walb_dev *wdev)
+{
+	bool should_cancel_work = false;
+	
+	/* Check existance of the melt work. */
+	mutex_lock(&wdev->freeze_lock);
+	if (wdev->freeze_state == FRZ_FREEZED_WITH_TIMEOUT) {
+		should_cancel_work = true;
+		wdev->freeze_state = FRZ_FREEZED;
+	}
+	mutex_unlock(&wdev->freeze_lock);
+
+	/* Cancel the melt work if required. */
+	if (should_cancel_work) {
+		cancel_delayed_work_sync(&wdev->freeze_dwork);
+	}
+}
+
+
+/**
+ * Freeze if melted and enqueue a melting work if required.
+ *
+ * @wdev walb device.
+ * @timeout_sec timeout to melt the device [sec].
+ *   Specify 0 for no timeout.
+ * 
+ * RETURN:
+ *   true in success, or false (due to race condition).
+ */
+static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
+{
+	unsigned int minor;
+	int ret;
+	
+	ASSERT(wdev);
+	minor = MINOR(wdev->devt);
+	
+	/* Freeze and enqueue a melt work if required. */
+	mutex_lock(&wdev->freeze_lock);
+	switch (wdev->freeze_state) {
+	case FRZ_MELTED:
+		/* Freeze iocore and checkpointing. */
+		LOGn("Freeze walb device minor %u.\n", minor);
+		iocore_freeze(wdev);
+		stop_checkpointing(&wdev->cpd);
+		wdev->freeze_state = FRZ_FREEZED;
+		break;
+	case FRZ_FREEZED:
+		/* Do nothing. */
+		LOGn("Already frozen minor %u.\n", minor);
+		break;
+	case FRZ_FREEZED_WITH_TIMEOUT:
+		LOGe("Race condition occured.\n");
+		mutex_unlock(&wdev->freeze_lock);
+		goto error0;
+	default:
+		BUG();
+	}
+	ASSERT(wdev->freeze_state == FRZ_FREEZED);
+	if (timeout_sec > 0) {
+		LOGn("(Re)set frozen timeout to %"PRIu32" seconds.\n",
+			timeout_sec);
+		INIT_DELAYED_WORK(&wdev->freeze_dwork, task_melt);
+		ret = queue_delayed_work(
+			wq_misc_, &wdev->freeze_dwork,
+			msecs_to_jiffies(timeout_sec * 1000));
+		ASSERT(ret);
+		wdev->freeze_state = FRZ_FREEZED_WITH_TIMEOUT;
+	}
+	ASSERT(wdev->freeze_state != FRZ_MELTED);
+	mutex_unlock(&wdev->freeze_lock);
+
+	return true;
+error0:
+	return false;
+}	
+
+/**
+ * Melt a device if frozen.
+ *
+ * RETURN:
+ *   true in success, or false (due to race condition).
+ */
+static bool melt_if_frozen(
+	struct walb_dev *wdev, bool restarts_checkpointing)
+{
+	unsigned int minor;
+	
+	ASSERT(wdev);
+	minor = MINOR(wdev->devt);
+	
+	cancel_melt_work(wdev);
+
+	/* Melt the device if required. */
+	mutex_lock(&wdev->freeze_lock);
+	switch (wdev->freeze_state) {
+	case FRZ_MELTED:
+		/* Do nothing. */
+		LOGn("Already melted minor %u\n", minor);
+		break;
+	case FRZ_FREEZED:
+		/* Melt. */
+		LOGn("Melt walb device minor %u.\n", minor);
+		if (restarts_checkpointing) {
+			start_checkpointing(&wdev->cpd);
+		}
+		iocore_melt(wdev);
+		wdev->freeze_state = FRZ_MELTED;
+		break;
+	case FRZ_FREEZED_WITH_TIMEOUT:
+		/* Race condition. */
+		LOGe("Race condition occurred.\n");
+		mutex_unlock(&wdev->freeze_lock);
+		goto error0;
+	default:
+		BUG();
+	}
+	ASSERT(wdev->freeze_state == FRZ_MELTED);
+	mutex_unlock(&wdev->freeze_lock);
+
+	return true;
+error0:
+	return false;
 }
 
 /**
@@ -2470,6 +2520,7 @@ void destroy_wdev(struct walb_dev *wdev)
 		MINOR(wdev->ddev->bd_dev));
 
 	iocore_set_failure(wdev);
+	melt_if_frozen(wdev, false);
 	iocore_flush(wdev);
 	
 	walblog_finalize_device(wdev);
