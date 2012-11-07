@@ -234,7 +234,7 @@ void test_sector_io(unsigned int sect_size, unsigned int n_sectors)
 	struct sector_data_array *sect_ary0, *sect_ary1;
 	struct sector_data *sect0, UNUSED *sect1;
 	UNUSED bool ret;
-	off_t off;
+	UNUSED off_t off;
 
 	/* prepare */
 	sect_ary0 = sector_array_alloc(sect_size, n_sectors);
