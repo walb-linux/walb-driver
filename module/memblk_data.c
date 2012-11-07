@@ -39,10 +39,6 @@ static atomic_t count_ = ATOMIC_INIT(0);
  * Static functions prototype.
  *******************************************************************************/
 
-/* Copy from/to a buffer. */
-static void __memblk_data_copy(
-	struct memblk_data *mdata, u64 block_addr, u32 offset,
-	void *buf, size_t size, bool is_from);
 /* Read/write a block. */
 static void __memblk_data_block_io(
 	struct memblk_data *mdata, u64 block_id, u8 *data, bool is_write);
@@ -58,73 +54,6 @@ static u64 get_random_addr(u64 capacity);
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
-
-/**
- * Copy data from/to memblk_data to/from a buffer.
- *
- * @mdata memblk data.
- * @block_addr block address in the mdata [blocks].
- * @offset offset in the block [bytes].
- * @buf buffer pointer to copy data to.
- * @size copy size [bytes].
- * @is_from true when copy from a memblk_data to a buffer.
- */
-static void __memblk_data_copy(
-	struct memblk_data *mdata, u64 block_addr, u32 offset,
-	void *buf, size_t size, bool is_from)
-{
-	u8 *data, *buf2;
-	size_t tmp_size;
-	size_t remaining;
-	size_t count = 0; /* debug */
-	
-	ASSERT(mdata);
-	ASSERT(block_addr >= 0);
-	ASSERT(block_addr < mdata->capacity);
-	ASSERT(offset < mdata->block_size);
-	ASSERT(buf);
-
-
-	ASSERT(block_addr +
-		(((u64) offset + (u64) size + (u64)mdata->block_size - 1) / (u64)mdata->block_size)
-		<= mdata->capacity);
-
-	LOGd("__memblk_data_copy start.\n");
-	
-	/* Copy fragment of first block. */
-	ASSERT(mdata->block_size >= offset);
-	tmp_size = mdata->block_size - offset;
-	data = mdata_get_block(mdata, block_addr) + offset;
-	if (is_from) {
-		memcpy(buf, data, tmp_size);
-	} else {
-		memcpy(data, buf, tmp_size);
-	}
-	remaining = size - tmp_size;
-	count += tmp_size;
-	block_addr++;
-
-	/* Copy remaining blocks */
-	while (remaining > 0) {
-		data = mdata_get_block(mdata, block_addr);
-		tmp_size = min((size_t)mdata->block_size, remaining);
-		buf2 = (u8 *)buf + (size - remaining);
-		if (is_from) {
-			memcpy(buf2, data, tmp_size);
-		} else {
-			memcpy(data, buf2 , tmp_size);
-		}
-		remaining -= tmp_size;
-		count += tmp_size;
-		block_addr++;
-	}
-	LOGd("data copy size %zu count %zu remaining %zu.\n",
-		size, count, remaining); /* debug */
-	ASSERT(remaining == 0);
-
-	printk(KERN_DEBUG "__memblk_data_copy end.\n");
-	LOGd("__memblk_data_copy end.\n");
-}
 
 /**
  * Multiple-block IO.
