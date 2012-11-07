@@ -25,7 +25,7 @@
 
 /* for debug */
 #ifdef WALB_DEBUG
-atomic_t count_ = ATOMIC_INIT(0);
+static atomic_t count_ = ATOMIC_INIT(0);
 #define CNT_INC() atomic_inc(&count_)
 #define CNT_DEC() atomic_dec(&count_)
 #define CNT() atomic_read(&count_)
