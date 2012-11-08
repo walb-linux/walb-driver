@@ -35,6 +35,8 @@ enum {
 	THREAD_WAKEUP = 0,
 };
 
+struct worker_data* alloc_worker(gfp_t gfp_mask);
+void free_worker(struct worker_data* worker);
 void initialize_worker(
 	struct worker_data *wd, void (*run)(void *data), void *data);
 void wakeup_worker(struct worker_data *wd);

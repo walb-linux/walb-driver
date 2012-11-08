@@ -1917,20 +1917,6 @@ static int walb_prepare_device(
 	blk_queue_stack_limits(wdev->queue, lq);
 	blk_queue_stack_limits(wdev->queue, dq);
 
-	/* Chunk size. */
-	if (queue_io_min(lq) > wdev->physical_bs) {
-		wdev->ldev_chunk_sectors = queue_io_min(lq) / LOGICAL_BLOCK_SIZE;
-	} else {
-		wdev->ldev_chunk_sectors = 0;
-	}
-	if (queue_io_min(dq) > wdev->physical_bs) {
-		wdev->ddev_chunk_sectors = queue_io_min(dq) / LOGICAL_BLOCK_SIZE;
-	} else {
-		wdev->ddev_chunk_sectors = 0;
-	}
-	LOGn("chunk_sectors ldev %u ddev %u.\n",
-		wdev->ldev_chunk_sectors, wdev->ddev_chunk_sectors);
-
 	/* Allocate a gendisk and set parameters. */
 	wdev->gd = alloc_disk(1);
 	if (!wdev->gd) {
@@ -2050,13 +2036,9 @@ static void walblog_finalize_device(struct walb_dev *wdev)
 /**
  * Log device initialization.
  *
- * <pre>
- * 1. Read log device metadata
+ * Read log device metadata
  *    (currently snapshot metadata is not loaded.
  *     super sector0 only...)
- * 2. Redo from written_lsid to avaialble latest lsid.
- * 3. Sync log device super block.
- * </pre>
  *
  * @wdev walb device struct.
  * @return 0 in success, or -1.
@@ -2066,6 +2048,11 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 	u64 snapshot_begin_pb, snapshot_end_pb;
 	struct sector_data *lsuper0_tmp;
 	int ret;
+	bool retb;
+	u64 written_lsid, latest_lsid;
+#ifdef WALB_FAST_ALGORITHM:
+	u64 completed_lsid;
+#endif
 	ASSERT(wdev);
 
 	/*
@@ -2127,32 +2114,13 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 		goto error3;
 	}
 
-	/* now editing */
-
-
-	/*
-	 * 3. Redo from written_lsid to avaialble latest lsid.
-	 *    and set latest_lsid variable.
-	 */
-
-	/* This feature will be implemented later. */
-
-
-	/*
-	 * 4. Sync log device super block.
-	 */
-
-	/* If redo is done, super block should be re-written. */
-
-
-
 	return 0;
-
-
-/* out_snapshot_init: */
-/*	   if (wdev->snapd) { */
-/*		   snapshot_data_finalize(wdev->snapd); */
-/*	   } */
+#if 0
+error4:
+	if (wdev->snapd) {
+		snapshot_data_finalize(wdev->snapd);
+	}
+#endif
 error3:
 	snapshot_data_destroy(wdev->snapd);
 error2:
@@ -2326,6 +2294,8 @@ struct walb_dev* prepare_wdev(
 	u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
 	char *dev_name;
 	struct walb_super_sector *super;
+	struct request_queue *lq, *dq;
+	bool retb;
 
 	ASSERT(is_walb_start_param_valid(param));
 
@@ -2435,6 +2405,22 @@ struct walb_dev* prepare_wdev(
 	wdev->queue_stop_timeout_ms = param->queue_stop_timeout_ms;
 #endif
 
+	lq = bdev_get_queue(wdev->ldev);
+	dq = bdev_get_queue(wdev->ddev);
+	/* Set chunk size. */
+	if (queue_io_min(lq) > wdev->physical_bs) {
+		wdev->ldev_chunk_sectors = queue_io_min(lq) / LOGICAL_BLOCK_SIZE;
+	} else {
+		wdev->ldev_chunk_sectors = 0;
+	}
+	if (queue_io_min(dq) > wdev->physical_bs) {
+		wdev->ddev_chunk_sectors = queue_io_min(dq) / LOGICAL_BLOCK_SIZE;
+	} else {
+		wdev->ddev_chunk_sectors = 0;
+	}
+	LOGn("chunk_sectors ldev %u ddev %u.\n",
+		wdev->ldev_chunk_sectors, wdev->ddev_chunk_sectors);
+
 	/* Set device name. */
 	if (walb_set_name(wdev, minor, param->name) != 0) {
 		LOGe("Set device name failed.\n");
@@ -2450,13 +2436,30 @@ struct walb_dev* prepare_wdev(
 	 * 2. Write the corresponding data of the logpack to data device.
 	 * 3. Update written_lsid and latest_lsid;
 	 */
-	/* Redo feature is not implemented yet. */
+	retb = iocore_redo(wdev);
+	if (!retb) {
+		LOGe("Redo failed.\n");
+		goto out_ldev_init;
+	}
+#ifdef WALB_DEBUG
+	spin_lock(&wdev->lsid_lock);
+	written_lsid = wdev->written_lsid;
+	latest_lsid == wdev->latest_lsid;
+#ifdef WALB_FAST_ALGORITHM:
+	completed_lsid = wdev->completed_lsid;
+#endif
+	spin_unlock(&wdev->lsid_lock);
+	ASSERT(written_lsid == latest_lsid);
+#ifdef WALB_FAST_ALGORITHM:
+	ASSERT(written_lsid == completed_lsid);
+#endif
+#endif
 
-	/* latest_lsid is written_lsid after redo. */
+	/*
+	 * Sync log device super block.
+	 */
 
-	/* For padding test in the end of ring buffer. */
-	/* 64KB ring buffer */
-	/* dev->lsuper0->ring_buffer_size = 128; */
+	/* now editing */
 
 	/*
 	 * Prepare walb block device.
