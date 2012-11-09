@@ -52,7 +52,8 @@ bool take_checkpoint(struct checkpoint_data *cpd)
 		LOGd("skip superblock sync.\n");
 		ret = true;
 	} else {
-		ret = walb_sync_super_block(wdev);
+		ret = !blkdev_issue_flush(wdev->ddev, GFP_KERNEL, NULL)
+			&& walb_sync_super_block(wdev);
 	}
 
 	return ret;
