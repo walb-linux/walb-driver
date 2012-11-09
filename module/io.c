@@ -232,6 +232,7 @@ static bool create_bio_entry_list_by_copy(
 #endif
 static void submit_bio_entry_list(struct list_head *bioe_list);
 static int wait_for_bio_entry_list(struct list_head *bioe_list);
+static void clear_flush_bit_of_bio_entry_list(struct list_head *bioe_list);
 
 /* pack related. */
 static struct pack* create_pack(gfp_t gfp_mask);
@@ -644,6 +645,20 @@ static int wait_for_bio_entry_list(struct list_head *bioe_list)
 	}
 	ASSERT(list_empty(bioe_list));
 	return bio_error;
+}
+
+/**
+ * Clear REQ_FLUSH and REQ_FUA bit of all bios inside bio entry list.
+ */
+static void clear_flush_bit_of_bio_entry_list(struct list_head *bioe_list)
+{
+	struct bio_entry *bioe;
+	const unsigned long mask = REQ_FLUSH | REQ_FUA;
+
+	list_for_each_entry(bioe, bioe_list, list) {
+		ASSERT(bioe->bio->bi_rw & REQ_WRITE);
+		bioe->bio->bi_rw &= ~mask;
+	}
 }
 
 /**
@@ -1102,6 +1117,10 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		blk_start_plug(&plug);
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
 			list_del(&biow->list2);
+
+			/* Clear flush bit. */
+			clear_flush_bit_of_bio_entry_list(&biow->bioe_list);
+			
 #ifdef WALB_OVERLAPPING_SERIALIZE
 			if (biow->n_overlapping > 0) {
 				/* Enqueue submit task. */
