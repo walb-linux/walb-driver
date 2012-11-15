@@ -42,7 +42,6 @@ struct pack
 	struct list_head biow_list; /* list head of bio_wrapper. */
 
 	bool is_zero_flush_only; /* true if req_ent_list contains only a zero-size flush. */
-	bool is_fua; /* FUA flag. */
 	struct sector_data *logpack_header_sector;
 	struct list_head bioe_list; /* list head for zero_flush bio
 				       or logpack header bio. */
@@ -271,25 +270,28 @@ static void logpack_calc_checksum(
 	struct walb_logpack_header *lhead,
 	unsigned int pbs, struct list_head *biow_list);
 static void submit_logpack(
-	struct walb_logpack_header *logh, bool is_fua,
+	struct walb_logpack_header *logh,
 	struct list_head *biow_list, struct list_head *bioe_list,
 	unsigned int pbs, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
 	unsigned int chunk_sectors);
 static void logpack_submit_header(
-	struct walb_logpack_header *logh, bool is_flush, bool is_fua,
+	struct walb_logpack_header *logh,
 	struct list_head *bioe_list,
 	unsigned int pbs, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
 	unsigned int chunk_sectors);
+static void logpack_submit_bio_wrapper_zero(
+	struct bio_wrapper *biow, struct list_head *bioe_list,
+	unsigned int pbs, struct block_device *ldev);
 static void logpack_submit_bio_wrapper(
-	struct bio_wrapper *biow, u64 lsid, bool is_fua,
+	struct bio_wrapper *biow, u64 lsid,
 	struct list_head *bioe_list,
 	unsigned int pbs, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
 	unsigned int chunk_sectors);
 static struct bio_entry* logpack_create_bio_entry(
-	struct bio *bio, bool is_fua, unsigned int pbs,
+	struct bio *bio, unsigned int pbs,
 	struct block_device *ldev,
 	u64 ldev_offset, unsigned int bio_offset);
 static void logpack_submit_flush(
@@ -311,7 +313,6 @@ static bool writepack_add_bio_wrapper(
 	struct bio_wrapper *biow,
 	u64 ring_buffer_size, unsigned int max_logpack_pb, u64 *latest_lsidp,
 	struct walb_dev *wdev, gfp_t gfp_mask);
-static bool bio_wrapper_list_is_first_entry_flush(struct list_head *biow_list);
 #ifdef WALB_FAST_ALGORITHM
 static void insert_to_sorted_bio_wrapper_list(
 	struct bio_wrapper *biow, struct list_head *biow_list);
@@ -681,7 +682,6 @@ static struct pack* create_pack(gfp_t gfp_mask)
 	INIT_LIST_HEAD(&pack->biow_list);
 	INIT_LIST_HEAD(&pack->bioe_list);
 	pack->is_zero_flush_only = false;
-	pack->is_fua = false;
 	pack->is_logpack_failed = false;
 	
 	return pack;
@@ -844,9 +844,8 @@ static void print_pack(const char *level, struct pack *pack)
 		printk("%s""logpack_header_sector is NULL.\n", level);
 	}
 
-	printk("%s""is_fua: %u\nis_logpack_failed: %u\n",
-		level,
-		pack->is_fua, pack->is_logpack_failed);
+	printk("%s""is_logpack_failed: %u\n",
+		level, pack->is_logpack_failed);
 
 	printk("%s""print_pack %p end\n", level, pack);
 }
@@ -1279,8 +1278,7 @@ static void submit_logpack_list(
 			ASSERT(logh->n_records > 0);
 			logpack_calc_checksum(logh, wdev->physical_bs, &wpack->biow_list);
 			submit_logpack(
-				logh, wpack->is_fua,
-				&wpack->biow_list, &wpack->bioe_list,
+				logh, &wpack->biow_list, &wpack->bioe_list,
 				wdev->physical_bs, wdev->ldev, wdev->ring_buffer_off,
 				wdev->ring_buffer_size, wdev->ldev_chunk_sectors);
 		}
@@ -1343,7 +1341,6 @@ static void logpack_calc_checksum(
  * Submit logpack entry.
  *
  * @logh logpack header.
- * @is_fua FUA flag.
  * @biow_list bio wrapper list. must not be empty.
  * @bioe_list bio entry list. must be empty.
  *   submitted bios for logpack header will be added to the list.
@@ -1357,26 +1354,24 @@ static void logpack_calc_checksum(
  *     Non-IRQ. Non-atomic.
  */
 static void submit_logpack(
-	struct walb_logpack_header *logh, bool is_fua,
+	struct walb_logpack_header *logh,
 	struct list_head *biow_list, struct list_head *bioe_list,
 	unsigned int pbs, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
 	unsigned int chunk_sectors)
 {
 	struct bio_wrapper *biow;
-	bool is_flush;
 	u64 lsid;
 	int i;
 
 	ASSERT(list_empty(bioe_list));
 	ASSERT(!list_empty(biow_list));
-	is_flush = bio_wrapper_list_is_first_entry_flush(biow_list);
 
 	/* Submit logpack header block. */
-	logpack_submit_header(logh, is_flush, is_fua,
-			bioe_list, pbs, ldev,
-			ring_buffer_off, ring_buffer_size,
-			chunk_sectors);
+	logpack_submit_header(
+		logh, bioe_list, pbs, ldev,
+		ring_buffer_off, ring_buffer_size,
+		chunk_sectors);
 	ASSERT(!list_empty(bioe_list));
 	
 	/* Submit logpack contents for each request. */
@@ -1386,9 +1381,9 @@ static void submit_logpack(
 		if (biow->len == 0) {
 			ASSERT(biow->bio->bi_rw & REQ_FLUSH); /* such bio must be flush. */
 			ASSERT(i == 0); /* such bio must be permitted at first only. */
-			ASSERT(is_flush); /* logpack header bio must have REQ_FLUSH. */
-			/* You do not need to submit it
-			   because logpack header bio already has REQ_FLUSH. */
+
+			logpack_submit_bio_wrapper_zero(
+				biow, &biow->bioe_list, pbs, ldev);
 		} else {
 			if (logh->record[i].is_padding) {
 				i++;
@@ -1399,7 +1394,7 @@ static void submit_logpack(
 
 			/* submit bio(s) for the biow. */
 			logpack_submit_bio_wrapper(
-				biow, lsid, is_fua, &biow->bioe_list,
+				biow, lsid, &biow->bioe_list,
 				pbs, ldev, ring_buffer_off, ring_buffer_size,
 				chunk_sectors);
 		}
@@ -1411,8 +1406,6 @@ static void submit_logpack(
  * Submit bio of header block.
  *
  * @lhead logpack header data.
- * @is_flush flush is required.
- * @is_fua fua is required.
  * @bioe_list must be empty.
  *     submitted lhead bio(s) will be added to this.
  * @pbs physical block size [bytes].
@@ -1421,7 +1414,7 @@ static void submit_logpack(
  * @ring_buffer_size ring buffer size [physical blocks].
  */
 static void logpack_submit_header(
-	struct walb_logpack_header *lhead, bool is_flush, bool is_fua,
+	struct walb_logpack_header *lhead,
 	struct list_head *bioe_list,
 	unsigned int pbs, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
@@ -1431,13 +1424,10 @@ static void logpack_submit_header(
 	struct bio_entry *bioe;
 	struct page *page;
 	u64 off_pb, off_lb;
-	int rw = WRITE;
 	int len;
 #ifdef WALB_DEBUG
 	struct page *page2;
 #endif
-	if (is_flush) { rw |= WRITE_FLUSH; }
-	if (is_fua) { rw |= WRITE_FUA; }
 
 retry_bio_entry:
 	bioe = alloc_bio_entry(GFP_NOIO);
@@ -1455,7 +1445,7 @@ retry_bio:
 	off_pb = lhead->logpack_lsid % ring_buffer_size + ring_buffer_off;
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_sector = off_lb;
-	bio->bi_rw = rw;
+	bio->bi_rw = WRITE;
 	bio->bi_end_io = bio_entry_end_io;
 	bio->bi_private = bioe;
 	len = bio_add_page(bio, page, pbs, offset_in_page(lhead));
@@ -1488,23 +1478,56 @@ error0:
 }
 
 /**
+ * Submit a logpack bio for a flush request.
+ *
+ * @biow bio wrapper(which contains original bio).
+ *       The bio->size must be 0.
+ * @bioe_list list of bio_entry. must be empty.
+ *   successfully submitted bioe(s) must be added to the tail of this.
+ * @pbs physical block size [bytes]
+ * @ldev log device.
+ */
+static void logpack_submit_bio_wrapper_zero(
+	struct bio_wrapper *biow, struct list_head *bioe_list,
+	unsigned int pbs, struct block_device *ldev)
+{
+	struct bio_entry *bioe, *bioe_next;
+	
+	ASSERT(biow->len == 0);
+	ASSERT(biow->bio);
+	ASSERT(biow->bio->bi_size == 0);
+	ASSERT(list_empty(bioe_list));
+	
+retry_bio_entry:
+	bioe = logpack_create_bio_entry(biow->bio, pbs, ldev, 0, 0);
+	if (!bioe) {
+		schedule();
+		goto retry_bio_entry;
+	}
+	list_add_tail(&bioe->list, bioe_list);
+	
+	/* really submit. */
+	list_for_each_entry_safe(bioe, bioe_next, bioe_list, list) {
+		LOGd_("submit_lr: bioe %p pos %"PRIu64" len %u\n",
+			bioe, (u64)bioe->pos, bioe->len);
+		generic_make_request(bioe->bio);
+	}
+}
+
+/**
  * Submit all logpack bio(s) for a request.
  *
  * @biow bio wrapper(which contains original bio).
  * @lsid lsid of the bio in the logpack.
- * @is_fua true if logpack must be submitted with FUA flag.
  * @bioe_list list of bio_entry. must be empty.
  *   successfully submitted bioe(s) must be added to the tail of this.
  * @pbs physical block size [bytes]
  * @ldev log device.
  * @ring_buffer_off ring buffer offset [physical block].
  * @ring_buffer_size ring buffer size [physical block].
- *
- * RETURN:
- *   true in success, false in partially failed.
  */
 static void logpack_submit_bio_wrapper(
-	struct bio_wrapper *biow, u64 lsid, bool is_fua,
+	struct bio_wrapper *biow, u64 lsid,
 	struct list_head *bioe_list,
 	unsigned int pbs, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
@@ -1523,7 +1546,7 @@ static void logpack_submit_bio_wrapper(
 
 retry_bio_entry:
 	bioe = logpack_create_bio_entry(
-		biow->bio, is_fua, pbs, ldev, ldev_off_pb, off_lb);
+		biow->bio, pbs, ldev, ldev_off_pb, off_lb);
 	if (!bioe) {
 		schedule();
 		goto retry_bio_entry;
@@ -1562,7 +1585,6 @@ retry_bio_split:
  * Create a bio_entry which is a part of logpack.
  *
  * @bio original bio to clone.
- * @is_fua true if logpack must be submitted with FUA flag.
  * @pbs physical block device [bytes].
  * @ldev_offset log device offset for the request [physical block].
  * @bio_offset offset of the bio inside the whole request [logical block].
@@ -1571,7 +1593,7 @@ retry_bio_split:
  *   bio_entry in success which bio is submitted, or NULL.
  */
 static struct bio_entry* logpack_create_bio_entry(
-	struct bio *bio, bool is_fua, unsigned int pbs,
+	struct bio *bio, unsigned int pbs,
 	struct block_device *ldev,
 	u64 ldev_offset, unsigned int bio_offset)
 {
@@ -1591,8 +1613,9 @@ static struct bio_entry* logpack_create_bio_entry(
 
 	init_bio_entry(bioe, cbio);
 
-	if (is_fua) {
-		cbio->bi_rw |= WRITE_FUA;
+	/* An IO persistence requires all previous log IO(s) persistence. */
+	if (cbio->bi_rw & REQ_FUA) {
+		cbio->bi_rw |= REQ_FLUSH;
 	}
 	return bioe;
 
@@ -1980,9 +2003,6 @@ newpack:
 	ASSERT(lhead->n_records > 0);
 	biow->lsid = lhead->record[lhead->n_records - 1].lsid;
 fin:
-	if (biow->bio->bi_rw & REQ_FUA) {
-		pack->is_fua = true;
-	}
 	/* The request is just added to the pack. */
 	list_add_tail(&biow->list, &pack->biow_list);
 	LOGd_("normal end\n");
@@ -1990,25 +2010,6 @@ fin:
 error0:
 	LOGd_("failure end\n");
 	return false;
-}
-
-/**
- * Check whether first bio_wrapper is flush in the list.
- *
- * @biow_list bio_wrapper list. Never empty.
- *
- * RETURN:
- *   true if the first req_entry is flush request, or false.
- */
-static bool bio_wrapper_list_is_first_entry_flush(struct list_head *biow_list)
-{
-	struct bio_wrapper *biow;
-	ASSERT(!list_empty(biow_list));
-	
-	biow = list_first_entry(biow_list, struct bio_wrapper, list);
-	ASSERT(biow);
-	ASSERT(biow->bio);
-	return biow->bio->bi_rw == REQ_FLUSH;
 }
 
 /**
@@ -2116,7 +2117,6 @@ static void wait_for_logpack_and_submit_datapack(
 		
 		if (biow->len == 0) {
 			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
-			/* Already the corresponding logpack is permanent. */
 			list_del(&biow->list);
 			bio_endio(biow->bio, 0);
 			destroy_bio_wrapper_dec(wdev, biow);
