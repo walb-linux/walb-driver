@@ -312,6 +312,10 @@ static bool writepack_add_bio_wrapper(
 	u64 ring_buffer_size, unsigned int max_logpack_pb, u64 *latest_lsidp,
 	struct walb_dev *wdev, gfp_t gfp_mask);
 static bool bio_wrapper_list_is_first_entry_flush(struct list_head *biow_list);
+#ifdef WALB_FAST_ALGORITHM
+static void insert_to_sorted_bio_wrapper_list(
+	struct bio_wrapper *biow, struct list_head *biow_list);
+#endif
 static void writepack_check_and_set_flush(struct pack *wpack);
 static void wait_for_logpack_and_submit_datapack(
 	struct walb_dev *wdev, struct pack *wpack);
@@ -1954,6 +1958,8 @@ static bool writepack_add_bio_wrapper(
 		/* logpack header capacity full so create a new pack. */
 		goto newpack;
 	}
+	ASSERT(lhead->n_records > 0);
+	biow->lsid = lhead->record[lhead->n_records - 1].lsid;
 	goto fin;
 
 newpack:
@@ -1969,6 +1975,8 @@ newpack:
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ret = walb_logpack_header_add_bio(lhead, biow->bio, pbs, ring_buffer_size);
 	ASSERT(ret);
+	ASSERT(lhead->n_records > 0);
+	biow->lsid = lhead->record[lhead->n_records - 1].lsid;
 fin:
 	if (biow->bio->bi_rw & REQ_FUA) {
 		pack->is_fua = true;
@@ -2000,6 +2008,46 @@ static bool bio_wrapper_list_is_first_entry_flush(struct list_head *biow_list)
 	ASSERT(biow->bio);
 	return biow->bio->bi_rw == REQ_FLUSH;
 }
+
+/**
+ * Insert a bio wrapper to a sorted bio wrapper list.
+ * using insertion sort.
+ *
+ * They are sorted by biow->lsid.
+ * Use biow->list3 for list operations.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static void insert_to_sorted_bio_wrapper_list(
+	struct bio_wrapper *biow, struct list_head *biow_list)
+{
+	struct bio_wrapper *biow_tmp, *biow_next;
+	bool moved;
+	
+	ASSERT(biow);
+	ASSERT(biow_list);
+
+	if (!list_empty(biow_list)) {
+		biow_tmp = list_first_entry(
+			biow_list, struct bio_wrapper, list3);
+		ASSERT(biow_tmp);
+		if (biow->lsid < biow_tmp->lsid) {
+			list_add(&biow->list3, biow_list);
+		}
+		return;
+	}
+	moved = false;
+	list_for_each_entry_safe(biow_tmp, biow_next, biow_list, list3) {
+		if (biow->lsid < biow_tmp->lsid) {
+			list_add(&biow->list3, &biow_tmp->list3);
+			moved = true;
+			break;
+		}
+	}
+	if (!moved) {
+		list_add_tail(&biow->list3, biow_list);
+	}
+}
+#endif
 
 /**
  * Check whether wpack is zero-flush-only and set the flag.
@@ -2774,6 +2822,11 @@ static bool pending_check_and_copy(
 	struct multimap_cursor cur;
 	u64 max_io_size, start_pos;
 	struct bio_wrapper *biow_tmp;
+	struct list_head biow_list;
+	unsigned int n_overlapped_bios;
+#ifdef WALB_DEBUG
+	u64 lsid;
+#endif
 
 	ASSERT(pending_data);
 	ASSERT(biow);
@@ -2793,6 +2846,7 @@ static bool pending_check_and_copy(
 		return true;
 	}
 	/* Copy data from pending and overlapping write requests. */
+#if 0
 	while (multimap_cursor_key(&cur) < biow->pos + biow->len) {
 
 		ASSERT(multimap_cursor_is_valid(&cur));
@@ -2808,6 +2862,44 @@ static bool pending_check_and_copy(
 			break;
 		}
 	}
+#else
+	INIT_LIST_HEAD(&biow_list);
+	n_overlapped_bios = 0;
+	while (multimap_cursor_key(&cur) < biow->pos + biow->len) {
+
+		ASSERT(multimap_cursor_is_valid(&cur));
+		
+		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
+		ASSERT(biow_tmp);
+		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
+			n_overlapped_bios++;
+			insert_to_sorted_bio_wrapper_list(biow_tmp, &biow_list);
+		}
+		if (!multimap_cursor_next(&cur)) {
+			break;
+		}
+	}
+	if (n_overlapped_bios > 64) {
+		pr_warn_ratelimited("Too many overlapped bio(s): %u\n",
+				n_overlapped_bios);
+	}
+	/* Copy overlapping pending bio(s) in the order of lsid. */
+	list_for_each_entry(biow_tmp, &biow_list, list3) {
+		if (!data_copy_bio_wrapper(biow, biow_tmp, gfp_mask)) {
+			return false;
+		}
+	}
+#ifdef WALB_DEBUG
+	LOGd_("lsid begin\n");
+	lsid = 0;
+	list_for_each_entry(biow_tmp, &biow_list, list3) {
+		LOGd_("lsid %"PRIu64"\n", biow_tmp->lsid);
+		ASSERT(lsid <= biow_tmp->lsid);
+		lsid = biow_tmp->lsid;
+	}
+	LOGd_("lsid end\n");
+#endif
+#endif
 	return true;
 }
 #endif

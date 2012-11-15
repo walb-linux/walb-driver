@@ -21,6 +21,7 @@ struct bio_wrapper
 {
 	struct list_head list; /* list entry. */
 	struct list_head list2; /* another list entry. */
+	struct list_head list3; /* another list entry. */
 	struct work_struct work; /* for workqueue tasks. */
 
 	struct bio *bio; /* original bio. */
@@ -30,6 +31,7 @@ struct bio_wrapper
 	int error;
 	struct completion done;
 	bool started;
+	u64 lsid; /* lsid of bio wrapper for sort. */
 	
 	struct list_head bioe_list; /* list head of bio_entry */
 
