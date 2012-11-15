@@ -1236,14 +1236,16 @@ static void create_logpack_list(
 	ASSERT(latest_lsid >= oldest_lsid);
 	if (latest_lsid - oldest_lsid > wdev->ring_buffer_size) {
 		set_log_overflow(iocored);
-		LOGw("Ring buffer for log has been overflowed."
+		pr_warn_ratelimited(
+			"Ring buffer for log has been overflowed."
 			" reset_wal is required.\n");
 	}
 
 	/* Check consistency. */
 	ASSERT(latest_lsid >= written_lsid);
 	if (latest_lsid - written_lsid > wdev->ring_buffer_size) {
-		LOGe("Ring buffer size is too small to keep consistency. "
+		pr_err_ratelimited(
+			"Ring buffer size is too small to keep consistency. "
 			"!!!PLEASE GROW THE LOG DEVICE SIZE.!!!\n");
 	}
 }
@@ -2150,7 +2152,9 @@ static void wait_for_logpack_and_submit_datapack(
 			LOGd_("pending_sectors %u\n", iocored->pending_sectors);
 			is_stop_queue = should_stop_queue(wdev, biow);
 			if (is_stop_queue) {
-				atomic_inc(&iocored->n_stoppers);
+				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
+					LOGn("iocore freezed.\n");
+				}
 			}
 			iocored->pending_sectors += biow->len;
 			is_pending_insert_succeeded =
