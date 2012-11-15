@@ -1983,8 +1983,9 @@ static bool writepack_add_bio_wrapper(
 		/* logpack header capacity full so create a new pack. */
 		goto newpack;
 	}
-	ASSERT(lhead->n_records > 0);
-	biow->lsid = lhead->record[lhead->n_records - 1].lsid;
+	if (lhead->n_records > 0) {
+		biow->lsid = lhead->record[lhead->n_records - 1].lsid;
+	}
 	goto fin;
 
 newpack:
@@ -2000,8 +2001,9 @@ newpack:
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ret = walb_logpack_header_add_bio(lhead, biow->bio, pbs, ring_buffer_size);
 	ASSERT(ret);
-	ASSERT(lhead->n_records > 0);
-	biow->lsid = lhead->record[lhead->n_records - 1].lsid;
+	if (lhead->n_records > 0) {
+		biow->lsid = lhead->record[lhead->n_records - 1].lsid;
+	}
 fin:
 	/* The request is just added to the pack. */
 	list_add_tail(&biow->list, &pack->biow_list);
