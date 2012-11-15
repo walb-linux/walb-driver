@@ -13,6 +13,13 @@
 #include <linux/list.h>
 
 #include "walb/common.h"
+#include "treemap.h"
+
+/* Module parameter. */
+static unsigned int n_test_ = 1000;
+module_param_named(n_test, n_test_, uint, S_IRUGO);
+static unsigned int n_items_ = 256;
+module_param_named(n_items, n_items_, uint, S_IRUGO);
 
 struct a_item
 {
@@ -156,6 +163,16 @@ static void insertion_sort(struct list_head *dst, struct list_head *src)
 
 	/* sort. */
 	list_for_each_entry_safe(item, item_next, src, list) {
+		/* first. */
+		if (!list_empty(dst)) {
+			item_tmp = list_first_entry(dst, struct l_item, list);
+			ASSERT(item_tmp);
+			if (item->key < item_tmp->key) {
+				list_move(&item->list, dst);
+			}
+			continue;
+		}
+		/* middle */
 		moved = false;
 		list_for_each_entry(item_tmp, dst, list) {
 			if (item->key < item_tmp->key) {
@@ -164,6 +181,7 @@ static void insertion_sort(struct list_head *dst, struct list_head *src)
 				break;
 			}
 		}
+		/* last. */
 		if (!moved) {
 			list_move_tail(&item->list, dst);
 		}
@@ -228,11 +246,126 @@ fin:
 	destroy_item_list(&list1);
 }
 
+/*******************************************************************************
+ * With treemap.
+ *******************************************************************************/
+
+static struct treemap_memory_manager mmgr_;
+
+static void sort_by_mmap(
+	struct list_head *dst, struct list_head *src, gfp_t gfp_mask)
+{
+	struct multimap *mmap;
+	struct l_item *item, *item_next;
+	int ret;
+	struct multimap_cursor cur;
+
+	ASSERT(dst);
+	ASSERT(src);
+	ASSERT(list_empty(dst));
+
+	/* Prepare a multimap. */
+	mmap = multimap_create(gfp_mask, &mmgr_);
+	if (!mmap) { goto error0; }
+
+	/* Insert. */
+	list_for_each_entry_safe(item, item_next, src, list) {
+		list_del(&item->list);
+		ret = multimap_add(mmap, item->key, (unsigned long)item, gfp_mask);
+		if (ret) { goto error1; }
+	}
+	ASSERT(list_empty(src));
+
+	/* Traverse and delete. */
+	multimap_cursor_init(mmap, &cur);
+	ret = multimap_cursor_begin(&cur);
+	ASSERT(ret);
+	ret = multimap_cursor_next(&cur);
+	while (ret) {
+		item = (struct l_item *)multimap_cursor_val(&cur);
+		list_add_tail(&item->list, dst);
+		
+		ret = multimap_cursor_del(&cur);
+		ASSERT(ret);
+		ret = multimap_cursor_is_data(&cur);
+	}
+	
+	/* Destroy the mulitmap. */
+	ASSERT(multimap_is_empty(mmap));
+	multimap_destroy(mmap);
+	return;
+
+error1:
+	multimap_destroy(mmap);
+error0:
+	LOGe("Error.\n");
+	return;
+}
+
+static void test_tsort(unsigned int n_test, unsigned int n_items)
+{
+	unsigned int i;
+	struct list_head list0, list1;
+	struct timespec ts_bgn, ts_end, ts_time, ts_time1, ts_time2;
+
+	INIT_LIST_HEAD(&list0);
+	INIT_LIST_HEAD(&list1);
+
+	/* prepare */
+	if (!create_item_list(n_items, &list0)) {
+		goto fin;
+	}
+	
+	/* warm up */
+	for (i = 0; i < n_test; i++) {
+		fill_item_list_randomly(&list0);
+		move_item_list_all(&list0, &list1);
+	}
+
+	/* baseline */
+	getnstimeofday(&ts_bgn);
+	for (i = 0; i < n_test; i++) {
+		fill_item_list_randomly(&list0);
+		move_item_list_all(&list0, &list1);
+	}
+	getnstimeofday(&ts_end);
+	ts_time = timespec_sub(ts_end, ts_bgn);
+	LOGn("%ld.%09ld seconds\n", ts_time.tv_sec, ts_time.tv_nsec);
+	ts_time1 = ts_time;
+
+	/* target sort. */
+	getnstimeofday(&ts_bgn);
+	for (i = 0; i < n_test; i++) {
+		fill_item_list_randomly(&list0);
+		sort_by_mmap(&list1, &list0, GFP_KERNEL);
+		move_item_list_all(&list0, &list1);
+	}
+	getnstimeofday(&ts_end);
+	ts_time = timespec_sub(ts_end, ts_bgn);
+	LOGn("%ld.%09ld seconds\n", ts_time.tv_sec, ts_time.tv_nsec);
+	ts_time2 = ts_time;
+
+	ts_time = timespec_sub(ts_time2, ts_time1);
+	LOGn("%ld.%09ld seconds\n", ts_time.tv_sec, ts_time.tv_nsec);
+
+fin:
+	destroy_item_list(&list0);
+	destroy_item_list(&list1);
+}
+
+/*******************************************************************************
+ * init/exit.
+ *******************************************************************************/
+
 static int __init test_init(void)
 {
-	test_hsort(10000);
-	test_lsort(10000, 256);
+	initialize_treemap_memory_manager_kmalloc(&mmgr_, 128);
 
+	test_hsort(n_test_);
+	test_lsort(n_test_, n_items_);
+	test_tsort(n_test_, n_items_);
+	
+	finalize_treemap_memory_manager(&mmgr_);
 	return -1;
 }
 

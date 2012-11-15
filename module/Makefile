@@ -53,7 +53,7 @@ test-serialized-task-mod-objs := test_serialized_task.o
 test-completion-mod-objs := test_completion.o
 test-vmalloc-mod-objs := test_vmalloc.o
 test-bdev-mod-objs := test_bdev.o
-test-sort-mod-objs := test_sort.o
+test-sort-mod-objs := test_sort.o treemap.o
 
 simple-blk-mod-objs := simple_blk.o
 BASE_BIO_OBJS = base_bio.o size_list.o
