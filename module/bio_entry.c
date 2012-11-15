@@ -61,9 +61,6 @@ struct bio_pair2
  * Static functions prototype.
  *******************************************************************************/
 
-
-static inline void list_insert_after(struct list_head *list, struct list_head *new);
-
 /* For bio_cursor */
 #ifdef WALB_FAST_ALGORITHM
 UNUSED static void bio_cursor_print(const char* level, struct bio_cursor *cur);
@@ -122,23 +119,6 @@ static struct bio_entry* bio_entry_list_get_first_nonzero(
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
-
-/**
- * Insert a node just after a node.
- *
- * @pos node just after which the new node will be inserted.
- * @new node to be inserted.
- *
- * Before: ..., pos, ...
- * After:  ..., pos, new, ...
- */
-static inline void list_insert_after(struct list_head *pos, struct list_head *new)
-{
-	new->prev = pos;
-	new->next = pos->next;
-	new->prev->next = new;
-	new->next->prev = new;
-}
 
 #ifdef WALB_FAST_ALGORITHM
 UNUSED static void bio_cursor_print(
@@ -768,8 +748,8 @@ static bool bio_entry_cursor_split(struct bio_entry_cursor *cur, gfp_t gfp_mask)
 	print_bio_entry(KERN_DEBUG, bioe2);
 	LOGd("bio split occurred.\n");
 #endif
-	
-	list_insert_after(&bioe1->list, &bioe2->list);
+
+	list_add(&bioe2->list, &bioe1->list);
 	cur->bioe = bioe2;
 	cur->off_in = 0;
 	return true;
