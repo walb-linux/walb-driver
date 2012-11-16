@@ -118,7 +118,9 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 		biow->pos = 0;
 		biow->len = 0;
 	}
-
+#ifdef WALB_FAST_ALGORITHM
+	biow->is_overwritten = false;
+#endif
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	init_completion(&biow->overlapping_done);
 	biow->n_overlapping = -1;
