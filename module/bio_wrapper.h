@@ -31,13 +31,14 @@ struct bio_wrapper
 	int error;
 	struct completion done;
 	bool started;
-	u64 lsid; /* lsid of bio wrapper for sort. */
 	
 	struct list_head bioe_list; /* list head of bio_entry */
 
 	void *private_data;
 
 #ifdef WALB_FAST_ALGORITHM
+	/* lsid of bio wrapper for sort. */
+	u64 lsid; 
 	/* True if the biow data will be fully overwritten by newer IO(s). */
 	bool is_overwritten;
 #endif
