@@ -63,7 +63,7 @@ void bio_wrapper_exit(void);
  * Check overlapping.
  */
 static inline bool bio_wrapper_is_overlap(
-	struct bio_wrapper *biow0, struct bio_wrapper *biow1)
+	const struct bio_wrapper *biow0, const struct bio_wrapper *biow1)
 {
 	ASSERT(biow0);
 	ASSERT(biow1);
