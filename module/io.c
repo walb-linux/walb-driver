@@ -6,6 +6,8 @@
  */
 #include <linux/module.h>
 #include <linux/delay.h>
+#include <linux/ratelimit.h>
+#include <linux/printk.h>
 #include "kern.h"
 #include "io.h"
 #include "bio_wrapper.h"
