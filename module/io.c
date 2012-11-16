@@ -2161,16 +2161,12 @@ static void wait_for_logpack_and_submit_datapack(
 #ifdef WALB_FAST_ALGORITHM
 			/* Call bio_get() for all bio(s) */
 			get_bio_entry_list(&biow->bioe_list);
+			
 			/* Try to insert pending data. */
 		retry_insert_pending:
 			spin_lock(&iocored->pending_data_lock);
 			LOGd_("pending_sectors %u\n", iocored->pending_sectors);
 			is_stop_queue = should_stop_queue(wdev, biow);
-			if (is_stop_queue) {
-				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-					LOGn("iocore freezed.\n");
-				}
-			}
 			iocored->pending_sectors += biow->len;
 			is_pending_insert_succeeded =
 				pending_insert_and_delete_fully_overwritten(
@@ -2188,7 +2184,9 @@ static void wait_for_logpack_and_submit_datapack(
 
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
-				LOGd_("stop queue.\n");
+				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
+					LOGn("iocore freezed.\n");
+				}
 #if 0
 			retry_pack_work:
 				pwork = create_pack_work(wdev, GFP_NOIO);
@@ -2287,15 +2285,15 @@ static void wait_for_write_bio_wrapper(
 	/* Delete from pending data. */
 	spin_lock(&iocored->pending_data_lock);
 	is_start_queue = should_start_queue(wdev, biow);
-	if (is_start_queue) {
-		iocore_melt(wdev);
-	}
 	iocored->pending_sectors -= biow->len;
 	if (!biow->is_overwritten) {
 		pending_delete(iocored->pending_data,
 			&iocored->max_sectors_in_pending, biow);
 	}
 	spin_unlock(&iocored->pending_data_lock);
+	if (is_start_queue) {
+		iocore_melt(wdev);
+	}
 
 	/* put related bio(s). */
 	put_bio_entry_list(&biow->bioe_list);
