@@ -1377,17 +1377,21 @@ static void submit_logpack(
 	/* Submit logpack contents for each request. */
 	i = 0;
 	list_for_each_entry(biow, biow_list, list) {
-
 		if (biow->len == 0) {
-			ASSERT(biow->bio->bi_rw & REQ_FLUSH); /* such bio must be flush. */
-			ASSERT(i == 0); /* such bio must be permitted at first only. */
+			/* Currently zero-sized IO will not be stored in logpack header.
+			   We just submit it and will wait for it. */
+
+			/* such bio must be flush. */
+			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
+			/* such bio must be permitted at first only. */
+			ASSERT(i == 0); 
 
 			logpack_submit_bio_wrapper_zero(
 				biow, &biow->bioe_list, pbs, ldev);
 		} else {
 			if (logh->record[i].is_padding) {
 				i++;
-				/* padding record never come last. */
+				/* padding record never come at last. */
 			}
 			ASSERT(i < logh->n_records);
 			lsid = logh->record[i].lsid;
