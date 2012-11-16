@@ -37,14 +37,15 @@ void walb_end_io_with_completion(struct bio *bio, int error)
  * This is blocked operation.
  * Do not call this function in interuption handlers.
  *
- * @rw READ or WRITE (as same as 1st arg of submit_bio(rw, bio).).
+ * @bi_rw should be bio->bi_rw like REQ_WRITE, REQ_READ, etc.
  * @bdev block device, which is already opened.
  * @addr address in the block device [physical block].
  * @sect sector data.
  *
  * @return true in success, or false.
  */
-bool sector_io(int rw, struct block_device *bdev,
+bool sector_io(
+	unsigned long bi_rw, struct block_device *bdev,
 	u64 addr, struct sector_data *sect)
 {
 	struct bio *bio;
@@ -55,10 +56,9 @@ bool sector_io(int rw, struct block_device *bdev,
 
 	LOGd("walb_sector_io begin\n");
 
-	ASSERT(rw == READ || rw == WRITE);
 	ASSERT_SECTOR_DATA(sect);
 	buf = sect->data;
-	ASSERT(buf != NULL);
+	ASSERT(buf);
 	
 	lbs = bdev_logical_block_size(bdev);
 	pbs = bdev_physical_block_size(bdev);
@@ -69,7 +69,7 @@ bool sector_io(int rw, struct block_device *bdev,
 	}
 
 	bioc = kmalloc(sizeof(struct walb_bio_with_completion), GFP_NOIO);
-	if (bioc == NULL) {
+	if (!bioc) {
 		goto error0;
 	}
 	init_completion(&bioc->wait);
@@ -77,7 +77,7 @@ bool sector_io(int rw, struct block_device *bdev,
 	
 	/* Alloc bio */
 	bio = bio_alloc(GFP_NOIO, 1);
-	if (bio == NULL) {
+	if (!bio) {
 		LOGe("bio_alloc failed.\n");
 		goto error1;
 	}
@@ -90,6 +90,7 @@ bool sector_io(int rw, struct block_device *bdev,
 		virt_to_page(buf), buf,
 		pbs, offset_in_page(buf), rw);
 
+	bio->bi_rw = bi_rw;
 	bio->bi_bdev = bdev;
 	bio->bi_sector = addr * (pbs / lbs);
 	bio->bi_end_io = walb_end_io_with_completion;
@@ -97,7 +98,7 @@ bool sector_io(int rw, struct block_device *bdev,
 	bio_add_page(bio, page, pbs, offset_in_page(buf));
 
 	/* Submit and wait to complete. */
-	submit_bio(rw, bio);
+	generic_make_request(bio);
 	wait_for_completion(&bioc->wait);
 
 	/* Check result. */
@@ -246,7 +247,7 @@ bool walb_write_super_sector(
 
 	/* Really write. */
 	off0 = get_super_sector0_offset(pbs);
-	if (!sector_io(WRITE, ldev, off0, lsuper)) {
+	if (!sector_io(WRITE_FLUSH_FUA, ldev, off0, lsuper)) {
 		LOGe("write super sector0 failed\n");
 		goto error0;
 	}
