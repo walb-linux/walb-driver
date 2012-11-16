@@ -31,12 +31,17 @@ struct bio_wrapper
 	int error;
 	struct completion done;
 	bool started;
-	u64 lsid; /* lsid of bio wrapper for sort. */
 	
 	struct list_head bioe_list; /* list head of bio_entry */
 
 	void *private_data;
 
+#ifdef WALB_FAST_ALGORITHM
+	/* lsid of bio wrapper for sort. */
+	u64 lsid; 
+	/* True if the biow data will be fully overwritten by newer IO(s). */
+	bool is_overwritten;
+#endif
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	struct completion overlapping_done;
 	int n_overlapping; /* initial value is -1. */
@@ -58,12 +63,28 @@ void bio_wrapper_exit(void);
  * Check overlapping.
  */
 static inline bool bio_wrapper_is_overlap(
-	struct bio_wrapper *biow0, struct bio_wrapper *biow1)
+	const struct bio_wrapper *biow0, const struct bio_wrapper *biow1)
 {
 	ASSERT(biow0);
 	ASSERT(biow1);
 	return (biow0->pos + (biow0->len) > biow1->pos &&
 		biow1->pos + (biow1->len) > biow0->pos);
+}
+
+/**
+ * Check overwritten.
+ *
+ * RETURN:
+ *   True if biow0 data is fully overwritten by biow1, or false.
+ */
+static inline bool bio_wrapper_is_overwritten_by(
+	const struct bio_wrapper *biow0, const struct bio_wrapper *biow1)
+{
+	ASSERT(biow0);
+	ASSERT(biow1);
+	
+	return biow1->pos <= biow0->pos &&
+		biow0->pos + biow0->len <= biow1->pos + biow1->len;
 }
 
 #endif /* WALB_BIO_WRAPPER_H_KERNEL */

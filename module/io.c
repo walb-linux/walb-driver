@@ -364,6 +364,11 @@ static void pending_delete(
 static bool pending_check_and_copy(
 	struct multimap *pending_data, unsigned int max_sectors,
 	struct bio_wrapper *biow, gfp_t gfp_mask);
+static void pending_delete_fully_overwritten(
+	struct multimap *pending_data, const struct bio_wrapper *biow);
+static bool pending_insert_and_delete_fully_overwritten(
+	struct multimap *pending_data, unsigned int *max_sectors_p,
+	struct bio_wrapper *biow, gfp_t gfp_mask);
 static inline bool should_stop_queue(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 static inline bool should_start_queue(
@@ -1987,9 +1992,11 @@ static bool writepack_add_bio_wrapper(
 		/* logpack header capacity full so create a new pack. */
 		goto newpack;
 	}
+#ifdef WALB_FAST_ALGORITHM
 	if (lhead->n_records > 0) {
 		biow->lsid = lhead->record[lhead->n_records - 1].lsid;
 	}
+#endif
 	goto fin;
 
 newpack:
@@ -2005,9 +2012,11 @@ newpack:
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ret = walb_logpack_header_add_bio(lhead, biow->bio, pbs, ring_buffer_size);
 	ASSERT(ret);
+#ifdef WALB_FAST_ALGORITHM
 	if (lhead->n_records > 0) {
 		biow->lsid = lhead->record[lhead->n_records - 1].lsid;
 	}
+#endif
 fin:
 	/* The request is just added to the pack. */
 	list_add_tail(&biow->list, &pack->biow_list);
@@ -2152,19 +2161,16 @@ static void wait_for_logpack_and_submit_datapack(
 #ifdef WALB_FAST_ALGORITHM
 			/* Call bio_get() for all bio(s) */
 			get_bio_entry_list(&biow->bioe_list);
+			
 			/* Try to insert pending data. */
 		retry_insert_pending:
 			spin_lock(&iocored->pending_data_lock);
 			LOGd_("pending_sectors %u\n", iocored->pending_sectors);
 			is_stop_queue = should_stop_queue(wdev, biow);
-			if (is_stop_queue) {
-				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-					LOGn("iocore freezed.\n");
-				}
-			}
 			iocored->pending_sectors += biow->len;
 			is_pending_insert_succeeded =
-				pending_insert(iocored->pending_data,
+				pending_insert_and_delete_fully_overwritten(
+					iocored->pending_data, 
 					&iocored->max_sectors_in_pending,
 					biow, GFP_ATOMIC);
 			spin_unlock(&iocored->pending_data_lock);
@@ -2178,7 +2184,9 @@ static void wait_for_logpack_and_submit_datapack(
 
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
-				LOGd_("stop queue.\n");
+				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
+					LOGn("iocore freezed.\n");
+				}
 #if 0
 			retry_pack_work:
 				pwork = create_pack_work(wdev, GFP_NOIO);
@@ -2277,12 +2285,15 @@ static void wait_for_write_bio_wrapper(
 	/* Delete from pending data. */
 	spin_lock(&iocored->pending_data_lock);
 	is_start_queue = should_start_queue(wdev, biow);
+	iocored->pending_sectors -= biow->len;
+	if (!biow->is_overwritten) {
+		pending_delete(iocored->pending_data,
+			&iocored->max_sectors_in_pending, biow);
+	}
+	spin_unlock(&iocored->pending_data_lock);
 	if (is_start_queue) {
 		iocore_melt(wdev);
 	}
-	iocored->pending_sectors -= biow->len;
-	pending_delete(iocored->pending_data, &iocored->max_sectors_in_pending, biow);
-	spin_unlock(&iocored->pending_data_lock);
 
 	/* put related bio(s). */
 	put_bio_entry_list(&biow->bioe_list);
@@ -2911,6 +2922,87 @@ static bool pending_check_and_copy(
 #endif
 #endif
 	return true;
+}
+#endif
+
+/**
+ * Delete fully overwritten biow(s) by a specified biow
+ * from a pending data.
+ *
+ * The is_overwritten field of all deleted biows will be true.
+ *
+ * @pending_data pending data.
+ * @biow bio wrapper as a target for comparison.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static void pending_delete_fully_overwritten(
+	struct multimap *pending_data, const struct bio_wrapper *biow)
+{
+	struct multimap_cursor cur;
+	u64 start_pos, end_pos;
+	struct bio_wrapper *biow_tmp;
+	int ret;
+	
+	ASSERT(pending_data);
+	ASSERT(biow);
+	ASSERT(biow->len > 0);
+
+	start_pos = biow->pos;
+	end_pos = start_pos + biow->len;
+
+	/* Search the smallest candidate. */
+	multimap_cursor_init(pending_data, &cur);
+	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
+		/* No overlapping requests. */
+		return;
+	}
+
+	/* Search and delete overwritten biow(s). */
+	while (multimap_cursor_key(&cur) < end_pos) {
+		ASSERT(multimap_cursor_is_valid(&cur));
+		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
+		ASSERT(biow_tmp);
+		ret = biow_tmp != biow &&
+			bio_wrapper_is_overwritten_by(biow_tmp, biow);
+		if (ret) {
+			biow_tmp->is_overwritten = true;
+			ret = multimap_cursor_del(&cur);
+			ASSERT(ret);
+			ret = multimap_cursor_is_data(&cur);
+		} else {
+			ret = multimap_cursor_next(&cur);
+		}
+		if (!ret) { break; }
+	}
+}
+#endif
+
+/**
+ * Insert a biow to and
+ * delete fully overwritten (not overlapped) biow(s) by the biow from
+ * a pending data.
+ *
+ * RETURN:
+ *   true in success, or false.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static bool pending_insert_and_delete_fully_overwritten(
+	struct multimap *pending_data, unsigned int *max_sectors_p,
+	struct bio_wrapper *biow, gfp_t gfp_mask)
+{
+	bool ret;
+
+	ASSERT(pending_data);
+	ASSERT(max_sectors_p);
+	ASSERT(biow);
+
+	ret = pending_insert(pending_data, max_sectors_p, biow, gfp_mask);
+	if (!ret) { goto error0; }
+	pending_delete_fully_overwritten(pending_data, biow);
+	return true;
+	
+error0:
+	return false;
 }
 #endif
 
