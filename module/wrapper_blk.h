@@ -42,7 +42,7 @@ struct wrapper_blk_dev
 	char name[WRAPPER_BLK_DEV_NAME_MAX_LEN];
 
 	unsigned int pbs; /* physical block size. */
-	
+
 	spinlock_t lock; /* Lock data for this struct and queue if need. */
 	struct request_queue *queue; /* request queue */
 	bool use_make_request_fn; /* true if using wrdev_register_with_bio(). */
@@ -52,10 +52,10 @@ struct wrapper_blk_dev
 		/* for request. */
 		request_fn_proc *request_fn_proc;
 	};
-	
+
 	struct gendisk *gd; /* disk */
 	unsigned long is_started; /* If started, bit 0 is on, or off. */
-	
+
 	void *private_data; /* You can use this for any purpose. */
 };
 

@@ -193,7 +193,7 @@ static inline void sector_copy(struct sector_data *dst, const struct sector_data
 	ASSERT_SECTOR_DATA(dst);
 	ASSERT_SECTOR_DATA(src);
 	ASSERT(dst->size >= src->size);
-	
+
 	memcpy(dst->data, src->data, src->size);
 }
 
@@ -238,7 +238,7 @@ static inline int sector_compare(const struct sector_data *sect0,
 
 /**
  * Check sector data array.
- * 
+ *
  * @return Non-zero if valid, or 0.
  */
 static inline int is_valid_sector_data_array(const struct sector_data_array *sect_ary)
@@ -250,7 +250,7 @@ static inline int is_valid_sector_data_array(const struct sector_data_array *sec
 	if (!sect_ary->array) { return 0; }
 	ary = sect_ary->array;
 	if (sect_ary->size == 0) { return 0; }
-	
+
 	for (i = 0; i < sect_ary->size; i++) {
 		if (!is_valid_sector_data(ary[i])) { return 0; }
 		if (ary[i]->size != sect_ary->sector_size) { return 0; }
@@ -281,11 +281,11 @@ static inline struct sector_data_array* sector_array_alloc(
 
 	ASSERT(n_sectors > 0);
 	ASSERT(sector_size > 0);
-	
+
 	/* For itself. */
 	sect_ary = MALLOC(sizeof(struct sector_data_array), mask);
 	if (!sect_ary) { goto nomem0; }
-	
+
 	/* For array of sector pointer. */
 	sect_ary->size = n_sectors;
 	sect_ary->sector_size = sector_size;
@@ -299,11 +299,11 @@ static inline struct sector_data_array* sector_array_alloc(
 		sect = sector_alloc(sector_size, mask);
 #else
 		sect = sector_alloc(sector_size);
-#endif		      
+#endif
 		if (!sect) { goto nomem1; }
 		sect_ary->array[i] = sect;
 	}
-	
+
 	return sect_ary;
 nomem1:
 	sector_array_free(sect_ary);
@@ -333,7 +333,7 @@ static inline int sector_array_realloc(
 	unsigned int i;
 	struct sector_data **new_ary;
 	unsigned int sector_size;
-	
+
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(n_sectors > 0);
 	sector_size = sect_ary->sector_size;
@@ -346,7 +346,7 @@ static inline int sector_array_realloc(
 			sect_ary->array[i] = NULL;
 		}
 		sect_ary->size = n_sectors;
-		
+
 	} else if (sect_ary->size < n_sectors) {
 		/* Grow */
 		new_ary = REALLOC(sect_ary->array,
@@ -367,12 +367,12 @@ static inline int sector_array_realloc(
 		/* Unchanged */
 		ASSERT(sect_ary->size == n_sectors);
 	}
-	
+
 	return 1;
-	
+
 error1:
 	/* Grow failed. */
-	ASSERT(sect_ary->size < n_sectors); 
+	ASSERT(sect_ary->size < n_sectors);
 	for (i = sect_ary->size; i < n_sectors; i++) {
 		sector_free(sect_ary->array[i]);
 		sect_ary->array[i] = NULL;
@@ -453,7 +453,7 @@ static inline void sector_array_copy_detail(
 		sect_idx = (offset + copied) / sect_size;
 		sect_off = (offset + copied) % sect_size;
 		tmp_size = min(sect_size - sect_off, size - copied);
-		
+
 		if (is_from) {
 			memcpy((u8 *)sect_ary->array[sect_idx]->data + sect_off,
 				(u8 *)data + copied,
@@ -470,7 +470,7 @@ static inline void sector_array_copy_detail(
 
 /**
  * NOT_TESTED_YET
- * Copy sector_data_array from a buffer. 
+ * Copy sector_data_array from a buffer.
  *
  * @sect_ary sector array.
  * @offset offset in bytes inside sector array.
@@ -517,7 +517,7 @@ static inline int sector_array_compare(
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary1);
 
 	sect_size = sect_ary0->array[0]->size;
-	
+
 	if (sect_ary0->size != sect_ary1->size) {
 		return sect_ary0->size - sect_ary1->size;
 	}

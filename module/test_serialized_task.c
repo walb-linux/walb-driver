@@ -144,7 +144,7 @@ static void test_work_task_normal_list(struct work_struct *work)
 	bool should_loop = true;
 
 	while (true) {
-		
+
 		mutex_lock(&mutex_);
 		if (list_empty(&test_work_list_)) {
 			w = NULL;
@@ -157,7 +157,7 @@ static void test_work_task_normal_list(struct work_struct *work)
 		if (!should_loop) {
 			break;
 		}
-		
+
 		LOGd_("enqueue %u dequeue %u\n", w->cpuid, raw_smp_processor_id());
 #if 0
 		if (*w->countp % 100000 == 0) {
@@ -165,7 +165,7 @@ static void test_work_task_normal_list(struct work_struct *work)
 		}
 #endif
 		(*w->countp)++;
-		
+
 		mutex_lock(&mutex_);
 		list_del(&w->list);
 		mutex_unlock(&mutex_);
@@ -191,7 +191,7 @@ static void benchmark_normal_list(
 	struct test_work *w;
 	bool is_empty;
 	ASSERT(n_tasks > 0);
-	
+
 	for (i = 0; i < n_tasks; i++) {
 		w = create_test_work(GFP_KERNEL);
 		w->countp = countp;
@@ -237,7 +237,7 @@ static void benchmark_normal(
 		w->countp = countp;
 		ASSERT(w);
 		INIT_WORK(&w->work, test_work_task_single);
-		queue_work(wq_normal_, &w->work);	
+		queue_work(wq_normal_, &w->work);
 	}
 	flush_workqueue(wq_normal_);
 }
@@ -248,7 +248,7 @@ static void benchmark_single(
 	unsigned int i;
 	struct timespec bgn_ts, end_ts, sub_ts;
 	struct test_work *w;
-	
+
 	ASSERT(n_tasks > 0);
 
 	getnstimeofday(&bgn_ts);
@@ -257,7 +257,7 @@ static void benchmark_single(
 		w->countp = countp;
 		ASSERT(w);
 		INIT_WORK(&w->work, test_work_task_single);
-		queue_work(wq_single_, &w->work);	
+		queue_work(wq_single_, &w->work);
 	}
 	flush_workqueue(wq_single_);
 	getnstimeofday(&end_ts);
@@ -271,7 +271,7 @@ static void malloc_and_free(unsigned int n_tasks)
 	unsigned int i;
 	struct timespec bgn_ts, end_ts, sub_ts;
 	struct test_work *w;
-	
+
 	ASSERT(n_tasks > 0);
 
 	getnstimeofday(&bgn_ts);
@@ -322,7 +322,7 @@ static int __init test_init(void)
 {
 	unsigned int n_threads = 4;
 	unsigned int n_tasks = 1000000 / n_threads;
-	
+
 	init_workqueue();
 
 	run_benchmark(n_threads, "single", benchmark_single, n_tasks);
@@ -330,7 +330,7 @@ static int __init test_init(void)
 	run_benchmark(n_threads, "normal_l", benchmark_normal_list, n_tasks);
 	run_benchmark(n_threads, "normal_m", benchmark_normal_mutex, n_tasks);
 	malloc_and_free(n_tasks);
-	
+
 	fin_workqueue();
 
 	return -1;

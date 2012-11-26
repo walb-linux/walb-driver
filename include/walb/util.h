@@ -26,7 +26,7 @@
 
 /**
  * Sprint byte array.
- * 
+ *
  * @data pointer of the data to print.
  * @size size in bytes.
  * @buf buffer to store result.
@@ -39,7 +39,7 @@ static inline int sprint_hex(char *str, int str_size, const void* data, int size
 	char tmp[4];
 
 	ASSERT(data);
-	ASSERT(size >= 0);	  
+	ASSERT(size >= 0);
 	ASSERT(str);
 	ASSERT(str_size > 0);
 	ASSERT(str_size >= size * 3 + 1);

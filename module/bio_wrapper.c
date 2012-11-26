@@ -68,7 +68,7 @@ static void bio_wrapper_get_overlapping_pos_and_len(
 	}
 	ASSERT(biow0->pos <= pos);
 	ASSERT(biow1->pos <= pos);
-	
+
 	/* Smaller one as the ending position. */
 	pos_end0 = biow0->pos + biow0->len;
 	pos_end1 = biow1->pos + biow1->len;
@@ -103,7 +103,7 @@ void print_bio_wrapper(const char *level, struct bio_wrapper *biow)
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 {
 	ASSERT(biow);
-	
+
 	INIT_LIST_HEAD(&biow->bioe_list);
 	biow->error = 0;
 	biow->csum = 0;
@@ -146,7 +146,7 @@ error0:
 void destroy_bio_wrapper(struct bio_wrapper *biow)
 {
 	struct bio_entry *bioe, *bioe_next;
-	
+
 	if (!biow) { return; }
 	list_for_each_entry_safe(bioe, bioe_next, &biow->bioe_list, list) {
 		list_del(&bioe->list);
@@ -183,7 +183,7 @@ bool data_copy_bio_wrapper(
 	ASSERT(dst);
 	ASSERT(src);
 	LOGd_("begin dst %p src %p.\n", dst, src);
-	
+
 	/* Get overlapping area. */
 	bio_wrapper_get_overlapping_pos_and_len(
 		dst, src, &ol_bio_pos, &ol_bio_len);
@@ -216,7 +216,7 @@ bool data_copy_bio_wrapper(
 			gfp_mask)) {
 		goto error;
 	}
-			
+
 	LOGd_("end dst %p src %p.\n", dst, src);
 	return true;
 error:
@@ -260,7 +260,7 @@ error:
 void bio_wrapper_exit(void)
 {
 	int cnt;
-	
+
 	cnt = atomic_dec_return(&shared_cnt_);
 
 	if (cnt > 0) {

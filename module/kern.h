@@ -61,26 +61,26 @@ struct walb_iocore_operations
 struct walb_dev
 {
 	dev_t devt; /* Wrapper device id. */
-	
+
 	atomic_t is_read_only; /* Write always fails if true */
 	struct list_head list; /* member of all_wdevs_ */
-	
+
 	/* Max number of snapshots.
 	   This is const after log device is initialized. */
 	u32 n_snapshots;
-	
+
 	/* Size of underlying devices. [logical block] */
 	u64 ldev_size;
 	u64 ddev_size;
 	u64 size;
 	spinlock_t size_lock;
-	
+
 	/* You can get physical sector size [byte] with
 	   bdev_physical_block_size(bdev).
 
 	   Those of underlying log device and data device
 	   must be the same.
-	   
+
 	   This may be 512 or 4096.
 	*/
 	u16 physical_bs;
@@ -105,7 +105,7 @@ struct walb_dev
 	struct sector_data *lsuper0;
 
 	/* To avoid lock lsuper0 during request processing. */
-	u64 ring_buffer_off; 
+	u64 ring_buffer_off;
 	u64 ring_buffer_size;
 
 	/*
@@ -132,7 +132,7 @@ struct walb_dev
 	 * <= completed_lsid <= latest_lsid.
 	 */
 	spinlock_t lsid_lock;
-	
+
 	u64 latest_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
@@ -140,7 +140,7 @@ struct walb_dev
 	u64 written_lsid;
 	u64 prev_written_lsid;
 	u64 oldest_lsid;
-	
+
 	/*
 	 * For wrapper device.
 	 */
@@ -160,7 +160,7 @@ struct walb_dev
 	 * written_lsid is contained.
 	 */
 	struct checkpoint_data cpd;
-	
+
 	/*
 	 * For snapshotting.
 	 */
@@ -176,15 +176,15 @@ struct walb_dev
 #ifdef WALB_FAST_ALGORITHM
 	/* max_pending_sectors < pending_sectors
 	   we must stop the queue. */
-	unsigned int max_pending_sectors; 
+	unsigned int max_pending_sectors;
 
 	/* min_pending_sectors > pending_sectors
-	   we can restart the queue. */	
+	   we can restart the queue. */
 	unsigned int min_pending_sectors;
 
 	/* queue stopped period must not exceed
 	   queue_stop_time_ms. */
-	unsigned int queue_stop_timeout_ms; 
+	unsigned int queue_stop_timeout_ms;
 #endif
 
 	/*
@@ -193,7 +193,7 @@ struct walb_dev
 	struct mutex freeze_lock;
 	u8 freeze_state;
 	struct delayed_work freeze_dwork;
-	
+
 	/*
 	 * For IOcore.
 	 */
@@ -210,7 +210,7 @@ struct walb_dev
 static inline struct walb_dev* get_wdev_from_queue(struct request_queue *q)
 {
 	struct walb_dev *wdev;
-	
+
 	ASSERT(q);
 	wdev = (struct walb_dev *)q->queuedata;
 	return wdev;

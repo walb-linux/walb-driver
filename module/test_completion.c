@@ -48,7 +48,7 @@ static int __init test_init(void)
 	struct my_work mwork0, mwork1;
 
 	LOGn("BUILD_DATE %s\n", BUILD_DATE);
-	
+
 	init_completion(&done);
 	mwork0.id = 0;
 	mwork1.id = 1;
@@ -56,13 +56,13 @@ static int __init test_init(void)
 	mwork1.done = &done;
 	INIT_WORK(&mwork0.work, task0);
 	INIT_WORK(&mwork1.work, task1);
-	
+
 	queue_work(system_wq, &mwork0.work);
 	mdelay(1);
 	queue_work(system_wq, &mwork1.work);
-	
+
 	flush_workqueue(system_wq);
-	
+
 	return -1;
 }
 

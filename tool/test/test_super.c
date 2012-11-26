@@ -52,7 +52,7 @@ int main()
 {
 	int ddev_lb = DATA_DEV_SIZE / 512;
 	int ldev_lb = LOG_DEV_SIZE / 512;
-	
+
 	test(512, 512, ddev_lb, ldev_lb, 1000, "");
 	test(512, 4096, ddev_lb, ldev_lb, 1000, NULL);
 	test(4096, 4096, ddev_lb, ldev_lb, 1000, "");

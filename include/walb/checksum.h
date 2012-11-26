@@ -42,7 +42,7 @@ static inline u64 checksum_partial(u64 sum, const u8 *data, u32 size)
 static inline u32 checksum_finish(u64 sum)
 {
 	u32 ret;
-	
+
 	ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
 	return (ret == (u32)(-1) ? 0 : ret);
 }

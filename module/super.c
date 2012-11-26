@@ -54,7 +54,7 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 	sect->device_size = device_size;
 	sector_copy(lsuper_tmp, wdev->lsuper0);
 	spin_unlock(&wdev->lsuper0_lock);
-	
+
 	if (!walb_write_super_sector(wdev->ldev, lsuper_tmp)) {
 		LOGe("walb_sync_super_block: write super block failed.\n");
 		goto error1;
@@ -66,7 +66,7 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 	spin_lock(&wdev->lsid_lock);
 	wdev->prev_written_lsid = written_lsid;
 	spin_unlock(&wdev->lsid_lock);
-	
+
 	return true;
 
 error1:
@@ -85,12 +85,12 @@ error0:
  */
 bool walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
 {
-	/* 
+	/*
 	 * 1. Wait for all related IO are finished.
 	 * 2. Cleanup snapshot metadata and write down.
 	 * 3. Generate latest super block and write down.
 	 */
-	
+
 	spin_lock(&wdev->lsid_lock);
 	wdev->written_lsid = wdev->latest_lsid;
 	spin_unlock(&wdev->lsid_lock);

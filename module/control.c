@@ -74,11 +74,11 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	unsigned int wminor;
 	struct walb_dev *wdev;
 	struct walb_start_param *param0, *param1;
-	
+
 	ASSERT(ctl->command == WALB_IOCTL_START_DEV);
 
 	print_walb_ctl(ctl); /* debug */
-	
+
 	ldevt = MKDEV(ctl->u2k.lmajor, ctl->u2k.lminor);
 	ddevt = MKDEV(ctl->u2k.dmajor, ctl->u2k.dminor);
 	LOGd("(ldevt %u:%u) (ddevt %u:%u)\n",
@@ -104,10 +104,10 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 		ctl->error = -3;
 		goto error0;
 	}
-	
+
 	/* Lock */
 	alldevs_write_lock();
-	
+
 	if (ctl->u2k.wminor == WALB_DYNAMIC_MINOR) {
 		wminor = get_free_minor();
 	} else {
@@ -115,7 +115,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 		if (wminor % 2 != 0) { wminor--; }
 	}
 	LOGd("wminor: %u\n", wminor);
-	
+
 	wdev = prepare_wdev(wminor, ldevt, ddevt, param0);
 	if (!wdev) {
 		alldevs_write_unlock();
@@ -123,14 +123,14 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 		ctl->error = -4;
 		goto error0;
 	}
-	
+
 	if (alldevs_add(wdev) != 0) {
 		alldevs_write_unlock();
 		LOGe("alldevs_add failed.\n");
 		ctl->error = -5;
 		goto error1;
 	}
-	
+
 	register_wdev(wdev);
 
 	/* Unlock */
@@ -144,7 +144,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 
 	print_walb_ctl(ctl); /* debug */
 	return 0;
-	
+
 #if 0
 error2:
 	alldevs_dell(wdev);
@@ -173,7 +173,7 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 	dev_t wdevt;
 	unsigned int wmajor, wminor;
 	struct walb_dev *wdev;
-	
+
 	ASSERT(ctl->command == WALB_IOCTL_STOP_DEV);
 
 	/* Input */
@@ -197,21 +197,21 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 	}
 
 	unregister_wdev(wdev);
-	
+
 	alldevs_write_lock();
 	alldevs_del(wdev);
 	alldevs_write_unlock();
-	
+
 	destroy_wdev(wdev);
 
 	/* Set result */
 	ctl->error = 0;
 
 	return 0;
-	
+
 	/* not tested */
-	
-error0:	       
+
+error0:
 	return -EFAULT;
 }
 
@@ -246,7 +246,7 @@ static int ioctl_list_dev(struct walb_ctl *ctl)
 	unsigned int *minor;
 	struct walb_disk_data *ddata;
 	size_t n;
-	
+
 	ASSERT(ctl);
 	ASSERT(ctl->command == WALB_IOCTL_LIST_DEV);
 
@@ -304,7 +304,7 @@ static int dispatch_ioctl(struct walb_ctl *ctl)
 {
 	int ret = 0;
 	ASSERT(ctl != NULL);
-	
+
 	switch(ctl->command) {
 	case WALB_IOCTL_START_DEV:
 		ret = ioctl_start_dev(ctl);
@@ -334,7 +334,7 @@ static int dispatch_ioctl(struct walb_ctl *ctl)
  *
  * @command ioctl command.
  * @user walb_ctl data in userland.
- * 
+ *
  * @return 0 in success,
  *	   -ENOTTY in invalid command,
  *	   -EFAULT in command failed.
@@ -354,7 +354,7 @@ static int ctl_ioctl(unsigned int command, struct walb_ctl __user *user)
 	if (ctl == NULL) { goto error0; }
 
 	ret = dispatch_ioctl(ctl);
-	
+
 	if (walb_put_ctl(user, ctl) != 0) {
 		LOGe("walb_put_ctl failed.\n");
 		goto error0;
@@ -370,7 +370,7 @@ static long walb_ctl_ioctl(
 {
 	int ret;
 	u32 version;
-	
+
 	if (command == WALB_IOCTL_VERSION) {
 		version = WALB_VERSION;
 		ret = __put_user(version, (u32 __user *)u);
@@ -419,7 +419,7 @@ void* walb_alloc_and_copy_from_user(
 	gfp_t gfp_mask)
 {
 	void *buf;
-	
+
 	if (buf_size == 0 || userbuf == NULL) {
 		goto error0;
 	}
@@ -459,7 +459,7 @@ int walb_copy_to_user_and_free(
 	size_t buf_size)
 {
 	int ret = 0;
-	
+
 	if (buf_size == 0 || userbuf == NULL || buf == NULL) {
 		ret = -1;
 		goto fin;
@@ -486,7 +486,7 @@ fin:
 struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
 {
 	struct walb_ctl *ctl;
-	
+
 	/* Allocate walb_ctl memory. */
 	ctl = kzalloc(sizeof(struct walb_ctl), gfp_mask);
 	if (ctl == NULL) {
@@ -562,10 +562,10 @@ int walb_put_ctl(void __user *userctl, struct walb_ctl *ctl)
 		LOGe("copy_to_user failed.\n");
 		goto error0;
 	}
-	
+
 	kfree(ctl);
 	return 0;
-	
+
 error0:
 	kfree(ctl);
 	return -1;
@@ -595,7 +595,7 @@ error0:
  */
 void walb_control_exit(void)
 {
-	
+
 	misc_deregister(&walb_misc_);
 }
 

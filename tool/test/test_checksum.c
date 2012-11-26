@@ -95,16 +95,16 @@ int main()
 	size_t s1, s2, s3;
 
 	init_random();
-	
+
 	printf("making sorted_random_array_index...\n");
 	make_sorted_random_array_index(mid, MID_SIZE, size, sizeof(u32));
-	
+
 	printf("making random array...\n");
 	buf = alloc_buf(size);
 	memset_random(buf, size);
 
 	gettimeofday(&tv, 0); t1 = time_double(&tv);
-	
+
 	csum1 = checksum(buf, size);
 	s1 = size;
 	gettimeofday(&tv, 0); t2 = time_double(&tv);
@@ -125,7 +125,7 @@ int main()
 	csum3 = checksum_finish(csum3tmp);
 	s3 = size;
 	gettimeofday(&tv, 0); t4 = time_double(&tv);
-	
+
 	printf("%u (%zu bytes %f sec)\n"
 		"%u (%zu bytes %f sec)\n"
 		"%u (%zu bytes %f sec)\n",
@@ -146,7 +146,7 @@ int main()
 		size, t2 - t1);
 	free_buf(buf2);
 #endif
-	
+
 	free_buf(buf);
 	return 0;
 }

@@ -30,7 +30,7 @@ unsigned int sizlist_length(const char* sizlist_str)
 	}
 	n = 1;
 	for (i = 0; i < len; i++) {
-		if (sizlist_str[i] == ',' && 
+		if (sizlist_str[i] == ',' &&
 			sizlist_str[i + 1] != '\0') {
 			n++;
 		}
@@ -42,7 +42,7 @@ unsigned int sizlist_length(const char* sizlist_str)
 /**
  * Get size data of an index in the list.
  * It returns 4096 for sizlist_nth_size("1m,2g,4k,8t", 2).
- * 
+ *
  * @sizlist_str size list string.
  * @n Specify index in the list. 0 <= n < sizlist_length(sizelist_str).
  * RETURN:

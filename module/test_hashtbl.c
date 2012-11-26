@@ -13,7 +13,7 @@
 static int __init test_hashtbl_init(void)
 {
 	printk(KERN_INFO "test_hashtbl_init begin\n");
-	
+
 	/* Hashmap test for debug. */
 	if (hashtbl_test()) {
 		printk(KERN_ERR "hashtbl_test() failed.\n");
@@ -26,7 +26,7 @@ static int __init test_hashtbl_init(void)
 	}
 
 	printk(KERN_INFO "test_hashtbl_init end\n");
-	
+
 error:
 	return -1;
 }

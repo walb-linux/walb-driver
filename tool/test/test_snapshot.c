@@ -36,16 +36,16 @@ void test(int sector_size, int n_snapshots)
 	ASSERT_SUPER_SECTOR(super_sect);
 
 	/* now editing */
-	
-	
+
+
 	/* Prepare snapshot data for userland. */
 
 	/* Write snapshot data. */
 
 	/* add several snapshot record */
-	
+
 	/* search snapshot record */
-	
+
 	/* delete snapshot record */
 
 	/* write all snapshot sectors. */
@@ -53,7 +53,7 @@ void test(int sector_size, int n_snapshots)
 	/* read all snapshot sectors. */
 
 	/* Check snapshot records are stored correctly. */
-	
+
 
 	close(fd);
 }

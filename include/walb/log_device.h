@@ -49,7 +49,7 @@
 
 /*
  * FORMAT: Meta data of the log device.
- * 
+ *
  * log_device_meta_data {
  *   DATA u8 reserved[PAGE_SIZE]
  *   DATA walb_super_sector super0
@@ -98,7 +98,7 @@
  *
  * @sector_size sector size.
  * @n_snapshots number snapshot to keep.
- * 
+ *
  * @return required metadata size by the sector.
  */
 static inline unsigned int get_metadata_size(
@@ -106,10 +106,10 @@ static inline unsigned int get_metadata_size(
 {
 	unsigned int n_sectors;
 	unsigned int t;
-	
+
 	ASSERT(PAGE_SIZE % sector_size == 0 &&
 		PAGE_SIZE >= sector_size);
-	
+
 	t = get_max_n_records_in_snapshot_sector(sector_size);
 	n_sectors = (n_snapshots + t - 1) / t;
 	return n_sectors;

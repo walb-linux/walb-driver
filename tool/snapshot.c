@@ -91,14 +91,14 @@ bool write_snapshot_sector(
 	ASSERT(fd >= 0);
 	ASSERT_SECTOR_DATA(super_sect);
 	ASSERT_SECTOR_DATA(snap_sect);
-	
+
 	const struct walb_super_sector *super
 		= get_super_sector_const(super_sect);
 	struct walb_snapshot_sector *snap
 		= get_snapshot_sector(snap_sect);
 	ASSERT(super->physical_bs == super_sect->size);
 	ASSERT(super->physical_bs == snap_sect->size);
-	
+
 	u32 sect_sz = super->physical_bs;
 	u32 meta_sz = super->snapshot_metadata_size;
 	if (idx >= meta_sz) {
@@ -144,14 +144,14 @@ bool read_snapshot_sector(
 		= get_super_sector_const(super_sect);
 	ASSERT(super->physical_bs == super_sect->size);
 	ASSERT(super->physical_bs == snap_sect->size);
-	
+
 	u32 sect_sz = super->physical_bs;
 	u32 meta_sz = super->snapshot_metadata_size;
 	if (idx >= meta_sz) {
 		LOGe("idx range over. idx: %u meta_sz: %u\n", idx, meta_sz);
 		return false;
 	}
-	
+
 	/* Read sector data and confirm checksum. */
 	u8 *sector_buf = (u8 *)snap_sect->data;
 	u64 off = get_metadata_offset_2(super) + idx;
@@ -163,7 +163,7 @@ bool read_snapshot_sector(
 		LOGe("checksum is invalid.\n");
 		return false;
 	}
-	
+
 	return true;
 }
 

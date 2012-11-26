@@ -39,7 +39,7 @@ enum {
 struct checkpoint_data
 {
 	/*
-	 * checkpoint_lock is used to access 
+	 * checkpoint_lock is used to access
 	 *   checkpoint_interval,
 	 *   checkpoint_state.
 	 */

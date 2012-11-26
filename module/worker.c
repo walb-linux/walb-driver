@@ -28,7 +28,7 @@ static int generic_worker(void *data);
 static int generic_worker(void *data)
 {
 	struct worker_data *wd = (struct worker_data *)data;
-	
+
 	ASSERT(wd);
 
 	while (!kthread_should_stop()) {
@@ -37,7 +37,7 @@ static int generic_worker(void *data)
 			test_bit(THREAD_WAKEUP, &wd->flags) || kthread_should_stop());
 
 		clear_bit(THREAD_WAKEUP, &wd->flags);
-		
+
 		if (!kthread_should_stop()) {
 			wd->run(wd->data);
 		}
@@ -63,7 +63,7 @@ void initialize_worker(
 	void *data)
 {
 	size_t len;
-	
+
 	ASSERT(wd);
 	ASSERT(run);
 
@@ -78,7 +78,7 @@ void initialize_worker(
 #ifdef WORKER_DEBUG
 	wd->count = 0;
 #endif
-	
+
 	wd->tsk = kthread_run(generic_worker, wd, wd->name);
 	ASSERT(wd->tsk);
 }
@@ -89,7 +89,7 @@ void initialize_worker(
 void wakeup_worker(struct worker_data *wd)
 {
 	ASSERT(wd);
-	
+
 	if (test_and_set_bit(THREAD_WAKEUP, &wd->flags) == 0) {
 		wake_up_interruptible(&wd->wait_q);
 #ifdef WORKER_DEBUG
@@ -106,7 +106,7 @@ void wakeup_worker(struct worker_data *wd)
 void finalize_worker(struct worker_data *wd)
 {
 	ASSERT(wd);
-	
+
 	kthread_stop(wd->tsk);
 	wait_for_completion(&wd->done);
 #ifdef WORKER_DEBUG

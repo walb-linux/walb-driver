@@ -45,14 +45,14 @@ void test(int pbs)
 	UNUSED struct logpack *logpack;
 	logpack = alloc_logpack(pbs, 1);
 	ASSERT(logpack);
-    
+
 	/* now editing */
 }
 
 int main()
 {
 	TEST_capacity_pb();
-    
+
 	test(512);
 	test(4096);
 	test(4096);

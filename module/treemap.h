@@ -65,7 +65,7 @@ struct tree_cell
 struct treemap_memory_manager
 {
 	bool is_kmem_cache;
-	
+
 	mempool_t* node_pool;
 	mempool_t* cell_head_pool;
 	mempool_t* cell_pool;

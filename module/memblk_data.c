@@ -63,7 +63,7 @@ static void __memblk_data_blocks_io(struct memblk_data *mdata, u64 block_id, u32
 {
 	u64 ui;
 	unsigned int offset = 0;
-	
+
 	ASSERT(mdata);
 	ASSERT(data);
 	for (ui = 0; ui < n_blocks; ui++) {
@@ -87,10 +87,10 @@ static void __memblk_data_block_io(struct memblk_data *mdata, u64 block_id, u8 *
 	ASSERT(mdata);
 	ASSERT(block_id < mdata->capacity);
 	ASSERT(data);
-	
+
 	buf = mdata_get_block(mdata, block_id);
 	ASSERT(buf);
-	
+
 	if (is_write) {
 		src = data;
 		dst = buf;
@@ -153,7 +153,7 @@ struct memblk_data* mdata_create(u64 capacity, u32 block_size, gfp_t gfp_mask,
 		/* LOGd("allocate ui %"PRIu64" addr %p.\n", ui, (void *)addr); */
 	}
 	return mdata;
-	
+
 error1:
 	mdata_destroy(mdata);
 error0:
@@ -279,14 +279,14 @@ bool test_memblk_data_simple(u64 capacity, const u32 block_size)
 	u64 b_id;
 	UNUSED u8 *data;
 	struct treemap_memory_manager mmgr;
-	
+
 	ASSERT(capacity > 0);
 	mdata_assert_block_size(block_size);
 
 	if (!initialize_treemap_memory_manager_kmalloc(&mmgr, 1)) {
 		goto error0;
 	}
-	
+
 	mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr);
 	if (!mdata) {
 		LOGe("create_memblk_data failed.\n");
@@ -332,7 +332,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 
 	ret = initialize_treemap_memory_manager_kmalloc(&mmgr, 1);
 	ASSERT(ret);
-	
+
 	mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr);
 	WALB_CHECK(mdata);
 
@@ -345,7 +345,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 	/* LOGd("data1: %s\n", strbuf); */
 	sprint_hex(strbuf, PAGE_SIZE, data2, 128);
 	/* LOGd("data2: %s\n", strbuf); */
-	
+
 	/* First block */
 	addr = 0;
 	get_random_bytes(data1, PAGE_SIZE);
@@ -356,7 +356,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 	/* LOGd("data1: %s\n", strbuf); */
 	sprint_hex(strbuf, PAGE_SIZE, data2, 128);
 	/* LOGd("data2: %s\n", strbuf); */
-	
+
 	WALB_CHECK(memcmp(data1, data2, block_size) == 0);
 
 	/* Last block */
@@ -374,10 +374,10 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 		mdata_read_blocks(mdata, 0, 2, data2);
 		WALB_CHECK(memcmp(data1, data2, block_size * 2) == 0);
 	}
-	
+
 	/* Random area */
 	for (i = 0; i < 10; i++) {
-		
+
 		addr = get_random_addr(capacity - 4);
 		get_random_bytes(data1, PAGE_SIZE);
 
@@ -388,7 +388,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 
 		mdata_write_blocks(mdata, addr, size, data1);
 		mdata_read_blocks(mdata, addr, size, data2);
-		
+
 		WALB_CHECK(memcmp(data1, data2, size * block_size) == 0);
 	}
 

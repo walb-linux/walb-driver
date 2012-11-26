@@ -19,11 +19,11 @@ static int __init test_init(void)
 	size_t i, kbytes;
 	struct timespec ts_bgn, ts_end, ts_time;
 	u8 *p;
-	
+
 	LOGe("BUILD_DATE %s\n", BUILD_DATE);
 
 	for (kbytes = 1; kbytes < 1024 * 32 + 1; kbytes *= 2) {
-	
+
 		getnstimeofday(&ts_bgn);
 		p = vmalloc(kbytes * 1024);
 		if (!p) {
@@ -41,7 +41,7 @@ static int __init test_init(void)
 
 		vfree(p);
 	}
-	
+
 	return -1;
 }
 
