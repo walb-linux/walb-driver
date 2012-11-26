@@ -85,10 +85,10 @@ bool sector_io(
 	page = virt_to_page(buf);
 
 	LOGd("sector %lu "
-		"page %p buf %p sectorsize %d offset %lu rw %d\n",
+		"page %p buf %p sectorsize %d offset %lu rw %lu\n",
 		(unsigned long)(addr * (pbs / lbs)),
 		virt_to_page(buf), buf,
-		pbs, offset_in_page(buf), rw);
+		pbs, offset_in_page(buf), bi_rw);
 
 	bio->bi_rw = bi_rw;
 	bio->bi_bdev = bdev;
