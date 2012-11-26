@@ -89,25 +89,23 @@ static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
 {
 	u32 idx;
 	struct hlist_node *node, *next;
-	struct hash_cell *cell, *ret;
+	struct hash_cell *cell;
 	
 	ASSERT_HASHTBL(htbl);
 
 	idx = hashtbl_get_index(htbl, key, key_size);
 
-	ret = NULL;
 	hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[idx], list) {
 
 		ASSERT_HASHCELL(cell);
 		if (cell->key_size == key_size &&
 			memcmp(cell->key, key, key_size) == 0) {
 
-			ret = cell;
 			return cell;
 		}		 
 	}
 	/* LOGd("hashtbl_lookup_cell end\n"); */
-	return ret;
+	return NULL;
 }
 
 /**
