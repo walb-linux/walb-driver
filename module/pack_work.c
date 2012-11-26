@@ -43,7 +43,7 @@ struct pack_work* create_pack_work(void *data, gfp_t gfp_mask)
 		goto error0;
 	}
 	pwork->data = data;
-	
+
 	return pwork;
 error0:
 	return NULL;
@@ -79,7 +79,7 @@ struct pack_work* enqueue_task_if_necessary(
 
 	ASSERT(task);
 	ASSERT(wq);
-	
+
 retry:
 	if (!test_and_set_bit(nr, flags_p)) {
 		pwork = create_pack_work(data, GFP_NOIO);
@@ -123,7 +123,7 @@ struct pack_work* enqueue_delayed_task_if_necessary(
 
 	ASSERT(task);
 	ASSERT(wq);
-	
+
 retry:
 	if (!test_and_set_bit(nr, flags_p)) {
 		pwork = create_pack_work(data, GFP_NOIO);

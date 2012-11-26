@@ -53,7 +53,7 @@ static inline void print_bio_flags(struct bio *bio)
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
-		"%s%s%s%s\n", 
+		"%s%s%s%s\n",
 		((bio->bi_rw & REQ_WRITE) ?		  "REQ_WRITE" : ""),
 		((bio->bi_rw & REQ_FAILFAST_DEV) ?	  " REQ_FAILFAST_DEV" : ""),
 		((bio->bi_rw & REQ_FAILFAST_TRANSPORT) ? " REQ_FAILFAST_TRANSPORT" : ""),

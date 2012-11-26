@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 		goto error0;
 	}
 	const char *dev_name = argv[1];
-	
+
 	if (check_bdev(dev_name) < 0) {
 		LOGe("Check block device failed %s.\n", dev_name);
 		goto error0;
@@ -52,10 +52,10 @@ int main(int argc, char *argv[])
 		perror("trim is not supported.");
 		goto error1;
 	}
-	
+
 	close(fd);
 	return 0;
-	
+
 error1:
 	close(fd);
 error0:

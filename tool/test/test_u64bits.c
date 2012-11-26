@@ -73,12 +73,12 @@ int main()
 		}
 	}
 	ASSERT(is_the_same(bit_ary, &bits));
-	
+
 	/* Randomly set and check. */
 	for (i = 0; i < 100000; i++) {
 
 		int j = get_random(64);
-		
+
 		if (get_random(2)) {
 			bit_ary[j] = 1;
 			set_u64bits(j, &bits);
@@ -86,9 +86,9 @@ int main()
 			bit_ary[j] = 0;
 			clear_u64bits(j, &bits);
 		}
-		
+
 		ASSERT(is_the_same(bit_ary, &bits));
-	}	 
+	}
 
 	return 0;
 }

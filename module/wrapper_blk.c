@@ -129,7 +129,7 @@ bool wrdev_unregister(unsigned int minor)
 	if (!wrdev) {
 		LOGe("Not found device with minor %u.\n", minor);
 		return false;
-	}	 
+	}
 	fin_queue_and_disk(wrdev);
 	return true;
 }
@@ -142,14 +142,14 @@ EXPORT_SYMBOL_GPL(wrdev_unregister);
 bool wrdev_start(unsigned int minor)
 {
 	struct wrapper_blk_dev *wrdev;
-	
+
 	wrdev = get_from_devices(minor);
 	if (!wrdev) {
 		LOGe("Not found device with minor %u.\n", minor);
 		goto error0;
 	}
 	ASSERT_WRAPPER_BLK_DEV(wrdev);
-		
+
 	if (test_and_set_bit(0, &wrdev->is_started)) {
 		LOGe("Device with minor %u already started.\n", minor);
 		goto error0;
@@ -170,7 +170,7 @@ EXPORT_SYMBOL_GPL(wrdev_start);
 bool wrdev_stop(unsigned int minor)
 {
 	struct wrapper_blk_dev *wrdev;
-	
+
 	wrdev = get_from_devices(minor);
 	if (!wrdev) {
 		LOGe("Not found device with minor %u.\n", minor);
@@ -178,7 +178,7 @@ bool wrdev_stop(unsigned int minor)
 	}
 
 	ASSERT_WRAPPER_BLK_DEV(wrdev);
-	
+
 	if (test_and_clear_bit(0, &wrdev->is_started)) {
 		ASSERT(wrdev->gd);
 		del_gendisk(wrdev->gd);
@@ -246,7 +246,7 @@ static int wrapper_blk_ioctl(struct block_device *bdev, fmode_t mode,
 static void init_devices(void)
 {
 	int i;
-	
+
 	for (i = 0; i < MAX_N_DEVICES; i++) {
 		devices_.wrdev[i] = NULL;
 	}
@@ -302,7 +302,7 @@ static struct wrapper_blk_dev* del_from_devices(unsigned int minor)
 static struct wrapper_blk_dev* get_from_devices(unsigned int minor)
 {
 	struct wrapper_blk_dev *wrdev;
-	
+
 	if (minor >= MAX_N_DEVICES) {
 		return NULL;
 	}
@@ -326,14 +326,14 @@ static struct wrapper_blk_dev* alloc_and_partial_init_wrdev(
 	unsigned int minor, u64 capacity, unsigned int pbs)
 {
 	struct wrapper_blk_dev *wrdev;
-	
+
 	/* Allocate */
 	wrdev = ZALLOC(sizeof(struct wrapper_blk_dev), GFP_KERNEL);
 	if (wrdev == NULL) {
 		LOGe("memory allocation failed.\n");
 		goto error0;
 	}
-	
+
 	/* Initialize */
 	wrdev->minor = minor;
 	wrdev->capacity = capacity;
@@ -421,7 +421,7 @@ static bool init_queue_and_disk(struct wrapper_blk_dev *wrdev)
 {
 	struct request_queue *q;
 	struct gendisk *gd;
-	
+
 	ASSERT(wrdev);
 
 	/* Cleanup */
@@ -458,7 +458,7 @@ static bool init_queue_and_disk(struct wrapper_blk_dev *wrdev)
 
 	/* Accept REQ_FLUSH and REQ_FUA. */
 	/* Do nothing. */
-	
+
 	q->queuedata = wrdev;
 	wrdev->queue = q;
 
@@ -470,7 +470,7 @@ static bool init_queue_and_disk(struct wrapper_blk_dev *wrdev)
 	}
 	gd->major = wrapper_blk_major_;
 	gd->first_minor = wrdev->minor;
-	
+
 	gd->fops = &wrapper_blk_ops_;
 	gd->queue = wrdev->queue;
 	gd->private_data = wrdev;
@@ -521,7 +521,7 @@ static void stop_and_unregister_all_devices(void)
 {
 	int i;
 	struct wrapper_blk_dev *wrdev;
-	
+
 	for (i = 0; i < MAX_N_DEVICES; i++) {
 		wrdev = get_from_devices(i);
 		if (wrdev) {
@@ -539,7 +539,7 @@ static void stop_and_unregister_all_devices(void)
 static int __init wrapper_blk_init(void)
 {
 	LOGi("Wrapper-blk module init.\n");
-	
+
 	/* Register a block device module. */
 	wrapper_blk_major_ = register_blkdev(wrapper_blk_major_, WRAPPER_BLK_NAME);
 	if (wrapper_blk_major_ <= 0) {
@@ -556,7 +556,7 @@ static int __init wrapper_blk_init(void)
 	init_devices();
 
 	return 0;
-	
+
 error0:
 	unregister_blkdev(wrapper_blk_major_, WRAPPER_BLK_NAME);
 	return -ENOMEM;

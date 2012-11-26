@@ -17,7 +17,7 @@
 void init_checkpointing(struct checkpoint_data *cpd)
 {
 	ASSERT(cpd);
-	
+
 	init_rwsem(&cpd->lock);
 	cpd->interval = WALB_DEFAULT_CHECKPOINT_INTERVAL;
 	cpd->state = CP_STOPPED;
@@ -68,7 +68,7 @@ void task_do_checkpointing(struct work_struct *work)
 	unsigned long interval;
 	long delay, sync_time, next_delay;
 	int ret;
-	
+
 	struct delayed_work *dwork =
 		container_of(work, struct delayed_work, work);
 	struct checkpoint_data *cpd =
@@ -162,7 +162,7 @@ void start_checkpointing(struct checkpoint_data *cpd)
 		return;
 	}
 	ASSERT(interval > 0);
-	
+
 	delay = msecs_to_jiffies(interval);
 	ASSERT(delay > 0);
 	INIT_DELAYED_WORK(&cpd->dwork, task_do_checkpointing);
@@ -212,7 +212,7 @@ void stop_checkpointing(struct checkpoint_data *cpd)
 u32 get_checkpoint_interval(struct checkpoint_data *cpd)
 {
 	u32 interval;
-	
+
 	down_read(&cpd->lock);
 	interval = cpd->interval;
 	up_read(&cpd->lock);
@@ -231,7 +231,7 @@ void set_checkpoint_interval(struct checkpoint_data *cpd, u32 interval)
 	down_write(&cpd->lock);
 	cpd->interval = interval;
 	up_write(&cpd->lock);
-	
+
 	stop_checkpointing(cpd);
 	start_checkpointing(cpd);
 }

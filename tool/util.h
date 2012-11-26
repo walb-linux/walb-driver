@@ -68,7 +68,7 @@ bool sector_array_pwrite_lb(
 	const struct sector_data_array *sect_ary,
 	unsigned int idx_lb, unsigned int n_lb);
 bool sector_array_read(
-	int fd, 
+	int fd,
 	struct sector_data_array *sect_ary,
 	unsigned int start_idx, unsigned int n_sectors);
 bool sector_array_write(

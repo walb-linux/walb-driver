@@ -24,7 +24,7 @@
 #define ASSERT_PBS(pbs) ASSERT(is_valid_pbs(pbs))
 
 /*******************************************************************************
- * Prototype of static inline functions. 
+ * Prototype of static inline functions.
  *******************************************************************************/
 
 static inline int is_valid_lbs_pbs(unsigned int lbs, unsigned int pbs);
@@ -39,7 +39,7 @@ static inline u64 addr_lb(unsigned int pbs, u64 addr_pb);
 static inline u64 capacity_lb(unsigned int pbs, u64 capacity_pb);
 
 /*******************************************************************************
- * Definition of static inline functions. 
+ * Definition of static inline functions.
  *******************************************************************************/
 
 /**

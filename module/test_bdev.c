@@ -30,7 +30,7 @@ static int __init test_init(void)
 	dev_t dev;
 	int err = 0;
 	struct block_device *bdev;
-	
+
 	LOGe("BUILD_DATE %s\n", BUILD_DATE);
 
 	if (path_) {
@@ -42,7 +42,7 @@ static int __init test_init(void)
 		}
 		blkdev_put(bdev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 	}
-	
+
 	if (major_ != UINT_MAX && minor_ != UINT_MAX) {
 		dev = MKDEV(major_, minor_);
 		bdev = blkdev_get_by_dev(
@@ -56,7 +56,7 @@ static int __init test_init(void)
 	LOGn("succeeded.\n");
 	return -1;
 
-error0:	
+error0:
 	LOGn("failed %d.\n", err);
 	return -1;
 }

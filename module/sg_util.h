@@ -30,10 +30,10 @@ bool sg_copy_to_sg_offset(
 
 /* Copy from/to a buffer to/from a scatterlist. */
 bool sg_copy_to_buffer_offset(
-	const struct sg_table *sgt, unsigned int offset, 
+	const struct sg_table *sgt, unsigned int offset,
 	u8 *buf, unsigned int size);
 bool sg_copy_from_buffer_offset(
-	struct sg_table *sgt, unsigned int offset, 
+	struct sg_table *sgt, unsigned int offset,
 	const u8 *buf, unsigned int size);
 
 /* Test original scatterlist functionalities. */

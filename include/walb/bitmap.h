@@ -1,6 +1,6 @@
 /**
  * bitmap.h - Bitmap functions.
- * 
+ *
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #ifndef WALB_BITMAP_H
@@ -108,7 +108,7 @@ static inline int walb_bitmap_get(struct walb_bitmap *bmp, size_t idx)
 	size_t off = idx % 8;
 
 	return (bmp->ary[ary_idx] & ((u8)1 << off));
-}		 
+}
 
 /**
  * Test all bits are on.
@@ -124,11 +124,11 @@ static inline int walb_bitmap_is_all_on(struct walb_bitmap *bmp)
 
 	if (n_bit_in_last_byte == 0)
 		n_bit_in_last_byte = 8;
-	
+
 	for (i = 0; i < ary_size - 1; i++)
 		if (bmp->ary[i] != 0xff)
 			return 0;
-	
+
 	for (i = 0; i < n_bit_in_last_byte; i++) {
 		if (! (bmp->ary[ary_size - 1] & (1 << i))) {
 			return 0;
@@ -151,11 +151,11 @@ static inline int walb_bitmap_is_all_off(struct walb_bitmap *bmp)
 
 	if (n_bit_in_last_byte == 0)
 		n_bit_in_last_byte = 8;
-	
+
 	for (i = 0; i < ary_size - 1; i++)
 		if (bmp->ary[i] != 0)
 			return 0;
-	
+
 	for (i = 0; i < n_bit_in_last_byte; i++) {
 		if ((bmp->ary[ary_size - 1] & (1 << i))) {
 			return 0;

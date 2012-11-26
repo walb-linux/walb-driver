@@ -70,7 +70,7 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
 	block_id = (u64)sector;
 
 	is_write = bio->bi_rw & REQ_WRITE;
-	
+
 	bio_for_each_segment(bvec, bio, i) {
 		ASSERT(bvec->bv_len % mdata->block_size == 0);
 		n_blk = bvec->bv_len / mdata->block_size;
@@ -138,7 +138,7 @@ bool create_private_data(struct simple_blk_dev *sdev)
 	capacity = sdev->capacity;
 	block_size = LOGICAL_BLOCK_SIZE;
 	mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr_);
-	
+
 	if (!mdata) {
 		goto error0;
 	}

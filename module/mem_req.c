@@ -105,7 +105,7 @@ static void log_bi_rw_flag(struct bio *bio)
 	LOGd("bio bi_sector %"PRIu64" %0lx bi_size %u bi_vcnt %hu "
 		"bi_rw %0lx [%s][%s][%s][%s][%s][%s].\n",
 		(u64)bio->bi_sector, bio->bi_sector, bio->bi_size, bio->bi_vcnt,
-		bio->bi_rw, 
+		bio->bi_rw,
 		(bio->bi_rw & REQ_WRITE ? "REQ_WRITE" : ""),
 		(bio->bi_rw & REQ_RAHEAD? "REQ_RAHEAD" : ""),
 		(bio->bi_rw & REQ_FLUSH ? "REQ_FLUSH" : ""),
@@ -161,14 +161,14 @@ static struct req_list_work* create_req_list_work(
 	struct req_list_work *rlwork;
 
 	ASSERT(sdev);
-	
+
 	rlwork = kmem_cache_alloc(req_list_work_cache_, gfp_mask);
 	if (!rlwork) {
 		goto error0;
 	}
 	rlwork->sdev = sdev;
 	INIT_LIST_HEAD(&rlwork->req_ent_list);
-	
+
 	return rlwork;
 error0:
 	return NULL;
@@ -186,19 +186,19 @@ static struct req_entry* create_req_entry(struct request *req, gfp_t gfp_mask)
 	struct req_entry *reqe;
 
 	ASSERT(req);
-	
+
 	reqe = kmem_cache_alloc(req_entry_cache_, gfp_mask);
 	if (!reqe) {
 		goto error0;
 	}
 	reqe->req = req;
 	INIT_LIST_HEAD(&reqe->list);
-	
+
 	return reqe;
 error0:
 	return NULL;
 }
-	
+
 static void destroy_req_entry(struct req_entry *reqe)
 {
 	if (reqe) {
@@ -219,7 +219,7 @@ static void normal_io_task(struct work_struct *work)
 		container_of(work, struct req_list_work, work);
 	struct memblk_data *mdata = get_mdata_from_sdev(rlwork->sdev);
 	struct req_entry *reqe, *next;
-	
+
 	list_for_each_entry_safe(reqe, next, &rlwork->req_ent_list, list) {
 
 		ASSERT(reqe->req);
@@ -247,7 +247,7 @@ static bool mdata_exec_req_special(struct memblk_data *mdata, struct request *re
 {
 	unsigned int io_size = blk_rq_bytes(req);
 	u64 block_id = (u64)blk_rq_pos(req);
-	
+
 	if (req->cmd_flags & REQ_DISCARD) {
 		mdata_exec_discard(mdata, block_id, io_size / mdata->block_size);
 		return true;
@@ -262,7 +262,7 @@ static bool mdata_exec_req_special(struct memblk_data *mdata, struct request *re
 		LOGd("REQ_FUA\n");
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -294,7 +294,7 @@ static void mdata_exec_req(struct memblk_data *mdata, struct request *req)
 		blk_end_request_all(req, 0);
 		return;
 	}
-	
+
 	is_write = req->cmd_flags & REQ_WRITE;
 
 	rq_for_each_segment(bvec, req, iter) {
@@ -325,7 +325,7 @@ static void mdata_exec_req(struct memblk_data *mdata, struct request *req)
 
 /**
  * With workqueue.
- */ 
+ */
 void simple_blk_req_request_fn(struct request_queue *q)
 {
 	struct simple_blk_dev *sdev = get_sdev_from_queue(q);
@@ -378,11 +378,11 @@ bool create_private_data(struct simple_blk_dev *sdev)
 	unsigned int block_size;
 
 	ASSERT(sdev);
-	
+
 	capacity = sdev->capacity;
 	block_size = LOGICAL_BLOCK_SIZE;
 	mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr_);
-	
+
 	if (!mdata) {
 		goto error0;
 	}
@@ -418,7 +418,7 @@ void customize_sdev(struct simple_blk_dev *sdev)
 	struct request_queue *q;
 	ASSERT(sdev);
 	q = sdev->queue;
-	
+
 	/* Accept REQ_DISCARD. */
 #if 0
 	q->limits.discard_granularity = PAGE_SIZE;
@@ -468,9 +468,9 @@ bool pre_register(void)
 			TREE_CELL_CACHE_NAME)) {
 		goto error3;
 	}
-	
+
 	return true;
-	
+
 #if 0
 error4:
 	finalize_treemap_memory_manager(&mmgr_);

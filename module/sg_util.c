@@ -42,7 +42,7 @@ static bool sg_pos_go_forward(struct sg_pos *pos, unsigned int size);
 static void *sg_pos_virt(const struct sg_pos *pos);
 
 static bool __sg_copy_buffer_offset(
-	struct sg_table *sgt, unsigned int offset, 
+	struct sg_table *sgt, unsigned int offset,
 	u8 *buf, unsigned int size, bool is_to_buffer);
 
 #define ASSERT_SG_POS(pos) sg_pos_assert(pos)
@@ -90,10 +90,10 @@ static bool sg_pos_get(const struct sg_table *sgt, struct sg_pos *pos, unsigned 
 {
 	struct scatterlist *sg;
 	unsigned int off;
-	
+
 	ASSERT(sgt);
 	ASSERT(pos);
-	
+
 	sg = sgt->sgl; ASSERT(sg);
 	off = 0;
 	while (off + sg->length <= offset) {
@@ -195,7 +195,7 @@ unsigned int sg_data_length(const struct sg_table *sgt)
 	unsigned int ret = 0;
 	struct scatterlist *sg;
 	int i;
-	
+
 	ASSERT(sgt);
 	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
 		ret += sg->length;
@@ -225,7 +225,7 @@ bool sg_copy_to_sg_offset(
 	LOGd("dst(off %u len %u) src(off %u len %u) size %u\n",
 		dst_offset, sg_data_length(dst),
 		src_offset, sg_data_length(src), size);
-	
+
 	if (!sg_pos_get(dst, &dst_pos, dst_offset)) { return false; }
 	if (!sg_pos_get(src, &src_pos, src_offset)) { return false; }
 
@@ -270,7 +270,7 @@ bool sg_fill_zero_offset(struct sg_table *sgt, unsigned int offset, unsigned int
 {
 	struct sg_pos pos;
 	unsigned int remaining = size, tmp_size;
-	
+
 	ASSERT(sgt);
 
 	if (!sg_pos_get(sgt, &pos, offset)) { return false; }
@@ -327,7 +327,7 @@ void sg_free_pages(struct sg_table *sgt)
 	int i;
 	struct scatterlist *sg;
 	struct page *page;
-	
+
 	if (!sgt) { return; }
 
 	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
@@ -348,7 +348,7 @@ void sg_free_pages(struct sg_table *sgt)
  * @is_to_buffer true for from-sg-to-buffer copy.
  */
 static bool __sg_copy_buffer_offset(
-	struct sg_table *sgt, unsigned int offset, 
+	struct sg_table *sgt, unsigned int offset,
 	u8 *buf, unsigned int size, bool is_to_buffer)
 {
 	struct sg_pos pos;
@@ -358,7 +358,7 @@ static bool __sg_copy_buffer_offset(
 
 	ASSERT(sgt);
 	ASSERT(buf);
-	
+
 	if (!sg_pos_get(sgt, &pos, offset)) { return false; }
 	while (remaining > 0) {
 		tmp_size = min(remaining, sg_pos_fragment_size(&pos));
@@ -382,7 +382,7 @@ static bool __sg_copy_buffer_offset(
  * true in success, or false.
  */
 bool sg_copy_to_buffer_offset(
-	const struct sg_table *sgt, unsigned int offset, 
+	const struct sg_table *sgt, unsigned int offset,
 	u8 *buf, unsigned int size)
 {
 	return __sg_copy_buffer_offset((struct sg_table *)sgt, offset, buf, size, true);
@@ -394,7 +394,7 @@ bool sg_copy_to_buffer_offset(
  * true in success, or false.
  */
 bool sg_copy_from_buffer_offset(
-	struct sg_table *sgt, unsigned int offset, 
+	struct sg_table *sgt, unsigned int offset,
 	const u8 *buf, unsigned int size)
 {
 	return __sg_copy_buffer_offset(sgt, offset, (u8 *)buf, size, false);
@@ -426,7 +426,7 @@ void test_scatterlist(unsigned int nents, unsigned int entsize)
 	for (i = 0; i < PAGE_SIZE; i++) {
 		tmp_data[i] = 0xff;
 	}
-	
+
 	/* Allocate sg and pages which are zero-cleared. */
 	sg_alloc_table(&sgt, nents, GFP_KERNEL);
 	for_each_sg(sgt.sgl, sg, sgt.nents, i) {
@@ -492,7 +492,7 @@ static void alloc_sg_and_pages_randomly(
 	struct scatterlist *sg;
 	unsigned int siz, off;
 	struct page *page;
-	
+
 	ASSERT(sgt);
 	ASSERT(nents > 0);
 	ASSERT(min_entsize > 0);
@@ -500,7 +500,7 @@ static void alloc_sg_and_pages_randomly(
 	ASSERT(max_entsize <= PAGE_SIZE);
 
 	LOGd("alloc_sg_and_pages_randomly() begin.\n");
-	
+
 	ret = sg_alloc_table(sgt, nents, GFP_KERNEL);
 	ASSERT(!ret);
 
@@ -524,7 +524,7 @@ static void free_sg_and_pages(struct sg_table *sgt)
 	int i;
 	struct scatterlist *sg;
 	struct page *page;
-	
+
 	LOGd("free_sg_and_pages begin.\n");
 	ASSERT(sgt);
 	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
@@ -576,14 +576,14 @@ void test_sg_pos(void)
 	/* Check sg_pos_go_forward() functionality. */
 	{
 		/* Do not move */
-		ret = sg_pos_get(&sgt, &pos, 0); 
+		ret = sg_pos_get(&sgt, &pos, 0);
 		ASSERT(ret);
 		sg_pos_go_forward(&pos, 0);
 		ASSERT(ret);
 	}
 	{
 		/* End */
-		ret = sg_pos_get(&sgt, &pos, 0); 
+		ret = sg_pos_get(&sgt, &pos, 0);
 		ASSERT(ret);
 		sg_pos_go_forward(&pos, PAGE_SIZE);
 		ASSERT(ret);
@@ -595,7 +595,7 @@ void test_sg_pos(void)
 		sg_pos_go_forward(&pos, get_random_u32_max(PAGE_SIZE - pos.total_offset));
 		ASSERT(ret);
 	}
-	
+
 	/* Free the scatterlist and the page. */
 	free_sg_and_pages(&sgt);
 	free_page((unsigned long)tmp_data);
@@ -656,7 +656,7 @@ void test_sg_util(void)
 	LOGd("sgt1 data length is %u\n", sg_data_length(&sgt1));
 	ASSERT(sg_data_length(&sgt0) >= PAGE_SIZE);
 	ASSERT(sg_data_length(&sgt1) >= PAGE_SIZE);
-	
+
 	/* Make random data */
 	get_random_bytes(tmp_data0, PAGE_SIZE);
 
@@ -668,7 +668,7 @@ void test_sg_util(void)
 	sg_copy_to_buffer(sgt1.sgl, sgt1.nents, tmp_data1, PAGE_SIZE);
 	/* Check */
 	ASSERT(memcmp(tmp_data0, tmp_data1, PAGE_SIZE) == 0);
-	
+
 	/* Copy data with random offsets */
 	sgt0_off = (unsigned int)get_random_u32_max(sg_data_length(&sgt0) - PAGE_SIZE);
 	sgt1_off = (unsigned int)get_random_u32_max(sg_data_length(&sgt1) - PAGE_SIZE);
@@ -692,7 +692,7 @@ void test_sg_util(void)
 		__free_page(page);
 	}
 	sg_free_table(&sgt0);
-	
+
 	/* Free tmp page. */
 	free_page((unsigned long)tmp_data1);
 	free_page((unsigned long)tmp_data0);

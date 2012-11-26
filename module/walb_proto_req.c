@@ -142,15 +142,15 @@ struct pdata
 			     All previous logpacks of the logpack with
 			     the written_lsid have been stored.
 			     lsid_lock must be held. */
-	
+
 	spinlock_t lsuper0_lock; /* Use spin_lock() and spin_unlock(). */
 	struct sector_data *lsuper0; /* lsuper0_lock must be held
 					to access the sector image. */
 
 	/* To avoid lock lsuper0 during request processing. */
-	u64 ring_buffer_off; 
+	u64 ring_buffer_off;
 	u64 ring_buffer_size;
-	
+
 	/* bit 0: all write must failed.
 	   bit 1: logpack submit task working.
 	   bit 2: logpack wait task working. */
@@ -181,7 +181,7 @@ struct pdata
 					      must be held. */
 	atomic_t n_logpack_gc_queue;
 	struct worker_data gc_worker_data; /* for gc worker. */
-	
+
 	unsigned int max_logpack_pb; /* Maximum logpack size [physical block].
 					This will be used for logpack size
 					not to be too long
@@ -201,7 +201,7 @@ struct pdata
 					      val: pointer to req_entry. */
 	unsigned int max_req_sectors_in_overlapping; /* Maximum request size [logical block]. */
 #endif
-	
+
 #ifdef WALB_FAST_ALGORITHM
 	/**
 	 * All req_entry data must keep
@@ -211,7 +211,7 @@ struct pdata
 	struct multimap *pending_data; /* key: blk_rq_pos(req),
 					  val: pointer to req_entry. */
 	unsigned int max_req_sectors_in_pending; /* Maximum request size [logical block]. */
-	
+
 	unsigned int pending_sectors; /* Number of sectors pending
 					 [logical block]. */
 	unsigned int max_pending_sectors; /* max_pending_sectors < pending_sectors
@@ -456,7 +456,7 @@ static void task_periodic_print(struct work_struct *work)
 		atomic_read(&pdata_->n_logpack_submit_queue),
 		atomic_read(&pdata_->n_logpack_wait_queue),
 		atomic_read(&pdata_->n_logpack_gc_queue));
-	
+
 fin:
 	INIT_DELAYED_WORK(dwork, task_periodic_print);
 	queue_delayed_work(system_wq, dwork,
@@ -467,7 +467,7 @@ static void start_periodic_print_for_debug(struct pdata *pdata)
 {
 	ASSERT(pdata);
 	pdata_ = pdata;
-	
+
 	INIT_DELAYED_WORK(&shared_dwork_, task_periodic_print);
 	queue_delayed_work(system_wq, &shared_dwork_,
 			msecs_to_jiffies(PERIODIC_PRINT_INTERVAL_MS));
@@ -534,7 +534,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	struct walb_super_sector *ssect;
 	struct request_queue *lq, *dq;
 	int ret;
-	
+
 	LOGd("create_private_data called");
 
 	/* Allocate pdata. */
@@ -565,7 +565,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 		goto error12;
 	}
 	pdata->max_req_sectors_in_pending = 0;
-	
+
 	pdata->pending_sectors = 0;
 	pdata->max_pending_sectors = max_pending_mb_
 		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
@@ -576,7 +576,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	pdata->queue_stop_timeout_ms = queue_stop_timeout_ms_;
 	pdata->queue_restart_jiffies = jiffies;
 	LOGn("queue stop timeout: %u ms\n", queue_stop_timeout_ms_);
-	
+
 	pdata->is_queue_stopped = false;
 #endif
 	/* open underlying log device. */
@@ -605,7 +605,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	lbs = bdev_logical_block_size(ddev);
 	pbs = bdev_physical_block_size(ddev);
 	LOGn("pbs: %u lbs: %u\n", pbs, lbs);
-	
+
 	if (lbs != LOGICAL_BLOCK_SIZE) {
 		LOGe("logical block size must be %u but %u.\n",
 			LOGICAL_BLOCK_SIZE, lbs);
@@ -630,7 +630,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	pdata->max_logpack_pb = (max_logpack_size_kb_ * 1024) / pbs;
 	LOGn("max_logpack_size_kb: %u max_logpack_pb: %u\n",
 		max_logpack_size_kb_, pdata->max_logpack_pb);
-	
+
 	/* Set underlying devices. */
 	pdata->ldev = ldev;
 	pdata->ddev = ddev;
@@ -652,7 +652,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	pdata->ring_buffer_size = ssect->ring_buffer_size;
 	pdata->ring_buffer_off = get_ring_buffer_offset_2(ssect);
 	pdata->flags = 0;
-	
+
 	/* capacity */
 	wrdev->capacity = ddev->bd_part->nr_sects;
 	set_capacity(wrdev->gd, wrdev->capacity);
@@ -701,7 +701,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	}
 	LOGn("chunk_sectors ldev %u ddev %u.\n",
 		pdata->ldev_chunk_sectors, pdata->ddev_chunk_sectors);
-	
+
 	/* Prepare logpack submit/wait queue. */
 	spin_lock_init(&pdata->logpack_submit_queue_lock);
 	spin_lock_init(&pdata->logpack_wait_queue_lock);
@@ -727,7 +727,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	}
 	initialize_worker(&pdata->gc_worker_data,
 			run_gc_logpack_list, (void *)wrdev);
-	
+
 	return true;
 
 error5:
@@ -758,7 +758,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wrdev)
 	struct walb_super_sector *ssect;
 
 	LOGd("destoroy_private_data called.");
-	
+
 	pdata = wrdev->private_data;
 	if (!pdata) { return; }
 	ASSERT(pdata);
@@ -775,7 +775,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wrdev)
 	if (!walb_write_super_sector(pdata->ldev, pdata->lsuper0)) {
 		LOGe("super block write failed.\n");
 	}
-	
+
 	/* close underlying devices. */
 	blkdev_put(pdata->ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 	blkdev_put(pdata->ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
@@ -829,7 +829,7 @@ static void customize_wrdev(struct wrapper_blk_dev *wrdev)
 	} else {
 		LOGn("Not support REQ_DISCARD.");
 	}
-#endif 
+#endif
 }
 
 static unsigned int get_minor(unsigned int id)
@@ -845,12 +845,12 @@ static bool register_dev(void)
 	struct wrapper_blk_dev *wrdev;
 
 	LOGn("begin\n");
-	
+
 	/* capacity must be set lator. */
 	ret = wrdev_register_with_req(get_minor(i), capacity,
 				physical_block_size_,
 				wrapper_blk_req_request_fn);
-		
+
 	if (!ret) {
 		goto error;
 	}
@@ -874,7 +874,7 @@ static void unregister_dev(void)
 	struct wrapper_blk_dev *wrdev;
 
 	LOGn("begin\n");
-	
+
 	wrdev = wrdev_get(get_minor(i));
 	wrdev_unregister(get_minor(i));
 	if (wrdev) {
@@ -882,7 +882,7 @@ static void unregister_dev(void)
 		destroy_private_data(wrdev);
 		FREE(wrdev);
 	}
-	
+
 	LOGn("end\n");
 }
 
@@ -895,7 +895,7 @@ static bool start_dev(void)
 	minor = get_minor(i);
 	wrdev = wrdev_get(minor);
 	ASSERT(wrdev);
-	
+
 #ifdef PERIODIC_DEBUG
 	start_periodic_print_for_debug(get_pdata_from_wrdev(wrdev));
 #endif
@@ -919,7 +919,7 @@ static void stop_dev(void)
 #ifdef PERIODIC_DEBUG
 	stop_periodic_print_for_debug();
 #endif
-	
+
 	minor = get_minor(i);
 	wrdev_stop(minor);
 	wrdev = wrdev_get(minor);
@@ -950,7 +950,7 @@ static void print_req_flags(struct request *req)
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
-		"%s%s%s%s\n", 
+		"%s%s%s%s\n",
 		((req->cmd_flags & REQ_WRITE) ?		     "REQ_WRITE" : ""),
 		((req->cmd_flags & REQ_FAILFAST_DEV) ?	     " REQ_FAILFAST_DEV" : ""),
 		((req->cmd_flags & REQ_FAILFAST_TRANSPORT) ? " REQ_FAILFAST_TRANSPORT" : ""),
@@ -996,7 +996,7 @@ static void print_pack(const char *level, struct pack *pack)
 	ASSERT(pack);
 
 	printk("%s""print_pack %p begin\n", level, pack);
-	
+
 	i = 0;
 	list_for_each_entry(reqe, &pack->req_ent_list, list) {
 		i++;
@@ -1036,7 +1036,7 @@ static void print_pack_list(const char *level, struct list_head *wpack_list)
 	unsigned int i = 0;
 	ASSERT(level);
 	ASSERT(wpack_list);
-	
+
 	printk("%s""print_pack_list %p begin.\n", level, wpack_list);
 	list_for_each_entry(pack, wpack_list, list) {
 		LOGd("%u: ", i);
@@ -1067,7 +1067,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 		LOGn("BIO_UPTODATE is false (rw %lu pos %"PRIu64" len %u).\n",
 			bioe->bio->bi_rw, (u64)bioe->pos, bioe->len);
 	}
-	
+
 	/* LOGd("bio_entry_end_io() begin.\n"); */
 	bioe->error = error;
 	bi_cnt = atomic_read(&bio->bi_cnt);
@@ -1111,7 +1111,7 @@ static struct bio_entry* create_bio_entry_by_clone(
 
 	bioe = alloc_bio_entry(gfp_mask);
 	if (!bioe) { goto error0; }
-	
+
 	/* clone bio */
 	biotmp = bio_clone(bio, gfp_mask);
 	if (!biotmp) {
@@ -1123,7 +1123,7 @@ static struct bio_entry* create_bio_entry_by_clone(
 	biotmp->bi_private = bioe;
 
 	init_bio_entry(bioe, biotmp);
-	
+
 	/* LOGd("create_bio_entry() end.\n"); */
 	return bioe;
 
@@ -1143,7 +1143,7 @@ static struct bio_entry* create_bio_entry_by_clone_copy(
 {
 	struct bio_entry *bioe;
 	struct bio *biotmp;
-	
+
 	bioe = alloc_bio_entry(gfp_mask);
 	if (!bioe) { goto error0; }
 
@@ -1157,7 +1157,7 @@ static struct bio_entry* create_bio_entry_by_clone_copy(
 	biotmp->bi_private = bioe;
 
 	init_copied_bio_entry(bioe, biotmp);
-	
+
 	return bioe;
 error1:
 	destroy_bio_entry(bioe);
@@ -1187,7 +1187,7 @@ static struct pack* create_pack(gfp_t gfp_mask)
 	pack->is_zero_flush_only = false;
 	pack->is_fua = false;
 	pack->is_logpack_failed = false;
-	
+
 	return pack;
 #if 0
 error1:
@@ -1226,9 +1226,9 @@ static struct pack* create_writepack(
 	/* lhead->total_io_size = 0; */
 	/* lhead->n_records = 0; */
 	/* lhead->n_padding = 0; */
-	
+
 	return pack;
-	
+
 error1:
 	destroy_pack(pack);
 error0:
@@ -1241,9 +1241,9 @@ error0:
 static void destroy_pack(struct pack *pack)
 {
 	struct req_entry *reqe, *next;
-	
+
 	if (!pack) { return; }
-	
+
 	list_for_each_entry_safe(reqe, next, &pack->req_ent_list, list) {
 		list_del(&reqe->list);
 		destroy_req_entry_dec(reqe);
@@ -1269,7 +1269,7 @@ static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe)
 	ASSERT(pack);
 	ASSERT(reqe);
 	ASSERT(reqe->req);
-	
+
 	list_for_each_entry(tmp_reqe, &pack->req_ent_list, list) {
 		if (is_overlap_req(tmp_reqe->req, reqe->req)) {
 			return true;
@@ -1292,7 +1292,7 @@ static bool is_zero_flush_only(struct pack *pack)
 	unsigned int i;
 	ASSERT(pack);
 	ASSERT(pack->logpack_header_sector);
-	
+
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ASSERT(lhead);
 
@@ -1315,7 +1315,7 @@ static bool is_zero_flush_only(struct pack *pack)
  *   true if pack is already exceeds or will be exceeds.
  */
 static bool is_pack_size_exceeds(
-	struct walb_logpack_header *lhead, 
+	struct walb_logpack_header *lhead,
 	unsigned int pbs, unsigned int max_logpack_pb,
 	struct req_entry *reqe)
 {
@@ -1361,7 +1361,7 @@ static bool writepack_add_req(
 	struct walb_logpack_header *lhead = NULL;
 
 	LOGd_("begin\n");
-	
+
 	ASSERT(wpack_list);
 	ASSERT(wpackp);
 	ASSERT(req);
@@ -1369,7 +1369,7 @@ static bool writepack_add_req(
 	ASSERT(wrdev);
 	pbs = wrdev->pbs;
 	ASSERT_PBS(pbs);
-	
+
 	pack = *wpackp;
 	reqe = create_req_entry_inc(req, wrdev, gfp_mask);
 	if (!reqe) { goto error0; }
@@ -1383,7 +1383,7 @@ static bool writepack_add_req(
 	ASSERT(pbs == pack->logpack_header_sector->size);
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ASSERT(*latest_lsidp == lhead->logpack_lsid);
-	
+
 	if (lhead->n_records > 0) {
 #if 0
 		if ((req->cmd_flags & REQ_FLUSH)
@@ -1433,7 +1433,7 @@ newpack:
 	ret = walb_logpack_header_add_req(lhead, req, pbs, ring_buffer_size);
 	ASSERT(ret);
 	goto fin;
-	
+
 error1:
 	destroy_req_entry_dec(reqe);
 error0:
@@ -1453,7 +1453,7 @@ static bool is_flush_first_req_entry(struct list_head *req_ent_list)
 {
 	struct req_entry *reqe;
 	ASSERT(!list_empty(req_ent_list));
-	
+
 	reqe = list_first_entry(req_ent_list, struct req_entry, list);
 	ASSERT(reqe);
 	ASSERT(reqe->req);
@@ -1478,7 +1478,7 @@ static struct req_entry* create_req_entry_inc(
 	}
 	atomic_inc(&get_pdata_from_wrdev(wrdev)->n_pending_req);
 	return reqe;
-	
+
 error0:
 	return NULL;
 }
@@ -1509,17 +1509,17 @@ static bool create_bio_entry_list(struct req_entry *reqe, struct block_device *b
 {
 	struct bio_entry *bioe;
 	struct bio *bio;
-	
+
 	ASSERT(reqe);
 	ASSERT(reqe->req);
 	ASSERT(list_empty(&reqe->bio_ent_list));
-	
+
 	/* clone all bios. */
 	__rq_for_each_bio(bio, reqe->req) {
 		/* clone bio */
 		bioe = create_bio_entry_by_clone(bio, bdev, GFP_NOIO);
 		if (!bioe) {
-			LOGd("create_bio_entry() failed.\n"); 
+			LOGd("create_bio_entry() failed.\n");
 			goto error1;
 		}
 		list_add_tail(&bioe->list, &reqe->bio_ent_list);
@@ -1549,7 +1549,7 @@ static bool create_bio_entry_list_copy(
 	ASSERT(reqe->req);
 	ASSERT(list_empty(&reqe->bio_ent_list));
 	ASSERT(reqe->req->cmd_flags & REQ_WRITE);
-	
+
 	__rq_for_each_bio(bio, reqe->req) {
 
 		bioe = create_bio_entry_by_clone_copy(bio, bdev, GFP_NOIO);
@@ -1628,7 +1628,7 @@ static void wait_for_req_entry(struct req_entry *reqe, bool is_end_request, bool
 	unsigned long rtimeo;
 	int c;
 	ASSERT(reqe);
-	
+
 	remaining = reqe->req_sectors;
 	list_for_each_entry(bioe, &reqe->bio_ent_list, list) {
 		if (bio_entry_should_wait_completion(bioe)) {
@@ -1679,7 +1679,7 @@ static void logpack_list_submit(
 
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		lhead = get_logpack_header(wpack->logpack_header_sector);
-		
+
 		if (wpack->is_zero_flush_only) {
 			ASSERT(lhead->n_records == 0);
 			LOGd("is_zero_flush_only\n"); /* debug */
@@ -1701,7 +1701,7 @@ static void logpack_list_submit(
 
 /**
  * Submit all logpacks related to a call of request_fn.
- * 
+ *
  * (1) Complete logpack creation.
  * (2) Submit all logpack-related bio(s).
  * (3) Enqueue logpack_list_wait_task.
@@ -1787,7 +1787,7 @@ static int wait_for_bio_entry_list(struct list_head *bio_ent_list)
 	unsigned long rtimeo;
 	int c;
 	ASSERT(bio_ent_list);
-	
+
 	/* wait for completion. */
 	list_for_each_entry(bioe, bio_ent_list, list) {
 
@@ -1855,19 +1855,19 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 	/* Check read only mode. */
 	pdata = get_pdata_from_wrdev(wrdev);
 	if (is_read_only_mode(pdata)) { is_failed = true; }
-	
+
 	/* Wait for logpack header bio or zero_flush pack bio. */
 	bio_error = wait_for_bio_entry_list(&wpack->bio_ent_list);
 	if (bio_error) { is_failed = true; }
-	
+
 	list_for_each_entry_safe(reqe, next_reqe, &wpack->req_ent_list, list) {
 
 		req = reqe->req;
 		ASSERT(req);
-		
+
 		bio_error = wait_for_bio_entry_list(&reqe->bio_ent_list);
 		if (is_failed || bio_error) { goto failed0; }
-		
+
 		if (blk_rq_sectors(req) == 0) {
 
 			ASSERT(req->cmd_flags & REQ_FLUSH);
@@ -1973,19 +1973,19 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 	/* Check read only mode. */
 	pdata = get_pdata_from_wrdev(wrdev);
 	if (is_read_only_mode(pdata)) { is_failed = true; }
-	
+
 	/* Wait for logpack header bio or zero_flush pack bio. */
 	bio_error = wait_for_bio_entry_list(&wpack->bio_ent_list);
 	if (bio_error) { is_failed = true; }
-	
+
 	list_for_each_entry_safe(reqe, next_reqe, &wpack->req_ent_list, list) {
 
 		req = reqe->req;
 		ASSERT(req);
-		
+
 		bio_error = wait_for_bio_entry_list(&reqe->bio_ent_list);
 		if (is_failed || bio_error) { goto failed0; }
-		
+
 		if (blk_rq_sectors(req) == 0) {
 
 			ASSERT(req->cmd_flags & REQ_FLUSH);
@@ -2003,7 +2003,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 					pdata->ddev_chunk_sectors, GFP_NOIO)) {
 				goto failed1;
 			}
-			
+
 #ifdef WALB_OVERLAPPING_SERIALIZE
 			/* check and insert to overlapping detection data. */
 			spin_lock(&pdata->overlapping_data_lock);
@@ -2058,7 +2058,7 @@ static void logpack_list_wait_task(struct work_struct *work)
 
 	destroy_pack_work(pwork);
 	pwork = NULL;
-	
+
 	while (true) {
 		/* Dequeue logpack list from the submit queue. */
 		INIT_LIST_HEAD(&wpack_list);
@@ -2077,7 +2077,7 @@ static void logpack_list_wait_task(struct work_struct *work)
 		}
 		spin_unlock(&pdata->logpack_wait_queue_lock);
 		if (is_empty) { break; }
-		
+
 		/* Wait logpack completion and submit datapacks. */
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			wait_logpack_and_enqueue_datapack_tasks(wpack, wrdev);
@@ -2156,7 +2156,7 @@ static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list)
 static void write_req_task(struct work_struct *work)
 {
 	might_sleep();
-	
+
 #ifdef WALB_FAST_ALGORITHM
 	write_req_task_fast(work);
 #else
@@ -2233,12 +2233,12 @@ static void write_req_task_fast(struct work_struct *work)
 
 	/* put related bio(s). */
 	put_bio_entry_list(&reqe->bio_ent_list);
-	
+
 	/* Free resources. */
 	destroy_bio_entry_list(&reqe->bio_ent_list);
-	
+
 	ASSERT(list_empty(&reqe->bio_ent_list));
-	
+
 	/* Notify logpack_list_gc_task().
 	   Reqe will be destroyed in logpack_list_gc_task(). */
 	complete(&reqe->done);
@@ -2288,13 +2288,13 @@ static void write_req_task_easy(struct work_struct *work)
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	spin_lock(&pdata->overlapping_data_lock);
 	overlapping_delete_and_notify(pdata->overlapping_data,
-				&pdata->max_req_sectors_in_overlapping,				
+				&pdata->max_req_sectors_in_overlapping,
 				reqe);
 	spin_unlock(&pdata->overlapping_data_lock);
 #endif
 
 	ASSERT(list_empty(&reqe->bio_ent_list));
-	
+
 	/* Notify logpack_list_gc_task().
 	   Reqe will be destroyed in logpack_list_gc_task(). */
 	complete(&reqe->done);
@@ -2317,7 +2317,7 @@ static void write_req_task_easy(struct work_struct *work)
 static void read_req_task(struct work_struct *work)
 {
 	might_sleep();
-	
+
 #ifdef WALB_FAST_ALGORITHM
 	read_req_task_fast(work);
 #else
@@ -2359,7 +2359,7 @@ static void read_req_task_fast(struct work_struct *work)
 	if (!ret) {
 		goto error1;
 	}
-		
+
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
 	submit_bio_entry_list(&reqe->bio_ent_list);
@@ -2400,7 +2400,7 @@ static void read_req_task_easy(struct work_struct *work)
 			&reqe->bio_ent_list, pdata->ddev_chunk_sectors, GFP_NOIO)) {
 		goto error1;
 	}
-		
+
 	/* Submit all related bio(s). */
 	blk_start_plug(&plug);
 	submit_bio_entry_list(&reqe->bio_ent_list);
@@ -2442,7 +2442,7 @@ static void dequeue_and_gc_logpack_list(struct pdata *pdata)
 	bool is_empty;
 	struct list_head wpack_list;
 	int n_pack;
-	
+
 	ASSERT(pdata);
 
 	INIT_LIST_HEAD(&wpack_list);
@@ -2485,7 +2485,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	unsigned int n_padding = 0;
 
 	LOGd_("is_valid_prepared_pack begin.\n");
-	
+
 	CHECK(pack);
 	CHECK(pack->logpack_header_sector);
 
@@ -2496,7 +2496,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	CHECK(is_valid_logpack_header(lhead));
 
 	CHECK(!list_empty(&pack->req_ent_list));
-	
+
 	i = 0;
 	total_pb = 0;
 	list_for_each_entry(reqe, &pack->req_ent_list, list) {
@@ -2511,7 +2511,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		lrec = &lhead->record[i];
 		CHECK(lrec);
 		CHECK(lrec->is_exist);
-		
+
 		if (lrec->is_padding) {
 			LOGd_("padding found.\n"); /* debug */
 			total_pb += capacity_pb(pbs, lrec->io_size);
@@ -2533,7 +2533,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		CHECK(lhead->logpack_lsid == lrec->lsid - lrec->lsid_local);
 		CHECK(blk_rq_sectors(reqe->req) == lrec->io_size);
 		total_pb += capacity_pb(pbs, lrec->io_size);
-		
+
 		i++;
 	}
 	CHECK(i == lhead->n_records);
@@ -2561,7 +2561,7 @@ error:
 static bool is_valid_pack_list(struct list_head *pack_list)
 {
 	struct pack *pack;
-	
+
 	list_for_each_entry(pack, pack_list, list) {
 		CHECK(is_valid_prepared_pack(pack));
 	}
@@ -2596,7 +2596,7 @@ static void logpack_calc_checksum(
 	ASSERT(lhead);
 	ASSERT(lhead->n_records > 0);
 	ASSERT(lhead->n_records > lhead->n_padding);
-	
+
 	n_padding = 0;
 	i = 0;
 	list_for_each_entry(reqe, req_ent_list, list) {
@@ -2606,7 +2606,7 @@ static void logpack_calc_checksum(
 			i++;
 			/* A padding record is not the last in the logpack header. */
 		}
-		
+
 		ASSERT(reqe);
 		req = reqe->req;
 		ASSERT(req);
@@ -2627,7 +2627,7 @@ static void logpack_calc_checksum(
 		lhead->record[i].checksum = checksum_finish(sum);
 		i++;
 	}
-	
+
 	ASSERT(n_padding <= 1);
 	ASSERT(n_padding == lhead->n_padding);
 	ASSERT(i == lhead->n_records);
@@ -2670,7 +2670,7 @@ static bool logpack_submit_lhead(
 #endif
 	if (is_flush) { rw |= WRITE_FLUSH; }
 	if (is_fua) { rw |= WRITE_FUA; }
-	
+
 	bioe = alloc_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
 	bio = bio_alloc(GFP_NOIO, 1);
@@ -2845,7 +2845,7 @@ static struct bio_entry* submit_flush(struct block_device *bdev)
 
 	bioe = alloc_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
-	
+
 	bio = bio_alloc(GFP_NOIO, 0);
 	if (!bio) { goto error1; }
 
@@ -2856,7 +2856,7 @@ static struct bio_entry* submit_flush(struct block_device *bdev)
 
 	init_bio_entry(bioe, bio);
 	ASSERT(bioe->len == 0);
-	
+
 	generic_make_request(bio);
 
 	return bioe;
@@ -2879,7 +2879,7 @@ static bool logpack_submit_flush(struct block_device *bdev, struct list_head *bi
 	if (!bioe) { goto error0; }
 	list_add_tail(&bioe->list, bio_ent_list);
 	return true;
-	
+
 error0:
 	return false;
 }
@@ -2932,7 +2932,7 @@ static bool logpack_submit(
 		goto failed;
 	}
 	ASSERT(!list_empty(bio_ent_list));
-	
+
 	/* Submit logpack contents for each request. */
 	i = 0;
 	list_for_each_entry(reqe, req_ent_list, list) {
@@ -3004,7 +3004,7 @@ static bool overlapping_check_and_insert(
 
 	multimap_cursor_init(overlapping_data, &cur);
 	reqe->n_overlapping = 0;
-	
+
 	/* Search the smallest candidate. */
 	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
 		goto fin;
@@ -3014,7 +3014,7 @@ static bool overlapping_check_and_insert(
 	while (multimap_cursor_key(&cur) < reqe->req_pos + reqe->req_sectors) {
 
 		ASSERT(multimap_cursor_is_valid(&cur));
-		
+
 		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
 		ASSERT(reqe_tmp);
 		if (is_overlap_req_entry(reqe, reqe_tmp)) {
@@ -3069,7 +3069,7 @@ static void overlapping_delete_and_notify(
 	ASSERT(max_req_sectors_p);
 	ASSERT(reqe);
 	ASSERT(reqe->n_overlapping == 0);
-	
+
 	max_io_size = *max_req_sectors_p;
 	if (reqe->req_pos > max_io_size) {
 		start_pos = reqe->req_pos - max_io_size;
@@ -3087,7 +3087,7 @@ static void overlapping_delete_and_notify(
 	if (multimap_is_empty(overlapping_data)) {
 		*max_req_sectors_p = 0;
 	}
-	
+
 	/* Search the smallest candidate. */
 	multimap_cursor_init(overlapping_data, &cur);
 	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
@@ -3097,7 +3097,7 @@ static void overlapping_delete_and_notify(
 	while (multimap_cursor_key(&cur) < reqe->req_pos + reqe->req_sectors) {
 
 		ASSERT(multimap_cursor_is_valid(&cur));
-		
+
 		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
 		ASSERT(reqe_tmp);
 		if (is_overlap_req_entry(reqe, reqe_tmp)) {
@@ -3135,7 +3135,7 @@ static bool pending_insert(
 	ASSERT(reqe->req);
 	ASSERT(reqe->req->cmd_flags & REQ_WRITE);
 	ASSERT(reqe->req_sectors > 0);
-	
+
 	/* Insert the entry. */
 	ret = multimap_add(pending_data, reqe->req_pos,
 			(unsigned long)reqe, gfp_mask);
@@ -3168,7 +3168,7 @@ static void pending_delete(
 	ASSERT(pending_data);
 	ASSERT(max_req_sectors_p);
 	ASSERT(reqe);
-	
+
 	/* Delete the entry. */
 	reqe_tmp = (struct req_entry *)multimap_del(
 		pending_data, reqe->req_pos, (unsigned long)reqe);
@@ -3208,7 +3208,7 @@ UNUSED static bool pending_check_and_copy(
 	} else {
 		start_pos = 0;
 	}
-	
+
 	/* Search the smallest candidate. */
 	multimap_cursor_init(pending_data, &cur);
 	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
@@ -3219,7 +3219,7 @@ UNUSED static bool pending_check_and_copy(
 	while (multimap_cursor_key(&cur) < reqe->req_pos + reqe->req_sectors) {
 
 		ASSERT(multimap_cursor_is_valid(&cur));
-		
+
 		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
 		ASSERT(reqe_tmp);
 		if (is_overlap_req_entry(reqe, reqe_tmp)) {
@@ -3286,7 +3286,7 @@ static inline bool should_start_queue(struct pdata *pdata, struct req_entry *req
 	if (!pdata->is_queue_stopped) {
 		return false;
 	}
-	
+
 	is_size = pdata->pending_sectors - reqe->req_sectors
 		< pdata->min_pending_sectors;
 	is_timeout = time_is_before_jiffies(pdata->queue_restart_jiffies);
@@ -3348,7 +3348,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	}
 
 	INIT_LIST_HEAD(&wpack_list);
-	
+
 	/* Load latest_lsid */
 	spin_lock(&pdata->lsid_lock);
 	latest_lsid = pdata->latest_lsid;
@@ -3362,7 +3362,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 		if (req->cmd_flags & REQ_WRITE) {
 
 			if (is_read_only_mode(pdata)) { goto req_error; }
-			
+
 			/* REQ_FLUSH must be here. */
 			if (req->cmd_flags & REQ_FLUSH) {
 				LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
@@ -3421,7 +3421,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 			&pdata->flags,
 			wq_logpack_,
 			logpack_list_submit_task);
-		
+
 		/* Store latest_lsid */
 		ASSERT(latest_lsid >= latest_lsid_old);
 		spin_lock(&pdata->lsid_lock);
@@ -3430,7 +3430,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 		spin_unlock(&pdata->lsid_lock);
 	}
 	ASSERT(list_empty(&wpack_list));
-	
+
 	LOGd_("wrapper_blk_req_request_fn: end.\n");
 	return;
 
@@ -3460,7 +3460,7 @@ static bool pre_register(void)
 	if (!bio_entry_init()) {
 		goto error3;
 	}
-	
+
 	/* prepare workqueues. */
 	wq_logpack_ = alloc_workqueue(WQ_LOGPACK, WQ_MEM_RECLAIM, 0);
 	if (!wq_logpack_) {
@@ -3498,7 +3498,7 @@ static bool pre_register(void)
 #else
 	LOGn("WalB Easy Algorithm.\n");
 #endif
-	
+
 	return true;
 
 #if 0
@@ -3555,7 +3555,7 @@ static void post_unregister(void)
 
 	pack_work_exit();
 	treemap_memory_manager_dec();
-	
+
 	/* finalize workqueue data. */
 	destroy_workqueue(wq_read_);
 	wq_read_ = NULL;
@@ -3580,7 +3580,7 @@ static void post_unregister(void)
 static bool treemap_memory_manager_inc(void)
 {
 	bool ret;
-	
+
 	if (atomic_inc_return(&n_users_of_memory_manager_) == 1) {
 		ret = initialize_treemap_memory_manager(
 			&mmgr_, N_ITEMS_IN_MEMPOOL,
@@ -3607,7 +3607,7 @@ static void treemap_memory_manager_dec(void)
 		finalize_treemap_memory_manager(&mmgr_);
 	}
 }
-					
+
 /*******************************************************************************
  * Init/exit definition.
  *******************************************************************************/
@@ -3633,7 +3633,7 @@ static int __init wrapper_blk_init(void)
 		LOGe("pre_register failed.\n");
 		goto error0;
 	}
-	
+
 	if (!register_dev()) {
 		goto error1;
 	}

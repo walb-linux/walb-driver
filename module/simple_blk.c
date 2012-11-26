@@ -128,7 +128,7 @@ bool sdev_unregister(unsigned int minor)
 	if (!sdev) {
 		LOGe("Not found device with minor %u.\n", minor);
 		return false;
-	}	 
+	}
 	fin_queue_and_disk(sdev);
 	FREE(sdev);
 	return true;
@@ -142,7 +142,7 @@ EXPORT_SYMBOL_GPL(sdev_unregister);
 bool sdev_start(unsigned int minor)
 {
 	struct simple_blk_dev *sdev;
-	
+
 	sdev = get_from_devices(minor);
 	if (!sdev) {
 		LOGe("Not found device with minor %u.\n", minor);
@@ -170,7 +170,7 @@ EXPORT_SYMBOL_GPL(sdev_start);
 bool sdev_stop(unsigned int minor)
 {
 	struct simple_blk_dev *sdev;
-	
+
 	sdev = get_from_devices(minor);
 	if (!sdev) {
 		LOGe("Not found device with minor %u.\n", minor);
@@ -178,7 +178,7 @@ bool sdev_stop(unsigned int minor)
 	}
 
 	ASSERT_SIMPLE_BLK_DEV(sdev);
-	
+
 	if (test_and_clear_bit(0, &sdev->is_started)) {
 		ASSERT(sdev->gd);
 		del_gendisk(sdev->gd);
@@ -215,15 +215,15 @@ struct workqueue_struct* create_wq_io(const char *name, enum workqueue_type type
 		wq = create_singlethread_workqueue(name);
 		LOGn("Use workqueue type: SINGLE.\n");
 		break;
-		
+
 	case WQ_TYPE_UNBOUND:
 		/* Worker may not use the same CPU with enqueuer. */
 		wq = alloc_workqueue(name, WQ_MEM_RECLAIM | WQ_UNBOUND , 0);
 		LOGn("Use workqueue type: UNBOUND.\n");
 		break;
-		
+
 	case WQ_TYPE_NORMAL:
-		/* Default. This is the fastest. */	
+		/* Default. This is the fastest. */
 		wq = alloc_workqueue(name, WQ_MEM_RECLAIM, 0);
 		LOGn("Use workqueue type: NORMAL.\n");
 		break;
@@ -269,7 +269,7 @@ static int simple_blk_ioctl(struct block_device *bdev, fmode_t mode,
 static void init_devices(void)
 {
 	int i;
-	
+
 	for (i = 0; i < MAX_N_DEVICES; i++) {
 		devices_.sdev[i] = NULL;
 	}
@@ -325,7 +325,7 @@ static struct simple_blk_dev* del_from_devices(unsigned int minor)
 static struct simple_blk_dev* get_from_devices(unsigned int minor)
 {
 	struct simple_blk_dev *sdev;
-	
+
 	if (minor >= MAX_N_DEVICES) {
 		return NULL;
 	}
@@ -349,14 +349,14 @@ static struct simple_blk_dev* alloc_and_partial_init_sdev(
 	unsigned int minor, u64 capacity, unsigned int pbs)
 {
 	struct simple_blk_dev *sdev;
-	
+
 	/* Allocate */
 	sdev = ZALLOC(sizeof(struct simple_blk_dev), GFP_KERNEL);
 	if (sdev == NULL) {
 		LOGe("memory allocation failed.\n");
 		goto error0;
 	}
-	
+
 	/* Initialize */
 	sdev->minor = minor;
 	sdev->capacity = capacity;
@@ -444,7 +444,7 @@ static bool init_queue_and_disk(struct simple_blk_dev *sdev)
 {
 	struct request_queue *q;
 	struct gendisk *gd;
-	
+
 	ASSERT(sdev);
 
 	/* Cleanup */
@@ -481,7 +481,7 @@ static bool init_queue_and_disk(struct simple_blk_dev *sdev)
 
 	/* Accept REQ_FLUSH and REQ_FUA. */
 	/* Do nothing. */
-	
+
 	q->queuedata = sdev;
 	sdev->queue = q;
 
@@ -493,7 +493,7 @@ static bool init_queue_and_disk(struct simple_blk_dev *sdev)
 	}
 	gd->major = simple_blk_major_;
 	gd->first_minor = sdev->minor;
-	
+
 	gd->fops = &simple_blk_ops_;
 	gd->queue = sdev->queue;
 	gd->private_data = sdev;
@@ -544,7 +544,7 @@ static void stop_and_unregister_all_devices(void)
 {
 	int i;
 	struct simple_blk_dev *sdev;
-	
+
 	for (i = 0; i < MAX_N_DEVICES; i++) {
 		sdev = get_from_devices(i);
 		if (sdev) {
@@ -562,7 +562,7 @@ static int __init simple_blk_init(void)
 {
 	ASSERT(!in_interrupt());
 	LOGi("Simple-blk module init.\n");
-	
+
 	/* Register a block device module. */
 	simple_blk_major_ = register_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
 	if (simple_blk_major_ <= 0) {
@@ -587,7 +587,7 @@ static void simple_blk_exit(void)
 {
 	ASSERT(!in_interrupt());
 	LOGd("in_atomic: %u.\n", in_atomic());
-	
+
 	stop_and_unregister_all_devices();
 	unregister_blkdev(simple_blk_major_, SIMPLE_BLK_NAME);
 

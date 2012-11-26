@@ -56,7 +56,7 @@ static void create_test_data(u64 capacity)
 
 	ret =initialize_treemap_memory_manager_kmalloc(&mmgr_, 1);
 	ASSERT(ret);
-	
+
 	mdata_ = mdata_create(capacity, BLOCK_SIZE, GFP_KERNEL, &mmgr_);
 	ASSERT(mdata_);
 
@@ -74,7 +74,7 @@ static void destroy_test_data(void)
 		ASSERT(buffer_[i]);
 		free_page((unsigned long)buffer_[i]);
 	}
-	
+
 	ASSERT(mdata_);
 	mdata_destroy(mdata_);
 	mdata_ = NULL;
@@ -87,7 +87,7 @@ void random_io(unsigned int id, enum io_mode mode)
 {
 	u32 addr;
 	bool is_write = false;
-	
+
 	ASSERT((u32)mdata_->capacity < (u32)UINT_MAX);
 	addr = get_random_u32_max((u32)mdata_->capacity);
 
@@ -120,13 +120,13 @@ void random_io(unsigned int id, enum io_mode mode)
 
 
 
-int worker(void *data) 
+int worker(void *data)
 {
 	struct thread_data *tdata = (struct thread_data *)data;
 	unsigned int i;
 
 	LOGd("worker %u start.\n", tdata->id);
-	
+
 	set_bit(THREAD_WORKING, &tdata->flags);
 	for (i = 0; i < tdata->n_io; i++) {
 		random_io(tdata->id, tdata->mode);
@@ -199,7 +199,7 @@ static int __init test_init(void)
 		}
 	}
 	destroy_test_data();
-	
+
 	return -1;
 }
 
