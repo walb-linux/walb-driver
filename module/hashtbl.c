@@ -541,6 +541,20 @@ unsigned long hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key
  */
 unsigned long hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
 {
+#if 1
+/*
+	単なる好みの問題ですが，こちらのほうがコメントと同じロジックなので
+	見つからなかったときHASHTBL_INVALID_VALになるのが分かりやすいと思います．
+*/
+	struct hash_cell *cell = hashtbl_lookup_cell(htbl, key, key_size);
+	if (cell) {
+		unsigned long val = cell->val;
+		free_hash_cell(cell);
+		return val;
+	} else {
+		return HASHTBL_INVALID_VAL;
+	}
+#else
 	struct hash_cell *cell;
 	unsigned long val = HASHTBL_INVALID_VAL;
 
@@ -549,6 +563,7 @@ unsigned long hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
 	free_hash_cell(cell);
 
 	return val;
+#endif
 }
 
 /**
