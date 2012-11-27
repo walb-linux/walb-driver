@@ -160,7 +160,7 @@ static u32 get_sum(const u8* data, int size)
 	}
 
 	ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
-	return (ret != (u32)(-1) ? ret : 0);
+	return (ret != (u32)(-1) ? ret : 0); /* この式の意図は? */
 }
 
 /**
