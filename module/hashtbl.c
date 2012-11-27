@@ -288,6 +288,7 @@ static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
  *
  * @return Non-zero if valud, or 0.
  */
+/* unusedなのにASSERT_HASHCELLで使うのは整合性大丈夫?(NDEUBGが定義されているときだけunusedか) */
 __attribute__((unused))
 static int is_hashcell_struct_valid(const struct hash_cell *hcell)
 {
