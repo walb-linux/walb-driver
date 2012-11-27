@@ -573,6 +573,11 @@ unsigned long hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
  *
  * @return 1 if the hash table is empty, or 0.
  */
+/*
+    ASSERT_HASHTBL()が入ってるのでhtbl == 0のときエラー
+    上記コメントの@returnの仕様に合わせるなら
+    if (htbl == 0) return 1;
+*/
 int hashtbl_is_empty(const struct hash_tbl *htbl)
 {
 	int i;
