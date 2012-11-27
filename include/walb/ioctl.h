@@ -33,7 +33,7 @@ struct walb_ctl_data {
 	unsigned int lminor;  /* log device minor. */
 	unsigned int dmajor;  /* data device major. */
 	unsigned int dminor;  /* data device minor. */
-	
+
 	/* These are used for other struct for each control command. */
 	size_t buf_size; /* buffer size. */
 #ifdef __KERNEL__
@@ -58,7 +58,7 @@ struct walb_ctl {
 	u64 val_u64;
 
 	int error; /* error no. */
-	
+
 	/* For userland --> kernel. */
 	struct walb_ctl_data u2k;
 
@@ -79,12 +79,12 @@ static inline void print_walb_ctl(
 		"val_u32: %u\n"
 		"val_u64: %"PRIu64"\n"
 		"error: %d\n"
-		 
+
 		"u2k.wdevt: (%u:%u)\n"
 		"u2k.ldevt: (%u:%u)\n"
 		"u2k.ddevt: (%u:%u)\n"
 		"u2k.buf_size: %zu\n"
-		 
+
 		"k2u.wdevt: (%u:%u)\n"
 		"k2u.ldevt: (%u:%u)\n"
 		"k2u.ddevt: (%u:%u)\n"
@@ -94,12 +94,12 @@ static inline void print_walb_ctl(
 		ctl->val_u32,
 		ctl->val_u64,
 		ctl->error,
-		 
+
 		ctl->u2k.wmajor, ctl->u2k.wminor,
 		ctl->u2k.lmajor, ctl->u2k.lminor,
 		ctl->u2k.dmajor, ctl->u2k.dminor,
 		ctl->u2k.buf_size,
-		 
+
 		ctl->k2u.wmajor, ctl->k2u.wminor,
 		ctl->k2u.lmajor, ctl->k2u.lminor,
 		ctl->k2u.dmajor, ctl->k2u.dminor,
@@ -212,7 +212,7 @@ enum {
 	 *   0 in success, or -EFAULT.
 	 */
 	WALB_IOCTL_NUM_OF_DEV,
-	
+
 	/****************************************
 	 * For WALB_IOCTL_WDEV
 	 * The targets are walb devices.
@@ -360,7 +360,7 @@ enum {
 	 *   0 in success, or -EFAULT.
 	 */
 	WALB_IOCTL_LIST_SNAPSHOT_FROM,
-	
+
 	/*
 	 * Get checkpoint interval.
 	 *
@@ -523,7 +523,7 @@ enum {
 	 *   0 in success, or -EFAULT.
 	 */
 	WALB_IOCTL_IS_FROZEN,
-	
+
 	/* NIY means [N]ot [I]mplemented [Y]et. */
 };
 
@@ -534,7 +534,7 @@ struct walb_start_param
 {
 	/* Device name. Terminated by '\0'. */
 	char name[DISK_NAME_LEN];
-	
+
 	/* Pending data limit size [MB]. */
 	unsigned int max_pending_mb;
 	unsigned int min_pending_mb;

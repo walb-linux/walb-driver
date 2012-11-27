@@ -30,7 +30,7 @@ struct thread_data
 struct thread_data tdata_[16];
 
 
-int worker(void *data) 
+int worker(void *data)
 {
 	struct thread_data *tdata = (struct thread_data *)data;
 
@@ -70,15 +70,15 @@ static void run_kthread_test(unsigned int n_threads)
 	}
 
 	msleep_interruptible(1000);
-	
+
 	for (i = 0; i < n_threads; i++) {
 		LOGd("wake up tdata_[%u].\n", i);
 		set_bit(THREAD_WAKEUP, &tdata_[i].flags);
 		wake_up_interruptible(&tdata_[i].wait_q);
 	}
-	
+
 	msleep_interruptible(1000);
-	
+
 	for (i = 0; i < n_threads; i++) {
 		kthread_stop(tdata_[i].tsk);
 	}

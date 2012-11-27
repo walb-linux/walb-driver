@@ -26,7 +26,7 @@ struct memblk_data
 };
 
 UNUSED
-static inline void mdata_assert_block_size(u32 block_size) 
+static inline void mdata_assert_block_size(u32 block_size)
 {
 	ASSERT(block_size >= 512);
 	ASSERT(block_size <= PAGE_SIZE);
@@ -37,7 +37,7 @@ UNUSED
 static inline u32 mdata_get_n_blocks_in_a_page(u32 block_size)
 {
 	mdata_assert_block_size(block_size);
-	
+
 	return PAGE_SIZE / block_size;
 }
 

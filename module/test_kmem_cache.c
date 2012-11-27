@@ -33,7 +33,7 @@ void test_kmem_cache(void)
 {
 	int i;
 	struct some_data *some_data[10];
-	
+
 	cache_ = kmem_cache_create("test_kmem_cache_some_data",
 				sizeof(struct some_data), 0, 0, init_some_data);
 

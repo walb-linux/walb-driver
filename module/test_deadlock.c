@@ -45,9 +45,9 @@ static int __init test_init(void)
 {
 	struct task_struct *kthread1;
 	struct task_struct *kthread2;
-	
+
 	LOGe("BUILD_DATE %s\n", BUILD_DATE);
-	
+
 	spin_lock_init(&lock1);
 	spin_lock_init(&lock2);
 

@@ -41,7 +41,7 @@ struct walb_super_sector {
 	 *   oldest_lsid
 	 *   written_lsid
 	 */
-	
+
 	/* Check sum of the super block */
 	u32 checksum;
 
@@ -51,7 +51,7 @@ struct walb_super_sector {
 	   Each log (offset and size) on log device is aligned. */
 	u32 logical_bs; /* currently fixed as LOGICAL_BLOCK_SIZE. */
 	u32 physical_bs;
-	
+
 	/* Number of physical blocks for snapshot metadata. */
 	u32 snapshot_metadata_size;
 
@@ -74,14 +74,14 @@ struct walb_super_sector {
 
 	/* Ring buffer size [physical block] */
 	u64 ring_buffer_size;
-	
+
 	/* Log sequence id of the oldest log record in the ring buffer.
 	   [physical block] */
 	u64 oldest_lsid;
-	
+
 	/* Log sequence id of next of latest log record written
 	 * to the data device also.
-	 * 
+	 *
 	 * This is used for checkpointing.
 	 * When walb device is assembled redo must be
 	 * from written_lsid to the latest lsid stored in the log device.
@@ -93,7 +93,7 @@ struct walb_super_sector {
 
 	/* Size of wrapper block device [logical block] */
 	u64 device_size;
-	
+
 } __attribute__((packed));
 
 /**
@@ -111,7 +111,7 @@ static inline int is_valid_super_sector_raw(
 {
 	/* physical_bs */
 	CHECK(is_valid_pbs(pbs));
-	
+
 	/* sector type */
 	CHECK(sect->sector_type == SECTOR_TYPE_SUPER);
 	/* block size */
@@ -123,13 +123,13 @@ static inline int is_valid_super_sector_raw(
 	CHECK(sect->written_lsid != INVALID_LSID);
 	CHECK(sect->oldest_lsid <= sect->written_lsid);
 	CHECK(sect->written_lsid - sect->oldest_lsid <= sect->ring_buffer_size);
-	
+
 	return 1;
 error:
 	LOGd("super sector is not valid.\n");
 	return 0;
 }
-	
+
 /**
  * Check super sector.
  *
@@ -164,7 +164,7 @@ static inline char* set_super_sector_name(
  * Get super sector pointer.
  *
  * @sect sector data.
- * 
+ *
  * RETURN:
  *   pointer to walb_super_sector.
  */
@@ -177,9 +177,9 @@ static inline struct walb_super_sector* get_super_sector(
 
 /**
  * Get super sector pointer (const).
- * 
+ *
  * @sect sector data.
- * 
+ *
  * RETURN:
  *   const pointer to walb_super_sector.
  */

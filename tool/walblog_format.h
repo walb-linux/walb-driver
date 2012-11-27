@@ -19,7 +19,7 @@ struct walblog_header
 	u16 header_size; /* must be WALBLOG_HEADER_SIZE */
 	u16 sector_type; /* must be SECTOR_TYPE_WALBLOG_HEADER */
 	u32 checksum; /* walblog_header checksum. */
-	
+
 	/* walb version */
 	u32 version;
 	u32 reserved1;
@@ -44,12 +44,12 @@ inline void print_wlog_header(struct walblog_header* wh)
 {
 	const int str_size = 16 * 3 + 1;
 	char uuidstr[str_size];
-	
+
 	ASSERT(wh->header_size == WALBLOG_HEADER_SIZE);
 	ASSERT(wh->sector_type == SECTOR_TYPE_WALBLOG_HEADER);
 
 	sprint_uuid(uuidstr, str_size, wh->uuid);
-	
+
 	printf("*****walblog header*****\n"
 		"checksum: %08x\n"
 		"version: %"PRIu32"\n"

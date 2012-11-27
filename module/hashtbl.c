@@ -55,7 +55,7 @@ static void print_hashtbl_cursor(const hashtbl_cursor_t *cursor);
  *
  * RETURNS:
  * Number of required bits.
- * 
+ *
  * EXAMPLES:
  * 00100000B needs 6 bits.
  * 00011111B needs 5 bits.
@@ -66,7 +66,7 @@ static unsigned int get_n_bits(u32 val)
 	if (val == 0) {
 		return 1;
 	}
-	
+
 	for (i = 1; i < 32; i++) {
 		if (val >> i == 1) {
 			return i + 1;
@@ -90,7 +90,7 @@ static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
 	u32 idx;
 	struct hlist_node *node, *next;
 	struct hash_cell *cell;
-	
+
 	ASSERT_HASHTBL(htbl);
 
 	idx = hashtbl_get_index(htbl, key, key_size);
@@ -102,7 +102,7 @@ static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
 			memcmp(cell->key, key, key_size) == 0) {
 
 			return cell;
-		}		 
+		}
 	}
 	/* LOGd("hashtbl_lookup_cell end\n"); */
 	return NULL;
@@ -126,7 +126,7 @@ static u32 hashtbl_get_index(const struct hash_tbl *htbl, const u8* key, int key
 	sum = get_sum(key, key_size);
 	idx = hash_32(sum, htbl->n_bits);
 	ASSERT(idx < htbl->bucket_size);
-	
+
 	/* LOGd("sum %08x idx %u\n", sum, idx); */
 	return idx;
 }
@@ -159,7 +159,7 @@ static u32 get_sum(const u8* data, int size)
 		memcpy(&buf, data + (sizeof(u32) * n), m);
 		sum += buf;
 	}
-	
+
 	ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
 	return (ret != (u32)(-1) ? ret : 0);
 }
@@ -172,12 +172,12 @@ static struct hash_cell* alloc_hash_cell(int key_size, gfp_t gfp_mask)
 	struct hash_cell *cell;
 
 	if (key_size <= 0) { goto invalid_key_size; }
-	
+
 	cell = kmalloc(sizeof(struct hash_cell), gfp_mask);
 	if (cell == NULL) { goto nomem0; }
 	INIT_HLIST_NODE(&cell->list);
 	cell->key_size = key_size;
-	
+
 	cell->key = kmalloc(key_size, gfp_mask);
 	if (cell->key == NULL) { goto nomem1; }
 
@@ -195,7 +195,7 @@ invalid_key_size:
 static void free_hash_cell(struct hash_cell *cell)
 {
 	if (cell == NULL) { return; }
-	
+
 	if (cell->key != NULL) {
 		kfree(cell->key);
 	}
@@ -278,9 +278,9 @@ static unsigned long get_hash_cell_val(const struct hash_cell *cell)
 __attribute__((unused))
 static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
 {
-	return ((htbl) != NULL &&		
-		(htbl)->bucket != NULL &&	
-		(htbl)->bucket_size > 0 &&	
+	return ((htbl) != NULL &&
+		(htbl)->bucket != NULL &&
+		(htbl)->bucket_size > 0 &&
 		(htbl)->n_bits > 0);
 }
 
@@ -292,9 +292,9 @@ static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
 __attribute__((unused))
 static int is_hashcell_struct_valid(const struct hash_cell *hcell)
 {
-	return ((hcell) != NULL &&				    
-		(hcell)->key != NULL &&				    
-		(hcell)->key_size > 0 &&				
+	return ((hcell) != NULL &&
+		(hcell)->key != NULL &&
+		(hcell)->key_size > 0 &&
 		(hcell)->val != HASHTBL_INVALID_VAL);
 }
 
@@ -319,7 +319,7 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 	nnode = cursor->next;
 
 #define PERR { LOGd("error\n"); return 0; }
-	
+
 	if (! is_hashtbl_struct_valid(cursor->htbl)) { PERR; }
 	max_idx = cursor->htbl->bucket_size;
 
@@ -346,7 +346,7 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 		PERR;
 	}
 #undef PERR
-		
+
 	return 1;
 }
 
@@ -390,7 +390,7 @@ struct hash_tbl* hashtbl_create(int bucket_size, gfp_t gfp_mask)
 
 	LOGd("hashtbl_create begin\n");
 	ASSERT(bucket_size > 0);
-	
+
 	htbl = kzalloc(sizeof(struct hash_tbl), gfp_mask);
 	if (htbl == NULL) { goto error0; }
 
@@ -406,7 +406,7 @@ struct hash_tbl* hashtbl_create(int bucket_size, gfp_t gfp_mask)
 	ASSERT_HASHTBL(htbl);
 	LOGd("hashtbl_create end\n");
 	return htbl;
-	
+
 error1:
 	kfree(htbl);
 error0:
@@ -436,7 +436,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
 
 	LOGd("hashtbl_empty begin\n");
 	ASSERT_HASHTBL(htbl);
-	
+
 	for (i = 0; i < htbl->bucket_size; i++) {
 
 		hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
@@ -457,7 +457,7 @@ void hashtbl_empty(struct hash_tbl *htbl)
  * @key_size key size > 0.
  * @val value. MUST NOT be HASHTBL_INVALID_VAL.
  * @gfp_mask GFP_*
- * 
+ *
  * @return 0 in success,
  *	   -EINVAL when parameters are invalid.
  *	   -EPERM when key already exists,
@@ -484,7 +484,7 @@ int hashtbl_add(struct hash_tbl *htbl,
 	/* Allocate cell. */
 	cell = alloc_hash_cell(key_size, gfp_mask);
 	if (cell == NULL) { goto nomem; }
-	
+
 	/* Fill cell. */
 	set_hash_cell_key(cell, key);
 	set_hash_cell_val(cell, val);
@@ -492,7 +492,7 @@ int hashtbl_add(struct hash_tbl *htbl,
 	/* Add to hashtbl. */
 	idx = hashtbl_get_index(htbl, key, key_size);
 	hlist_add_head(&cell->list, &htbl->bucket[idx]);
-	
+
 	/* LOGd("hashtbl_add end\n"); */
 	return 0;
 
@@ -516,7 +516,7 @@ parameters_invalid:
 unsigned long hashtbl_lookup(const struct hash_tbl *htbl, const u8* key, int key_size)
 {
 	struct hash_cell *cell;
-	
+
 	cell = hashtbl_lookup_cell(htbl, key, key_size);
 	return get_hash_cell_val(cell);
 }
@@ -534,11 +534,11 @@ unsigned long hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
 {
 	struct hash_cell *cell;
 	unsigned long val = HASHTBL_INVALID_VAL;
-	
+
 	cell = hashtbl_lookup_cell(htbl, key, key_size);
 	val = get_hash_cell_val(cell);
 	free_hash_cell(cell);
-	
+
 	return val;
 }
 
@@ -552,9 +552,9 @@ unsigned long hashtbl_del(struct hash_tbl *htbl, const u8* key, int key_size)
 int hashtbl_is_empty(const struct hash_tbl *htbl)
 {
 	int i;
-	
+
 	ASSERT_HASHTBL(htbl);
-	
+
 	for (i = 0; i < htbl->bucket_size; i++) {
 		if (! hlist_empty(&htbl->bucket[i])) {
 			return 0;
@@ -582,7 +582,7 @@ int hashtbl_n_items(const struct hash_tbl *htbl)
 	int n_local = 0;
 
 	ASSERT_HASHTBL(htbl);
-	
+
 	for (i = 0; i < htbl->bucket_size; i++) {
 
 		n_local = 0;
@@ -693,7 +693,7 @@ int hashtbl_test(void)
 
 	/* Empty and destroy. */
 	hashtbl_destroy(htbl);
-	
+
 	LOGd("hashtbl_test end\n");
 	return 0;
 
@@ -711,10 +711,10 @@ error:
 void hashtbl_cursor_init(struct hash_tbl *htbl, hashtbl_cursor_t *cursor)
 {
 	ASSERT_HASHTBL(htbl);
-	
+
 	cursor->htbl = htbl;
 	cursor->state = HASHTBL_CURSOR_INVALID;
-	
+
 	cursor->bucket_idx = 0;
 	cursor->curr_head = NULL;
 	cursor->curr = NULL;
@@ -755,7 +755,7 @@ static int search_next_head_index(const struct hash_tbl *htbl, int start_idx)
 	ASSERT(0 <= start_idx && start_idx <= htbl->bucket_size);
 
 	for (i = start_idx; i < htbl->bucket_size; i++) {
-		
+
 		if (! hlist_empty(&htbl->bucket[i])) {
 			break;
 		}
@@ -773,7 +773,7 @@ static int search_next_head_index(const struct hash_tbl *htbl, int start_idx)
 int hashtbl_cursor_next(hashtbl_cursor_t *cursor)
 {
 	int idx;
-	
+
 	ASSERT_HASHTBL_CURSOR(cursor);
 
 	switch(cursor->state) {
@@ -784,7 +784,7 @@ int hashtbl_cursor_next(hashtbl_cursor_t *cursor)
 		return 0;
 
 	case HASHTBL_CURSOR_BEGIN:
-		
+
 		idx = search_next_head_index(cursor->htbl, 0);
 
 		/* Check end. */
@@ -824,7 +824,7 @@ int hashtbl_cursor_next(hashtbl_cursor_t *cursor)
 		idx = search_next_head_index(cursor->htbl,
 					++ cursor->bucket_idx);
 		cursor->bucket_idx = idx;
-		
+
 		/* Check end of bucket array. */
 		if (idx == cursor->htbl->bucket_size) {
 			cursor->next_head = NULL;
@@ -836,11 +836,11 @@ int hashtbl_cursor_next(hashtbl_cursor_t *cursor)
 			ASSERT(cursor->next != NULL);
 		}
 	}
-	
+
 	cursor->state = HASHTBL_CURSOR_DATA;
 	ASSERT_HASHTBL_CURSOR(cursor);
 	return 1;
-	
+
 cursor_end:
 	cursor->state = HASHTBL_CURSOR_END;
 	cursor->curr_head = NULL;
@@ -860,9 +860,9 @@ unsigned long hashtbl_cursor_del(hashtbl_cursor_t *cursor)
 {
 	struct hash_cell *cell;
 	unsigned long val;
-	
+
 	ASSERT_HASHTBL_CURSOR(cursor);
-	
+
 	if (cursor->state != HASHTBL_CURSOR_DATA) {
 		return HASHTBL_INVALID_VAL;
 	}
@@ -880,10 +880,10 @@ unsigned long hashtbl_cursor_del(hashtbl_cursor_t *cursor)
 	cursor->curr_head = NULL;
 
 	ASSERT_HASHTBL_CURSOR(cursor);
-	
+
 	return val;
 }
-       
+
 /**
  * Check whether the cursor is BEGIN.
  *
@@ -932,7 +932,7 @@ int hashtbl_cursor_is_valid(const hashtbl_cursor_t *cursor)
 unsigned long hashtbl_cursor_val(const hashtbl_cursor_t *cursor)
 {
 	struct hash_cell *cell;
-	
+
 	if (cursor == NULL) { goto error; }
 
 	ASSERT_HASHTBL_CURSOR(cursor);
@@ -954,7 +954,7 @@ error:
 int hashtbl_cursor_key_size(const hashtbl_cursor_t *cursor)
 {
 	struct hash_cell *cell;
-	
+
 	if (cursor == NULL) { goto error; }
 
 	ASSERT_HASHTBL_CURSOR(cursor);
@@ -979,7 +979,7 @@ error:
 u8* hashtbl_cursor_key(const hashtbl_cursor_t *cursor)
 {
 	struct hash_cell *cell;
-	
+
 	if (cursor == NULL) { goto error; }
 
 	ASSERT_HASHTBL_CURSOR(cursor);
@@ -1005,14 +1005,14 @@ int hashtbl_cursor_test(void)
 	u8 buf[sizeof(int)];
 	int i, j, key;
 	unsigned long val;
-	
+
 	LOGd("hashtbl_cursor_test begin.\n");
 
 	/*
 	 * Test with small data set.
 	 */
 	LOGd("***** Test with small data set *****\n");
-	
+
 	/* Create hash table. */
 	LOGd("Create hashtbl");
 	htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
@@ -1068,7 +1068,7 @@ int hashtbl_cursor_test(void)
 	while (hashtbl_cursor_next(&curt)) {
 		WALB_CHECK(hashtbl_cursor_is_valid(&curt));
 		print_hashtbl_cursor(&curt); /* debug */
-		
+
 		val = hashtbl_cursor_val(&curt);
 		WALB_CHECK(val != HASHTBL_INVALID_VAL);
 		if (val % 2 == 0) {
@@ -1134,7 +1134,7 @@ int hashtbl_cursor_test(void)
 	i = 0; j = 0;
 	while (hashtbl_cursor_next(&curt)) {
 		WALB_CHECK(hashtbl_cursor_is_valid(&curt));
-		
+
 		val = hashtbl_cursor_val(&curt);
 		WALB_CHECK(val != HASHTBL_INVALID_VAL);
 		if (val % 2 == 0) {
@@ -1151,10 +1151,10 @@ int hashtbl_cursor_test(void)
 
 	LOGd("Destroy hash table.\n");
 	hashtbl_destroy(htbl);
-	
+
 	LOGd("hashtbl_cursor_test end.\n");
 	return 0;
-	
+
 error:
 	return -1;
 }

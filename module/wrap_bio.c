@@ -42,7 +42,7 @@ module_param_named(device_str, device_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
 module_param_named(io_should_fail, io_should_fail_, bool, S_IRUGO | S_IWUSR);
-	
+
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
@@ -114,7 +114,7 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 		bio->bi_rw, (u64)bio->bi_sector, bio->bi_size);
 
 	if (io_should_fail_) { goto error0; }
-	
+
 	bioe = alloc_bio_entry(GFP_NOIO);
 	if (!bioe) { goto error0; }
 	clone = bio_clone(bio, GFP_NOIO);
@@ -140,7 +140,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 {
 	struct block_device *bdev;
 	unsigned int lbs, pbs;
-	
+
 	LOGd("create_private_data called");
 
 	/* open underlying device. */
@@ -238,12 +238,12 @@ static bool register_dev(void)
 	struct wrapper_blk_dev *wrdev;
 
 	LOGe("register_dev begin");
-	
+
 	/* capacity must be set lator. */
 	ret = wrdev_register_with_bio(get_minor(i),
 				capacity, physical_block_size_,
 				wrapper_blk_make_request_fn);
-		
+
 	if (!ret) {
 		goto error;
 	}
@@ -265,7 +265,7 @@ static void unregister_dev(void)
 {
 	unsigned int i = 0;
 	struct wrapper_blk_dev *wrdev;
-	
+
 	wrdev = wrdev_get(get_minor(i));
 	wrdev_unregister(get_minor(i));
 	if (wrdev) {
@@ -291,7 +291,7 @@ error:
 static void stop_dev(void)
 {
 	unsigned int i = 0;
-	
+
 	wrdev_stop(get_minor(i));
 }
 

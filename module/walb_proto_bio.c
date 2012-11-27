@@ -137,7 +137,7 @@ static void task_periodic_print(struct work_struct *work)
 
 	LOGn("wbiow_n_pending %d\n",
 		atomic_read(&wbiow_n_pending));
-	
+
 	/* self-recursive call. */
 	INIT_DELAYED_WORK(dwork, task_periodic_print);
 	queue_delayed_work(system_wq, dwork, msecs_to_jiffies(1000));
@@ -167,7 +167,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	struct walb_super_sector *ssect;
 	struct request_queue *lq, *dq;
 	unsigned int major;
-	
+
 	LOGd("create_private_data called");
 
 	/* Allocate wdev. */
@@ -189,7 +189,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	major = wrdev_get_major();
 	ASSERT(major > 0);
 	wdev->devt = MKDEV(major, wrdev->minor);
-	
+
 	/* Queue and disk are shared with wrdev. */
 	wdev->queue = wrdev->queue;
 	wdev->gd = wrdev->gd;
@@ -254,7 +254,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	wdev->queue_stop_timeout_ms = queue_stop_timeout_ms_;
 	LOGn("qeue_stop_timeout_ms: %u\n", wdev->queue_stop_timeout_ms);
 #endif
-	
+
 	/* Set underlying devices. */
 	wdev->ldev = ldev;
 	wdev->ddev = ddev;
@@ -279,7 +279,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 #endif
 	wdev->ring_buffer_size = ssect->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(ssect);
-	
+
 	/* capacity */
 	wdev->ddev_size = ddev->bd_part->nr_sects;
 	wdev->ldev_size = ldev->bd_part->nr_sects;
@@ -330,7 +330,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	}
 	LOGn("chunk_sectors ldev %u ddev %u.\n",
 		wdev->ldev_chunk_sectors, wdev->ddev_chunk_sectors);
-	
+
 #if 0
 	/* unused by the prototype. */
 	wdev->n_snapshots;
@@ -373,7 +373,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wrdev)
 	struct walb_super_sector *ssect;
 
 	LOGd("destoroy_private_data called.");
-	
+
 	wdev = wrdev->private_data;
 	if (!wdev) { return; }
 	ASSERT(wdev);
@@ -390,7 +390,7 @@ static void destroy_private_data(struct wrapper_blk_dev *wrdev)
 	if (!walb_write_super_sector(wdev->ldev, wdev->lsuper0)) {
 		LOGe("super block write failed.\n");
 	}
-	
+
 	/* close underlying devices. */
 	blkdev_put(wdev->ddev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
 	blkdev_put(wdev->ldev, FMODE_READ|FMODE_WRITE|FMODE_EXCL);
@@ -439,7 +439,7 @@ static void customize_wrdev(struct wrapper_blk_dev *wrdev)
 	} else {
 		LOGn("Not support REQ_DISCARD.");
 	}
-#endif 
+#endif
 }
 
 static unsigned int get_minor(unsigned int id)
@@ -455,12 +455,12 @@ static bool register_dev(void)
 	struct wrapper_blk_dev *wrdev;
 
 	LOGn("begin\n");
-	
+
 	/* capacity must be set lator. */
 	ret = wrdev_register_with_bio(get_minor(i), capacity,
 				physical_block_size_,
 				wrapper_blk_make_request_fn);
-		
+
 	if (!ret) {
 		goto error;
 	}
@@ -484,14 +484,14 @@ static void unregister_dev(void)
 	struct wrapper_blk_dev *wrdev;
 
 	LOGn("begin\n");
-	
+
 	wrdev = wrdev_get(get_minor(i));
 	wrdev_unregister(get_minor(i));
 	if (wrdev) {
 		destroy_private_data(wrdev);
 		FREE(wrdev);
 	}
-	
+
 	LOGn("end\n");
 }
 
@@ -543,7 +543,7 @@ static bool pre_register(void)
 	if (!bio_entry_init()) {
 		goto error2;
 	}
-	
+
 	/* prepare workqueues. */
 	wq_logpack_ = alloc_workqueue(WQ_LOGPACK_NAME, WQ_MEM_RECLAIM, 0);
 	if (!wq_logpack_) {
@@ -576,7 +576,7 @@ static bool pre_register(void)
 #else
 	LOGn("WalB Easy Algorithm.\n");
 #endif
-	
+
 	return true;
 
 #if 0
@@ -655,7 +655,7 @@ static int __init wrapper_blk_init(void)
 		LOGe("pre_register failed.\n");
 		goto error0;
 	}
-	
+
 	if (!register_dev()) {
 		goto error1;
 	}
@@ -688,7 +688,7 @@ static void wrapper_blk_exit(void)
 	/* debug */
 	cancel_delayed_work_sync(&shared_dwork);
 #endif
-	
+
 	stop_dev();
 	unregister_dev();
 	post_unregister();

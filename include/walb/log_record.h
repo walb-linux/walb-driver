@@ -26,16 +26,16 @@ struct walb_log_record {
 	   If is_padding non-zero, checksum is not calcurated. */
 	u32 checksum;
 	u32 reserved1;
-	
+
 	u64 lsid; /* Log sequence id of the record. */
-	
+
 	u16 lsid_local; /* Local sequence id as the data offset in the log record.
 			   lsid - lsid_local is logpack lsid. */
 	u16 is_padding; /* Non-zero if this is padding log */
 	u16 io_size; /* IO size [logical sector].
 			512B * (65K - 1) = (32M-512)B is the maximum request size. */
 	u16 is_exist; /* Non-zero if this record is exist. */
-	
+
 	u64 offset; /* IO offset [logical sector]. */
 
 	/*
@@ -44,7 +44,7 @@ struct walb_log_record {
 	 * Offset of the log record header.
 	 *   offset = lsid_to_offset(lsid) - lsid_local
 	 */
-	
+
 } __attribute__((packed));
 
 /**
@@ -65,10 +65,10 @@ struct walb_logpack_header {
 			  This includes padding records also. */
 	u16 n_padding; /* Number of padding record. 0 or 1. */
 	u32 reserved1;
-	
+
 	struct walb_log_record record[0];
 	/* continuous records */
-	
+
 } __attribute__((packed));
 
 
@@ -93,7 +93,7 @@ struct walb_logpack_header {
 	for (i = 0; i < lhead->n_records && ({lrec = &lhead->record[i]; 1;}); i++)
 
 /*******************************************************************************
- * Prototype of static inline functions. 
+ * Prototype of static inline functions.
  *******************************************************************************/
 
 static inline unsigned int max_n_log_record_in_sector(unsigned int pbs);
@@ -103,7 +103,7 @@ static inline int is_valid_logpack_header(const struct walb_logpack_header *lhea
 static inline u64 get_next_lsid(const struct walb_logpack_header *lhead);
 
 /*******************************************************************************
- * Definition of static inline functions. 
+ * Definition of static inline functions.
  *******************************************************************************/
 
 /**
@@ -123,32 +123,32 @@ static inline unsigned int max_n_log_record_in_sector(unsigned int pbs)
 static inline void log_record_init(struct walb_log_record *rec)
 {
 	ASSERT(rec);
-	
+
 	rec->checksum = 0;
 	rec->lsid = 0;
-	
+
 	rec->lsid_local = 0;
 	rec->is_padding = 0;
 	rec->io_size = 0;
 	rec->is_exist = 0;
-	
+
 	rec->offset = 0;
 }
 
 /**
  * This is for validation of log record.
- * 
+ *
  * @return Non-zero if valid, or 0.
  */
 static inline int is_valid_log_record(struct walb_log_record *rec)
 {
 	CHECK(rec);
 	CHECK(rec->is_exist);
-	
+
 	CHECK(rec->io_size > 0);
 	CHECK(rec->lsid_local > 0);
 	CHECK(rec->lsid <= MAX_LSID);
-	
+
 	return 1; /* valid */
 error:
 	return 0; /* invalid */
@@ -171,7 +171,7 @@ static inline int is_valid_logpack_header(
 	if (lhead->n_records == 0) {
 		CHECK(lhead->total_io_size == 0);
 		CHECK(lhead->n_padding == 0);
-	} else {	
+	} else {
 		CHECK(lhead->total_io_size > 0);
 		CHECK(lhead->n_padding < lhead->n_records);
 	}

@@ -32,10 +32,10 @@
  */
 struct hash_cell {
 	struct hlist_node list;
-	
+
 	int key_size;
 	u8 *key;
-	
+
 	unsigned long val;
 };
 

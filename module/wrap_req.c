@@ -44,7 +44,7 @@ module_param_named(device_str, device_str_, charp, S_IRUGO);
 module_param_named(start_minor, start_minor_, int, S_IRUGO);
 module_param_named(pbs, physical_block_size_, int, S_IRUGO);
 module_param_named(plug_policy, plug_policy_str_, charp, S_IRUGO);
-	
+
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
@@ -195,7 +195,7 @@ static void print_req_flags(struct request *req)
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
-		"%s%s%s%s\n", 
+		"%s%s%s%s\n",
 		((req->cmd_flags & REQ_WRITE) ?		     "REQ_WRITE" : ""),
 		((req->cmd_flags & REQ_FAILFAST_DEV) ?	     " REQ_FAILFAST_DEV" : ""),
 		((req->cmd_flags & REQ_FAILFAST_TRANSPORT) ? " REQ_FAILFAST_TRANSPORT" : ""),
@@ -253,7 +253,7 @@ static struct req_list_work* create_req_list_work(
 	INIT_LIST_HEAD(&work->req_entry_list);
 	work->flush_req = flush_req;
 	work->is_restart_queue = 0;
-	
+
 	return work;
 error0:
 	return NULL;
@@ -265,7 +265,7 @@ error0:
 static void destroy_req_list_work(struct req_list_work *work)
 {
 	struct req_entry *reqe, *next;
-	
+
 	if (work) {
 		list_for_each_entry_safe(reqe, next, &work->req_entry_list, list) {
 			list_del(&reqe->list);
@@ -296,7 +296,7 @@ static struct req_entry* create_req_entry(struct request *req, gfp_t gfp_mask)
 	INIT_LIST_HEAD(&reqe->list);
 	INIT_LIST_HEAD(&reqe->bio_entry_list);
 	reqe->is_submitted = false;
-	
+
 	return reqe;
 error0:
 	return NULL;
@@ -333,7 +333,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	ASSERT(bioe);
 	ASSERT(bioe->bio == bio);
 	ASSERT(uptodate);
-	
+
 	/* LOGd("bio_entry_end_io() begin.\n"); */
 	bioe->error = error;
 	bio_put(bio);
@@ -376,7 +376,7 @@ static struct bio_entry* create_bio_entry(
 	biotmp->bi_end_io = bio_entry_end_io;
 	biotmp->bi_private = bioe;
 	bioe->bio = biotmp;
-	
+
 	/* LOGd("create_bio_entry() end.\n"); */
 	return bioe;
 
@@ -393,7 +393,7 @@ error0:
 static void destroy_bio_entry(struct bio_entry *bioe)
 {
 	/* LOGd("destroy_bio_entry() begin.\n"); */
-	
+
 	if (!bioe) {
 		return;
 	}
@@ -422,18 +422,18 @@ static bool create_bio_entry_list(struct req_entry *reqe, struct wrapper_blk_dev
 	struct bio_entry *bioe, *next;
 	struct bio *bio;
 	struct block_device *bdev = wrdev->private_data;
-	
+
 	ASSERT(reqe);
 	ASSERT(reqe->req);
 	ASSERT(wrdev);
 	ASSERT(list_empty(&reqe->bio_entry_list));
-	
+
 	/* clone all bios. */
 	__rq_for_each_bio(bio, reqe->req) {
 		/* clone bio */
 		bioe = create_bio_entry(bio, bdev, GFP_NOIO);
 		if (!bioe) {
-			LOGd("create_bio_entry() failed.\n"); 
+			LOGd("create_bio_entry() failed.\n");
 			goto error1;
 		}
 		list_add_tail(&bioe->list, &reqe->bio_entry_list);
@@ -474,7 +474,7 @@ static void wait_for_req_entry(struct req_entry *reqe)
 	int remaining;
 
 	ASSERT(reqe);
-	
+
 	remaining = blk_rq_bytes(reqe->req);
 	list_for_each_entry_safe(bioe, next, &reqe->bio_entry_list, list) {
 		wait_for_completion(&bioe->done);
@@ -522,7 +522,7 @@ static void req_list_work_task(struct work_struct *work)
 	struct blk_plug plug;
 
 	/* LOGd("req_list_work_task begin.\n"); */
-	
+
 	ASSERT(rlwork->flush_req == NULL);
 
 	/* prepare and submit */
@@ -572,7 +572,7 @@ static void req_flush_task(struct work_struct *work)
 	struct request_queue *q = rlwork->wrdev->queue;
 	int is_restart_queue = rlwork->is_restart_queue;
 	unsigned long flags;
-	
+
 	LOGd("req_flush_task begin.\n");
 	ASSERT(rlwork->flush_req);
 
@@ -587,7 +587,7 @@ static void req_flush_task(struct work_struct *work)
 		blk_start_queue(q);
 		spin_unlock_irqrestore(q->queue_lock, flags);
 	}
-	
+
 	if (list_empty(&rlwork->req_entry_list)) {
 		destroy_req_list_work(rlwork);
 	} else {
@@ -610,7 +610,7 @@ static void req_flush_task(struct work_struct *work)
 static void enqueue_work_list(struct list_head *listh, struct request_queue *q)
 {
 	struct req_list_work *work;
-	
+
 	list_for_each_entry(work, listh, list) {
 		if (work->flush_req) {
 			if (list_is_last(&work->list, listh)) {
@@ -648,7 +648,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	INIT_LIST_HEAD(&listh);
 	work = create_req_list_work(NULL, wrdev, GFP_ATOMIC);
 	if (!work) { goto error0; }
-	
+
 	while ((req = blk_fetch_request(q)) != NULL) {
 
 		/* print_req_flags(req); */
@@ -688,7 +688,7 @@ error0:
 	}
 	/* LOGe("wrapper_blk_req_request_fn: error.\n"); */
 }
-	
+
 /* Called before register. */
 static bool pre_register(void)
 {
@@ -716,7 +716,7 @@ static bool pre_register(void)
 		LOGe("failed to create a kmem_cache.\n");
 		goto error2;
 	}
-	
+
 	/* prepare workqueue data. */
 	wq_req_list_ = alloc_workqueue(WQ_REQ_LIST_NAME, WQ_MEM_RECLAIM, 0);
 	if (!wq_req_list_) { goto error3; }
@@ -767,7 +767,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 {
 	struct block_device *bdev;
 	unsigned int lbs, pbs;
-	
+
 	LOGd("create_private_data called");
 
 	/* open underlying device. */
@@ -787,7 +787,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	/* Block size */
 	lbs = bdev_logical_block_size(bdev);
 	pbs = bdev_physical_block_size(bdev);
-	
+
 	if (lbs != LOGICAL_BLOCK_SIZE) {
 		goto error0;
 	}
@@ -861,11 +861,11 @@ static bool register_dev(void)
 	struct wrapper_blk_dev *wrdev;
 
 	LOGe("register_dev begin");
-	
+
 	/* capacity must be set lator. */
 	ret = wrdev_register_with_req(get_minor(i), capacity, physical_block_size_,
 				wrapper_blk_req_request_fn);
-		
+
 	if (!ret) {
 		goto error;
 	}
@@ -887,7 +887,7 @@ static void unregister_dev(void)
 {
 	unsigned int i = 0;
 	struct wrapper_blk_dev *wrdev;
-	
+
 	wrdev = wrdev_get(get_minor(i));
 	wrdev_unregister(get_minor(i));
 	if (wrdev) {
@@ -913,7 +913,7 @@ error:
 static void stop_dev(void)
 {
 	unsigned int i = 0;
-	
+
 	wrdev_stop(get_minor(i));
 }
 
@@ -944,9 +944,9 @@ static int __init wrapper_blk_init(void)
 	}
 
 	set_policy();
-	
+
 	pre_register();
-	
+
 	if (!register_dev()) {
 		goto error0;
 	}

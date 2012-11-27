@@ -38,7 +38,7 @@ error:
 	LOGe("logpack header checksum is invalid (lsid %"PRIu64").\n",
 		lhead->logpack_lsid);
 	return false;
-}	
+}
 
 /**
  * Read logpack header sector from log device.
@@ -69,7 +69,7 @@ bool read_logpack_header_from_wldev(
 	}
 	struct walb_logpack_header *lhead =
 		get_logpack_header(lhead_sect);
-	
+
 	/* check lsid */
 	if (lsid != lhead->logpack_lsid) {
 		LOGe("lsid (given %"PRIu64" read %"PRIu64") is invalid.\n",
@@ -82,7 +82,7 @@ bool read_logpack_header_from_wldev(
 		goto error0;
 	}
 	return true;
-	
+
 error0:
 	return false;
 }
@@ -124,7 +124,7 @@ void print_logpack_header(const struct walb_logpack_header* lhead)
 			lhead->record[i].io_size,
 			lhead->record[i].is_exist,
 			lhead->record[i].offset);
-		printf("logpack lsid: %"PRIu64"\n", 
+		printf("logpack lsid: %"PRIu64"\n",
 			lhead->record[i].lsid - lhead->record[i].lsid_local);
 	}
 }
@@ -171,7 +171,7 @@ bool read_logpack_data_from_wldev(
 		LOGe("buffer size is not enough.\n");
 		return false;
 	}
-	
+
 	int i;
 	int n_req = lhead->n_records;
 	int total_pb;
@@ -216,8 +216,8 @@ bool read_logpack_data_from_wldev(
 		total_pb += log_pb;
 	}
 	return true;
-	
-error0:	       
+
+error0:
 	return false;
 }
 
@@ -304,7 +304,7 @@ bool read_logpack_data_raw(int fd,
 	}
 	ASSERT(total_pb == lhead->total_io_size);
 	return true;
-		
+
 error0:
 	return false;
 }
@@ -371,7 +371,7 @@ bool read_logpack_data(
 	}
 	ASSERT(total_pb == lhead->total_io_size);
 	return true;
-		
+
 error0:
 	return false;
 }
@@ -390,13 +390,13 @@ bool redo_logpack(
 {
 	ASSERT(lhead);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
-	
+
 	int i;
 	int n_req = lhead->n_records;
 
 	unsigned int idx_lb, n_lb;
 	u64 off_lb;
-	
+
 	for (i = 0; i < n_req; i++) {
 		if (lhead->record[i].is_padding != 0) {
 			continue;
@@ -411,8 +411,8 @@ bool redo_logpack(
 		}
 	}
 	return true;
-	
-error0:	       
+
+error0:
 	return false;
 }
 
@@ -444,7 +444,7 @@ bool write_invalid_logpack_header(
 		goto error1;
 	}
 	sector_free(sect);
-	
+
 	return true;
 error1:
 	sector_free(sect);
@@ -593,11 +593,11 @@ bool logpack_add_io_request(
 
 	/* Set IO offset. */
 	rec->offset = offset;
-    
+
 	/* Calc data size in logical blocks. */
 	rec->io_size = size / LOGICAL_BLOCK_SIZE;
 	unsigned int n_pb = capacity_pb(pbs, rec->io_size);
-    
+
 	/* Calc data offset in the logpack in physical bs. */
 	if (rec_id == 0) {
 		rec->lsid_local = 1;
@@ -622,15 +622,15 @@ bool logpack_add_io_request(
 			goto error;
 		}
 	}
-    
-	/* Copy data to suitable offset in sector data array. */
-	
 
-	
-    
-    
+	/* Copy data to suitable offset in sector data array. */
+
+
+
+
+
 	/* now editing */
-    
+
 	/* Modify metadata in logpack header. */
 
 	/* Finalize logpack header. */
@@ -639,7 +639,7 @@ bool logpack_add_io_request(
 	if (is_padding) { lhead->n_padding++; }
 
 	return true;
-    
+
 error:
 	return false;
 }

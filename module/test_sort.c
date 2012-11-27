@@ -46,7 +46,7 @@ static int cmp_func(const void *a, const void *b)
 	ASSERT(y);
 	u1 = x->key;
 	u2 = y->key;
-	
+
 	if (u1 < u2) {
 		return -1;
 	}
@@ -112,7 +112,7 @@ static bool create_item_list(unsigned int n_items, struct list_head *list0)
 {
 	unsigned int i;
 	struct l_item *item;
-	
+
 	for (i = 0; i < n_items; i++) {
 		item = kmalloc(sizeof(struct l_item), GFP_KERNEL);
 		if (!item) {
@@ -123,7 +123,7 @@ static bool create_item_list(unsigned int n_items, struct list_head *list0)
 	}
 
 	return true;
-	
+
 error0:
 	return false;
 }
@@ -131,7 +131,7 @@ error0:
 static void fill_item_list_randomly(struct list_head *list0)
 {
 	struct l_item *item;
-	
+
 	list_for_each_entry(item, list0, list) {
 		get_random_bytes(&item->key, sizeof(u64));
 	}
@@ -140,7 +140,7 @@ static void fill_item_list_randomly(struct list_head *list0)
 static void move_item_list_all(struct list_head *dst, struct list_head *src)
 {
 	struct l_item *item, *item_next;
-	
+
 	list_for_each_entry_safe(item, item_next, src, list) {
 		list_move_tail(&item->list, dst);
 	}
@@ -149,7 +149,7 @@ static void move_item_list_all(struct list_head *dst, struct list_head *src)
 static void destroy_item_list(struct list_head *list0)
 {
 	struct l_item *item, *item_next;
-	
+
 	list_for_each_entry_safe(item, item_next, list0, list) {
 		list_del(&item->list);
 		kfree(item);
@@ -208,7 +208,7 @@ static void test_lsort(unsigned int n_test, unsigned int n_items)
 	if (!create_item_list(n_items, &list0)) {
 		goto fin;
 	}
-	
+
 	/* warm up */
 	for (i = 0; i < n_test; i++) {
 		fill_item_list_randomly(&list0);
@@ -284,12 +284,12 @@ static void sort_by_mmap(
 	while (ret) {
 		item = (struct l_item *)multimap_cursor_val(&cur);
 		list_add_tail(&item->list, dst);
-		
+
 		ret = multimap_cursor_del(&cur);
 		ASSERT(ret);
 		ret = multimap_cursor_is_data(&cur);
 	}
-	
+
 	/* Destroy the mulitmap. */
 	ASSERT(multimap_is_empty(mmap));
 	multimap_destroy(mmap);
@@ -315,7 +315,7 @@ static void test_tsort(unsigned int n_test, unsigned int n_items)
 	if (!create_item_list(n_items, &list0)) {
 		goto fin;
 	}
-	
+
 	/* warm up */
 	for (i = 0; i < n_test; i++) {
 		fill_item_list_randomly(&list0);
@@ -364,7 +364,7 @@ static int __init test_init(void)
 	test_hsort(n_test_);
 	test_lsort(n_test_, n_items_);
 	test_tsort(n_test_, n_items_);
-	
+
 	finalize_treemap_memory_manager(&mmgr_);
 	return -1;
 }

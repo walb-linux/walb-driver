@@ -45,7 +45,7 @@ struct snapshot_sector_control
 	   After created, must be -1.
 	   After initialized, 0 or more. */
 	int n_free_records;
-	
+
 	/* SNAPSHOT_SECTOR_CONTROL_XXX */
 	int state;
 
@@ -63,7 +63,7 @@ struct snapshot_data
 {
 	/* Lock to access all data in the struct. */
 	struct rw_semaphore lock;
-	
+
 	/* All sectors exist in start_offset <= offset < end_offset.
 	   [physical block]. */
 	u64 start_offset;
@@ -78,18 +78,18 @@ struct snapshot_data
 	/* Next snapshot id for record allocation.
 	   This will be simply incremented per allocation. */
 	u32 next_snapshot_id;
-	
+
 	/* Image of sectors.
 	   We want to use a big array but could not
 	   due to PAGE_SIZE limitation.
 	   Index: offset -> (struct snapshot_sector_control *).
 	   Each struct snapshot_sector_control data is managed by this map. */
 	struct map *sectors;
-	
+
 	/* Primary Index: snapshot_id -> (struct snapshot_sector_control *)
 	   Value should be offset but value type is unsigned long, not u64. */
 	struct map *id_idx;
-	
+
 	/* Index: name -> snapshot_id.
 	   name is unique key. */
 	struct hash_tbl *name_idx;

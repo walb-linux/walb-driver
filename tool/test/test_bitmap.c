@@ -52,7 +52,7 @@ void test(int size)
 	}
 	walb_bitmap_print(bmp);
 	ASSERT(walb_bitmap_is_all_on(bmp));
-	
+
 	walb_bitmap_off(bmp, 0);
 	walb_bitmap_off(bmp, 1);
 	walb_bitmap_off(bmp, 2);
@@ -78,7 +78,7 @@ void test(int size)
 	walb_bitmap_clear(bmp);
 	walb_bitmap_print(bmp);
 	ASSERT(walb_bitmap_is_all_off(bmp));
-	
+
 	/* Free the bitmap. */
 	walb_bitmap_free(bmp);
 }

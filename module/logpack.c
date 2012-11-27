@@ -79,7 +79,7 @@ bool walb_logpack_header_add_req(
 	unsigned int padding_pb;
 	unsigned int max_n_rec;
 	int idx;
-	
+
 	ASSERT(lhead);
 	ASSERT(lhead->sector_type == SECTOR_TYPE_LOGPACK);
 	ASSERT(req);
@@ -89,7 +89,7 @@ bool walb_logpack_header_add_req(
 	logpack_lsid = lhead->logpack_lsid;
 	max_n_rec = max_n_log_record_in_sector(pbs);
 	idx = lhead->n_records;
-	
+
 	ASSERT(lhead->n_records <= max_n_rec);
 	if (lhead->n_records == max_n_rec) {
 		LOGd("no more request can not be added.\n");
@@ -131,7 +131,7 @@ bool walb_logpack_header_add_req(
 
 		req_lsid += padding_pb;
 		idx++;
-		
+
 		if (lhead->n_records == max_n_rec) {
 			LOGd("no more request can not be added.\n");
 			goto error0;
@@ -156,7 +156,7 @@ bool walb_logpack_header_add_req(
 
 	req_lsid += req_pb;
 	idx++;
-	
+
 	return true;
 error0:
 	return false;
@@ -193,7 +193,7 @@ bool walb_logpack_header_add_bio(
 	unsigned int max_n_rec;
 	int idx;
 	UNUSED const char no_more_bio_msg[] = "no more bio can not be added.\n";
-	
+
 	ASSERT(lhead);
 	ASSERT(lhead->sector_type == SECTOR_TYPE_LOGPACK);
 	ASSERT(bio);
@@ -203,7 +203,7 @@ bool walb_logpack_header_add_bio(
 	logpack_lsid = lhead->logpack_lsid;
 	max_n_rec = max_n_log_record_in_sector(pbs);
 	idx = lhead->n_records;
-	
+
 	ASSERT(lhead->n_records <= max_n_rec);
 	if (lhead->n_records == max_n_rec) {
 		LOGd_(no_mor_bio_msg);
@@ -245,7 +245,7 @@ bool walb_logpack_header_add_bio(
 
 		bio_lsid += padding_pb;
 		idx++;
-		
+
 		if (lhead->n_records == max_n_rec) {
 			LOGd_(no_mor_bio_msg);
 			goto error0;
@@ -270,7 +270,7 @@ bool walb_logpack_header_add_bio(
 
 	bio_lsid += bio_pb;
 	idx++;
-	
+
 	return true;
 error0:
 	return false;

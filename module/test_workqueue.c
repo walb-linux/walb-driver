@@ -120,7 +120,7 @@ static void test_work_task_detail(struct work_struct *work, int id)
 	msleep_interruptible(test_work->msec_sleep);
 
 	getnstimeofday(&test_work->end_ts);
-	
+
 	delta[0] = timespec_sub(test_work->enq_ts, test_work->bgn_ts);
 	delta[1] = timespec_sub(test_work->deq_ts, test_work->enq_ts);
 	delta[2] = timespec_sub(test_work->end_ts, test_work->deq_ts);
@@ -132,7 +132,7 @@ static void test_work_task_detail(struct work_struct *work, int id)
 		delta[0].tv_sec, delta[0].tv_nsec,
 		delta[1].tv_sec, delta[1].tv_nsec,
 		delta[2].tv_sec, delta[2].tv_nsec);
-		
+
 	destroy_test_work(test_work);
 }
 
@@ -163,7 +163,7 @@ static void create_and_enqueue_task(
 	unsigned int msec_sleep)
 {
 	struct test_work* test_work;
-	
+
 	test_work = create_test_work(GFP_KERNEL);
 	ASSERT(test_work);
 	test_work->msec_sleep = msec_sleep;
@@ -188,7 +188,7 @@ static void destroy_test_work(struct test_work *test_work)
 static void init_workqueue(void)
 {
 	int i;
-	
+
 	for (i = 0; i < N_WQ; i++) {
 		wq_name_[i] = (char *)MALLOC(64, GFP_KERNEL);
 		ASSERT(wq_name_[i]);
@@ -221,7 +221,7 @@ static void init_workqueue(void)
 static void fin_workqueue(void)
 {
 	int i;
-	
+
 	for (i = 0; i < N_WQ; i++) {
 		flush_workqueue(wq_[i]);
 		destroy_workqueue(wq_[i]);
@@ -303,7 +303,7 @@ static void test_wq_single_task(struct work_struct *work)
 	/* LOGn("%u END\n", w->id); */
 
 	destroy_test_work(w);
-	
+
 	/* LOGn("test_wq_single_task timestamp %ld.%09ld\n", */
 	/*	ts.tv_sec, ts.tv_nsec); */
 }
@@ -344,7 +344,7 @@ static void test_spinlock(void)
 	spinlock_t lock;
 	int i;
 	struct timespec bgn_ts, end_ts, sub_ts;
-	
+
 	spin_lock_init(&lock);
 	getnstimeofday(&bgn_ts);
 	for (i = 0; i < N_TRIAL; i++) {
@@ -352,7 +352,7 @@ static void test_spinlock(void)
 		spin_unlock(&lock);
 	}
 	getnstimeofday(&end_ts);
-	
+
 	sub_ts = timespec_sub(end_ts, bgn_ts);
 	LOGn("test_spinlock: %ld.%09ld\n", sub_ts.tv_sec, sub_ts.tv_nsec);
 }
@@ -385,7 +385,7 @@ static void test_mutex_task(struct work_struct *work)
 		period += sub_ts.tv_nsec / 1000;
 		mutex_unlock(twork->mutex);
 		msleep(8);
-		
+
 	}
 	LOGn("end id %u\n", twork->id);
 	LOGn("critial section takes %lu us (average)\n", period / twork->n_trial);

@@ -22,7 +22,7 @@ UNUSED static bool is_sector_zero(const struct sector_data *sect)
 {
 	unsigned int i;
 	ASSERT_SECTOR_DATA(sect);
-	
+
 	for (i = 0; i < sect->size; i++) {
 		if (((u8 *)sect->data)[i] != 0) { return false; }
 	}
@@ -65,7 +65,7 @@ static void test_sector_array_copy_detail(
 	raw1 = (u8 *)malloc(raw_size);
 	ASSERT(raw0);
 	ASSERT(raw1);
-	
+
 	sect_ary0 = sector_array_alloc(sect_size, n_sectors);
 	sect_ary1 = sector_array_alloc(sect_size, n_sectors);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
@@ -95,7 +95,7 @@ static void test_sector_array_copy_detail(
 	/* Check */
 	ASSERT(sector_array_compare(sect_ary0, sect_ary1) == 0);
 	ASSERT(memcmp(raw0, raw1, raw_size) == 0);
-	
+
 	/* Deallocate memories. */
 	sector_array_free(sect_ary0);
 	sector_array_free(sect_ary1);
@@ -142,7 +142,7 @@ void test_sector_array(unsigned int sect_size, unsigned int n_sectors)
 	raw_size = sect_size * (n_sectors + 3) * sizeof(u8);
 	raw = (u8 *)malloc(raw_size);
 	ASSERT(raw);
-	
+
 	sect_ary0 = sector_array_alloc(sect_size, n_sectors);
 	sect_ary1 = sector_array_alloc(sect_size, n_sectors + 3);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
@@ -250,7 +250,7 @@ void test_sector_io(unsigned int sect_size, unsigned int n_sectors)
 		sect0 = get_sector_data_in_array(sect_ary0, i);
 		memset_sector_random(sect0);
 	}
-	
+
 	/* write */
 	int fd = open(TEST_FILE, O_RDWR | O_TRUNC |O_CREAT, 00755);
 	ASSERT(fd > 0);
@@ -261,18 +261,18 @@ void test_sector_io(unsigned int sect_size, unsigned int n_sectors)
 
 	off = lseek(fd, 0, SEEK_SET);
 	ASSERT(off == 0);
-	
+
 	/* read */
 	ret = sector_array_read(fd, sect_ary1, 0, n_sectors);
 	ASSERT(ret);
-	
+
 	close(fd);
-	
+
 	/* check */
 	for (i = 0; i < n_sectors; i++) {
 		sect0 = get_sector_data_in_array(sect_ary0, i);
 		sect1 = get_sector_data_in_array(sect_ary1, i);
-		
+
 		ASSERT(sector_compare(sect0, sect1) == 0);
 	}
 
@@ -293,12 +293,12 @@ int main()
 
 	test_sector_array_copy(512, 10);
 	test_sector_array_copy(4096, 10);
-	
+
 	test_sector_io(512, 10);
 	test_sector_io(4096, 10);
 
 	printf("test passed.\n");
-	
+
 	return 0;
 }
 

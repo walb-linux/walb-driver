@@ -62,12 +62,12 @@ struct req_entry* create_req_entry(
 
 	/* INIT_WORK(&reqe->work, NULL); */
 	reqe->data = data;
-	
+
 	ASSERT(req);
 	reqe->req = req;
 	INIT_LIST_HEAD(&reqe->bio_ent_list);
 	init_completion(&reqe->done);
-	
+
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	init_completion(&reqe->overlapping_done);
 	reqe->n_overlapping = -1;
@@ -156,7 +156,7 @@ void get_overlapping_pos_and_sectors(
 	}
 	ASSERT(reqe0->req_pos <= pos);
 	ASSERT(reqe1->req_pos <= pos);
-	
+
 	/* Smaller one as the end position. */
 	pos_end0 = reqe0->req_pos + reqe0->req_sectors;
 	pos_end1 = reqe1->req_pos + reqe1->req_sectors;
@@ -204,7 +204,7 @@ bool data_copy_req_entry(
 	ASSERT(src_reqe);
 
 	LOGd_("begin dst %p src %p.\n", dst_reqe, src_reqe);
-	
+
 	/* Get overlapping area. */
 	get_overlapping_pos_and_sectors(
 		dst_reqe, src_reqe, &ol_req_pos, &ol_req_sectors);
@@ -224,7 +224,7 @@ bool data_copy_req_entry(
 	/* Copy data in the range. */
 	copied = 0;
 	while (copied < ol_req_sectors) {
-		
+
 		tmp_copied = bio_entry_cursor_try_copy_and_proceed(
 			&dst_cur, &src_cur, ol_req_sectors - copied);
 		ASSERT(tmp_copied > 0);
@@ -238,7 +238,7 @@ bool data_copy_req_entry(
 			gfp_mask)) {
 		goto error;
 	}
-			
+
 	LOGd_("end dst %p src %p.\n", dst_reqe, src_reqe);
 	return true;
 error:
@@ -255,7 +255,7 @@ bool req_entry_init(void)
 	int cnt;
 	LOGd("req_entry_init begin\n");
 	cnt = atomic_inc_return(&shared_cnt_);
-	
+
 	if (cnt > 1) {
 		return true;
 	}
@@ -283,7 +283,7 @@ void req_entry_exit(void)
 	int cnt;
 
 	cnt = atomic_dec_return(&shared_cnt_);
-	
+
 	if (cnt > 0) {
 		return;
 	} else if (cnt < 0) {

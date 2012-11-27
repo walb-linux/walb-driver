@@ -52,7 +52,7 @@ struct bio_pair2
 	struct bio *bio_orig, *bio1, *bio2;
 	/* bio1 and bio2 must be cloned bios.
 	   bio1->bi_private and bio2->bi_private must be this object. */
-	
+
 	atomic_t cnt;
 	int error;
 };
@@ -132,7 +132,7 @@ UNUSED static void bio_cursor_print(
 	ASSERT(cur->bioe);
 	pos = cur->bioe->pos;
 	len = cur->bioe->len;
-	
+
 	printk("%s"
 		"bio_cursor: "
 		"bioe %p bio %p (%"PRIu64", %u) idx %u off %u off_in %u\n",
@@ -155,7 +155,7 @@ UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur)
 	struct bio_vec *bvec;
 	int i;
 	unsigned int off;
-	
+
 	CHECK(cur);
 	CHECK(cur->bioe);
 
@@ -186,7 +186,7 @@ UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur)
 	}
 	CHECK(off + cur->off_in == cur->off);
 
-fin:	
+fin:
 	return true;
 error:
 	return false;
@@ -211,7 +211,7 @@ static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe)
 	}
 	cur->off = 0;
 	cur->off_in = 0;
-	
+
 	ASSERT(bio_cursor_is_valid(cur));
 }
 #endif
@@ -244,7 +244,7 @@ static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len)
 			len -= tmp;
 		}
 	}
-	
+
 	ASSERT(bio_cursor_is_valid(cur));
 }
 #endif
@@ -256,7 +256,7 @@ static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len)
 static bool bio_cursor_is_end(struct bio_cursor *cur)
 {
 	ASSERT(bio_cursor_is_valid(cur));
-	
+
 	if (cur->bioe->len == 0) {
 		/* zero bio always indicates the end. */
 		return true;
@@ -303,7 +303,7 @@ static unsigned int bio_cursor_size_to_boundary(struct bio_cursor *cur)
 static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
 {
 	ASSERT(bio_cursor_is_valid(cur));
-	
+
 	if (!bio_cursor_is_end(cur)) {
 		cur->off += bio_cursor_size_to_boundary(cur);
 		cur->off_in = 0;
@@ -395,7 +395,7 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 
 	bio_cursor_proceed(dst, copied);
 	bio_cursor_proceed(src, copied);
-	
+
 	return copied;
 }
 #endif
@@ -418,7 +418,7 @@ static void get_bio_split_position(struct bio *bio, unsigned int first_sectors,
 
 	ASSERT(bio);
 	ASSERT(bio->bi_size > 0);
-	
+
 	sectors = 0;
 	bio_for_each_segment(bvec, bio, mid_idx) {
 
@@ -482,24 +482,24 @@ static struct bio_pair2* bio_split2(
 
 	bio1 = bio_clone(bio, gfp_mask);
 	if (!bio1) { goto error1; }
-	
+
 	bio2 = bio_clone(bio, gfp_mask);
 	if (!bio2) { goto error2; }
-	
+
 	bp->bio1 = bio1;
 	bp->bio2 = bio2;
 
 	bio1->bi_end_io = bio_pair2_end;
 	bio2->bi_end_io = bio_pair2_end;
-	
+
 	bio1->bi_private = bp;
 	bio2->bi_private = bp;
-	
+
 	ASSERT(bio1->bi_vcnt - bio1->bi_idx > 0);
 	ASSERT(bio2->bi_vcnt - bio2->bi_idx > 0);
 
 	get_bio_split_position(bio, first_sectors, &mid_idx, &mid_off);
-	
+
 	bio2->bi_idx = mid_idx;
 	if (mid_off == 0) {
 		bio1->bi_vcnt = mid_idx;
@@ -531,7 +531,7 @@ static struct bio_pair2* bio_split2(
 		bvec->bv_len = 0;
 		bvec->bv_offset = 0;
 	}
-	
+
 #ifdef WALB_DEBUG
 	size = 0;
 	bio_for_each_segment(bvec, bio1, idx) {
@@ -582,10 +582,10 @@ static struct bio_entry* bio_entry_split(
 
 	bioe2 = alloc_bio_entry(gfp_mask);
 	if (!bioe2) { goto error0; }
-	
+
 	bp = bio_split2(bioe1->bio, first_sectors, gfp_mask);
 	if (!bp) { goto error1; }
-	
+
 	bioe1->bio = bp->bio1;
 	bioe1->len = bp->bio1->bi_size >> 9;
 	if (!bioe1->is_splitted) {
@@ -606,7 +606,7 @@ static struct bio_entry* bio_entry_split(
 		bioe1, (u64)bioe1->bio->bi_sector, bioe1->bio->bi_size,
 		bioe2, (u64)bioe2->bio->bi_sector, bioe2->bio->bi_size);
 	bio_pair2_release(bp);
-	
+
 	return bioe2;
 error1:
 	destroy_bio_entry(bioe2);
@@ -658,7 +658,7 @@ static void bio_entry_cursor_print(
 		cur->bio_ent_list, cur->off, cur->bioe,
 		pos, len, cur->off_in);
 }
-	
+
 /**
  * Check a cursor indicates the end.
  */
@@ -725,7 +725,7 @@ static void bio_entry_cursor_proceed_to_boundary(
 static bool bio_entry_cursor_split(struct bio_entry_cursor *cur, gfp_t gfp_mask)
 {
 	struct bio_entry *bioe1, *bioe2;
-	
+
 	ASSERT(bio_entry_cursor_is_valid(cur));
 
 	if (bio_entry_cursor_is_boundary(cur)) {
@@ -755,7 +755,7 @@ static bool bio_entry_cursor_split(struct bio_entry_cursor *cur, gfp_t gfp_mask)
 	return true;
 
 error:
-	return false;	
+	return false;
 }
 
 /**
@@ -795,7 +795,7 @@ static void bio_data_copy(
 {
 	struct bio_cursor dst_cur, src_cur;
 	unsigned int size, copied;
-	
+
 	ASSERT(dst);
 	ASSERT(dst_off + sectors <= dst->len);
 	ASSERT(src);
@@ -887,7 +887,7 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 {
 	ASSERT(bioe);
-	
+
 	init_completion(&bioe->done);
 	bioe->error = 0;
 	bioe->is_splitted = false;
@@ -934,9 +934,9 @@ error0:
 void destroy_bio_entry(struct bio_entry *bioe)
 {
 	struct bio *bio = NULL;
-	
+
 	LOGd_("destroy_bio_entry() begin.\n");
-	
+
 	if (!bioe) {
 		return;
 	}
@@ -955,7 +955,7 @@ void destroy_bio_entry(struct bio_entry *bioe)
 		bio = bioe->bio;
 		ASSERT(!bioe->bio_orig);
 	}
-	
+
 	if (bio) {
 		LOGd_("bio_put %p\n", bio);
 #ifdef WALB_FAST_ALGORITHM
@@ -980,7 +980,7 @@ void destroy_bio_entry(struct bio_entry *bioe)
 void get_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
-	
+
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 		ASSERT(bioe->bio);
@@ -996,7 +996,7 @@ void put_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe;
 	int bi_cnt;
-	
+
 	ASSERT(bio_ent_list);
 	list_for_each_entry(bioe, bio_ent_list, list) {
 		ASSERT(bioe->bio);
@@ -1012,7 +1012,7 @@ void put_bio_entry_list(struct list_head *bio_ent_list)
 void destroy_bio_entry_list(struct list_head *bio_ent_list)
 {
 	struct bio_entry *bioe, *next;
-	
+
 	ASSERT(bio_ent_list);
 	list_for_each_entry_safe(bioe, next, bio_ent_list, list) {
 		list_del(&bioe->list);
@@ -1029,7 +1029,7 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 	struct bio_vec *bvec, *bvec_orig;
 	int i;
 	char *dst_buf, *src_buf;
-	
+
 	ASSERT(bio);
 	ASSERT(bio_rw(bio) == WRITE);
 
@@ -1044,7 +1044,7 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 			bvec->bv_page = NULL;
 		}
 	}
-	
+
 	if (bio->bi_size == 0) {
 		goto fin;
 	}
@@ -1070,7 +1070,7 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 		kunmap_atomic(src_buf);
 		kunmap_atomic(dst_buf);
 	}
-fin:	
+fin:
 	return clone;
 error1:
 	bio_for_each_segment(bvec, clone, i) {
@@ -1093,7 +1093,7 @@ void init_copied_bio_entry(
 {
 	ASSERT(bioe);
 	ASSERT(bio_with_copy);
-	
+
 	init_bio_entry(bioe, bio_with_copy);
 	bioe->is_own_pages = true;
 	bio_get(bio_with_copy);
@@ -1120,7 +1120,7 @@ bool bio_entry_list_mark_copied(
 	struct bio_entry_cursor curt, *cur;
 
 	cur = &curt;
-	
+
 	ASSERT(bio_ent_list);
 	ASSERT(!list_empty(bio_ent_list));
 	ASSERT(sectors > 0);
@@ -1139,7 +1139,7 @@ bool bio_entry_list_mark_copied(
 		goto error;
 	}
 	ASSERT(cur->off == off + sectors);
-	
+
 	/* Mark copied. */
 	bio_entry_cursor_init(cur, bio_ent_list);
 	bio_entry_cursor_proceed(cur, off);
@@ -1151,7 +1151,7 @@ bool bio_entry_list_mark_copied(
 		bio_entry_cursor_proceed_to_boundary(cur);
 	}
 	ASSERT(cur->off == off + sectors);
-	
+
 	return true;
 error:
 	return false;
@@ -1168,10 +1168,10 @@ bool bio_entry_cursor_is_valid(struct bio_entry_cursor *cur)
 {
 	unsigned int off_bytes;
 	struct bio_entry *bioe;
-	
+
 	CHECK(cur);
 	CHECK(cur->bio_ent_list);
-	
+
 	if (list_empty(cur->bio_ent_list)) {
 		/* Empty */
 		CHECK(!cur->bioe);
@@ -1198,7 +1198,7 @@ bool bio_entry_cursor_is_valid(struct bio_entry_cursor *cur)
 	CHECK(off_bytes % LOGICAL_BLOCK_SIZE == 0);
 	CHECK(off_bytes / LOGICAL_BLOCK_SIZE + cur->off_in == cur->off);
 	CHECK(cur->bioe == bioe);
-	
+
 fin:
 	return true;
 error:
@@ -1213,7 +1213,7 @@ error:
  */
 void bio_entry_cursor_init(
 	struct bio_entry_cursor *cur, struct list_head *bio_ent_list)
-	
+
 {
 	ASSERT(cur);
 	ASSERT(bio_ent_list);
@@ -1222,7 +1222,7 @@ void bio_entry_cursor_init(
 	cur->bioe = bio_entry_list_get_first_nonzero(bio_ent_list);
 	cur->off = 0;
 	cur->off_in = 0;
-	
+
 	ASSERT(bio_entry_cursor_is_valid(cur));
 }
 
@@ -1241,7 +1241,7 @@ bool bio_entry_cursor_proceed(struct bio_entry_cursor *cur,
 	unsigned int proceed;
 	unsigned int size;
 	unsigned int proceed_in;
-	
+
 	ASSERT(bio_entry_cursor_is_valid(cur));
 
 	proceed = 0;
@@ -1338,7 +1338,7 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 		}
 	}
 #endif
-	
+
 	/* Copy data. */
 	bio_data_copy(
 		dst->bioe, dst->off_in,
@@ -1366,7 +1366,7 @@ bool should_split_bio_entry_list_for_chunk(
 	u64 addr;
 	unsigned int sectors;
 	bool ret;
-	
+
 	if (chunk_sectors == 0) {
 		return false;
 	}
@@ -1404,7 +1404,7 @@ bool split_bio_entry_list_for_chunk(
 	u64 addr;
 	unsigned int sectors;
 	bool ret;
-	
+
 	if (chunk_sectors == 0) {
 		/* no need to split. */
 		return true;
@@ -1480,7 +1480,7 @@ error:
 void bio_entry_exit(void)
 {
 	int cnt;
-	
+
 	cnt = atomic_dec_return(&shared_cnt_);
 
 	if (cnt > 0) {

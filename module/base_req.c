@@ -83,7 +83,7 @@ static bool register_alldevs(void)
 	u64 capacity;
 	bool ret;
 	struct simple_blk_dev *sdev;
-	
+
 	for (i = 0; i < n_devices_; i++) {
 		capacity = sizlist_nth_size(device_size_list_str_, i)
 			/ LOGICAL_BLOCK_SIZE;
@@ -91,7 +91,7 @@ static bool register_alldevs(void)
 
 		ret = sdev_register_with_req(get_minor(i), capacity, physical_block_size_,
 					simple_blk_req_request_fn);
-		
+
 		if (!ret) {
 			goto error;
 		}
@@ -111,9 +111,9 @@ static void unregister_alldevs(void)
 {
 	unsigned int i;
 	struct simple_blk_dev *sdev;
-	
+
 	ASSERT(n_devices_ > 0);
-	
+
 	for (i = 0; i < n_devices_; i++) {
 
 		sdev = sdev_get(get_minor(i));
@@ -145,7 +145,7 @@ static void stop_alldevs(void)
 {
 	unsigned int i;
 	ASSERT(n_devices_ > 0);
-	
+
 	for (i = 0; i < n_devices_; i++) {
 		sdev_stop(get_minor(i));
 	}
@@ -183,7 +183,7 @@ static int __init simple_blk_init(void)
 	if (!is_valid_pbs(physical_block_size_)) {
 		goto error0;
 	}
-	
+
 	set_workqueue_type();
 
 	n_devices_ = sizlist_length(device_size_list_str_);
@@ -191,7 +191,7 @@ static int __init simple_blk_init(void)
 	ASSERT(start_minor_ >= 0);
 
 	pre_register();
-	
+
 	if (!register_alldevs()) {
 		goto error0;
 	}
@@ -213,7 +213,7 @@ error0:
 static void simple_blk_exit(void)
 {
 	LOGd("in_atomic: %u.\n", in_atomic());
-	
+
 	stop_alldevs();
 	pre_unregister();
 	unregister_alldevs();
