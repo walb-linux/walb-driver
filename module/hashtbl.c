@@ -436,6 +436,15 @@ void hashtbl_empty(struct hash_tbl *htbl)
 
 	LOGd("hashtbl_empty begin\n");
 	ASSERT_HASHTBL(htbl);
+	/*
+		ASSERT_HASHTBLの中でhtbl->bucket_size != 0を仮定しているのでASSERTが有効なときは
+		bucket_size = 0ならエラー，そうでないときは何もせずに抜けるという
+		NDEBUGありなしで仕様が変わるのはよくない．
+		htbl->bucket_size == 0なものをemptyしても何もせずに抜ける仕様に統一すべき
+	*/
+	/*
+		コード全般にASSERTが多すぎる．重複するものも多くて逆に読みにくいと思う．
+	*/
 
 	for (i = 0; i < htbl->bucket_size; i++) {
 
