@@ -65,4 +65,19 @@ static inline void sprint_uuid(char *str, int str_size, const u8 *uuid)
 	sprint_hex(str, str_size, uuid, 16);
 }
 
+/**
+ * FNVa hash function.
+ */
+static inline u32 fnv1a_hash(const u8 *x, unsigned int n)
+{
+	u32 v = 2166136261;
+	unsigned int i;
+
+	for (i = 0; i < n; i++) {
+		v ^= x[i];
+		v *= 16777619;
+	}
+	return v;
+}
+
 #endif /* WALB_UTIL_H */

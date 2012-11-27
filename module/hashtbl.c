@@ -12,6 +12,7 @@
 #include <linux/hash.h>
 
 #include "walb/walb.h"
+#include "walb/util.h"
 #include "hashtbl.h"
 #include "util.h" /* for debug */
 
@@ -19,7 +20,6 @@
 /**
  * Prototypes of static functions.
  */
-static u32 get_sum(const u8* data, unsigned int size);
 static unsigned int get_n_bits(u32 val);
 static struct hash_cell* hashtbl_lookup_cell(
 	const struct hash_tbl *htbl,
@@ -127,48 +127,16 @@ static struct hash_cell* hashtbl_lookup_cell(
 static u32 hashtbl_get_index(
 	const struct hash_tbl *htbl, const u8* key, unsigned int key_size)
 {
-	u32 idx, sum;
+	u32 idx, hash;
 
 	ASSERT_HASHTBL(htbl);
 
-	sum = get_sum(key, key_size);
-	idx = hash_32(sum, htbl->n_bits);
+	hash = fnv1a_hash(key, key_size);
+	idx = hash >> (32 - htbl->n_bits);
 	ASSERT(idx < htbl->bucket_size);
 
 	/* LOGd("sum %08x idx %u\n", sum, idx); */
 	return idx;
-}
-
-/**
- * Get a sum of a bytearray.
- *
- * @data pointer to data.
- * @size data size.
- *
- * @return sum.
- */
-static u32 get_sum(const u8* data, unsigned int size)
-{
-	int i;
-	u32 n = size / sizeof(u32);
-	u32 m = size % sizeof(u32);
-	u32 sum = 0;
-
-	ASSERT(n * sizeof(u32) + m == size);
-
-	for (i = 0; i < n; i++) {
-		u32 buf;
-		memcpy(&buf, data + sizeof(u32) * i, sizeof(u32));
-		sum += buf;
-	}
-
-	if (m > 0) {
-		u32 buf = 0;
-		memcpy(&buf, data + sizeof(u32) * n, m);
-		sum += buf;
-	}
-
-	return sum;
 }
 
 /**
