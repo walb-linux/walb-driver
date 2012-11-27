@@ -144,7 +144,6 @@ static u32 get_sum(const u8* data, int size)
 	int i;
 	u32 n = size / sizeof(u32);
 	u32 m = size % sizeof(u32);
-	u32 buf;
 	u64 sum = 0;
 	u32 ret;
 
@@ -155,7 +154,7 @@ static u32 get_sum(const u8* data, int size)
 	}
 
 	if (m > 0) {
-		buf = 0;
+		u32 buf = 0; /* 定義はできるだけlocalに */
 		memcpy(&buf, data + (sizeof(u32) * n), m);
 		sum += buf;
 	}
