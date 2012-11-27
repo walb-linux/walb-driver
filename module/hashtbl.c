@@ -136,20 +136,19 @@ static u32 hashtbl_get_index(
 }
 
 /**
- * Get simple checksum of byte array.
+ * Get a sum of a bytearray.
  *
  * @data pointer to data.
  * @size data size.
  *
- * @return simple checksum.
+ * @return sum.
  */
 static u32 get_sum(const u8* data, unsigned int size)
 {
 	int i;
 	u32 n = size / sizeof(u32);
 	u32 m = size % sizeof(u32);
-	u64 sum = 0;
-	u32 ret;
+	u32 sum = 0;
 
 	ASSERT(n * sizeof(u32) + m == size);
 
@@ -163,8 +162,7 @@ static u32 get_sum(const u8* data, unsigned int size)
 		sum += buf;
 	}
 
-	ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
-	return (ret != (u32)(-1) ? ret : 0);
+	return sum;
 }
 
 /**
