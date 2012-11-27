@@ -21,7 +21,7 @@
 static inline u32 bio_calc_checksum(struct bio *bio)
 {
 	struct bio_vec *bvec;
-	u64 sum;
+	u32 sum;
 	int i;
 	u8 *buf;
 

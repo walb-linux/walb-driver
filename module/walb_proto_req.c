@@ -2589,7 +2589,7 @@ static void logpack_calc_checksum(
 	struct request *req;
 	struct req_iterator iter;
 	struct bio_vec *bvec;
-	u64 sum;
+	u32 sum;
 	int n_padding;
 	u8 *buf;
 

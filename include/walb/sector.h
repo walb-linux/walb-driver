@@ -578,7 +578,7 @@ static inline u32 sector_array_checksum(
 	unsigned int remaining = size;
 	unsigned int sect_size;
 	unsigned int idx, off;
-	u64 sum = 0;
+	u32 sum = 0;
 	unsigned int tsize;
 
 	ASSERT(size > 0);
