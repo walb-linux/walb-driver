@@ -157,12 +157,14 @@ static u32 get_sum(const u8* data, unsigned int size)
 	ASSERT(n * sizeof(u32) + m == size);
 
 	for (i = 0; i < n; i++) {
-		sum += *(u32 *)(data + (sizeof(u32) * i));
+		u32 buf;
+		memcpy(&buf, data + sizeof(u32) * i, sizeof(u32));
+		sum += buf;
 	}
 
 	if (m > 0) {
 		u32 buf = 0;
-		memcpy(&buf, data + (sizeof(u32) * n), m);
+		memcpy(&buf, data + sizeof(u32) * n, m);
 		sum += buf;
 	}
 

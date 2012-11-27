@@ -25,7 +25,9 @@ static inline u64 checksum_partial(u32 sum, const u8 *data, u32 size)
 	ASSERT(size % sizeof(u32) == 0);
 
 	for (i = 0; i < n; i++) {
-		sum += *(u32 *)(data + (sizeof(u32) * i));
+		u32 buf;
+		memcpy(&buf, data + sizeof(u32) * i, sizeof(u32));
+		sum += buf;
 	}
 	return sum;
 }
