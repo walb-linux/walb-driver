@@ -19,14 +19,17 @@
 /**
  * Prototypes of static functions.
  */
-static u32 get_sum(const u8* data, int size);
+static u32 get_sum(const u8* data, unsigned int size);
 static unsigned int get_n_bits(u32 val);
-static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
-					const u8* key, int key_size);
-static u32 hashtbl_get_index(const struct hash_tbl *htbl,
-			const u8* key, int key_size);
+static struct hash_cell* hashtbl_lookup_cell(
+	const struct hash_tbl *htbl,
+	const u8* key, unsigned int key_size);
+static u32 hashtbl_get_index(
+	const struct hash_tbl *htbl,
+	const u8* key, unsigned int key_size);
 
-static struct hash_cell* alloc_hash_cell(int key_size, gfp_t gfp_mask);
+static struct hash_cell* alloc_hash_cell(
+	unsigned int key_size, gfp_t gfp_mask);
 static void free_hash_cell(struct hash_cell *cell);
 static void set_hash_cell_key(struct hash_cell *cell, const u8 *key);
 static void set_hash_cell_val(struct hash_cell *cell, unsigned long val);
@@ -84,8 +87,9 @@ static unsigned int get_n_bits(u32 val)
  *
  * @return hash cell if found, or NULL.
  */
-static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
-					const u8* key, int key_size)
+static struct hash_cell* hashtbl_lookup_cell(
+	const struct hash_tbl *htbl,
+	const u8* key, unsigned int key_size)
 {
 	u32 idx;
 	struct hlist_node *node, *next;
@@ -116,7 +120,8 @@ static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
  *
  * @return index in the bucket.
  */
-static u32 hashtbl_get_index(const struct hash_tbl *htbl, const u8* key, int key_size)
+static u32 hashtbl_get_index(
+	const struct hash_tbl *htbl, const u8* key, unsigned int key_size)
 {
 	u32 idx, sum;
 
@@ -138,7 +143,7 @@ static u32 hashtbl_get_index(const struct hash_tbl *htbl, const u8* key, int key
  *
  * @return simple checksum.
  */
-static u32 get_sum(const u8* data, int size)
+static u32 get_sum(const u8* data, unsigned int size)
 {
 	int i;
 	u32 n = size / sizeof(u32);
@@ -165,7 +170,8 @@ static u32 get_sum(const u8* data, int size)
 /**
  * Allocate hash cell.
  */
-static struct hash_cell* alloc_hash_cell(int key_size, gfp_t gfp_mask)
+static struct hash_cell* alloc_hash_cell(
+	unsigned int key_size, gfp_t gfp_mask)
 {
 	struct hash_cell *cell;
 
