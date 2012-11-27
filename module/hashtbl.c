@@ -37,8 +37,11 @@ static int get_hash_cell_key_size(const struct hash_cell *cell);
 static u8* get_hash_cell_key(const struct hash_cell *cell);
 static unsigned long get_hash_cell_val(const struct hash_cell *cell);
 
+UNUSED
 static int is_hashtbl_struct_valid(const struct hash_tbl *htbl);
+UNUSED
 static int is_hashcell_struct_valid(const struct hash_cell *hcell);
+UNUSED
 static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor);
 
 #define ASSERT_HASHTBL(htbl) ASSERT(is_hashtbl_struct_valid(htbl))
@@ -46,6 +49,7 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor);
 #define ASSERT_HASHTBL_CURSOR(cursor)			\
 	ASSERT(is_hashtbl_cursor_struct_valid(cursor))
 
+UNUSED
 static void print_hashtbl_cursor(const hashtbl_cursor_t *cursor);
 
 /*******************************************************************************
@@ -277,7 +281,6 @@ static unsigned long get_hash_cell_val(const struct hash_cell *cell)
  *
  * @return Non-zero if valud, or 0.
  */
-__attribute__((unused))
 static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
 {
 	return ((htbl) != NULL &&
@@ -291,7 +294,6 @@ static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
  *
  * @return Non-zero if valud, or 0.
  */
-__attribute__((unused))
 static int is_hashcell_struct_valid(const struct hash_cell *hcell)
 {
 	return ((hcell) != NULL &&
@@ -305,7 +307,6 @@ static int is_hashcell_struct_valid(const struct hash_cell *hcell)
  *
  * @return Non-zero if valud, or 0.
  */
-__attribute__((unused))
 static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 {
 	int st, idx, max_idx;
@@ -355,7 +356,6 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 /**
  * Print hashtbl cursor for debug.
  */
-__attribute__((unused))
 static void print_hashtbl_cursor(const hashtbl_cursor_t *cursor)
 {
 	const char *state_str[6];
