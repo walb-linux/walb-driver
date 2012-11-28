@@ -12,6 +12,7 @@
 #include <linux/hash.h>
 
 #include "walb/walb.h"
+#include "walb/util.h"
 #include "hashtbl.h"
 #include "util.h" /* for debug */
 
@@ -19,14 +20,16 @@
 /**
  * Prototypes of static functions.
  */
-static u32 get_sum(const u8* data, int size);
 static unsigned int get_n_bits(u32 val);
-static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
-					const u8* key, int key_size);
-static u32 hashtbl_get_index(const struct hash_tbl *htbl,
-			const u8* key, int key_size);
+static struct hash_cell* hashtbl_lookup_cell(
+	const struct hash_tbl *htbl,
+	const u8* key, unsigned int key_size);
+static u32 hashtbl_get_index(
+	const struct hash_tbl *htbl,
+	const u8* key, unsigned int key_size);
 
-static struct hash_cell* alloc_hash_cell(int key_size, gfp_t gfp_mask);
+static struct hash_cell* alloc_hash_cell(
+	unsigned int key_size, gfp_t gfp_mask);
 static void free_hash_cell(struct hash_cell *cell);
 static void set_hash_cell_key(struct hash_cell *cell, const u8 *key);
 static void set_hash_cell_val(struct hash_cell *cell, unsigned long val);
@@ -34,8 +37,11 @@ static int get_hash_cell_key_size(const struct hash_cell *cell);
 static u8* get_hash_cell_key(const struct hash_cell *cell);
 static unsigned long get_hash_cell_val(const struct hash_cell *cell);
 
+UNUSED
 static int is_hashtbl_struct_valid(const struct hash_tbl *htbl);
+UNUSED
 static int is_hashcell_struct_valid(const struct hash_cell *hcell);
+UNUSED
 static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor);
 
 #define ASSERT_HASHTBL(htbl) ASSERT(is_hashtbl_struct_valid(htbl))
@@ -43,6 +49,7 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor);
 #define ASSERT_HASHTBL_CURSOR(cursor)			\
 	ASSERT(is_hashtbl_cursor_struct_valid(cursor))
 
+UNUSED
 static void print_hashtbl_cursor(const hashtbl_cursor_t *cursor);
 
 /*******************************************************************************
@@ -84,30 +91,28 @@ static unsigned int get_n_bits(u32 val)
  *
  * @return hash cell if found, or NULL.
  */
-static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
-					const u8* key, int key_size)
+static struct hash_cell* hashtbl_lookup_cell(
+	const struct hash_tbl *htbl,
+	const u8* key, unsigned int key_size)
 {
 	u32 idx;
 	struct hlist_node *node, *next;
-	struct hash_cell *cell, *ret;
+	struct hash_cell *cell;
 
 	ASSERT_HASHTBL(htbl);
 
 	idx = hashtbl_get_index(htbl, key, key_size);
 
-	ret = NULL;
 	hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[idx], list) {
 
 		ASSERT_HASHCELL(cell);
 		if (cell->key_size == key_size &&
 			memcmp(cell->key, key, key_size) == 0) {
-
-			ret = cell;
 			return cell;
 		}
 	}
 	/* LOGd("hashtbl_lookup_cell end\n"); */
-	return ret;
+	return NULL;
 }
 
 /**
@@ -119,14 +124,15 @@ static struct hash_cell* hashtbl_lookup_cell(const struct hash_tbl *htbl,
  *
  * @return index in the bucket.
  */
-static u32 hashtbl_get_index(const struct hash_tbl *htbl, const u8* key, int key_size)
+static u32 hashtbl_get_index(
+	const struct hash_tbl *htbl, const u8* key, unsigned int key_size)
 {
-	u32 idx, sum;
+	u32 idx, hash;
 
 	ASSERT_HASHTBL(htbl);
 
-	sum = get_sum(key, key_size);
-	idx = hash_32(sum, htbl->n_bits);
+	hash = fnv1a_hash(key, key_size);
+	idx = hash >> (32 - htbl->n_bits);
 	ASSERT(idx < htbl->bucket_size);
 
 	/* LOGd("sum %08x idx %u\n", sum, idx); */
@@ -134,42 +140,10 @@ static u32 hashtbl_get_index(const struct hash_tbl *htbl, const u8* key, int key
 }
 
 /**
- * Get simple checksum of byte array.
- *
- * @data pointer to data.
- * @size data size.
- *
- * @return simple checksum.
- */
-static u32 get_sum(const u8* data, int size)
-{
-	int i;
-	u32 n = size / sizeof(u32);
-	u32 m = size % sizeof(u32);
-	u32 buf;
-	u64 sum = 0;
-	u32 ret;
-
-	ASSERT(n * sizeof(u32) + m == size);
-
-	for (i = 0; i < n; i++) {
-		sum += *(u32 *)(data + (sizeof(u32) * i));
-	}
-
-	if (m > 0) {
-		buf = 0;
-		memcpy(&buf, data + (sizeof(u32) * n), m);
-		sum += buf;
-	}
-
-	ret = ~(u32)((sum >> 32) + (sum << 32 >> 32)) + 1;
-	return (ret != (u32)(-1) ? ret : 0);
-}
-
-/**
  * Allocate hash cell.
  */
-static struct hash_cell* alloc_hash_cell(int key_size, gfp_t gfp_mask)
+static struct hash_cell* alloc_hash_cell(
+	unsigned int key_size, gfp_t gfp_mask)
 {
 	struct hash_cell *cell;
 
@@ -277,7 +251,6 @@ static unsigned long get_hash_cell_val(const struct hash_cell *cell)
  *
  * @return Non-zero if valud, or 0.
  */
-__attribute__((unused))
 static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
 {
 	return ((htbl) != NULL &&
@@ -291,7 +264,6 @@ static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
  *
  * @return Non-zero if valud, or 0.
  */
-__attribute__((unused))
 static int is_hashcell_struct_valid(const struct hash_cell *hcell)
 {
 	return ((hcell) != NULL &&
@@ -305,7 +277,6 @@ static int is_hashcell_struct_valid(const struct hash_cell *hcell)
  *
  * @return Non-zero if valud, or 0.
  */
-__attribute__((unused))
 static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 {
 	int st, idx, max_idx;
@@ -355,7 +326,6 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 /**
  * Print hashtbl cursor for debug.
  */
-__attribute__((unused))
 static void print_hashtbl_cursor(const hashtbl_cursor_t *cursor)
 {
 	const char *state_str[6];

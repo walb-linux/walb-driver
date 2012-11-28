@@ -14,6 +14,9 @@
  *
  * key: byte array with size_t length and u8[length].
  * val: unsigned long value which can be pointer.
+ *
+ * You must call hashtbl_create() at first and hashtbl_destroy() at last.
+ * All other hashtbl_XXX() must be called between the two functions.
  */
 
 /**
@@ -44,7 +47,7 @@ struct hash_cell {
  */
 struct hash_tbl {
 
-	int bucket_size;
+	int bucket_size; /* must be > 0. */
 	struct hlist_head *bucket; /* managed memory */
 	/* buckets[i] must be hlist head of hash_cell. */
 
