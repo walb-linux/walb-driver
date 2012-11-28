@@ -995,6 +995,9 @@ error:
 	return NULL;
 }
 
+/*
+	test test
+*/
 /**
  * Test method for hash table cursor test.
  *
