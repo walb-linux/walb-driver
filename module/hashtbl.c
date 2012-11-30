@@ -253,10 +253,10 @@ static unsigned long get_hash_cell_val(const struct hash_cell *cell)
  */
 static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
 {
-	return ((htbl) != NULL &&
-		(htbl)->bucket != NULL &&
-		(htbl)->bucket_size > 0 &&
-		(htbl)->n_bits > 0);
+	return (htbl &&
+		htbl->bucket &&
+		htbl->bucket_size > 0 &&
+		htbl->n_bits > 0);
 }
 
 /**
@@ -266,10 +266,10 @@ static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
  */
 static int is_hashcell_struct_valid(const struct hash_cell *hcell)
 {
-	return ((hcell) != NULL &&
-		(hcell)->key != NULL &&
-		(hcell)->key_size > 0 &&
-		(hcell)->val != HASHTBL_INVALID_VAL);
+	return (hcell &&
+		hcell->key &&
+		hcell->key_size > 0 &&
+		hcell->val != HASHTBL_INVALID_VAL);
 }
 
 /**
