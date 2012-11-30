@@ -252,7 +252,8 @@ static unsigned long get_hash_cell_val(const struct hash_cell *cell)
  * @return Non-zero if valud, or 0.
  */
 /*
-	hcellをカッコでくくるのはくどい
+	htblをカッコでくくるのはくどい
+	returnをカッコでくくるのも好きじゃない
 */
 static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
 {
