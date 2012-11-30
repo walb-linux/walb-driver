@@ -67,6 +67,9 @@ static void print_hashtbl_cursor(const hashtbl_cursor_t *cursor);
  * 00100000B needs 6 bits.
  * 00011111B needs 5 bits.
  */
+/*
+  (val >> i) == 1の方が優先順位がわかりやすいかも
+*/
 static unsigned int get_n_bits(u32 val)
 {
 	int i;
