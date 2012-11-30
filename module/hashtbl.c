@@ -75,7 +75,7 @@ static unsigned int get_n_bits(u32 val)
 	}
 
 	for (i = 1; i < 32; i++) {
-		if (val >> i == 1) {
+		if ((val >> i) == 1) {
 			return i + 1;
 		}
 	}
