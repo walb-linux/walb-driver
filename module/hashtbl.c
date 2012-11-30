@@ -253,10 +253,10 @@ static unsigned long get_hash_cell_val(const struct hash_cell *cell)
  */
 static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
 {
-	return (htbl &&
+	return htbl &&
 		htbl->bucket &&
 		htbl->bucket_size > 0 &&
-		htbl->n_bits > 0);
+		htbl->n_bits > 0;
 }
 
 /**
@@ -266,10 +266,10 @@ static int is_hashtbl_struct_valid(const struct hash_tbl *htbl)
  */
 static int is_hashcell_struct_valid(const struct hash_cell *hcell)
 {
-	return (hcell &&
+	return hcell &&
 		hcell->key &&
 		hcell->key_size > 0 &&
-		hcell->val != HASHTBL_INVALID_VAL);
+		hcell->val != HASHTBL_INVALID_VAL;
 }
 
 /**
@@ -865,7 +865,7 @@ int hashtbl_cursor_is_begin(const hashtbl_cursor_t *cursor)
 {
 	ASSERT_HASHTBL_CURSOR(cursor);
 
-	return (cursor->state == HASHTBL_CURSOR_BEGIN);
+	return cursor->state == HASHTBL_CURSOR_BEGIN;
 }
 
 /**
@@ -877,7 +877,7 @@ int hashtbl_cursor_is_end(const hashtbl_cursor_t *cursor)
 {
 	ASSERT_HASHTBL_CURSOR(cursor);
 
-	return (cursor->state == HASHTBL_CURSOR_END);
+	return cursor->state == HASHTBL_CURSOR_END;
 }
 
 /**
@@ -889,10 +889,10 @@ int hashtbl_cursor_is_valid(const hashtbl_cursor_t *cursor)
 {
 	ASSERT_HASHTBL_CURSOR(cursor);
 
-	return (cursor != NULL &&
+	return cursor != NULL &&
 		(cursor->state == HASHTBL_CURSOR_BEGIN ||
 			cursor->state == HASHTBL_CURSOR_END ||
-			cursor->state == HASHTBL_CURSOR_DATA));
+			cursor->state == HASHTBL_CURSOR_DATA);
 }
 
 /**
