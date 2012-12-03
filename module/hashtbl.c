@@ -551,15 +551,12 @@ int hashtbl_n_items(const struct hash_tbl *htbl)
 	int n = 0;
 	int n_min = INT_MAX;
 	int n_max = 0;
-	int n_local = 0;
 
 	ASSERT_HASHTBL(htbl);
 
 	for (i = 0; i < htbl->bucket_size; i++) {
-
-		n_local = 0;
+		int n_local = 0;
 		hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
-
 			ASSERT_HASHCELL(cell);
 			n_local++;
 			n++;
