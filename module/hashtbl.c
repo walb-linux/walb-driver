@@ -553,6 +553,9 @@ int hashtbl_is_empty(const struct hash_tbl *htbl)
  *
  * @return number of cells in the hash table.
  */
+/*
+    int n_localはforループ内で定義
+*/
 int hashtbl_n_items(const struct hash_tbl *htbl)
 {
 	int i;
