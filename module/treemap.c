@@ -643,6 +643,14 @@ void finalize_treemap_memory_manager(struct treemap_memory_manager *mmgr)
 /**
  * Create tree map.
  */
+/*
+ struct X *p = kmalloc(sizeof(struct X), mask);
+ の形のものはたとえば
+ #define SET_KMALLOC_STRUCT(p, mask) p = kmalloc(sizeof(*p), mask)
+ として
+ SET_KMALLOC_STRUCT(tmap, gfp_mask);
+ というやりかたもある(sizeof()の型と変数の型の不一致を防げる)．
+*/
 struct map* map_create(gfp_t gfp_mask, struct treemap_memory_manager *mmgr)
 {
 	struct map *tmap;
