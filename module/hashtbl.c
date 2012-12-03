@@ -813,6 +813,7 @@ int hashtbl_cursor_next(hashtbl_cursor_t *cursor)
 		/* Check end of bucket array. */
 		if (idx == cursor->htbl->bucket_size) {
 			cursor->next_head = NULL;
+			/* ここにくるのはcursor->next == NULLのときだからNULL設定は不要 */
 			cursor->next = NULL;
 		} else {
 			cursor->next_head = &cursor->htbl->bucket[idx];
