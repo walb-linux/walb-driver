@@ -102,6 +102,9 @@ static struct tree_node* map_lookup_node(const struct map *tmap, u64 key)
  *
  * @return struct tree_node if found, or NULL.
  */
+/*
+  tmap->rootしてからASSERT_TREEMAP(tmap)の中でtmap != NULLチェックしてる
+*/
 static struct tree_node* map_lookup_node_detail(const struct map *tmap, u64 key, int search_flag)
 {
 	struct rb_node *node = tmap->root.rb_node;
