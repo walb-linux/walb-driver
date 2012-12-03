@@ -797,7 +797,6 @@ int hashtbl_cursor_next(hashtbl_cursor_t *cursor)
 		/* Check end of bucket array. */
 		if (idx == cursor->htbl->bucket_size) {
 			cursor->next_head = NULL;
-			cursor->next = NULL;
 		} else {
 			cursor->next_head = &cursor->htbl->bucket[idx];
 			ASSERT(! hlist_empty(cursor->next_head));
