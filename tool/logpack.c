@@ -29,7 +29,8 @@
  * @return Non-zero in success, or 0.
  */
 bool is_valid_logpack_header_with_checksum(
-	const struct walb_logpack_header* lhead, int physical_bs)
+	const struct walb_logpack_header* lhead,
+	unsigned int physical_bs)
 {
 	CHECK(is_valid_logpack_header(lhead));
 	CHECK(checksum((const u8 *)lhead, physical_bs) == 0);

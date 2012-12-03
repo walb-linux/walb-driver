@@ -36,7 +36,6 @@ enum {
 
 /**
  * A write pack.
- * There are no overlapping requests in a pack.
  */
 struct pack
 {
@@ -165,6 +164,15 @@ struct redo_data
 	spinlock_t queue_lock;
 	struct list_head queue;
 	unsigned int queue_len;
+};
+
+/**
+ * Logpack for redo.
+ */
+struct redo_pack
+{
+	struct bio_wrapper *logh_biow;
+	struct list_head biow_list;
 };
 
 /*******************************************************************************
@@ -333,16 +341,37 @@ void destroy_redo_data(struct redo_data* data);
 static void run_read_log_in_redo(void *data);
 static void run_gc_log_in_redo(void *data);
 static struct bio_wrapper* create_bio_wrapper_for_redo(
-	struct walb_dev *wdev, u64 lsid);
+	struct walb_dev *wdev, u64 lsid, struct sector_data *sectd);
+static struct bio_wrapper* create_data_bio_wrapper_for_redo(
+	struct walb_dev *wdev, u64 pos, unsigned int len,
+	struct sector_data *sectd);
 static void destroy_bio_wrapper_for_redo(
-	struct bio_wrapper* biow);
+	struct walb_dev *wdev, struct bio_wrapper* biow);
 static void bio_end_io_for_redo(struct bio *bio, int error);
 static void wait_for_all_read_io_and_enqueue_for_gc(
 	struct redo_data *read_rd, struct redo_data *gc_rd);
-static void wait_for_all_gc_tasks(struct redo_data *gc_rd);
+static void wait_for_all_write_io_for_redo(struct walb_dev *wdev);
+static void wait_for_all_gc_tasks_for_redo(struct redo_data *gc_rd);
 static void get_bio_wrapper_from_read_queue(
 	struct redo_data *read_rd, struct list_head *biow_list,
 	unsigned int n);
+static bio_wrapper* get_logpack_header_for_redo(
+	struct redo_data *read_rd);
+static bool redo_logpack(
+	struct redo_data *read_rd, struct redo_data *gc_rd,
+	struct bio_wrapper *logh_biow, u64 *written_lsid_p);
+static u32 calc_checksum_for_redo(
+	unsigned int n_lb, unsigned int pbs,
+	struct list_head *biow_list);
+static void create_data_bio_for_redo(
+	struct walb_dev *wdev,
+	struct walb_log_record *rec, unsigend int pbs,
+	struct list_head *biow_list);
+static void submit_data_bio_for_redo(
+	struct walb_dev *wdev, struct bio_wrapper *biow);
+#ifdef WALB_OVERLAPPING_SERIALIZE
+static void task_submit_write_bio_wrapper_for_redo(struct work_struct *work);
+#endif
 
 /* Other helper functions. */
 static bool writepack_add_bio_wrapper(
@@ -1976,7 +2005,7 @@ struct redo_data* create_redo_data(struct walb_dev *wdev, u64 lsid)
 	struct redo_data *data;
 
 	ASSERT(wdev);
-	
+
 	data = kmalloc(struct redo_data);
 	if (!data) { goto error0; }
 
@@ -1988,7 +2017,7 @@ struct redo_data* create_redo_data(struct walb_dev *wdev, u64 lsid)
 	data->error = 0;
 
 	return data;
-	
+
 error0:
 	return NULL;
 }
@@ -2001,7 +2030,7 @@ void destroy_redo_data(struct redo_data* data)
 	ASSERT(data);
 	ASSERT(list_empty(&data->queue));
 	ASSERT(data->queue_len == 0);
-	
+
 	kfree(data);
 }
 
@@ -2012,7 +2041,7 @@ void destroy_redo_data(struct redo_data* data)
  *   while queue is not occupied:
  *     create buf/bio/biow and submit it.
  *     enqueue the biow.
- * 
+ *
  * You must call wakeup_worker() to read more data.
  */
 static void run_read_log_in_redo(void *data)
@@ -2040,16 +2069,17 @@ static void run_read_log_in_redo(void *data)
 	spin_lock(&redod->queue_lock);
 	queue_len = redod->queue_len;
 	spin_unlock(&redod->queue_lock);
-	
+
 	while (queue_len < max_len) {
 		/* Create biow for redo. */
 	retry:
-		biow = create_bio_wrapper_for_redo(wdev, redod->lsid);
+		biow = create_log_bio_wrapper_for_redo(
+			wdev, redod->lsid, NULL);
 		if (!biow) {
 			schedule();
 			goto retry;
 		}
-		
+
 		/* Submit bio. */
 		generic_make_request(biow->bio);
 
@@ -2065,7 +2095,7 @@ static void run_read_log_in_redo(void *data)
 	}
 	redod->error = 0;
 	return;
-	
+
 error0:
 	redod->error = -1;
 }
@@ -2075,7 +2105,62 @@ error0:
  */
 static void run_gc_log_in_redo(void *data)
 {
-	/* now editing */
+	struct redo_data *redod;
+	struct list_head biow_list;
+	unsigned int n_biow, c;
+	struct bio_wrapper *biow, *biow_next;
+	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
+	unsigned long rtimeo;
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	struct iocore_data *iocored
+#endif
+
+	redod = (struct redo_data *)data;
+	ASSERT(redod);
+	INIT_LIST_HEAD(&biow_list);
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	iocored = get_iocored_from_wdev(redod->wdev);
+#endif
+
+	while (true) {
+		ASSERT(list_empty(&biow_list));
+		spin_lock(&redod->queue_lock);
+		n_biow = 0;
+		list_for_each_entry_safe(biow, biow_next, &redod->queue, list) {
+			list_move_tail(&biow->list, &biow_list);
+			n_biow++;
+			redod->queue_len--;
+		}
+		spin_unlock(&redod->queue_lock);
+		if (n_biow == 0) {
+			break;
+		}
+
+		list_for_each_entry_safe(biow, biow_next, &biow_list, list) {
+			list_del(&biow->list);
+			c = 0;
+		retry:
+			rtimeo = wait_for_completion_timeout(&biow->done, timeo);
+			if (rtimeo == 0) {
+				LOGn("timeout(%d): biow %p pos %"PRIu64" len %u\n",
+					c, biow, (u64)biow->pos, biow->len);
+				c++;
+				goto retry;
+			}
+			/* Delete from overlapping detection data. */
+#ifdef WALB_OVERLAPPING_SERIALIZE
+			spin_lock(&iocored->overlapping_data_lock);
+			overlapping_delete_and_notify(
+				iocored->overlapping_data,
+				&iocored->max_sectors_in_overlapping, biow);
+			spin_unlock(&iocored->overlapping_data_lock);
+#endif
+			if (biow->error) {
+				redod->error = biow->error;
+			}
+			destroy_bio_wrapper_for_redo(biow);
+		}
+	}
 }
 
 /**
@@ -2084,27 +2169,31 @@ static void run_gc_log_in_redo(void *data)
  *
  * @wdev walb device (log device will be used for target).
  * @lsid target lsid to read.
+ * @sectd sector data. if NULL then newly allocated.
  *
  * RETURN:
  *   bio wrapper in success, or false.
  */
-static struct bio_wrapper* create_bio_wrapper_for_redo(
-	struct walb_dev *wdev, u64 lsid)
+static struct bio_wrapper* create_log_bio_wrapper_for_redo(
+	struct walb_dev *wdev, u64 lsid, struct sector_data *sectd)
 {
-	struct sector_data *sectd;
 	struct bio *bio;
 	struct bio_wrapper *biow;
 	const unsigned int pbs = wdev->physical_bs;
 	u64 off_pb;
 	int len;
-	
+	bool is_sectd_alloc = false;
+
 	ASSERT(pbs <= PAGE_SIZE);
-	
-	sectd = sector_alloc(pbs, GFP_KERNEL);
-	if (!sectd) { goto error0; }
-	bio = bio_alloc(GFP_KERNEL, 1);
+
+	if (!sectd) {
+		is_sectd_alloc = true;
+		sectd = sector_alloc(pbs, GFP_NOIO);
+		if (!sectd) { goto error0; }
+	}
+	bio = bio_alloc(GFP_NOIO, 1);
 	if (!bio) { goto error1; }
-	biow = alloc_bio_wrapper(GFP_KERNEL);
+	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
 	if (!biow) { goto error2; }
 
 	bio->bi_bdev = wdev->ldev;
@@ -2118,19 +2207,74 @@ static struct bio_wrapper* create_bio_wrapper_for_redo(
 			pbs, offset_in_page(sectd->data));
 	ASSERT(len == pbs);
 	ASSERT(bio->bi_size == pbs);
-	
+
 	init_bio_wrapper(biow, bio);
 	biow->private_data = sectd;
-	
+
 	return biow;
-#if 0	
+#if 0
 error3:
-	destroy_bio_wrapper(biow);
+	destroy_bio_wrapper_dec(wdev, biow);
 #endif
 error2:
 	bio_put(bio);
 error1:
-	sector_free(sectd);
+	if (is_sectd_alloc) {
+		sector_free(sectd);
+	}
+error0:
+	return NULL;
+}
+
+/**
+ * Create data bio wrapper for redo.
+ */
+static struct bio_wrapper* create_data_bio_wrapper_for_redo(
+	struct walb_dev *wdev, u64 pos, unsigned int len,
+	struct sector_data *sectd)
+{
+	struct bio *bio;
+	struct bio_wrapper *biow;
+	const unsigned int pbs = wdev->physical_bs;
+	u64 off_pb;
+	int ret;
+	bool is_sectd_alloc = false;
+
+	ASSERT(pbs <= PAGE_SIZE);
+
+	if (!sectd) {
+		is_sectd_alloc = true;
+		sectd = sector_alloc(pbs, GFP_NOIO);
+		if (!sectd) { goto error0; }
+	}
+	bio = bio_alloc(GFP_NOIO, 1);
+	if (!bio) { goto error1; }
+	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
+	if (!biow) { goto error2; }
+
+	bio->bi_bdev = wdev->ddev;
+	bio->bi_sector = pos;
+	bio->bi_rw = WRITE;
+	bio->bi_end_io = bio_end_io_for_redo;
+	bio->bi_private = biow;
+	bio_add_page(bio, virt_to_page(sectd->data),
+		len << 9, offset_in_page(sectd->data));
+	ASSERT(bio->bi_size == len << 9);
+
+	init_bio_wrapper(biow, bio);
+	biow->private_data = sectd;
+
+	return biow;
+#if 0
+error3:
+	destroy_bio_wrapper_dec(wdev, biow);
+#endif
+error2:
+	bio_put(bio);
+error1:
+	if (is_sectd_alloc) {
+		sector_free(sectd);
+	}
 error0:
 	return NULL;
 }
@@ -2139,14 +2283,14 @@ error0:
  * Destroy bio wrapper created by create_bio_wrapper_for_redo().
  */
 static void destroy_bio_wrapper_for_redo(
-	struct bio_wrapper* biow)
+	struct walb_dev *wdev, struct bio_wrapper* biow)
 {
 	struct sector_data *sectd;
-	
+
 	if (!biow) { return; }
 
 	ASSERT(list_empty(&biow->bioe_list));
-	
+
 	if (biow->private_data) {
 		sectd = biow->private_data;
 		sector_free(sectd);
@@ -2156,7 +2300,7 @@ static void destroy_bio_wrapper_for_redo(
 		bio_put(biow->bio);
 		biow->bio = NULL;
 	}
-	destroy_bio_wrapper(biow);
+	destroy_bio_wrapper_dec(wdev, biow);
 }
 
 /**
@@ -2184,7 +2328,7 @@ static void wait_for_all_read_io_and_enqueue_for_gc(
 	struct redo_data *read_rd, struct redo_data *gc_rd)
 {
 	struct list_head biow_list;
-	
+
 	ASSERT(read_rd);
 	ASSERT(gc_rd);
 	INIT_LIST_HEAD(&biow_list);
@@ -2214,12 +2358,20 @@ static void wait_for_all_read_io_and_enqueue_for_gc(
 }
 
 /**
- * Wait for all gc tasks.
+ * Wait for all write io(s) for redo.
  */
-static void wait_for_all_gc_tasks(struct redo_data *gc_rd)
+static void wait_for_all_write_io_for_redo(struct walb_dev *wdev)
+{
+	wait_for_all_pending_io_done(wdev);
+}
+
+/**
+ * Wait for all gc tasks for redo.
+ */
+static void wait_for_all_gc_tasks_for_redo(struct redo_data *gc_rd)
 {
 	bool is_empty;
-	
+
 	while (true) {
 		spin_lock(&gc_rd->queue_lock);
 		is_empty = list_empty(&gc_rd->queue);
@@ -2264,6 +2416,433 @@ static unsigned int get_bio_wrapper_from_read_queue(
 fin:
 	return n_biow;
 }
+
+/**
+ * Get logpack header biow.
+ *
+ * @read_rd redo data for read.
+ * @written_lsid written_lsid.
+ *
+ * RETURN:
+ *   bio wrapper if it is valid logpack header, or NULL.
+ */
+static bio_wrapper* get_logpack_header_for_redo(
+	struct redo_data *read_rd, u64 written_lsid)
+{
+	unsigned int n;
+	struct list_head biow_list;
+	struct bio_wrapper *biow;
+	struct sector_data *sectd;
+	const struct walb_logpack_header *logh;
+
+	ASSERT(read_rd);
+	INIT_LIST_HEAD(&biow_list);
+retry:
+	n = get_bio_wrapper_from_read_queue(read_rd, &biow_list, 1);
+	if (n < 1) {
+		schedule();
+		goto retry;
+	}
+	ASSERT(!is_empty(&biow_list));
+	biow = list_first_entry(&biow_list, struct bio_wrapper, list);
+
+	/* logpack header check. */
+	ASSERT(biow);
+	ASSERT(biow->private_data);
+	sectd = biow->private_data;
+	logh = get_logpack_header_const(sectd);
+	if (is_valid_logpack_header_with_checksum(logh, sectd->size)
+		&& logh->logpack_lsid == written_lsid) {
+		return biow;
+	} else {
+		destroy_bio_wrapper_for_redo(biow);
+		return NULL;
+	}
+}
+
+/**
+ * Redo logpack.
+ *
+ * If the logpack is partially valid,
+ * invalid IOs records will be deleted from the logpack header
+ * and the updated logpack header will be written to the log device.
+ *
+ * @read_rd redo data for read.
+ * @gc_rd redo data for gc.
+ * @logh_biow !!!valid!!! logpack header biow.
+ *   This logpack header will be updated
+ *   if the logpack is partially invalid.
+ *   logh_biow will be destroyed in the function.
+ * @written_lsid_p pointer to written_lsid.
+ * @should_terminate when true redo should be terminated.
+ *
+ * RETURN:
+ *   true if redo succeeded, or false (due to IO error etc.)
+ */
+static bool redo_logpack(
+	struct redo_data *read_rd, struct redo_data *gc_rd,
+	struct bio_wrapper *logh_biow, u64 *written_lsid_p,
+	bool *should_terminate)
+{
+	struct sector_data *sectd;
+	struct walb_logpack_header *logh;
+	struct walb_log_record *rec;
+	unsigned int i, invalid_idx;
+	struct list biow_list, biow_list_tmp;
+	unsigned int n_pb, n_lb, n;
+	unsigned int pbs;
+	struct list *biow;
+	u32 csum;
+	bool is_valid = true;
+	int error = 0;
+
+	ASSERT(read_rd);
+	pbs = read_rd->wdev->pbs;
+	ASSERT(gc_rd);
+	INIT_LIST_HEAD(&biow_list);
+	INIT_LIST_HEAD(&biow_list_tmp);
+	ASSERT(logh_biow);
+	sectd = logh_biow->private_data;
+	ASSERT(sectd);
+
+	logh = get_logpack_header(logh_biow, sectd->size);
+	ASSERT(logh);
+
+	n_pb = 0;
+retry:
+	n_pb += get_bio_wrapper_from_read_queue(
+		read_rd, &biow_list,
+		logh->total_io_size - n_pb);
+	if (n_pb < logh->total_io_size) {
+		schedule();
+		goto retry;
+	}
+	ASSERT(n_pb == logh->total_io_size);
+
+	for (i = 0; i < logh->n_records; i++) {
+		ASSERT(list_empty(&biow_list_tmp));
+		rec = &logh->record[i];
+		ASSERT(rec->is_exist);
+
+		n_lb = rec->io_size;
+		if (n_lb == 0) {
+			/* zero-sized IO. */
+			continue;
+		}
+		n_pb = capacity_pb(pbs, n_lb);
+
+		/* Move the corresponding biow to biow_list_tmp. */
+		n = 0;
+		list_for_each_entry_safe(biow, biow_next, &biow_list, list) {
+			if (biow->error) {
+				error = biow->error;
+			}
+			list_move_tail(&biow->list, &biow_list_tmp);
+			n++;
+			if (n == n_pb) { break; }
+		}
+		if (error) {
+			goto error;
+		}
+
+		if (rec->is_padding) {
+			list_for_each_entry_safe(biow, biow_next,
+						&biow_list_tmp, list) {
+				list_del(&biow->list);
+				destroy_bio_wrapper_for_redo(biow);
+			}
+			continue;
+		}
+
+		/* Validate checksum. */
+		csum = calc_checksum_for_redo(
+			rec->io_size, pbs, &biow_list_tmp);
+		if (csum != rec->csum) {
+			is_valid = false;
+			invalid_idx = i;
+			list_for_each_entry_safe(biow, biow_next,
+						&biow_list_tmp, list) {
+				list_del(&biow->list);
+				destroy_bio_wrapper_for_redo(biow);
+			}
+			break;
+		}
+
+		/* Create/submit data bio. */
+		create_data_bio_for_redo(rec, pbs, &biow_list_tmp);
+		list_for_each_entry(biow, &biow_list_tmp, list) {
+			submit_data_bio_for_redo(biow);
+		}
+
+		/* Enqueue for gc. */
+		spin_lock(&gc_rd->queue_lock);
+		list_for_each_entry_safe(biow, biow_next, &biow_list_tmp, list) {
+			list_move_tail(&biow->list, &gc_rd->queue);
+			gc_rd->queue_len++;
+		}
+		spin_lock(&gc_rd->queue_lock);
+	}
+
+	/* Case (1): valid. */
+	if (is_valid) {
+		*written_lsid_p = logh->logpack_lsid + 1 + logh->total_io_size;
+		destroy_bio_wrapper_for_redo(logh_biow);
+		*should_terminate = false;
+		return true;
+	}
+
+	/* Case (2): fully invalid. */
+	if (invalid_idx == 0) {
+		/* The whole logpack will be discarded. */
+		*written_lsid_p = logh->logpack_lsid;
+		destroy_bio_wrapper_for_redo(logh_biow);
+		*should_terminate = true;
+		return true;
+	}
+
+	/* Case (3): paritally invalid. */
+
+	/* Update logpack header. */
+	if (logh->record[invalid_idx - 1].is_padding) {
+		invalid_idx--;
+		ASSERT(logh->n_padding == 1);
+		logh->n_padding--;
+	}
+	for (i = invalid_idx; i < logh->n_records; i++) {
+		log_record_init(&logh->record[i]);
+	}
+
+	logh->n_records = invalid_idx;
+	logh->total_io_size = 0;
+	for (i = 0; i < logh->n_records; i++) {
+		logh->total_io_size += capacity_pb(
+			pbs, logh->record[i].io_size);
+	}
+	logh->checksum = 0;
+	logh->checksum = checksum(logh, pbs);
+
+	/* Execute updated logpack header IO. */
+	logh_biow->private_data = NULL;
+	destroy_bio_wrapper_for_redo(logh_biow);
+retry:
+	logh_biow = create_bio_wrapper_for_redo(
+			wdev, logh->logpack_lsid, sect_data);
+	if (!logh_biow) {
+		schedule();
+		goto retry;
+	}
+	logh_biow->bio->bi_rw = WRITE_FLUSH_FUA;
+	generic_make_request(logh_biow->bio);
+	wait_for_completion(&logh_biow->done);
+	if (logh_biow->error) {
+		LOGe("Updated logpack header IO failed.");
+		goto error;
+	}
+
+	*written_lsid_p = logh->logpack_lsid + 1 + logh->total_io_size;
+	destroy_bio_wrapper_for_redo(logh_biow);
+	*should_terminate = true;
+	return true;
+
+error:
+	list_for_each_entry_safe(biow, biow_next, &biow_list_tmp, list) {
+		list_del(&biow->list);
+		destroy_bio_wrapper_for_redo(biow);
+	}
+	destroy_bio_wrapper_for_redo(logh_biow);
+	return false;
+}
+
+/**
+ * Calculate checksum for redo.
+ *
+ * @n_lb io size [logical block].
+ * @pbs physical block size [bytes].
+ * @biow_list biow list where each biow size is pbs.
+ *
+ * RETURN:
+ *   checksum of the IO data.
+ */
+static u32 calc_checksum_for_redo(
+	unsigned int n_lb, unsigned int pbs,
+	struct list_head *biow_list)
+{
+	unsigned int i;
+	unsigned int off;
+	struct bio_wrapper *biow;
+	u32 csum = 0;
+	unsigned int len;
+
+	ASSERT(n_lb > 0);
+	ASSERT_PBS(pbs);
+	ASSERT(biow_list);
+	ASSERT(!list_empty(biow_list));
+
+	list_for_each_entry(biow, biow_list, list) {
+		sectd = biow->private_data;
+		ASSERT_SECTOR_DATA(sectd);
+		ASSERT(sectd->size == pbs);
+		ASSERT(biow->len == n_lb_in_pb(pbs));
+		ASSERT(n_lb > 0);
+
+		if (biow->len <= n_lb) {
+			len = biow->len;
+		} else {
+			len = n_lb;
+		}
+		csum = checksum_partial(csum, sectd->data, len << 9);
+		n_lb -= len;
+	}
+	ASSERT(n_lb == 0);
+	return checksum_finish(csum);
+}
+
+/**
+ * Create data bio for redo.
+ *
+ * @wdev walb device.
+ * @rec log record.
+ * @pbs physical block size [bytes].
+ * @biow_list biow list
+ *   where each biow->private data is sector data.
+ *   Each biow will be replaced for data io.
+ */
+static void create_data_bio_for_redo(
+	struct walb_dev *wdev,
+	struct walb_log_record *rec,
+	struct list_head *biow_list)
+{
+	struct sector_data *sectd;
+	unsigned int n_lb, n_pb;
+	unsigned int pbs = wdev->physical_bs;
+	struct bio_wrapper *biow, *biow_next, *biow_tmp;
+	u64 off;
+	unsigned int len;
+	struct list_head new_list;
+
+	ASSERT(rec);
+	ASSERT_PBS(pbs);
+	ASSERT(biow_list);
+	ASSERT(!list_empty(biow_list));
+
+	off = rec->offset;
+	n_lb = rec->io_size;
+	n_pb = capacity_pb(pbs, n_lb);
+	ASSERTR(n_lb > 0);
+	ASSERTR(n_pb > 0);
+
+	INIT_LIST_HEAD(&new_list);
+
+	list_for_each_entry_safe(biow, biow_next, biow_list, list) {
+		if (biow->len <= n_lb) {
+			len = biow->len;
+		} else {
+			len = n_lb;
+		}
+		sectd = biow->private_data;
+	retry:
+		biow_tmp = create_data_bio_wrapper_for_redo(
+			wdev, off, len, sectd);
+		if (!biow_tmp) {
+			schedule();
+			goto retry;
+		}
+		list_add_tail(&biow_tmp->list, &new_list);
+
+		n_lb -= len;
+		off += len;
+		n_pb--;
+
+		list_del(&biow->list);
+		biow->private_data = NULL;
+		destroy_bio_wrapper_for_redo(biow);
+	}
+	ASSERT(n_lb == 0);
+	ASSERT(n_pb == 0);
+	ASSERT(list_empty(biow_list));
+
+	list_for_each_entry_safe(biow, biow_next, &new_list, list) {
+		list_move_tail(&biow->list, biow_list);
+	}
+	ASSERT(list_empty(&new_list));
+}
+
+/**
+ * Submit data bio for redo.
+ *
+ * @wdev walb device.
+ * @biow target bio is biow->bio.
+ */
+static void submit_data_bio_for_redo(
+	UNUSED struct walb_dev *wdev, struct bio_wrapper *biow)
+{
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	bool is_overlapping_insert_succeeded;
+#endif
+
+	ASSERT(biow);
+
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	/* check and insert to overlapping detection data. */
+retry_insert_ol:
+	spin_lock(&iocored->overlapping_data_lock);
+	is_overlapping_insert_succeeded =
+		overlapping_check_and_insert(
+			iocored->overlapping_data,
+			&iocored->max_sectors_in_overlapping,
+			biow, GFP_ATOMIC);
+	spin_unlock(&iocored->overlapping_data_lock);
+	if (!is_overlapping_insert_succeeded) {
+		schedule();
+		goto retry_insert_ol;
+	}
+	ASSERT(biow->n_overlapping >= 0);
+	if (biow->n_overlapping > 0) {
+		/* Enqueue submit task. */
+		INIT_WORK(&biow->work, task_submit_write_bio_wrapper_for_redo);
+		queue_work(wq_ol_, &biow->work);
+	} else {
+		generic_make_request(biow->bio);
+	}
+#else /* WALB_OVERLAPPING_SERIALIZE */
+	generic_make_request(biow->bio);
+#endif /* WALB_OVERLAPPING_SERIALIZE */
+}
+
+/**
+ * Wait overlapping IO(s) and submit.
+ */
+#ifdef WALB_OVERLAPPING_SERIALIZE
+static void task_submit_write_bio_wrapper_for_redo(struct work_struct *work)
+{
+	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
+	unsigned long rtimeo;
+	int c;
+#endif
+
+	ASSERT(biow);
+
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	/* Wait for previous overlapping writes. */
+	if (biow->n_overlapping > 0) {
+		c = 0;
+	retry:
+		rtimeo = wait_for_completion_timeout(
+			&biow->overlapping_done, timeo);
+		if (rtimeo == 0) {
+			LOGw("timeout(%d): biow %p pos %"PRIu64" len %u\n",
+				c, biow, (u64)biow->pos, biow->len);
+			c++;
+			goto retry;
+		}
+	}
+#endif
+	generic_make_request(biow->bio);
+}
+#endif
 
 /**
  * Add a bio_wrapper to a writepack.
@@ -3806,6 +4385,12 @@ bool iocore_is_log_overflow(struct walb_dev *wdev)
 
 /**
  * Execute redo.
+ *
+ * Start: wdev->written_lsid
+ * End: lsid with checksum invalid.
+ *
+ * written_lsid will be updated by the new
+ * written_lsid, completed_lsid, and latest_lsid.
  */
 bool iocore_redo(struct walb_dev *wdev)
 {
@@ -3817,11 +4402,15 @@ bool iocore_redo(struct walb_dev *wdev)
 	unsigned int n_biow;
 	const struct walb_logpack_header *logh;
 	unsigned int pbs;
+	u64 written_lsid;
+	int err;
+	bool failed = false;
+	bool should_terminate;
 
 	ASSERT(wdev);
 	minor = MINOR(wdev->devt);
 	pbs = wdev->physical_bs;
-	
+
 	/* Allocate resources and prepare. */
 	read_wd = alloc_worker(GFP_KERNEL);
 	if (!read_wd) { goto error0; }
@@ -3835,10 +4424,15 @@ bool iocore_redo(struct walb_dev *wdev)
 		"%s/%u", "redo_gc", minor / 2);
 	ASSERT(ret < WORKER_NAME_MAX_LEN);
 
-	read_rd = create_redo_data(wdev, wdev->written_lsid);
+	spin_lock(&wdev->lsid_lock);
+	written_lsid = wdev->written_lsid;
+	spin_unlock(&wdev->lsid_lock);
+	read_rd = create_redo_data(wdev, written_lsid);
 	if (!read_rd) { goto error2; }
-	gc_rd = create_redo_data(wdev, wdev->written_lsid);
+	gc_rd = create_redo_data(wdev, written_lsid);
 	if (!gc_rd) { goto error3; }
+
+	LOGn("Redo will start from lsid %"PRIu64".\n", written_lsid);
 
 	/* Run workers. */
 	initialize_worker(read_wd,
@@ -3850,42 +4444,46 @@ bool iocore_redo(struct walb_dev *wdev)
 	INIT_LIST_HEAD(&biow_list);
 	while (true) {
 		n_biow = 0;
-
-		get_bio_wrapper_from_read_queue(read_rd, &biow_list);
-
+		n_biow = get_bio_wrapper_from_read_queue(
+			read_rd, &biow_list, 1);
 		if (n_biow == 0) {
 			schedule();
 			continue;
 		}
-		
-		/* now editing */
-		
-		ASSERT(!list_empty(&biow_list));
-		biow = list_first_entry(&biow_list, struct bio_wrapper, list);
-		ASSERT(biow);
-		logh = get_logpack_header_const(
-			(struct sector_data *)biow->private_data);
-		ASSERT(logh);
 
-		if (!is_valid_logpack_header_with_checksum(logh, pbs)) {
-			/* There is no more valid logpack. */
+		logh_biow = get_logpack_header_for_redo(
+			read_rd, written_lsid);
+		if (!logh_biow) {
+			/* Redo should be terminated. */
 			break;
 		}
-		
-		
-			
 
-		/* now editing */
-		
+		if (logh_biow->error) {
+			destroy_bio_wrapper_for_redo(logh_biow);
+			failed = true;
+			break;
+		}
 
+		if (!redo_logpack(read_rd, gc_rd, logh_biow, &written_lsid,
+					&should_terminate)) {
+			/* IO error. */
+			failed = true;
+			break;
+		}
+		if (should_terminate) {
+			/* Redo should be terminated. */
+			break;
+		}
+
+		wakeup_worker(gc_wd);
 	}
 
 	/* Finalize. */
 	finalize_worker(read_wd);
 	wait_for_all_read_io_and_enqueue_for_gc(read_rd, gc_rd);
 	wakeup_worker(gc_wd);
-	wait_for_all_write_io(); /* now editing */
-	wait_for_all_gc_tasks(gc_rd);
+	wait_for_all_write_io_for_redo(wdev);
+	wait_for_all_gc_tasks_for_redo(gc_rd);
 	finalize_worker(gc_wd);
 
 	/* Now the redo task has done. */
@@ -3895,6 +4493,27 @@ bool iocore_redo(struct walb_dev *wdev)
 	destroy_redo_data(read_rd);
 	free_worker(gc_wd);
 	free_worker(read_wd);
+
+	if (failed) {
+		LOGe("IO error occurred during redo.\n");
+		return false;
+	}
+
+	/* flush data device. */
+	err = blkdev_issue_flush(wdev->ddev, GFP_KERNEL, NULL);
+	if (err) {
+		LOGe("Data device flush failed.");
+		return false;
+	} else {
+		LOGn("Redo has done with lsid %"PRIu64".\n", written_lsid);
+	}
+
+	/* Update lsid variables. */
+	spin_lock(&wdev->lsid_lock);
+	wdev->written_lsid = written_lsid;
+	wdev->latest_lsid = written_lsid;
+	wdev->completed_lsid = written_lsid;
+	spin_unlock(&wdev->lsid_lock);
 
 	return true;
 

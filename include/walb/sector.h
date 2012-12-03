@@ -109,7 +109,7 @@ static inline int sector_array_sprint(
  */
 static inline int is_valid_sector_data(const struct sector_data *sect)
 {
-	return (sect && sect->size > 0 && sect->data);
+	return sect && sect->size > 0 && sect->data;
 }
 
 /**

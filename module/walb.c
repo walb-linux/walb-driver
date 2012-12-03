@@ -2050,7 +2050,7 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 	int ret;
 	bool retb;
 	u64 written_lsid, latest_lsid;
-#ifdef WALB_FAST_ALGORITHM:
+#ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
 	ASSERT(wdev);
