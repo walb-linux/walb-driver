@@ -104,10 +104,11 @@ static struct tree_node* map_lookup_node(const struct map *tmap, u64 key)
  */
 static struct tree_node* map_lookup_node_detail(const struct map *tmap, u64 key, int search_flag)
 {
-	struct rb_node *node = tmap->root.rb_node;
+	struct rb_node *node;
 	struct tree_node *t = NULL;
 
 	ASSERT_TREEMAP(tmap);
+	node = tmap->root.rb_node;
 
 	if (search_flag == MAP_SEARCH_BEGIN ||
 		search_flag == MAP_SEARCH_END) { return NULL; }
