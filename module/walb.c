@@ -2048,11 +2048,7 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 	u64 snapshot_begin_pb, snapshot_end_pb;
 	struct sector_data *lsuper0_tmp;
 	int ret;
-	bool retb;
-	u64 written_lsid, latest_lsid;
-#ifdef WALB_FAST_ALGORITHM
-	u64 completed_lsid;
-#endif
+
 	ASSERT(wdev);
 
 	/*
@@ -2087,6 +2083,12 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 		LOGe("walb_ldev_init: memcmp NG\n");
 	} else {
 		LOGe("walb_ldev_init: memcmp OK\n");
+	}
+
+	if (get_super_sector_const(wdev->lsuper0)->physical_bs
+		!= wdev->physical_bs) {
+		LOGe("Physical block size is different.\n");
+		goto error2;
 	}
 
 	sector_free(lsuper0_tmp);
@@ -2296,6 +2298,12 @@ struct walb_dev* prepare_wdev(
 	struct walb_super_sector *super;
 	struct request_queue *lq, *dq;
 	bool retb;
+#ifdef WALB_DEBUG
+	u64 written_lsid, latest_lsid;
+#ifdef WALB_FAST_ALGORITHM
+	u64 completed_lsid;
+#endif
+#endif
 
 	ASSERT(is_walb_start_param_valid(param));
 
@@ -2432,9 +2440,11 @@ struct walb_dev* prepare_wdev(
 
 	/*
 	 * Redo
-	 * 1. Read logpack from written_lsid.
-	 * 2. Write the corresponding data of the logpack to data device.
-	 * 3. Update written_lsid and latest_lsid;
+	 * 1. Read logpacks starting from written_lsid.
+	 * 2. Write the corresponding data of the logpacks to data device.
+	 * 3. Rewrite the latest logpack if partially valid.
+	 * 4. Update written_lsid, latest_lsid, (and completed_lsid).
+	 * 5. Sync superblock.
 	 */
 	retb = iocore_redo(wdev);
 	if (!retb) {
@@ -2444,13 +2454,13 @@ struct walb_dev* prepare_wdev(
 #ifdef WALB_DEBUG
 	spin_lock(&wdev->lsid_lock);
 	written_lsid = wdev->written_lsid;
-	latest_lsid == wdev->latest_lsid;
-#ifdef WALB_FAST_ALGORITHM:
+	latest_lsid = wdev->latest_lsid;
+#ifdef WALB_FAST_ALGORITHM
 	completed_lsid = wdev->completed_lsid;
 #endif
 	spin_unlock(&wdev->lsid_lock);
 	ASSERT(written_lsid == latest_lsid);
-#ifdef WALB_FAST_ALGORITHM:
+#ifdef WALB_FAST_ALGORITHM
 	ASSERT(written_lsid == completed_lsid);
 #endif
 #endif

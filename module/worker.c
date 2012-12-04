@@ -57,7 +57,7 @@ struct worker_data* alloc_worker(gfp_t gfp_mask)
 {
 	struct worker_data *worker;
 
-	worker = kmalloc(sizeof(struct worker_data));
+	worker = kmalloc(sizeof(struct worker_data), gfp_mask);
 	if (!worker) {
 		goto error0;
 	}

@@ -20,28 +20,6 @@
  *******************************************************************************/
 
 /**
- * Check validness of a logpack header.
- *
- * @logpack logpack to be checked.
- * @physical_bs physical block size.
- *		(This is logpack header size.)
- *
- * @return Non-zero in success, or 0.
- */
-bool is_valid_logpack_header_with_checksum(
-	const struct walb_logpack_header* lhead,
-	unsigned int physical_bs)
-{
-	CHECK(is_valid_logpack_header(lhead));
-	CHECK(checksum((const u8 *)lhead, physical_bs) == 0);
-	return true;
-error:
-	LOGe("logpack header checksum is invalid (lsid %"PRIu64").\n",
-		lhead->logpack_lsid);
-	return false;
-}
-
-/**
  * Read logpack header sector from log device.
  *
  * @fd log device fd opened.

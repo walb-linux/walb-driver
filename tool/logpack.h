@@ -24,8 +24,6 @@ bool read_logpack_data_from_wldev(
 	struct sector_data_array *sect_ary);
 
 void print_logpack_header(const struct walb_logpack_header* lhead);
-bool is_valid_logpack_header_with_checksum(
-	const struct walb_logpack_header* lhead, int physical_bs);
 
 bool read_logpack_header(
 	int fd, unsigned int pbs, struct walb_logpack_header* lhead);
