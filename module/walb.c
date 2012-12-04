@@ -2439,39 +2439,6 @@ struct walb_dev* prepare_wdev(
 	memcpy(param->name, dev_name, DISK_NAME_LEN);
 
 	/*
-	 * Redo
-	 * 1. Read logpacks starting from written_lsid.
-	 * 2. Write the corresponding data of the logpacks to data device.
-	 * 3. Rewrite the latest logpack if partially valid.
-	 * 4. Update written_lsid, latest_lsid, (and completed_lsid).
-	 * 5. Sync superblock.
-	 */
-	retb = iocore_redo(wdev);
-	if (!retb) {
-		LOGe("Redo failed.\n");
-		goto out_ldev_init;
-	}
-#ifdef WALB_DEBUG
-	spin_lock(&wdev->lsid_lock);
-	written_lsid = wdev->written_lsid;
-	latest_lsid = wdev->latest_lsid;
-#ifdef WALB_FAST_ALGORITHM
-	completed_lsid = wdev->completed_lsid;
-#endif
-	spin_unlock(&wdev->lsid_lock);
-	ASSERT(written_lsid == latest_lsid);
-#ifdef WALB_FAST_ALGORITHM
-	ASSERT(written_lsid == completed_lsid);
-#endif
-#endif
-
-	/*
-	 * Sync log device super block.
-	 */
-
-	/* now editing */
-
-	/*
 	 * Prepare walb block device.
 	 */
 	if (walb_prepare_device(wdev, minor, dev_name) != 0) {
@@ -2492,12 +2459,37 @@ struct walb_dev* prepare_wdev(
 		goto out_walblogdev;
 	}
 
+	/*
+	 * Redo
+	 * 1. Read logpacks starting from written_lsid.
+	 * 2. Write the corresponding data of the logpacks to data device.
+	 * 3. Rewrite the latest logpack if partially valid.
+	 * 4. Update written_lsid, latest_lsid, (and completed_lsid).
+	 * 5. Sync superblock.
+	 */
+	retb = iocore_redo(wdev);
+	if (!retb) {
+		LOGe("Redo failed.\n");
+		goto out_iocore_init;
+	}
+#ifdef WALB_DEBUG
+	spin_lock(&wdev->lsid_lock);
+	written_lsid = wdev->written_lsid;
+	latest_lsid = wdev->latest_lsid;
+#ifdef WALB_FAST_ALGORITHM
+	completed_lsid = wdev->completed_lsid;
+#endif
+	spin_unlock(&wdev->lsid_lock);
+	ASSERT(written_lsid == latest_lsid);
+#ifdef WALB_FAST_ALGORITHM
+	ASSERT(written_lsid == completed_lsid);
+#endif
+#endif
+
 	return wdev;
 
-#if 0
 out_iocore_init:
 	iocore_finalize(wdev);
-#endif
 out_walblogdev:
 	walblog_finalize_device(wdev);
 out_walbdev:

@@ -196,10 +196,12 @@ error:
 static inline int is_valid_logpack_header_with_checksum(
 	const struct walb_logpack_header* lhead, unsigned int pbs)
 {
-	CHECK(is_valid_logpack_header(lhead));
-	CHECK(checksum((const u8 *)lhead, pbs) == 0);
+	CHECKL(error0, is_valid_logpack_header(lhead));
+	CHECKL(error1, checksum((const u8 *)lhead, pbs) == 0);
 	return 1;
-error:
+error0:
+	return 0;
+error1:
 	LOGe("logpack header checksum is invalid (lsid %"PRIu64").\n",
 		lhead->logpack_lsid);
 	return 0;
