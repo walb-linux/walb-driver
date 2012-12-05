@@ -187,7 +187,6 @@ struct redo_pack
 /* Maximum size of log to read ahead for redo [logical block].
    Currently 8MB. */
 #define READ_AHEAD_LB (8 * 1024 * 1024 / LOGICAL_BLOCK_SIZE)
-/* #define READ_AHEAD_LB (8 * 1024 / LOGICAL_BLOCK_SIZE) */
 
 /*******************************************************************************
  * Static functions definition.
@@ -344,9 +343,9 @@ static void run_read_log_in_redo(void *data);
 static void run_gc_log_in_redo(void *data);
 static struct bio_wrapper* create_log_bio_wrapper_for_redo(
 	struct walb_dev *wdev, u64 lsid, struct sector_data *sectd);
-static struct bio_wrapper* create_data_bio_wrapper_for_redo(
-	struct walb_dev *wdev, u64 pos, unsigned int len,
-	struct sector_data *sectd);
+static bool prepare_data_bio_for_redo(
+	struct walb_dev *wdev, struct bio_wrapper *biow,
+	u64 pos, unsigned int len);
 static void destroy_bio_wrapper_for_redo(
 	struct walb_dev *wdev, struct bio_wrapper* biow);
 static void bio_end_io_for_redo(struct bio *bio, int error);
@@ -2249,28 +2248,29 @@ error0:
 }
 
 /**
- * Create data bio wrapper for redo.
+ * Prepare data bio for redo and assign in a bio wrapper.
+ *
+ * @wdev walb device.
+ * @biow bio wrapper.
+ *   biow->bio must be NULL.
+ *   biow->private_data must be sector data to be written.
+ * @pos IO position (address) in the deta device [logical block].
+ * @len IO size [logical block].
  */
-static struct bio_wrapper* create_data_bio_wrapper_for_redo(
-	struct walb_dev *wdev, u64 pos, unsigned int len,
-	struct sector_data *sectd)
+static bool prepare_data_bio_for_redo(
+	struct walb_dev *wdev, struct bio_wrapper *biow,
+	u64 pos, unsigned int len)
 {
 	struct bio *bio;
-	struct bio_wrapper *biow;
-	const unsigned int pbs = wdev->physical_bs;
-	bool is_sectd_alloc = false;
+	struct sector_data *sectd;
 
-	ASSERT(pbs <= PAGE_SIZE);
+	ASSERT(biow);
+	ASSERT(!biow->bio);
+	sectd = biow->private_data;
+	ASSERT(sectd);
 
-	if (!sectd) {
-		is_sectd_alloc = true;
-		sectd = sector_alloc(pbs, GFP_NOIO);
-		if (!sectd) { goto error0; }
-	}
 	bio = bio_alloc(GFP_NOIO, 1);
-	if (!bio) { goto error1; }
-	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
-	if (!biow) { goto error2; }
+	if (!bio) { goto error0; }
 
 	bio->bi_bdev = wdev->ddev;
 	bio->bi_sector = pos;
@@ -2284,19 +2284,10 @@ static struct bio_wrapper* create_data_bio_wrapper_for_redo(
 	init_bio_wrapper(biow, bio);
 	biow->private_data = sectd;
 
-	return biow;
-#if 0
-error3:
-	destroy_bio_wrapper_dec(wdev, biow);
-#endif
-error2:
-	bio_put(bio);
-error1:
-	if (is_sectd_alloc) {
-		sector_free(sectd);
-	}
+	return true;
+
 error0:
-	return NULL;
+	return false;
 }
 
 /**
@@ -2380,7 +2371,6 @@ static void wait_for_all_read_io_and_destroy(struct redo_data *read_rd)
 		unsigned long rtimeo;
 		int c = 0;
 		list_del(&biow->list);
-#if 1
 	retry:
 		rtimeo = wait_for_completion_timeout(&biow->done, timeo);
 		if (rtimeo == 0) {
@@ -2389,7 +2379,6 @@ static void wait_for_all_read_io_and_destroy(struct redo_data *read_rd)
 			c++;
 			goto retry;
 		}
-#endif
 		destroy_bio_wrapper_for_redo(read_rd->wdev, biow);
 	}
 	ASSERT(list_empty(&biow_list));
@@ -2572,12 +2561,10 @@ retry1:
 	}
 	ASSERT(n_pb == logh->total_io_size);
 
-#if 1
-	/* Wait for completion */
+	/* Wait for log read IO completion. */
 	list_for_each_entry(biow, &biow_list, list) {
 		wait_for_completion(&biow->done);
 	}
-#endif
 
 	for (i = 0; i < logh->n_records; i++) {
 		rec = &logh->record[i];
@@ -2605,6 +2592,7 @@ retry1:
 			goto error;
 		}
 
+		/* Padding record and data is just ignored. */
 		if (rec->is_padding) {
 			list_for_each_entry_safe(biow, biow_next,
 						&biow_list_tmp, list) {
@@ -2781,10 +2769,9 @@ static void create_data_io_for_redo(
 	struct walb_log_record *rec,
 	struct list_head *biow_list)
 {
-	struct sector_data *sectd;
 	unsigned int n_lb, n_pb;
 	unsigned int pbs = wdev->physical_bs;
-	struct bio_wrapper *biow, *biow_next, *biow_tmp;
+	struct bio_wrapper *biow, *biow_next;
 	u64 off;
 	unsigned int len;
 	struct list_head new_list;
@@ -2797,35 +2784,25 @@ static void create_data_io_for_redo(
 	off = rec->offset;
 	n_lb = rec->io_size;
 	n_pb = capacity_pb(pbs, n_lb);
-	ASSERT(n_lb > 0);
-	ASSERT(n_pb > 0);
 
 	INIT_LIST_HEAD(&new_list);
-
 	list_for_each_entry_safe(biow, biow_next, biow_list, list) {
 		if (biow->len <= n_lb) {
 			len = biow->len;
 		} else {
 			len = n_lb;
 		}
-		sectd = biow->private_data;
-		ASSERT_SECTOR_DATA(sectd);
+		list_del(&biow->list);
 	retry:
-		biow_tmp = create_data_bio_wrapper_for_redo(
-			wdev, off, len, sectd);
-		if (!biow_tmp) {
+		if (!prepare_data_bio_for_redo(wdev, biow, off, len)) {
 			schedule();
 			goto retry;
 		}
-		list_add_tail(&biow_tmp->list, &new_list);
+		list_add_tail(&biow->list, &new_list);
 
 		n_lb -= len;
 		off += len;
 		n_pb--;
-
-		list_del(&biow->list);
-		biow->private_data = NULL;
-		destroy_bio_wrapper_for_redo(wdev, biow);
 	}
 	ASSERT(n_lb == 0);
 	ASSERT(n_pb == 0);
