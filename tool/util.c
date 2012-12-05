@@ -818,6 +818,8 @@ void print_super_sector_raw(const struct walb_super_sector* super_sect)
 		super_sect->oldest_lsid,
 		super_sect->written_lsid,
 		super_sect->device_size);
+	printf("ring_buffer_offset: %lu\n",
+		get_ring_buffer_offset_2(super_sect));
 }
 
 /**
