@@ -2392,7 +2392,7 @@ error0:
  */
 static bool do_reset_wal(const struct config *cfg)
 {
-	ASSERT(strcmp(cfg->cmd_str, "reset_wal"));
+	ASSERT(strcmp(cfg->cmd_str, "reset_wal") == 0);
 
 	if (check_bdev(cfg->wdev_name) < 0) {
 		LOGe("device check failed.\n");
