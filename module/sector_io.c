@@ -54,7 +54,7 @@ bool sector_io(
 	struct walb_bio_with_completion *bioc;
 	u8 *buf;
 
-	LOGd("walb_sector_io begin\n");
+	LOGd_("walb_sector_io begin\n");
 
 	ASSERT_SECTOR_DATA(sect);
 	buf = sect->data;
@@ -111,7 +111,7 @@ bool sector_io(
 	bio_put(bio);
 	kfree(bioc);
 
-	LOGd("walb_sector_io end\n");
+	LOGd_("walb_sector_io end\n");
 	return true;
 
 error2:
