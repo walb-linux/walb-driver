@@ -23,6 +23,11 @@
  * Invalid key and value.
  * Causion: this is not NULL.
  */
+/*
+  VALの型がunsigned longなのか意図的なものか
+  何を入れるためのものか，INVALID_VALが0でなくて-1なのはなぜかの
+  コメントを書いた方がよいでしょう
+*/
 #define TREEMAP_INVALID_KEY ((u64)(-1))
 #define TREEMAP_INVALID_VAL ((unsigned long)(-1))
 
