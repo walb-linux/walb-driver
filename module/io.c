@@ -2523,8 +2523,8 @@ static bool redo_logpack(
 	struct sector_data *sectd;
 	struct walb_logpack_header *logh;
 	struct walb_log_record *rec;
-	unsigned int i, invalid_idx;
-	struct list_head biow_list, biow_list_tmp, biow_list_ready;
+	unsigned int i, invalid_idx = 0;
+	struct list_head biow_list_pack, biow_list_io, biow_list_ready;
 	unsigned int n_pb, n_lb, n;
 	unsigned int pbs;
 	struct bio_wrapper *biow, *biow_next;
@@ -2532,14 +2532,15 @@ static bool redo_logpack(
 	bool is_valid = true;
 	int error = 0;
 	struct blk_plug plug;
+	bool retb = true;
 
 	ASSERT(read_rd);
 	wdev = read_rd->wdev;
 	ASSERT(wdev);
 	pbs = wdev->physical_bs;
 	ASSERT(gc_rd);
-	INIT_LIST_HEAD(&biow_list);
-	INIT_LIST_HEAD(&biow_list_tmp);
+	INIT_LIST_HEAD(&biow_list_pack);
+	INIT_LIST_HEAD(&biow_list_io);
 	INIT_LIST_HEAD(&biow_list_ready);
 	ASSERT(logh_biow);
 	sectd = logh_biow->private_data;
@@ -2551,7 +2552,7 @@ static bool redo_logpack(
 	n_pb = 0;
 retry1:
 	n_pb += get_bio_wrapper_from_read_queue(
-		read_rd, &biow_list,
+		read_rd, &biow_list_pack,
 		logh->total_io_size - n_pb);
 	if (n_pb < logh->total_io_size) {
 		wakeup_worker(read_wd);
@@ -2562,7 +2563,7 @@ retry1:
 	ASSERT(n_pb == logh->total_io_size);
 
 	/* Wait for log read IO completion. */
-	list_for_each_entry(biow, &biow_list, list) {
+	list_for_each_entry(biow, &biow_list_pack, list) {
 		wait_for_completion(&biow->done);
 	}
 
@@ -2577,25 +2578,26 @@ retry1:
 		}
 		n_pb = capacity_pb(pbs, n_lb);
 
-		/* Move the corresponding biow to biow_list_tmp. */
-		ASSERT(list_empty(&biow_list_tmp));
+		/* Move the corresponding biow to biow_list_io. */
+		ASSERT(list_empty(&biow_list_io));
 		n = 0;
-		list_for_each_entry_safe(biow, biow_next, &biow_list, list) {
+		list_for_each_entry_safe(biow, biow_next, &biow_list_pack, list) {
 			if (biow->error) {
 				error = biow->error;
 			}
-			list_move_tail(&biow->list, &biow_list_tmp);
+			list_move_tail(&biow->list, &biow_list_io);
 			n++;
 			if (n == n_pb) { break; }
 		}
 		if (error) {
-			goto error;
+			retb = false;
+			goto fin;
 		}
 
 		/* Padding record and data is just ignored. */
 		if (rec->is_padding) {
 			list_for_each_entry_safe(biow, biow_next,
-						&biow_list_tmp, list) {
+						&biow_list_io, list) {
 				list_del(&biow->list);
 				destroy_bio_wrapper_for_redo(wdev, biow);
 			}
@@ -2604,21 +2606,16 @@ retry1:
 
 		/* Validate checksum. */
 		csum = calc_checksum_for_redo(
-			rec->io_size, pbs, &biow_list_tmp);
+			rec->io_size, pbs, &biow_list_io);
 		if (csum != rec->checksum) {
 			is_valid = false;
 			invalid_idx = i;
-			list_for_each_entry_safe(biow, biow_next,
-						&biow_list_tmp, list) {
-				list_del(&biow->list);
-				destroy_bio_wrapper_for_redo(wdev, biow);
-			}
 			break;
 		}
 
 		/* Create data bio. */
-		create_data_io_for_redo(wdev, rec, &biow_list_tmp);
-		list_for_each_entry_safe(biow, biow_next, &biow_list_tmp, list) {
+		create_data_io_for_redo(wdev, rec, &biow_list_io);
+		list_for_each_entry_safe(biow, biow_next, &biow_list_io, list) {
 			list_move_tail(&biow->list, &biow_list_ready);
 		}
 	}
@@ -2643,19 +2640,20 @@ retry1:
 
 	/* Case (1): valid. */
 	if (is_valid) {
+		ASSERT(list_empty(&biow_list_pack));
 		*written_lsid_p = logh->logpack_lsid + 1 + logh->total_io_size;
-		destroy_bio_wrapper_for_redo(wdev, logh_biow);
 		*should_terminate = false;
-		return true;
+		retb = true;
+		goto fin;
 	}
 
 	/* Case (2): fully invalid. */
 	if (invalid_idx == 0) {
 		/* The whole logpack will be discarded. */
 		*written_lsid_p = logh->logpack_lsid;
-		destroy_bio_wrapper_for_redo(wdev, logh_biow);
 		*should_terminate = true;
-		return true;
+		retb = true;
+		goto fin;
 	}
 
 	/* Case (3): paritally invalid. */
@@ -2694,21 +2692,26 @@ retry2:
 	wait_for_completion(&logh_biow->done);
 	if (logh_biow->error) {
 		LOGe("Updated logpack header IO failed.");
-		goto error;
+		retb = false;
+		goto fin;
 	}
 
 	*written_lsid_p = logh->logpack_lsid + 1 + logh->total_io_size;
-	destroy_bio_wrapper_for_redo(wdev, logh_biow);
 	*should_terminate = true;
-	return true;
+	retb = true;
 
-error:
-	list_for_each_entry_safe(biow, biow_next, &biow_list_tmp, list) {
+fin:
+	/* Destroy remaining biow(s). */
+	list_for_each_entry_safe(biow, biow_next, &biow_list_io, list) {
+		list_del(&biow->list);
+		destroy_bio_wrapper_for_redo(wdev, biow);
+	}
+	list_for_each_entry_safe(biow, biow_next, &biow_list_pack, list) {
 		list_del(&biow->list);
 		destroy_bio_wrapper_for_redo(wdev, biow);
 	}
 	destroy_bio_wrapper_for_redo(wdev, logh_biow);
-	return false;
+	return retb;
 }
 
 /**

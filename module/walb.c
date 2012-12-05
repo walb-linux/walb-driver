@@ -520,18 +520,27 @@ static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
  */
 static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	u64 lsid;
+	u64 lsid, oldest_lsid, written_lsid;
 
 	LOGn("WALB_IOCTL_SET_OLDEST_LSID_SET\n");
 
 	lsid = ctl->val_u64;
 
-	/* Load the logpack sector and check
-	   whether the lsid is logpack lsid. */
-	if (!walb_check_lsid_valid(wdev, lsid)) {
-		LOGe("lsid %llu is not valid.\n", lsid);
+	spin_lock(&wdev->lsid_lock);
+	written_lsid = wdev->written_lsid;
+	oldest_lsid = wdev->oldest_lsid;
+	spin_unlock(&wdev->lsid_lock);
+
+	if (!(lsid == written_lsid ||
+			(oldest_lsid <= lsid && lsid < written_lsid &&
+				walb_check_lsid_valid(wdev, lsid)))) {
+		LOGe("lsid %"PRIu64" is not valid.\n", lsid);
+		LOGe("You shoud specify valid logpack header lsid"
+			" (oldest_lsid (%"PRIu64") <= lsid <= written_lsid (%"PRIu64").\n",
+			oldest_lsid, written_lsid);
 		goto error0;
 	}
+
 	spin_lock(&wdev->lsid_lock);
 	wdev->oldest_lsid = lsid;
 	spin_unlock(&wdev->lsid_lock);
