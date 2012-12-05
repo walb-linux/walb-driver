@@ -118,6 +118,7 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 		biow->pos = 0;
 		biow->len = 0;
 	}
+	biow->started = false;
 #ifdef WALB_FAST_ALGORITHM
 	biow->is_overwritten = false;
 #endif

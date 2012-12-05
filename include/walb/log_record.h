@@ -185,6 +185,29 @@ error:
 }
 
 /**
+ * Check validness of a logpack header.
+ *
+ * @logpack logpack to be checked.
+ * @pbs physical block size.
+ *   (This is logpack header size.)
+ *
+ * @return Non-zero in success, or 0.
+ */
+static inline int is_valid_logpack_header_with_checksum(
+	const struct walb_logpack_header* lhead, unsigned int pbs)
+{
+	CHECKL(error0, is_valid_logpack_header(lhead));
+	CHECKL(error1, checksum((const u8 *)lhead, pbs) == 0);
+	return 1;
+error0:
+	return 0;
+error1:
+	LOGe("logpack header checksum is invalid (lsid %"PRIu64").\n",
+		lhead->logpack_lsid);
+	return 0;
+}
+
+/**
  * Get next lsid of a logpack header.
  * This does not validate the logpack header.
  */

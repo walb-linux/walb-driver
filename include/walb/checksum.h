@@ -17,7 +17,7 @@
  *
  * @return current checksum.
  */
-static inline u64 checksum_partial(u32 sum, const u8 *data, u32 size)
+static inline u32 checksum_partial(u32 sum, const u8 *data, u32 size)
 {
 	u32 n = size / sizeof(u32);
 	u32 i;
