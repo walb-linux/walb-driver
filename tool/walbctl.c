@@ -503,6 +503,11 @@ static bool init_walb_metadata(
 	print_super_sector(super_sect);
 #endif
 
+	if (fsync(fd)) {
+		perror("fsync failed.\n");
+		goto error1;
+	}
+
 	sector_free(super_sect);
 	return true;
 
@@ -1923,6 +1928,10 @@ static bool do_redo_wlog(const struct config *cfg)
 	sector_array_free(sect_ary);
 	sector_free(lhead_sect);
 	free(wh);
+	if (fsync(fd)) {
+		perror("fsync() failed.");
+		goto error1;
+	}
 	close(fd);
 	return true;
 
@@ -2052,6 +2061,14 @@ static bool do_redo(const struct config *cfg)
 	sector_free(lhead_sectd);
 	sector_array_free(sect_ary);
 	sector_free(super_sectd);
+	if (fsync(dfd)) {
+		perror("fsync data device failed.");
+		goto error2;
+	}
+	if (fsync(lfd)) {
+		perror("fsync log device failed.");
+		goto error2;
+	}
 	close(dfd);
 	close(lfd);
 
