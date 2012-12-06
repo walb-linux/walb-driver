@@ -16,24 +16,25 @@
 bool read_logpack_header_from_wldev(
 	int fd,
 	const struct walb_super_sector* super_sectp,
-	u64 lsid, struct sector_data *lhead_sect);
+	u64 lsid, u32 salt, struct sector_data *lhead_sect);
 bool read_logpack_data_from_wldev(
 	int fd,
 	const struct walb_super_sector* super,
-	const struct walb_logpack_header* lhead,
+	const struct walb_logpack_header* lhead, u32 salt,
 	struct sector_data_array *sect_ary);
 
 void print_logpack_header(const struct walb_logpack_header* lhead);
 
 bool read_logpack_header(
-	int fd, unsigned int pbs, struct walb_logpack_header* lhead);
+	int fd, unsigned int pbs, u32 salt, struct walb_logpack_header* lhead);
 bool read_logpack_data_raw(
-	int fd, unsigned int pbs,
+	int fd, unsigned int pbs, u32 salt,
 	const struct walb_logpack_header* lhead,
 	u8* buf, size_t bufsize);
-bool read_logpack_data(int fd,
-		const struct walb_logpack_header* lhead,
-		struct sector_data_array *sect_ary);
+bool read_logpack_data(
+	int fd,
+	const struct walb_logpack_header* lhead, u32 salt,
+	struct sector_data_array *sect_ary);
 bool write_logpack_header(int fd, int physical_bs,
 			const struct walb_logpack_header* lhead);
 
@@ -66,13 +67,16 @@ struct logpack
 /**
  * Assertion for logpack.
  */
-#define ASSERT_LOGPACK(logpack, is_checksum) ASSERT(is_valid_logpack(logpack, is_checksum))
+#define ASSERT_LOGPACK_CHECKSUM(logpack, salt)	\
+	ASSERT(is_valid_logpack(logpack, false, salt))
+#define ASSERT_LOGPACK(logpack) \
+	ASSERT(is_valid_logpack(logpack, false, 0))
 
 struct logpack* alloc_logpack(unsigned int physical_bs, unsigned int n_sectors);
 void free_logpack(struct logpack* logpack);
 bool realloc_logpack(struct logpack* logpack, int n_sectors);
 
-bool is_valid_logpack(struct logpack* logpack, bool is_checksum);
+bool is_valid_logpack(struct logpack* logpack, bool is_checksum, u32 salt);
 
 static inline struct walb_logpack_header* logpack_get_header(struct logpack* logpack);
 static inline u64 logpack_get_lsid(struct logpack* logpack);
@@ -105,7 +109,7 @@ static inline struct walb_logpack_header* logpack_get_header(struct logpack* log
  */
 static inline u64 logpack_get_lsid(struct logpack* logpack)
 {
-	ASSERT_LOGPACK(logpack, false);
+	ASSERT_LOGPACK(logpack);
 	return logpack_get_header(logpack)->logpack_lsid;
 }
 

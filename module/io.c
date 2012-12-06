@@ -297,7 +297,7 @@ static void submit_logpack_list(
 	struct walb_dev *wdev, struct list_head *wpack_list);
 static void logpack_calc_checksum(
 	struct walb_logpack_header *lhead,
-	unsigned int pbs, struct list_head *biow_list);
+	unsigned int pbs, u32 salt, struct list_head *biow_list);
 static void submit_logpack(
 	struct walb_logpack_header *logh,
 	struct list_head *biow_list, struct list_head *bioe_list,
@@ -365,7 +365,7 @@ static bool redo_logpack(
 	struct bio_wrapper *logh_biow, u64 *written_lsid_p,
 	bool *should_terminate);
 static u32 calc_checksum_for_redo(
-	unsigned int n_lb, unsigned int pbs,
+	unsigned int n_lb, unsigned int pbs, u32 salt,
 	struct list_head *biow_list);
 static void create_data_io_for_redo(
 	struct walb_dev *wdev,
@@ -1351,7 +1351,8 @@ static void submit_logpack_list(
 			logpack_submit_flush(wdev->ldev, &wpack->bioe_list);
 		} else {
 			ASSERT(logh->n_records > 0);
-			logpack_calc_checksum(logh, wdev->physical_bs, &wpack->biow_list);
+			logpack_calc_checksum(logh, wdev->physical_bs,
+					wdev->log_checksum_salt, &wpack->biow_list);
 			submit_logpack(
 				logh, &wpack->biow_list, &wpack->bioe_list,
 				wdev->physical_bs, wdev->ldev, wdev->ring_buffer_off,
@@ -1371,7 +1372,7 @@ static void submit_logpack_list(
  */
 static void logpack_calc_checksum(
 	struct walb_logpack_header *logh,
-	unsigned int pbs, struct list_head *biow_list)
+	unsigned int pbs, u32 salt, struct list_head *biow_list)
 {
 	int i;
 	struct bio_wrapper *biow;
@@ -1408,8 +1409,8 @@ static void logpack_calc_checksum(
 	ASSERT(n_padding == logh->n_padding);
 	ASSERT(i == logh->n_records);
 	ASSERT(logh->checksum == 0);
-	logh->checksum = checksum((u8 *)logh, pbs);
-	ASSERT(checksum((u8 *)logh, pbs) == 0);
+	logh->checksum = checksum((u8 *)logh, pbs, salt);
+	ASSERT(checksum((u8 *)logh, pbs, salt) == 0);
 }
 
 /**
@@ -2485,7 +2486,8 @@ retry:
 	sectd = biow->private_data;
 	ASSERT_SECTOR_DATA(sectd);
 	logh = get_logpack_header_const(sectd);
-	if (is_valid_logpack_header_with_checksum(logh, sectd->size)
+	if (is_valid_logpack_header_with_checksum(
+			logh, sectd->size, read_rd->wdev->log_checksum_salt)
 		&& logh->logpack_lsid == written_lsid) {
 		return biow;
 	} else {
@@ -2606,7 +2608,8 @@ retry1:
 
 		/* Validate checksum. */
 		csum = calc_checksum_for_redo(
-			rec->io_size, pbs, &biow_list_io);
+			rec->io_size, pbs,
+			wdev->log_checksum_salt, &biow_list_io);
 		if (csum != rec->checksum) {
 			is_valid = false;
 			invalid_idx = i;
@@ -2675,7 +2678,8 @@ retry1:
 			pbs, logh->record[i].io_size);
 	}
 	logh->checksum = 0;
-	logh->checksum = checksum((const u8 *)logh, pbs);
+	logh->checksum = checksum(
+		(const u8 *)logh, pbs, wdev->log_checksum_salt);
 
 	/* Execute updated logpack header IO. */
 	logh_biow->private_data = NULL;
@@ -2719,17 +2723,18 @@ fin:
  *
  * @n_lb io size [logical block].
  * @pbs physical block size [bytes].
+ * @salt checksum salt.
  * @biow_list biow list where each biow size is pbs.
  *
  * RETURN:
  *   checksum of the IO data.
  */
 static u32 calc_checksum_for_redo(
-	unsigned int n_lb, unsigned int pbs,
+	unsigned int n_lb, unsigned int pbs, u32 salt,
 	struct list_head *biow_list)
 {
 	struct bio_wrapper *biow;
-	u32 csum = 0;
+	u32 csum = salt;
 	unsigned int len;
 	struct sector_data *sectd;
 
@@ -4337,7 +4342,8 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 
 	if (is_write) {
 		/* Calculate checksum. */
-		biow->csum = bio_calc_checksum(biow->bio);
+		biow->csum = bio_calc_checksum(
+			biow->bio, wdev->log_checksum_salt);
 
 		/* Push into queue. */
 		spin_lock(&iocored->logpack_submit_queue_lock);

@@ -253,7 +253,7 @@ static void walb_unlock_bdev(struct block_device *bdev)
 static int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
 {
 	struct sector_data *sect;
-	struct walb_logpack_header *logpack;
+	struct walb_logpack_header *logh;
 	u64 off;
 
 	ASSERT(wdev);
@@ -264,7 +264,7 @@ static int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
 		goto error0;
 	}
 	ASSERT(is_same_size_sector(sect, wdev->lsuper0));
-	logpack = get_logpack_header(sect);
+	logh = get_logpack_header(sect);
 
 	off = get_offset_of_lsid_2(get_super_sector(wdev->lsuper0), lsid);
 	if (!sector_io(READ, wdev->ldev, off, sect)) {
@@ -272,18 +272,14 @@ static int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
 		goto error1;
 	}
 
-	/* sector type */
-	if (logpack->sector_type != SECTOR_TYPE_LOGPACK) {
+	/* Check valid logpack header. */
+	if (!is_valid_logpack_header_with_checksum(
+			logh, wdev->physical_bs, wdev->log_checksum_salt)) {
 		goto error1;
 	}
 
-	/* lsid */
-	if (logpack->logpack_lsid != lsid) {
-		goto error1;
-	}
-
-	/* checksum */
-	if (checksum((u8 *)logpack, wdev->physical_bs) != 0) {
+	/* Check lsid. */
+	if (logh->logpack_lsid != lsid) {
 		goto error1;
 	}
 
@@ -1119,6 +1115,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	u64 lsid0_off;
 	struct lsid_set lsids;
 	u64 old_ring_buffer_size;
+	u32 new_salt;
 
 	ASSERT(ctl->command == WALB_IOCTL_CLEAR_LOG);
 	LOGn("WALB_IOCTL_CLEAR_LOG.\n");
@@ -1174,13 +1171,18 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 			- get_ring_buffer_offset(pbs, wdev->n_snapshots);
 	}
 
-	/* Generate new uuid. */
+	/* Generate new uuid and salt. */
 	get_random_bytes(new_uuid, 16);
+	get_random_bytes(&new_salt, sizeof(new_salt));
+	wdev->log_checksum_salt = new_salt;
+
+	/* Update superblock image. */
 	spin_lock(&wdev->lsuper0_lock);
 	super = get_super_sector(wdev->lsuper0);
 	memcpy(old_uuid, super->uuid, 16);
 	memcpy(super->uuid, new_uuid, 16);
 	super->ring_buffer_size = wdev->ring_buffer_size;
+	super->log_checksum_salt = new_salt;
 	/* super->snapshot_metadata_size; */
 	lsid0_off = get_offset_of_lsid_2(super, 0);
 	spin_unlock(&wdev->lsuper0_lock);
@@ -1589,6 +1591,7 @@ static bool resize_disk(struct gendisk *gd, u64 new_size)
 	if (old_size > new_size) {
 		LOGn("Shrink disk should discard block cache.\n");
 		check_disk_size_change(gd, bdev);
+		bdev->bd_invalidated = 0; /* This is bugfix. */
 	} else {
 		i_size_write(bdev->bd_inode, (loff_t)new_size << 9);
 	}
@@ -2404,6 +2407,7 @@ struct walb_dev* prepare_wdev(
 
 	wdev->ring_buffer_size = super->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(super);
+	wdev->log_checksum_salt = super->log_checksum_salt;
 	wdev->size = super->device_size;
 	if (wdev->size > wdev->ddev_size) {
 		LOGe("device size > underlying data device size.\n");

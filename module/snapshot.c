@@ -497,7 +497,7 @@ static bool sector_read(struct snapshot_data *snapd,
 		goto error0;
 	}
 	/* Check checksum. */
-	if (checksum((u8 *)sect->data, sect->size) != 0) {
+	if (checksum((u8 *)sect->data, sect->size, 0) != 0) {
 		LOGe("Bad checksum.\n");
 		goto error0;
 	}
@@ -535,7 +535,7 @@ static bool sector_write(
 	/* Calculate checksum. */
 	snap_sect = get_snapshot_sector(sect);
 	snap_sect->checksum = 0;
-	snap_sect->checksum = checksum((u8 *)snap_sect, sect->size);
+	snap_sect->checksum = checksum((u8 *)snap_sect, sect->size, 0);
 
 	/* Issue write IO. */
 	if (!sector_io(WRITE, snapd->bdev, offset, sect)) {

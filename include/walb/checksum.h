@@ -54,9 +54,9 @@ static inline u32 checksum_finish(u32 sum)
  *
  * @return checksum of the data.
  */
-static inline u32 checksum(const u8 *data, u32 size)
+static inline u32 checksum(const u8 *data, u32 size, u32 salt)
 {
-	return checksum_finish(checksum_partial(0, data, size));
+	return checksum_finish(checksum_partial(salt, data, size));
 }
 
 #endif /* WALB_CHECKSUM_H */

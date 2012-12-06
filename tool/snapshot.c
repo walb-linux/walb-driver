@@ -109,9 +109,9 @@ bool write_snapshot_sector(
 	/* checksum */
 	u8 *sector_buf = (u8*)snap;
 	snap->checksum = 0;
-	u32 csum = checksum(sector_buf, sect_sz);
+	u32 csum = checksum(sector_buf, sect_sz, 0);
 	snap->checksum = csum;
-	ASSERT(checksum(sector_buf, sect_sz) == 0);
+	ASSERT(checksum(sector_buf, sect_sz, 0) == 0);
 
 	/* really write snapshot sector. */
 	u64 off = get_metadata_offset_2(super) + idx;
@@ -159,7 +159,7 @@ bool read_snapshot_sector(
 		LOGe("sector read failed.\n");
 		return false;
 	}
-	if (checksum(sector_buf, sect_sz) != 0) {
+	if (checksum(sector_buf, sect_sz, 0) != 0) {
 		LOGe("checksum is invalid.\n");
 		return false;
 	}

@@ -1715,6 +1715,8 @@ static bool do_cat_wldev(const struct config *cfg)
 		goto error3;
 	}
 
+	const u32 salt = super->log_checksum_salt;
+
 	/* Prepare and write walblog_header. */
 	u8 buf[WALBLOG_HEADER_SIZE];
 	struct walblog_header *wh = (struct walblog_header *)buf;
@@ -1723,13 +1725,14 @@ static bool do_cat_wldev(const struct config *cfg)
 	wh->sector_type = SECTOR_TYPE_WALBLOG_HEADER;
 	wh->checksum = 0;
 	wh->version = WALB_VERSION;
+	wh->log_checksum_salt = salt;
 	wh->logical_bs = lbs;
 	wh->physical_bs = pbs;
 	copy_uuid(wh->uuid, super->uuid);
 	wh->begin_lsid = begin_lsid;
 	wh->end_lsid = end_lsid;
 	/* Checksum */
-	u32 wh_sum = checksum((const u8 *)wh, WALBLOG_HEADER_SIZE);
+	u32 wh_sum = checksum((const u8 *)wh, WALBLOG_HEADER_SIZE, 0);
 	wh->checksum = wh_sum;
 	/* Write */
 	retb = write_data(1, buf, WALBLOG_HEADER_SIZE);
@@ -1752,7 +1755,7 @@ static bool do_cat_wldev(const struct config *cfg)
 
 		/* Logpack header */
 		retb = read_logpack_header_from_wldev(
-			fd, super, lsid, lhead_sect);
+			fd, super, lsid, salt, lhead_sect);
 		if (!retb) { break; }
 		LOGd("logpack %"PRIu64"\n", lhead->logpack_lsid);
 		retb = write_data(1, (u8 *)lhead, pbs);
@@ -1769,7 +1772,7 @@ static bool do_cat_wldev(const struct config *cfg)
 		}
 
 		/* Read and write logpack data. */
-		retb = read_logpack_data_from_wldev(fd, super, lhead, sect_ary);
+		retb = read_logpack_data_from_wldev(fd, super, lhead, salt, sect_ary);
 		if (!retb) {
 			LOGe("read logpack data failed.\n");
 			goto error4;
@@ -1841,6 +1844,8 @@ static bool do_redo_wlog(const struct config *cfg)
 	check_wlog_header(wh);
 	print_wlog_header(wh); /* debug */
 
+	const u32 salt = wh->log_checksum_salt;
+
 	/* Set block size */
 	int lbs = wh->logical_bs;
 	int pbs = wh->physical_bs;
@@ -1885,7 +1890,7 @@ static bool do_redo_wlog(const struct config *cfg)
 	u64 lsid = begin_lsid;
 	while (lsid < end_lsid) {
 		/* Read logpack header */
-		if (!read_logpack_header(0, pbs, lhead)) {
+		if (!read_logpack_header(0, pbs, salt, lhead)) {
 			break;
 		}
 
@@ -1898,7 +1903,7 @@ static bool do_redo_wlog(const struct config *cfg)
 		}
 
 		/* Read logpack data. */
-		if (!read_logpack_data(0, lhead, sect_ary)) {
+		if (!read_logpack_data(0, lhead, salt, sect_ary)) {
 			LOGe("read logpack data failed.\n");
 			goto error4;
 		}
@@ -1986,6 +1991,7 @@ static bool do_redo(const struct config *cfg)
 		goto error3;
 	}
 	struct walb_super_sector *super = get_super_sector(super_sectd);
+	const u32 salt = super->log_checksum_salt;
 
 	/* Allocate logpack data. */
 	size_t bufsize = 1024 * 1024; /* 1MB */
@@ -2003,7 +2009,7 @@ static bool do_redo(const struct config *cfg)
 	u64 lsid = super->written_lsid;
 	u64 begin_lsid = lsid;
 	/* Read logpack header */
-	while (read_logpack_header_from_wldev(lfd, super, lsid, lhead_sectd)) {
+	while (read_logpack_header_from_wldev(lfd, super, lsid, salt, lhead_sectd)) {
 
 		LOGd("logpack %"PRIu64"\n", lhead->logpack_lsid);
 
@@ -2018,7 +2024,7 @@ static bool do_redo(const struct config *cfg)
 		}
 
 		/* Read logpack data from log device. */
-		if (!read_logpack_data_from_wldev(lfd, super, lhead, sect_ary)) {
+		if (!read_logpack_data_from_wldev(lfd, super, lhead, salt, sect_ary)) {
 			LOGe("read logpack data failed.\n");
 			goto error5;
 		}
@@ -2083,6 +2089,7 @@ static bool do_show_wlog(const struct config *cfg)
 
 	/* Check wlog header. */
 	check_wlog_header(wh);
+	const u32 salt = wh->log_checksum_salt;
 
 	/* Set block size. */
 	unsigned int lbs = wh->logical_bs;
@@ -2114,7 +2121,7 @@ static bool do_show_wlog(const struct config *cfg)
 	end_lsid = cfg->lsid1;
 
 	/* Read, print and check each logpack */
-	while (read_logpack_header(0, pbs, lhead)) {
+	while (read_logpack_header(0, pbs, salt, lhead)) {
 
 		/* Check sect_ary size and reallocate if necessary. */
 		if (lhead->total_io_size > sect_ary->size) {
@@ -2125,7 +2132,7 @@ static bool do_show_wlog(const struct config *cfg)
 		}
 
 		/* Read logpack data. */
-		if (!read_logpack_data(0, lhead, sect_ary)) {
+		if (!read_logpack_data(0, lhead, salt, sect_ary)) {
 			LOGe("read logpack data failed.\n");
 			goto error3;
 		}
@@ -2200,6 +2207,7 @@ static bool do_show_wldev(const struct config *cfg)
 	print_super_sector(super_sectd); /* debug */
 	u64 oldest_lsid = super->oldest_lsid;
 	LOGd("oldest_lsid: %"PRIu64"\n", oldest_lsid);
+	const u32 salt = super->log_checksum_salt;
 
 	/* Range check */
 	u64 lsid, begin_lsid, end_lsid;
@@ -2223,7 +2231,7 @@ static bool do_show_wldev(const struct config *cfg)
 	lsid = begin_lsid;
 	while (lsid < end_lsid) {
 		bool retb = read_logpack_header_from_wldev(
-			fd, super, lsid, lhead_sectd);
+			fd, super, lsid, salt, lhead_sectd);
 		if (!retb) { break; }
 		print_logpack_header(lhead);
 		lsid += lhead->total_io_size + 1;

@@ -15,13 +15,16 @@
 /**
  * Calculate checksum.
  *
+ * @bio target bio
+ * @salt checksum salt.
+ *
  * RETURN:
  *   checksum if bio->bi_size > 0, else 0.
  */
-static inline u32 bio_calc_checksum(struct bio *bio)
+static inline u32 bio_calc_checksum(struct bio *bio, u32 salt)
 {
 	struct bio_vec *bvec;
-	u32 sum;
+	u32 sum = salt;
 	int i;
 	u8 *buf;
 
@@ -31,7 +34,6 @@ static inline u32 bio_calc_checksum(struct bio *bio)
 		return 0;
 	}
 
-	sum = 0;
 	bio_for_each_segment(bvec, bio, i) {
 		buf = (u8 *)kmap_atomic(bvec->bv_page) + bvec->bv_offset;
 		sum = checksum_partial(sum, buf, bvec->bv_len);

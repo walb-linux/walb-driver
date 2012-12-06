@@ -567,18 +567,19 @@ static inline int sector_array_sprint(
  * @sect_ary sector data array.
  * @offset offset in bytes.
  * @size size in bytes.
+ * @salt checksum salt.
  *
  * RETURN:
  *   calculated checksum.
  */
 static inline u32 sector_array_checksum(
 	struct sector_data_array *sect_ary,
-	unsigned int offset, unsigned int size)
+	unsigned int offset, unsigned int size, u32 salt)
 {
 	unsigned int remaining = size;
 	unsigned int sect_size;
 	unsigned int idx, off;
-	u32 sum = 0;
+	u32 sum = salt;
 	unsigned int tsize;
 
 	ASSERT(size > 0);

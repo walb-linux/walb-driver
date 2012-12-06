@@ -190,7 +190,7 @@ bool walb_read_super_sector(
 	}
 
 	/* Validate checksum. */
-	if (checksum((u8 *)sect, lsuper->size) != 0) {
+	if (checksum((u8 *)sect, lsuper->size, 0) != 0) {
 		LOGe("walb_read_super_sector: checksum check failed.\n");
 		goto error0;
 	}
@@ -242,7 +242,7 @@ bool walb_write_super_sector(
 
 	/* Generate checksum. */
 	sect->checksum = 0;
-	csum = checksum((u8 *)sect, pbs);
+	csum = checksum((u8 *)sect, pbs, 0);
 	sect->checksum = csum;
 
 	/* Really write. */

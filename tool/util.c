@@ -762,6 +762,10 @@ void init_super_sector_raw(
 	super_sect->physical_bs = pbs;
 	super_sect->snapshot_metadata_size = n_sectors;
 	generate_uuid(super_sect->uuid);
+	u32 salt;
+	memset_random((u8 *)&salt, sizeof(salt));
+	LOGn("salt: %"PRIu32"\n", salt);
+	super_sect->log_checksum_salt = salt;
 	super_sect->ring_buffer_size =
 		ldev_lb / (pbs / lbs)
 		- get_ring_buffer_offset(pbs, n_snapshots);
@@ -801,11 +805,14 @@ void print_super_sector_raw(const struct walb_super_sector* super_sect)
 	printf("checksum: %08x\n"
 		"logical_bs: %u\n"
 		"physical_bs: %u\n"
-		"snapshot_metadata_size: %u\n",
+		"snapshot_metadata_size: %u\n"
+		"log_checksum_salt: %"PRIu32"\n",
 		super_sect->checksum,
 		super_sect->logical_bs,
 		super_sect->physical_bs,
-		super_sect->snapshot_metadata_size);
+		super_sect->snapshot_metadata_size,
+		super_sect->log_checksum_salt);
+	printf("uuid: ");
 	print_uuid(super_sect->uuid);
 	printf("\n"
 		"name: \"%s\"\n"
@@ -858,11 +865,11 @@ bool write_super_sector_raw(int fd, const struct walb_super_sector* super_sect)
 	/* Calculate checksum. */
 	struct walb_super_sector *super_sect_tmp = (struct walb_super_sector *)sector_buf;
 	super_sect_tmp->checksum = 0;
-	u32 csum = checksum(sector_buf, sect_sz);
+	u32 csum = checksum(sector_buf, sect_sz, 0);
 	print_binary_hex(sector_buf, sect_sz);/* debug */
 	super_sect_tmp->checksum = csum;
 	print_binary_hex(sector_buf, sect_sz);/* debug */
-	ASSERT(checksum(sector_buf, sect_sz) == 0);
+	ASSERT(checksum(sector_buf, sect_sz, 0) == 0);
 
 	/* Really write sector data. */
 	u64 off0 = get_super_sector0_offset_2(super_sect);
@@ -972,10 +979,10 @@ bool read_super_sector_raw(
 	bool ret0 = read_sector_raw(fd, buf0, sector_size, off0);
 	bool ret1 = read_sector_raw(fd, buf1, sector_size, off1);
 
-	if (ret0 && checksum(buf0, sector_size) != 0) {
+	if (ret0 && checksum(buf0, sector_size, 0) != 0) {
 		ret0 = -1;
 	}
-	if (ret1 && checksum(buf1, sector_size) != 0) {
+	if (ret1 && checksum(buf1, sector_size, 0) != 0) {
 		ret1 = -1;
 	}
 	if (ret0 && ((struct walb_super_sector *)buf0)->sector_type != SECTOR_TYPE_SUPER) {
@@ -1030,7 +1037,7 @@ bool read_super_sector(int fd, struct sector_data *sect)
 		LOGe("Read sector failed.\n");
 		goto error0;
 	}
-	if (checksum(sect->data, sect->size) != 0) {
+	if (checksum(sect->data, sect->size, 0) != 0) {
 		LOGe("Checksum invalid.\n");
 		goto error0;
 	}

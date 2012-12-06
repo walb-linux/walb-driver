@@ -151,6 +151,8 @@ struct pdata
 	u64 ring_buffer_off;
 	u64 ring_buffer_size;
 
+	u32 log_checksum_salt;
+
 	/* bit 0: all write must failed.
 	   bit 1: logpack submit task working.
 	   bit 2: logpack wait task working. */
@@ -353,7 +355,8 @@ UNUSED static bool is_valid_pack_list(struct list_head *pack_list);
 /* Logpack related functions. */
 static void logpack_calc_checksum(
 	struct walb_logpack_header *lhead,
-	unsigned int pbs, struct list_head *req_ent_list);
+	unsigned int pbs, u32 salt,
+	struct list_head *req_ent_list);
 static bool logpack_submit_lhead(
 	struct walb_logpack_header *lhead, bool is_flush, bool is_fua,
 	struct list_head *bio_ent_list,
@@ -651,6 +654,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	pdata->latest_lsid = pdata->written_lsid; /* redo must be done. */
 	pdata->ring_buffer_size = ssect->ring_buffer_size;
 	pdata->ring_buffer_off = get_ring_buffer_offset_2(ssect);
+	pdata->log_checksum_salt = ssect->log_checksum_salt;
 	pdata->flags = 0;
 
 	/* capacity */
@@ -1686,7 +1690,9 @@ static void logpack_list_submit(
 			ret = logpack_submit_flush(pdata->ldev, &wpack->bio_ent_list);
 		} else {
 			ASSERT(lhead->n_records > 0);
-			logpack_calc_checksum(lhead, wrdev->pbs, &wpack->req_ent_list);
+			logpack_calc_checksum(lhead, wrdev->pbs,
+					pdata->log_checksum_salt,
+					&wpack->req_ent_list);
 			ret = logpack_submit(
 				lhead, wpack->is_fua,
 				&wpack->req_ent_list, &wpack->bio_ent_list,
@@ -2574,15 +2580,16 @@ error:
  * Calc checksum of each requests and log header and set it.
  *
  * @lhead log pack header.
- * @physical_bs physical sector size (allocated size as lhead).
- * @reqp_ary requests to add.
- * @n_req number of requests.
+ * @pbs physical sector size (allocated size as lhead).
+ * @salt checksum salt.
+ * @req_ent_list request entry list.
  *
  * @return 0 in success, or -1.
  */
 static void logpack_calc_checksum(
 	struct walb_logpack_header *lhead,
-	unsigned int pbs, struct list_head *req_ent_list)
+	unsigned int pbs, u32 salt,
+	struct list_head *req_ent_list)
 {
 	int i;
 	struct req_entry *reqe;
@@ -2617,7 +2624,7 @@ static void logpack_calc_checksum(
 			continue;
 		}
 
-		sum = 0;
+		sum = salt;
 		rq_for_each_segment(bvec, req, iter) {
 			buf = (u8 *)kmap_atomic(bvec->bv_page) + bvec->bv_offset;
 			sum = checksum_partial(sum, buf, bvec->bv_len);
@@ -2632,8 +2639,8 @@ static void logpack_calc_checksum(
 	ASSERT(n_padding == lhead->n_padding);
 	ASSERT(i == lhead->n_records);
 	ASSERT(lhead->checksum == 0);
-	lhead->checksum = checksum((u8 *)lhead, pbs);
-	ASSERT(checksum((u8 *)lhead, pbs) == 0);
+	lhead->checksum = checksum((u8 *)lhead, pbs, salt);
+	ASSERT(checksum((u8 *)lhead, pbs, salt) == 0);
 }
 
 /**

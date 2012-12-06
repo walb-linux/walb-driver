@@ -93,8 +93,10 @@ int main()
 	struct timeval tv;
 	double t1, t2, t3, t4;
 	size_t s1, s2, s3;
+	u32 salt;
 
 	init_random();
+	memset_random((u8 *)&salt, sizeof(salt));
 
 	printf("making sorted_random_array_index...\n");
 	make_sorted_random_array_index(mid, MID_SIZE, size, sizeof(u32));
@@ -105,11 +107,11 @@ int main()
 
 	gettimeofday(&tv, 0); t1 = time_double(&tv);
 
-	csum1 = checksum(buf, size);
+	csum1 = checksum(buf, size, salt);
 	s1 = size;
 	gettimeofday(&tv, 0); t2 = time_double(&tv);
 
-	csum2tmp = 0;
+	csum2tmp = salt;
 	s2 = 0;
 	for (i = 0; i < MID_SIZE - 1; i++) {
 		size_t tmp_size = mid[i + 1] - mid[i];
@@ -120,7 +122,7 @@ int main()
 	csum2 = checksum_finish(csum2tmp);
 	gettimeofday(&tv, 0); t3 = time_double(&tv);
 
-	csum3tmp = 0;
+	csum3tmp = salt;
 	csum3tmp = checksum_partial(csum3tmp, buf, size);
 	csum3 = checksum_finish(csum3tmp);
 	s3 = size;
