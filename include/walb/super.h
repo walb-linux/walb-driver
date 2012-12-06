@@ -65,8 +65,9 @@ struct walb_super_sector {
 	/* sector type */
 	u16 sector_type; /* must be SECTOR_TYPE_SUPER. */
 	u16 reserved1;
-	u16 reserved2;
-	u16 reserved3;
+
+	/* Log checksum must use this. */
+	u32 log_checksum_salt;
 
 	/* Offset of the oldest log record inside ring buffer.
 	   [physical block] */

@@ -52,6 +52,7 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 	sect->oldest_lsid = oldest_lsid;
 	sect->written_lsid = written_lsid;
 	sect->device_size = device_size;
+	sect->log_checksum_salt = wdev->log_checksum_salt;
 	sector_copy(lsuper_tmp, wdev->lsuper0);
 	spin_unlock(&wdev->lsuper0_lock);
 

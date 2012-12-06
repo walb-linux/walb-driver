@@ -22,7 +22,9 @@ struct walblog_header
 
 	/* walb version */
 	u32 version;
-	u32 reserved1;
+
+	/* checksum salt for log header and IO data. */
+	u32 log_checksum_salt;
 
 	/* Block size */
 	u32 logical_bs;
@@ -53,6 +55,7 @@ inline void print_wlog_header(struct walblog_header* wh)
 	printf("*****walblog header*****\n"
 		"checksum: %08x\n"
 		"version: %"PRIu32"\n"
+		"log_checksum_salt: %"PRIu32"\n"
 		"logical_bs: %"PRIu32"\n"
 		"physical_bs: %"PRIu32"\n"
 		"uuid: %s\n"
@@ -60,6 +63,7 @@ inline void print_wlog_header(struct walblog_header* wh)
 		"end_lsid: %"PRIu64"\n",
 		wh->checksum,
 		wh->version,
+		wh->log_checksum_salt,
 		wh->logical_bs,
 		wh->physical_bs,
 		uuidstr,
@@ -74,7 +78,7 @@ inline void print_wlog_header(struct walblog_header* wh)
  */
 inline bool check_wlog_header(struct walblog_header* wh)
 {
-	if (checksum((const u8 *)wh, WALBLOG_HEADER_SIZE) != 0) {
+	if (checksum((const u8 *)wh, WALBLOG_HEADER_SIZE, 0) != 0) {
 		LOGe("wlog checksum is invalid.\n");
 		goto error0;
 	}

@@ -279,6 +279,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 #endif
 	wdev->ring_buffer_size = ssect->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(ssect);
+	wdev->log_checksum_salt = ssect->log_checksum_salt;
 
 	/* capacity */
 	wdev->ddev_size = ddev->bd_part->nr_sects;

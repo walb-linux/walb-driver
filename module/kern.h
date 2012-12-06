@@ -108,6 +108,10 @@ struct walb_dev
 	u64 ring_buffer_off;
 	u64 ring_buffer_size;
 
+	/* Log checksum salt.
+	   This is used for logpack header and log data. */
+	u32 log_checksum_salt;
+
 	/*
 	 * lsid indicators.
 	 * Each variable must be accessed with lsid_lock held.

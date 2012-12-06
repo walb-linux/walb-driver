@@ -23,7 +23,8 @@ struct walb_log_record {
 
 	/* Just sum of the array assuming data contents
 	   as an array of u32 integer.
-	   If is_padding non-zero, checksum is not calcurated. */
+	   If is_padding non-zero, checksum is not calcurated.
+	   You must use the salt that is unique for each device. */
 	u32 checksum;
 	u32 reserved1;
 
@@ -54,7 +55,8 @@ struct walb_log_record {
  */
 struct walb_logpack_header {
 
-	u32 checksum; /* checksum of whole log pack. */
+	u32 checksum; /* checksum of whole log pack.
+			 You must use the salt. */
 	u16 sector_type; /* type identifier */
 	u16 total_io_size; /* Total io size in the log pack
 			      [physical sector].
@@ -194,10 +196,10 @@ error:
  * @return Non-zero in success, or 0.
  */
 static inline int is_valid_logpack_header_with_checksum(
-	const struct walb_logpack_header* lhead, unsigned int pbs)
+	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt)
 {
 	CHECKL(error0, is_valid_logpack_header(lhead));
-	CHECKL(error1, checksum((const u8 *)lhead, pbs) == 0);
+	CHECKL(error1, checksum((const u8 *)lhead, pbs, salt) == 0);
 	return 1;
 error0:
 	return 0;

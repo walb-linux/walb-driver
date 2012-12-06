@@ -25,15 +25,15 @@
  * @fd log device fd opened.
  * @super_sectp super sector.
  * @lsid logpack lsid to read.
- * @logpack buffer to store logpack header data.
- *	    This allocated size must be sector size.
+ * @lhead_sect buffer to store logpack header data.
+ *   This allocated size must be sector size.
+ * @salt log checksum salt.
  *
  * @return ture in success, or false.
  */
 bool read_logpack_header_from_wldev(
-	int fd,
-	const struct walb_super_sector* super_sectp,
-	u64 lsid, struct sector_data *lhead_sect)
+	int fd, const struct walb_super_sector* super_sectp,
+	u64 lsid, u32 salt, struct sector_data *lhead_sect)
 {
 	/* calc offset in the ring buffer */
 	u64 ring_buffer_offset = get_ring_buffer_offset_2(super_sectp);
@@ -56,7 +56,7 @@ bool read_logpack_header_from_wldev(
 		goto error0;
 	}
 	if (!is_valid_logpack_header_with_checksum(
-			lhead, super_sectp->physical_bs)) {
+			lhead, super_sectp->physical_bs, salt)) {
 		LOGe("check logpack header failed.\n");
 		goto error0;
 	}
@@ -138,7 +138,7 @@ bool write_logpack_header(int fd,
 bool read_logpack_data_from_wldev(
 	int fd,
 	const struct walb_super_sector* super,
-	const struct walb_logpack_header* lhead,
+	const struct walb_logpack_header* lhead, u32 salt,
 	struct sector_data_array *sect_ary)
 {
 	const int lbs = super->logical_bs;
@@ -181,7 +181,7 @@ bool read_logpack_data_from_wldev(
 			/* Confirm checksum */
 			u32 csum = sector_array_checksum(
 				sect_ary, total_pb * pbs,
-				log_lb * lbs);
+				log_lb * lbs, salt);
 			if (csum != lhead->record[i].checksum) {
 				LOGe("log header checksum is invalid. %08x %08x\n",
 					csum, lhead->record[i].checksum);
@@ -205,13 +205,14 @@ error0:
  *
  * @fd file descriptor (opened, seeked)
  * @pbs physical block size [byte].
+ * @salt checksum salt.
  * @logpack logpack to be filled. (allocated size must be physical_bs).
  *
  * @return true in success, or false.
  */
 bool read_logpack_header(
 	int fd,
-	unsigned int pbs,
+	unsigned int pbs, u32 salt,
 	struct walb_logpack_header* lhead)
 {
 	/* Read */
@@ -220,7 +221,7 @@ bool read_logpack_header(
 	}
 
 	/* Check */
-	if (!is_valid_logpack_header_with_checksum(lhead, pbs)) {
+	if (!is_valid_logpack_header_with_checksum(lhead, pbs, salt)) {
 		return false;
 	}
 
@@ -232,16 +233,17 @@ bool read_logpack_header(
  *
  * @fd file descriptor (opened, seeked)
  * @pbs physical block size.
+ * @salt checksum salt.
  * @logpack corresponding logpack header.
  * @buf buffer to be filled.
  * @bufsize buffser size.
  *
  * @return true in success, or false.
  */
-bool read_logpack_data_raw(int fd,
-		unsigned int pbs,
-		const struct walb_logpack_header* lhead,
-		u8* buf, size_t bufsize)
+bool read_logpack_data_raw(
+	int fd, unsigned int pbs, u32 salt,
+	const struct walb_logpack_header* lhead,
+	u8* buf, size_t bufsize)
 {
 	ASSERT(fd >= 0);
 	ASSERT_PBS(pbs);
@@ -270,7 +272,7 @@ bool read_logpack_data_raw(int fd,
 
 			/* Confirm checksum. */
 			u32 csum = checksum((const u8 *)buf_off,
-					log_lb * LOGICAL_BLOCK_SIZE);
+					log_lb * LOGICAL_BLOCK_SIZE, salt);
 			if (csum != lhead->record[i].checksum) {
 				LOGe("log header checksum in invalid. %08x %08x\n",
 					csum, lhead->record[i].checksum);
@@ -293,13 +295,14 @@ error0:
  *
  * @fd file descriptor (opened, seeked)
  * @lhead corresponding logpack header.
+ * @salt checksum salt.
  * @sect_ary sector data array to be store data.
  *
  * @return true in success, or false.
  */
 bool read_logpack_data(
 	int fd,
-	const struct walb_logpack_header* lhead,
+	const struct walb_logpack_header* lhead, u32 salt,
 	struct sector_data_array *sect_ary)
 {
 	ASSERT(fd >= 0);
@@ -336,7 +339,7 @@ bool read_logpack_data(
 			u32 csum = sector_array_checksum(
 				sect_ary,
 				idx_pb * pbs,
-				log_lb * LOGICAL_BLOCK_SIZE);
+				log_lb * LOGICAL_BLOCK_SIZE, salt);
 			if (csum != lhead->record[i].checksum) {
 				LOGe("log header checksum in invalid. %08x %08x\n",
 					csum, lhead->record[i].checksum);
@@ -496,7 +499,7 @@ void free_logpack(struct logpack* logpack)
 bool realloc_logpack(struct logpack* logpack, int n_sectors)
 {
 	ASSERT(n_sectors > 0);
-	ASSERT_LOGPACK(logpack, false);
+	ASSERT_LOGPACK(logpack);
 
 	int ret = sector_array_realloc(logpack->data_sects, n_sectors);
 	return (ret ? true : false);
@@ -507,10 +510,11 @@ bool realloc_logpack(struct logpack* logpack, int n_sectors)
  *
  * @logpack logpack to be checked.
  * @is_checksum check checksum or not.
+ * @salt checksum salt.
  *
  * @return true if valid, or false.
  */
-bool is_valid_logpack(struct logpack* logpack, bool is_checksum)
+bool is_valid_logpack(struct logpack* logpack, bool is_checksum, u32 salt)
 {
 	CHECK(logpack != NULL);
 	CHECK(logpack->head_sect != NULL);
@@ -525,7 +529,7 @@ bool is_valid_logpack(struct logpack* logpack, bool is_checksum)
 	if (is_checksum) {
 		CHECK(is_valid_logpack_header_with_checksum(
 				logpack->head_sect->data,
-				logpack->head_sect->size));
+				logpack->head_sect->size, salt));
 	} else {
 		CHECK(is_valid_logpack_header(logpack->head_sect->data));
 	}
@@ -556,7 +560,7 @@ bool logpack_add_io_request(
 	bool is_padding)
 {
 	/* Check parameters. */
-	ASSERT_LOGPACK(logpack, false);
+	ASSERT_LOGPACK(logpack);
 	if (is_padding) { ASSERT(data); }
 	ASSERT(size % logpack->logical_bs == 0);
 	ASSERT(offset <= MAX_LSID);
