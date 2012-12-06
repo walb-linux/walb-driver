@@ -87,6 +87,7 @@ struct lsid_set
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
+	u64 permanent_lsid;
 	u64 written_lsid;
 	u64 prev_written_lsid;
 	u64 oldest_lsid;
@@ -1143,6 +1144,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid = 0;
 #endif
+	wdev->permanent_lsid = 0;
 	wdev->written_lsid = 0;
 	wdev->prev_written_lsid = 0;
 	wdev->oldest_lsid = 0;
@@ -1653,6 +1655,7 @@ static void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids)
 #ifdef WALB_FAST_ALGORITHM
 	lsids->completed_lsid = wdev->completed_lsid;
 #endif
+	lsids->permanent_lsid = wdev->permanent_lsid;
 	lsids->written_lsid = wdev->written_lsid;
 	lsids->prev_written_lsid = wdev->prev_written_lsid;
 	lsids->oldest_lsid = wdev->oldest_lsid;
@@ -1671,6 +1674,7 @@ static void restore_lsid_set(struct walb_dev *wdev, const struct lsid_set *lsids
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid = lsids->completed_lsid;
 #endif
+	wdev->permanent_lsid = lsids->permanent_lsid;
 	wdev->written_lsid = lsids->written_lsid;
 	wdev->prev_written_lsid = lsids->prev_written_lsid;
 	wdev->oldest_lsid = lsids->oldest_lsid;
@@ -2398,12 +2402,13 @@ struct walb_dev* prepare_wdev(
 
 	/* Set lsids. */
 	wdev->oldest_lsid = super->oldest_lsid;
-	wdev->written_lsid = super->written_lsid;
 	wdev->prev_written_lsid = wdev->written_lsid;
-	wdev->latest_lsid = wdev->written_lsid;
+	wdev->written_lsid = super->written_lsid;
+	wdev->permanent_lsid = wdev->written_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid = wdev->written_lsid;
 #endif
+	wdev->latest_lsid = wdev->written_lsid;
 
 	wdev->ring_buffer_size = super->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(super);

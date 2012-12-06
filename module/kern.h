@@ -121,6 +121,9 @@ struct walb_dev
 	 * completed_lsid:
 	 *   All logpacks with lsid < completed_lsid
 	 *   have been written to the log device.
+	 * permanent_lsid:
+	 *   ALl logpacks with lsid < permanent_lsid
+	 *   have been permanent in the log device.
 	 * written_lsid:
 	 *   All logpacks with lsid < written_lsid
 	 *   have been written to the data device.
@@ -133,7 +136,7 @@ struct walb_dev
 	 *   on the log device can be overwritten.
 	 *
 	 * oldest_lsid <= prev_written_lsid <= written_lsid
-	 * <= completed_lsid <= latest_lsid.
+	 * <= permanent_lsid <= completed_lsid <= latest_lsid.
 	 */
 	spinlock_t lsid_lock;
 
@@ -141,6 +144,7 @@ struct walb_dev
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
+	u64 permanent_lsid;
 	u64 written_lsid;
 	u64 prev_written_lsid;
 	u64 oldest_lsid;
