@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
+#include <errno.h>
 
 #include "walb/walb.h"
 #include "walb/log_device.h"
@@ -35,6 +36,15 @@ static char NOMEM_STR[] = "Memory allocation failed.\n";
 
 /* Buffer size for ioctl should be page size due to performance. */
 #define BUFFER_SIZE 4096
+
+#define PRINT_CLOSE_ERROR()					\
+	LOGe("close() failed with error: %s", strerror(errno))
+
+static int close_(int fd) {
+	int err = close(fd);
+	if (err) { PRINT_CLOSE_ERROR(); }
+	return err;
+}
 
 /*******************************************************************************
  * Static data definition.
@@ -678,11 +688,13 @@ static bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_f
 		LOGe("invoke_ioctl: ioctl failed.\n");
 		goto error1;
 	}
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1066,11 +1078,13 @@ static bool do_format_ldev(const struct config *cfg)
 		goto error1;
 	}
 
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1149,12 +1163,14 @@ static bool do_create_wdev(const struct config *cfg)
 		"minor: %u\n",
 		k2u_param.name,
 		ctl.k2u.wmajor, ctl.k2u.wminor);
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	print_walb_ctl(&ctl); /* debug */
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1205,11 +1221,13 @@ static bool do_delete_wdev(const struct config *cfg)
 	}
 	ASSERT(ctl.error == 0);
 	LOGn("delete_wdev is done successfully.\n");
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1496,11 +1514,13 @@ static bool do_check_snapshot(const struct config *cfg)
 		LOGe("snapshot metadata invalid.\n");
 		goto error1;
 	}
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1557,12 +1577,14 @@ static bool do_clean_snapshot(const struct config *cfg)
 	}
 
 	/* Close and free. */
-	close(fd);
+	if (close_(fd)) {
+		goto error1;
+	}
 	sector_free(super_sect);
 	return true;
 
 error2:
-	close(fd);
+	close_(fd);
 error1:
 	sector_free(super_sect);
 error0:
@@ -1794,7 +1816,9 @@ static bool do_cat_wldev(const struct config *cfg)
 	sector_array_free(sect_ary);
 	sector_free(lhead_sect);
 	sector_free(super_sect);
-	close(fd);
+	if (close_(fd)) {
+		goto error1;
+	}
 	return true;
 
 error4:
@@ -1804,7 +1828,7 @@ error3:
 error2:
 	sector_free(super_sect);
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1932,7 +1956,9 @@ static bool do_redo_wlog(const struct config *cfg)
 		perror("fsync() failed.");
 		goto error1;
 	}
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error4:
@@ -1942,7 +1968,7 @@ error3:
 error2:
 	free(wh);
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -2069,8 +2095,12 @@ static bool do_redo(const struct config *cfg)
 		perror("fsync log device failed.");
 		goto error2;
 	}
-	close(dfd);
-	close(lfd);
+	if (close_(dfd)) {
+		goto error1;
+	}
+	if (close_(lfd)) {
+		goto error0;
+	}
 
 	return true;
 
@@ -2081,9 +2111,9 @@ error4:
 error3:
 	sector_free(super_sectd);
 error2:
-	close(dfd);
+	close_(dfd);
 error1:
-	close(lfd);
+	close_(lfd);
 error0:
 	return false;
 }
@@ -2256,7 +2286,9 @@ static bool do_show_wldev(const struct config *cfg)
 
 	sector_free(lhead_sectd);
 	sector_free(super_sectd);
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error3:
@@ -2264,7 +2296,7 @@ error3:
 error2:
 	sector_free(super_sectd);
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -2566,12 +2598,13 @@ static bool do_get_version(const struct config *cfg)
 	}
 
 	printf("walb version: %"PRIu32"\n", version);
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
-
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
