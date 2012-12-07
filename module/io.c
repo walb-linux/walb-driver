@@ -1229,6 +1229,23 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			spin_unlock(&wdev->lsid_lock);
 		}
 
+#ifdef WALB_OVERLAPPING_SERIALIZE
+		/* check and insert to overlapping detection data. */
+		list_for_each_entry(biow, &biow_list, list2) {
+		retry_insert_ol:
+			spin_lock(&iocored->overlapping_data_lock);
+			ret = overlapping_check_and_insert(
+				iocored->overlapping_data,
+				&iocored->max_sectors_in_overlapping,
+				biow, GFP_ATOMIC);
+			spin_unlock(&iocored->overlapping_data_lock);
+			if (!ret) {
+				schedule();
+				goto retry_insert_ol;
+			}
+		}
+#endif /* WALB_OVERLAPPING_SERIALIZE */
+
 		/* Submit all. */
 		blk_start_plug(&plug);
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
@@ -3114,9 +3131,6 @@ static void wait_for_logpack_and_submit_datapack(
 	bool is_failed = false;
 	struct iocore_data *iocored;
 	bool ret;
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	bool is_overlapping_insert_succeeded;
-#endif
 #ifdef WALB_FAST_ALGORITHM
 	bool is_pending_insert_succeeded;
 	bool is_stop_queue = false;
@@ -3219,22 +3233,6 @@ static void wait_for_logpack_and_submit_datapack(
 			bio_endio(biow->bio, 0);
 			biow->bio = NULL;
 #endif /* WALB_FAST_ALGORITHM */
-
-#ifdef WALB_OVERLAPPING_SERIALIZE
-			/* check and insert to overlapping detection data. */
-		retry_insert_ol:
-			spin_lock(&iocored->overlapping_data_lock);
-			is_overlapping_insert_succeeded =
-				overlapping_check_and_insert(
-					iocored->overlapping_data,
-					&iocored->max_sectors_in_overlapping,
-					biow, GFP_ATOMIC);
-			spin_unlock(&iocored->overlapping_data_lock);
-			if (!is_overlapping_insert_succeeded) {
-				schedule();
-				goto retry_insert_ol;
-			}
-#endif /* WALB_OVERLAPPING_SERIALIZE */
 
 			/* Enqueue submit datapack task. */
 			spin_lock(&iocored->datapack_submit_queue_lock);
