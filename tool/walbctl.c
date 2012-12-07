@@ -343,7 +343,7 @@ static void init_config(struct config* cfg)
 	cfg->param.min_pending_mb = 16;
 	cfg->param.queue_stop_timeout_ms = 100;
 	cfg->param.log_flush_interval_mb = 16;
-	cfg->param.log_flush_interval_ms = 1000;
+	cfg->param.log_flush_interval_ms = 100;
 }
 
 /**
