@@ -65,12 +65,10 @@ module_param_named(is_sync_superblock, is_sync_superblock_, int, S_IRUGO|S_IWUSR
 /**
  * Workqueues.
  */
-#define WQ_LOGPACK_NAME "wq_logpack"
-struct workqueue_struct *wq_logpack_ = NULL;
-#define WQ_IO_NAME "wq_io"
-struct workqueue_struct *wq_io_ = NULL;
-#define WQ_OL_NAME "wq_ol"
-struct workqueue_struct *wq_ol_ = NULL;
+#define WQ_NORMAL_NAME "wq_normal"
+struct workqueue_struct *wq_normal_ = NULL;
+#define WQ_UNBOUND_NAME "wq_unbound"
+struct workqueue_struct *wq_unbound_ = NULL;
 #define WQ_MISC_NAME "wq_misc"
 struct workqueue_struct *wq_misc_ = NULL;
 
@@ -1855,19 +1853,15 @@ static bool initialize_workqueues(void)
 #error
 #endif
 #define MSG "Failed to allocate the workqueue %s.\n"
-	wq_logpack_ = alloc_workqueue(WQ_LOGPACK_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_logpack_) {
-		LOGe(MSG, WQ_LOGPACK_NAME);
+	wq_normal_ = alloc_workqueue(WQ_NORMAL_NAME, WQ_MEM_RECLAIM, 0);
+	if (!wq_normal_) {
+		LOGe(MSG, WQ_NORMAL_NAME);
 		goto error;
 	}
-	wq_io_ = alloc_workqueue(WQ_IO_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_io_) {
-		LOGe(MSG, WQ_IO_NAME);
-		goto error;
-	}
-	wq_ol_ = alloc_workqueue(WQ_OL_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_ol_) {
-		LOGe(MSG, WQ_OL_NAME);
+	wq_unbound_ = alloc_workqueue(WQ_UNBOUND_NAME,
+				WQ_MEM_RECLAIM | WQ_UNBOUND, WQ_UNBOUND_MAX_ACTIVE);
+	if (!wq_unbound_) {
+		LOGe(MSG, WQ_UNBOUND_NAME);
 		goto error;
 	}
 	wq_misc_ = alloc_workqueue(WQ_MISC_NAME, WQ_MEM_RECLAIM, 0);
@@ -1891,17 +1885,13 @@ static void finalize_workqueues(void)
 		destroy_workqueue(wq_misc_);
 		wq_misc_ = NULL;
 	}
-	if (wq_ol_) {
-		destroy_workqueue(wq_ol_);
-		wq_ol_ = NULL;
+	if (wq_unbound_) {
+		destroy_workqueue(wq_unbound_);
+		wq_unbound_ = NULL;
 	}
-	if (wq_io_) {
-		destroy_workqueue(wq_io_);
-		wq_io_ = NULL;
-	}
-	if (wq_logpack_) {
-		destroy_workqueue(wq_logpack_);
-		wq_logpack_ = NULL;
+	if (wq_normal_) {
+		destroy_workqueue(wq_normal_);
+		wq_normal_ = NULL;
 	}
 }
 

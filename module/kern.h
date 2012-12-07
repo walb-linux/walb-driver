@@ -29,9 +29,8 @@ extern int walb_major_;
 /**
  * Workqueues.
  */
-extern struct workqueue_struct *wq_logpack_;
-extern struct workqueue_struct *wq_io_;
-extern struct workqueue_struct *wq_ol_;
+extern struct workqueue_struct *wq_normal_;
+extern struct workqueue_struct *wq_unbound_;
 extern struct workqueue_struct *wq_misc_;
 
 /*

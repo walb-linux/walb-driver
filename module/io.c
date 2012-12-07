@@ -1114,7 +1114,7 @@ static void task_submit_write_bio_wrapper(struct work_struct *work)
 
 	/* Enqueue wait task. */
 	INIT_WORK(&biow->work, task_wait_for_write_bio_wrapper);
-	queue_work(wq_io_, &biow->work);
+	queue_work(wq_unbound_, &biow->work);
 }
 #endif
 
@@ -1241,20 +1241,20 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			if (biow->n_overlapping > 0) {
 				/* Enqueue submit task. */
 				INIT_WORK(&biow->work, task_submit_write_bio_wrapper);
-				queue_work(wq_ol_, &biow->work);
+				queue_work(wq_unbound_, &biow->work);
 			} else {
 				/* Submit bio wrapper. */
 				submit_write_bio_wrapper(biow, is_plugging);
 				/* Enqueue wait task. */
 				INIT_WORK(&biow->work, task_wait_for_write_bio_wrapper);
-				queue_work(wq_io_, &biow->work);
+				queue_work(wq_unbound_, &biow->work);
 			}
 #else
 			/* Submit bio wrapper. */
 			submit_write_bio_wrapper(biow, is_plugging);
 			/* Enqueue wait task. */
 			INIT_WORK(&biow->work, task_wait_for_write_bio_wrapper);
-			queue_work(wq_io_, &biow->work);
+			queue_work(wq_unbound_, &biow->work);
 #endif
 		}
 		blk_finish_plug(&plug);
@@ -2900,7 +2900,7 @@ retry_insert_ol:
 	if (biow->n_overlapping > 0) {
 		/* Enqueue submit task. */
 		INIT_WORK(&biow->work, task_submit_write_bio_wrapper_for_redo);
-		queue_work(wq_ol_, &biow->work);
+		queue_work(wq_unbound_, &biow->work);
 		LOGd_("n_overlapping %u\n", biow->n_overlapping);
 	} else {
 		generic_make_request(biow->bio);
@@ -3464,7 +3464,7 @@ static void submit_read_bio_wrapper(
 
 	/* Enqueue wait/gc task. */
 	INIT_WORK(&biow->work, task_wait_and_gc_read_bio_wrapper);
-	queue_work(wq_io_, &biow->work);
+	queue_work(wq_unbound_, &biow->work);
 
 	return;
 error1:
@@ -3524,13 +3524,8 @@ static void enqueue_submit_task_if_necessary(struct walb_dev *wdev)
 		wdev,
 		IOCORE_STATE_SUBMIT_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
-		wq_logpack_,
+		wq_normal_,
 		task_submit_logpack_list);
-#ifdef DEBUG_DETAIL
-	if (pwork) {
-		atomic_inc(&n_wq_logpack_);
-	}
-#endif
 }
 
 /**
@@ -3544,13 +3539,8 @@ static void enqueue_wait_task_if_necessary(struct walb_dev *wdev)
 		wdev,
 		IOCORE_STATE_WAIT_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
-		wq_logpack_,
+		wq_unbound_,
 		task_wait_for_logpack_list);
-#ifdef DEBUG_DETAIL
-	if (pwork) {
-		atomic_inc(&n_wq_logpack_);
-	}
-#endif
 }
 
 /**
@@ -3564,14 +3554,8 @@ static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
 		wdev,
 		IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
-		wq_logpack_,
+		wq_unbound_,
 		task_submit_bio_wrapper_list);
-
-#ifdef DEBUG_DETAIL
-	if (pwork) {
-		atomic_inc(&n_wq_logpack_);
-	}
-#endif
 }
 
 /**
@@ -4151,9 +4135,8 @@ static void wait_for_all_pending_gc_done(struct walb_dev *wdev)
  */
 static void flush_all_wq(void)
 {
-	flush_workqueue(wq_logpack_);
-	flush_workqueue(wq_io_);
-	flush_workqueue(wq_ol_);
+	flush_workqueue(wq_normal_);
+	flush_workqueue(wq_unbound_);
 }
 
 /**
