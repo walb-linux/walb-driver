@@ -251,8 +251,9 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	wdev->min_pending_sectors = min_pending_mb_
 		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
 	LOGn("max pending sectors: %u\n", wdev->max_pending_sectors);
-	wdev->queue_stop_timeout_ms = queue_stop_timeout_ms_;
-	LOGn("qeue_stop_timeout_ms: %u\n", wdev->queue_stop_timeout_ms);
+	wdev->queue_stop_timeout_jiffies =
+		msecs_to_jiffies(queue_stop_timeout_ms_);
+	LOGn("qeue_stop_timeout_ms: %u\n", queue_stop_timeout_ms_);
 #endif
 
 	/* Set underlying devices. */

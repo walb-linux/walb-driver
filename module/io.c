@@ -137,8 +137,9 @@ struct iocore_data
 
 	/* true if queue is stopped. */
 	bool is_under_throttling;
-
 #endif
+	/* To check that we should flush log device. */
+	unsigned long log_flush_jiffies;
 };
 
 /* All treemap(s) in this module will share a treemap memory manager. */
@@ -1198,12 +1199,20 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 
 		/* We must confirm the corresponding log has been permanent
 		   before submitting data IOs. */
+	retry:
 		spin_lock(&wdev->lsid_lock);
 		permanent_lsid = wdev->permanent_lsid;
 		latest_lsid = wdev->latest_lsid;
 		spin_unlock(&wdev->lsid_lock);
 		if (lsid > permanent_lsid) {
 			int err;
+			ret = wdev->log_flush_interval_pb < lsid - permanent_lsid ||
+				iocored->log_flush_jiffies < jiffies;
+			if (!ret) {
+				/* We should wait a bit more. */
+				schedule();
+				goto retry;
+			}
 			/* flush log device. */
 			LOGd_("flush log device for lsid %"PRIu64".\n", lsid);
 			err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
@@ -1214,6 +1223,8 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			spin_lock(&wdev->lsid_lock);
 			if (wdev->permanent_lsid < latest_lsid) {
 				wdev->permanent_lsid = latest_lsid;
+				iocored->log_flush_jiffies =
+					jiffies + wdev->log_flush_interval_jiffies;
 			}
 			spin_unlock(&wdev->lsid_lock);
 		}
@@ -1977,6 +1988,9 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	atomic_set(&iocored->n_started_write_bio, 0);
 	atomic_set(&iocored->n_pending_bio, 0);
 	atomic_set(&iocored->n_pending_gc, 0);
+
+	/* Log flush time. */
+	iocored->log_flush_jiffies = jiffies;
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	spin_lock_init(&iocored->overlapping_data_lock);
@@ -3100,7 +3114,6 @@ static void wait_for_logpack_and_submit_datapack(
 	bool is_failed = false;
 	struct iocore_data *iocored;
 	bool ret;
-	struct walb_logpack_header *logh;
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	bool is_overlapping_insert_succeeded;
 #endif
@@ -3197,7 +3210,7 @@ static void wait_for_logpack_and_submit_datapack(
 				INIT_DELAYED_WORK(&pwork->dwork, task_restart_queue);
 				queue_delayed_work(
 					system_wq, &pwork->dwork,
-					msecs_to_jiffies(wdev->queue_stop_timeout_ms));
+					wdev->queue_stop_timeout_jiffies);
 #endif
 			}
 
@@ -3239,9 +3252,10 @@ static void wait_for_logpack_and_submit_datapack(
 		destroy_bio_wrapper_dec(wdev, biow);
 	}
 
-	/* Update lsids. */
-	logh = get_logpack_header(wpack->logpack_header_sector);
+	/* Update completed_lsid/permanent_lsid. */
 	if (!is_failed) {
+		struct walb_logpack_header *logh =
+			get_logpack_header(wpack->logpack_header_sector);
 		spin_lock(&wdev->lsid_lock);
 #ifdef WALB_FAST_ALGORITHM
 		wdev->completed_lsid = get_next_lsid(logh);
@@ -3249,6 +3263,8 @@ static void wait_for_logpack_and_submit_datapack(
 		if (wpack->is_flush_contained) {
 			ASSERT(wdev->permanent_lsid <= logh->logpack_lsid);
 			wdev->permanent_lsid = logh->logpack_lsid;
+			iocored->log_flush_jiffies =
+				jiffies + wdev->log_flush_interval_jiffies;
 		}
 		spin_unlock(&wdev->lsid_lock);
 	}
@@ -4036,8 +4052,8 @@ static inline bool should_stop_queue(
 		> wdev->max_pending_sectors;
 
 	if (should_stop) {
-		iocored->queue_restart_jiffies = jiffies +
-			msecs_to_jiffies(wdev->queue_stop_timeout_ms);
+		iocored->queue_restart_jiffies =
+			jiffies + wdev->queue_stop_timeout_jiffies;
 		iocored->is_under_throttling = true;
 		return true;
 	} else {

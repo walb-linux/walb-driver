@@ -2421,6 +2421,10 @@ struct walb_dev* prepare_wdev(
 
 	/* Set parameters. */
 	wdev->max_logpack_pb = param->max_logpack_kb * 1024 / wdev->physical_bs;
+	wdev->log_flush_interval_pb = param->log_flush_interval_mb
+		* (1024 * 1024 / wdev->physical_bs);
+	wdev->log_flush_interval_jiffies =
+		msecs_to_jiffies(param->log_flush_interval_ms);
 #ifdef WALB_FAST_ALGORITHM
 	ASSERT(0 < param->min_pending_mb);
 	ASSERT(param->min_pending_mb < param->max_pending_mb);
@@ -2428,7 +2432,8 @@ struct walb_dev* prepare_wdev(
 		= param->max_pending_mb * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
 	wdev->min_pending_sectors
 		= param->min_pending_mb * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
-	wdev->queue_stop_timeout_ms = param->queue_stop_timeout_ms;
+	wdev->queue_stop_timeout_jiffies =
+		msecs_to_jiffies(param->queue_stop_timeout_ms);
 #endif
 
 	lq = bdev_get_queue(wdev->ldev);

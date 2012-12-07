@@ -119,7 +119,9 @@ static const char *helpstr_options_ =
 	"  MAX_LOGPACK_KB: --max_logpack_kb [size]\n"
 	"  MAX_PENDING_MB: --max_pending_mb [size] \n"
 	"  MIN_PENDING_MB: --min_pending_mb [size]\n"
-	"  QUEUE_STOP_TIMEOUT_MS: --queue_stop_timeout_ms [timeout]\n";
+	"  QUEUE_STOP_TIMEOUT_MS: --queue_stop_timeout_ms [timeout]\n"
+	"  FLUSH_INTERVAL_MB: --flush_interval_mb [size]\n"
+	"  FLUSH_INTERVAL_MS: --flush_interval_ms [timeout]\n";
 
 /**
  * Helper data structure for help command.
@@ -137,7 +139,8 @@ static struct cmdhelp cmdhelps_[] = {
 	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (N_SNAP)",
 	  "Format log device." },
 	{ "create_wdev LDEV DDEV (NAME)"
-	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB) (QUEUE_STOP_TIMEOUT_MS)",
+	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB)"
+	  " (QUEUE_STOP_TIMEOUT_MS) (FLUSH_INTERVAL_MB) (FLUSH_INTERVAL_MB)",
 	  "Make walb/walblog device." },
 	{ "delete_wdev WDEV",
 	  "Delete walb/walblog device." },
@@ -217,6 +220,8 @@ enum
 	OPT_MAX_PENDING_MB,
 	OPT_MIN_PENDING_MB,
 	OPT_QUEUE_STOP_TIMEOUT_MS,
+	OPT_FLUSH_INTERVAL_MB,
+	OPT_FLUSH_INTERVAL_MS,
 	OPT_HELP,
 };
 
@@ -337,6 +342,8 @@ static void init_config(struct config* cfg)
 	cfg->param.max_pending_mb = 32;
 	cfg->param.min_pending_mb = 16;
 	cfg->param.queue_stop_timeout_ms = 100;
+	cfg->param.log_flush_interval_mb = 16;
+	cfg->param.log_flush_interval_ms = 1000;
 }
 
 /**
@@ -365,6 +372,8 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			{"max_pending_mb", 1, 0, OPT_MAX_PENDING_MB},
 			{"min_pending_mb", 1, 0, OPT_MIN_PENDING_MB},
 			{"queue_stop_timeout_ms", 1, 0, OPT_QUEUE_STOP_TIMEOUT_MS},
+			{"flush_interval_mb", 1, 0, OPT_FLUSH_INTERVAL_MB},
+			{"flush_interval_ms", 1, 0, OPT_FLUSH_INTERVAL_MS},
 			{"help", 0, 0, OPT_HELP},
 			{0, 0, 0, 0}
 		};
@@ -423,6 +432,12 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			break;
 		case OPT_QUEUE_STOP_TIMEOUT_MS:
 			cfg->param.queue_stop_timeout_ms = atoi(optarg);
+			break;
+		case OPT_FLUSH_INTERVAL_MB:
+			cfg->param.log_flush_interval_mb = atoi(optarg);
+			break;
+		case OPT_FLUSH_INTERVAL_MS:
+			cfg->param.log_flush_interval_ms = atoi(optarg);
 			break;
 		case OPT_HELP:
 			cfg->cmd_str = "help";
@@ -1096,6 +1111,12 @@ static bool do_create_wdev(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "create_wdev") == 0);
+
+	/* Parameters check. */
+	if (!is_walb_start_param_valid(&cfg->param)) {
+		LOGe("Some parameters are not valid.\n");
+		goto error0;
+	}
 
 	/*
 	 * Check devices.

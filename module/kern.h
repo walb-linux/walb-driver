@@ -181,6 +181,13 @@ struct walb_dev
 	   sequential write performance. */
 	unsigned int max_logpack_pb;
 
+	/* Log flush size interval must not exceed this value
+	   [physical blocks]. */
+	unsigned int log_flush_interval_pb;
+
+	/* Log flush time interval must not exceed this value [jiffies]. */
+	unsigned int log_flush_interval_jiffies;
+
 #ifdef WALB_FAST_ALGORITHM
 	/* max_pending_sectors < pending_sectors
 	   we must stop the queue. */
@@ -190,9 +197,8 @@ struct walb_dev
 	   we can restart the queue. */
 	unsigned int min_pending_sectors;
 
-	/* queue stopped period must not exceed
-	   queue_stop_time_ms. */
-	unsigned int queue_stop_timeout_ms;
+	/* queue stopped period must not exceed this value. */
+	unsigned int queue_stop_timeout_jiffies;
 #endif
 
 	/*
