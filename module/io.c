@@ -3211,7 +3211,7 @@ static void wait_for_logpack_and_submit_datapack(
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
 				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-					LOGn("iocore freezed.\n");
+					LOGd_("iocore freezed.\n");
 				}
 #if 0
 			retry_pack_work:
@@ -4340,7 +4340,7 @@ void iocore_melt(struct walb_dev *wdev)
 	iocored = get_iocored_from_wdev(wdev);
 
 	if (atomic_dec_return(&iocored->n_stoppers) == 0) {
-		LOGn("iocore melted.\n");
+		LOGd_("iocore melted.\n");
 		enqueue_submit_task_if_necessary(wdev);
 	}
 }
