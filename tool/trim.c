@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <linux/fs.h>
+#include <errno.h>
 
 #include "walb/common.h"
 #include "util.h"
@@ -53,7 +54,10 @@ int main(int argc, char *argv[])
 		goto error1;
 	}
 
-	close(fd);
+	if (close(fd)) {
+		LOGe("close() error: %s\n", strerror(errno));
+		goto error0;
+	}
 	return 0;
 
 error1:

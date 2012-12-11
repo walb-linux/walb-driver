@@ -32,13 +32,17 @@ struct bio_wrapper
 	struct completion done;
 	bool started;
 
+	/* lsid of bio wrapper.
+	   This is for
+	   (1) sort in pending data copy,
+	   (2) comparison with permanented_lsid. */
+	u64 lsid;
+
 	struct list_head bioe_list; /* list head of bio_entry */
 
 	void *private_data;
 
 #ifdef WALB_FAST_ALGORITHM
-	/* lsid of bio wrapper for sort. */
-	u64 lsid;
 	/* True if the biow data will be fully overwritten by newer IO(s). */
 	bool is_overwritten;
 #endif

@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <time.h>
+#include <errno.h>
 
 #include "walb/walb.h"
 #include "walb/block_size.h"
@@ -88,21 +89,20 @@ int check_bdev(const char* path)
 
 	if (!path) {
 		LOGe("path is null.\n");
-		return -1;
+		goto error0;
 	}
 	if (*path == '\0') {
 		LOGe("path length is zero.\n");
-		return -1;
+		goto error0;
 	}
 	if (stat(path, &sb) == -1) {
-		LOGe("stat failed.\n");
-		perror("");
-		return -1;
+		LOGe("stat failed: %s.\n", strerror(errno));
+		goto error0;
 	}
 
 	if ((sb.st_mode & S_IFMT) != S_IFBLK) {
 		LOGe("%s is not block device.\n", path);
-		return -1;
+		goto error0;
 	}
 
 	devt = sb.st_rdev;
@@ -128,22 +128,45 @@ int check_bdev(const char* path)
 		fd = open(path, O_RDONLY);
 		if (fd < 0) {
 			LOGe("open failed\n");
-			return -1;
+			goto error00;
 		}
-		ioctl(fd, BLKBSZGET, &bs); /* soft block size */
-		ioctl(fd, BLKSSZGET, &ss); /* logical sector size */
-		ioctl(fd, BLKPBSZGET, &pbs); /* physical sector size */
-		ioctl(fd, BLKGETSIZE64, &size); /* size */
-		close(fd);
+		/* soft block size */
+		if (ioctl(fd, BLKBSZGET, &bs) < 0) {
+			goto error01;
+		}
+		/* logical sector size */
+		if (ioctl(fd, BLKSSZGET, &ss) < 0) {
+			goto error01;
+		}
+		/* physical sector size */
+		if (ioctl(fd, BLKPBSZGET, &pbs) < 0) {
+			goto error01;
+		}
+		/* size */
+		if (ioctl(fd, BLKGETSIZE64, &size) < 0) {
+			goto error01;
+		}
+		if (close(fd)) {
+			LOGe("close failed\n");
+			goto error00;
+		}
 
 		LOGd("soft block size: %d\n"
 			"logical sector size: %d\n"
 			"physical sector size: %u\n"
 			"device size: %zu\n",
 			bs, ss, pbs, (size_t)size);
-	}
+		goto fin;
 
+	error01:
+		close(fd);
+	error00:
+		goto error0;
+	}
+fin:
 	return 0;
+error0:
+	return -1;
 }
 
 
@@ -197,14 +220,24 @@ int get_bdev_logical_block_size(const char* devpath)
 	unsigned int pbs;
 
 	fd = open_blk_dev(devpath);
-	if (fd < 0) { return -1; }
-
+	if (fd < 0) {
+		perror("open failed.");
+		goto error0;
+	}
 	if (ioctl(fd, BLKSSZGET, &pbs) < 0) {
 		perror("ioctl failed");
-		return -1;
+		goto error1;
 	}
-	close(fd);
+	if (close(fd)) {
+		perror("close failed.");
+		goto error0;
+	}
 	return (int)pbs;
+
+error1:
+	close(fd);
+error0:
+	return -1;
 }
 
 /**
@@ -219,21 +252,31 @@ int get_bdev_physical_block_size(const char* devpath)
 	unsigned int pbs;
 
 	fd = open_blk_dev(devpath);
-	if (fd < 0) { return -1; }
-
+	if (fd < 0) {
+		perror("open failed.");
+		goto error0;
+	}
 	if (ioctl(fd, BLKPBSZGET, &pbs) < 0) {
 		perror("ioctl failed");
-		return -1;
+		goto error1;
 	}
-	close(fd);
+	if (close(fd)) {
+		perror("close failed.");
+		goto error0;
+	}
 	return (int)pbs;
+
+error1:
+	close(fd);
+error0:
+	return -1;
 }
 
 /**
  * Get block device size.
  *
  * @devpath device file path.
- * @return size in bytes.
+ * @return size in bytes in success, or (u64)(-1).
  */
 u64 get_bdev_size(const char* devpath)
 {
@@ -241,13 +284,21 @@ u64 get_bdev_size(const char* devpath)
 	u64 size;
 
 	fd = open_blk_dev(devpath);
-	if (fd < 0 ||
-		ioctl(fd, BLKGETSIZE64, &size) < 0) {
-		return (u64)(-1);
+	if (fd < 0) {
+		goto error0;
 	}
-	close(fd);
-
+	if (ioctl(fd, BLKGETSIZE64, &size) < 0) {
+		goto error1;
+	}
+	if (close(fd)) {
+		goto error0;
+	}
 	return size;
+
+error1:
+	close(fd);
+error0:
+	return (u64)(-1);
 }
 
 /**

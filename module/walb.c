@@ -65,12 +65,10 @@ module_param_named(is_sync_superblock, is_sync_superblock_, int, S_IRUGO|S_IWUSR
 /**
  * Workqueues.
  */
-#define WQ_LOGPACK_NAME "wq_logpack"
-struct workqueue_struct *wq_logpack_ = NULL;
-#define WQ_IO_NAME "wq_io"
-struct workqueue_struct *wq_io_ = NULL;
-#define WQ_OL_NAME "wq_ol"
-struct workqueue_struct *wq_ol_ = NULL;
+#define WQ_NORMAL_NAME "wq_normal"
+struct workqueue_struct *wq_normal_ = NULL;
+#define WQ_UNBOUND_NAME "wq_unbound"
+struct workqueue_struct *wq_unbound_ = NULL;
 #define WQ_MISC_NAME "wq_misc"
 struct workqueue_struct *wq_misc_ = NULL;
 
@@ -84,9 +82,11 @@ struct workqueue_struct *wq_misc_ = NULL;
 struct lsid_set
 {
 	u64 latest_lsid;
+	u64 flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
+	u64 permanent_lsid;
 	u64 written_lsid;
 	u64 prev_written_lsid;
 	u64 oldest_lsid;
@@ -1143,6 +1143,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid = 0;
 #endif
+	wdev->permanent_lsid = 0;
 	wdev->written_lsid = 0;
 	wdev->prev_written_lsid = 0;
 	wdev->oldest_lsid = 0;
@@ -1650,9 +1651,11 @@ static void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids)
 	spin_lock(&wdev->lsid_lock);
 
 	lsids->latest_lsid = wdev->latest_lsid;
+	lsids->flush_lsid = wdev->flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	lsids->completed_lsid = wdev->completed_lsid;
 #endif
+	lsids->permanent_lsid = wdev->permanent_lsid;
 	lsids->written_lsid = wdev->written_lsid;
 	lsids->prev_written_lsid = wdev->prev_written_lsid;
 	lsids->oldest_lsid = wdev->oldest_lsid;
@@ -1668,9 +1671,11 @@ static void restore_lsid_set(struct walb_dev *wdev, const struct lsid_set *lsids
 	spin_lock(&wdev->lsid_lock);
 
 	wdev->latest_lsid = lsids->latest_lsid;
+	wdev->flush_lsid = lsids->flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid = lsids->completed_lsid;
 #endif
+	wdev->permanent_lsid = lsids->permanent_lsid;
 	wdev->written_lsid = lsids->written_lsid;
 	wdev->prev_written_lsid = lsids->prev_written_lsid;
 	wdev->oldest_lsid = lsids->oldest_lsid;
@@ -1851,19 +1856,15 @@ static bool initialize_workqueues(void)
 #error
 #endif
 #define MSG "Failed to allocate the workqueue %s.\n"
-	wq_logpack_ = alloc_workqueue(WQ_LOGPACK_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_logpack_) {
-		LOGe(MSG, WQ_LOGPACK_NAME);
+	wq_normal_ = alloc_workqueue(WQ_NORMAL_NAME, WQ_MEM_RECLAIM, 0);
+	if (!wq_normal_) {
+		LOGe(MSG, WQ_NORMAL_NAME);
 		goto error;
 	}
-	wq_io_ = alloc_workqueue(WQ_IO_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_io_) {
-		LOGe(MSG, WQ_IO_NAME);
-		goto error;
-	}
-	wq_ol_ = alloc_workqueue(WQ_OL_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_ol_) {
-		LOGe(MSG, WQ_OL_NAME);
+	wq_unbound_ = alloc_workqueue(WQ_UNBOUND_NAME,
+				WQ_MEM_RECLAIM | WQ_UNBOUND, WQ_UNBOUND_MAX_ACTIVE);
+	if (!wq_unbound_) {
+		LOGe(MSG, WQ_UNBOUND_NAME);
 		goto error;
 	}
 	wq_misc_ = alloc_workqueue(WQ_MISC_NAME, WQ_MEM_RECLAIM, 0);
@@ -1887,17 +1888,13 @@ static void finalize_workqueues(void)
 		destroy_workqueue(wq_misc_);
 		wq_misc_ = NULL;
 	}
-	if (wq_ol_) {
-		destroy_workqueue(wq_ol_);
-		wq_ol_ = NULL;
+	if (wq_unbound_) {
+		destroy_workqueue(wq_unbound_);
+		wq_unbound_ = NULL;
 	}
-	if (wq_io_) {
-		destroy_workqueue(wq_io_);
-		wq_io_ = NULL;
-	}
-	if (wq_logpack_) {
-		destroy_workqueue(wq_logpack_);
-		wq_logpack_ = NULL;
+	if (wq_normal_) {
+		destroy_workqueue(wq_normal_);
+		wq_normal_ = NULL;
 	}
 }
 
@@ -2311,7 +2308,7 @@ struct walb_dev* prepare_wdev(
 	struct request_queue *lq, *dq;
 	bool retb;
 #ifdef WALB_DEBUG
-	u64 written_lsid, latest_lsid;
+	u64 written_lsid, latest_lsid, flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
@@ -2398,12 +2395,13 @@ struct walb_dev* prepare_wdev(
 
 	/* Set lsids. */
 	wdev->oldest_lsid = super->oldest_lsid;
-	wdev->written_lsid = super->written_lsid;
 	wdev->prev_written_lsid = wdev->written_lsid;
-	wdev->latest_lsid = wdev->written_lsid;
+	wdev->written_lsid = super->written_lsid;
+	wdev->permanent_lsid = wdev->written_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid = wdev->written_lsid;
 #endif
+	wdev->latest_lsid = wdev->written_lsid;
 
 	wdev->ring_buffer_size = super->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(super);
@@ -2416,6 +2414,14 @@ struct walb_dev* prepare_wdev(
 
 	/* Set parameters. */
 	wdev->max_logpack_pb = param->max_logpack_kb * 1024 / wdev->physical_bs;
+	wdev->log_flush_interval_jiffies =
+		msecs_to_jiffies(param->log_flush_interval_ms);
+	if (wdev->log_flush_interval_jiffies == 0) {
+		wdev->log_flush_interval_pb = 0;
+	} else {
+		wdev->log_flush_interval_pb = param->log_flush_interval_mb
+			* (1024 * 1024 / wdev->physical_bs);
+	}
 #ifdef WALB_FAST_ALGORITHM
 	ASSERT(0 < param->min_pending_mb);
 	ASSERT(param->min_pending_mb < param->max_pending_mb);
@@ -2423,7 +2429,8 @@ struct walb_dev* prepare_wdev(
 		= param->max_pending_mb * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
 	wdev->min_pending_sectors
 		= param->min_pending_mb * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
-	wdev->queue_stop_timeout_ms = param->queue_stop_timeout_ms;
+	wdev->queue_stop_timeout_jiffies =
+		msecs_to_jiffies(param->queue_stop_timeout_ms);
 #endif
 
 	lq = bdev_get_queue(wdev->ldev);
@@ -2489,11 +2496,13 @@ struct walb_dev* prepare_wdev(
 	spin_lock(&wdev->lsid_lock);
 	written_lsid = wdev->written_lsid;
 	latest_lsid = wdev->latest_lsid;
+	flush_lsid = wdev->flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	completed_lsid = wdev->completed_lsid;
 #endif
 	spin_unlock(&wdev->lsid_lock);
 	ASSERT(written_lsid == latest_lsid);
+	ASSERT(written_lsid == flush_lsid);
 #ifdef WALB_FAST_ALGORITHM
 	ASSERT(written_lsid == completed_lsid);
 #endif

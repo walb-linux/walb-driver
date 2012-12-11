@@ -73,20 +73,15 @@ module_param_named(max_logpack_size_kb, max_logpack_size_kb_, int, S_IRUGO);
  *******************************************************************************/
 
 /**
- * Workqueue for logpack submit/wait/gc task.
- * This should be shared by all walb devices.
+ * Workqueues.
  */
-/* For logpack */
-#define WQ_LOGPACK_NAME "wq_logpack"
-struct workqueue_struct *wq_logpack_ = NULL;
+/* Normal wq for IO. */
+#define WQ_NORMAL_NAME "wq_normal"
+struct workqueue_struct *wq_normal_ = NULL;
 
-/* For IO */
-#define WQ_IO_NAME "wq_io"
-struct workqueue_struct *wq_io_ = NULL;
-
-/* For overlapping */
-#define WQ_OL_NAME "wq_ol"
-struct workqueue_struct *wq_ol_ = NULL;
+/* Unbound wq for IO. */
+#define WQ_UNBOUND_NAME "wq_unbound"
+struct workqueue_struct *wq_unbound_ = NULL;
 
 /* Misc */
 #define WQ_MISC_NAME "wq_misc"
@@ -251,8 +246,9 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	wdev->min_pending_sectors = min_pending_mb_
 		* (1024 * 1024 / LOGICAL_BLOCK_SIZE);
 	LOGn("max pending sectors: %u\n", wdev->max_pending_sectors);
-	wdev->queue_stop_timeout_ms = queue_stop_timeout_ms_;
-	LOGn("qeue_stop_timeout_ms: %u\n", wdev->queue_stop_timeout_ms);
+	wdev->queue_stop_timeout_jiffies =
+		msecs_to_jiffies(queue_stop_timeout_ms_);
+	LOGn("qeue_stop_timeout_ms: %u\n", queue_stop_timeout_ms_);
 #endif
 
 	/* Set underlying devices. */
@@ -546,25 +542,20 @@ static bool pre_register(void)
 	}
 
 	/* prepare workqueues. */
-	wq_logpack_ = alloc_workqueue(WQ_LOGPACK_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_logpack_) {
-		LOGe("failed to allocate a workqueue (wq_logpack_).");
+	wq_normal_ = alloc_workqueue(WQ_NORMAL_NAME, WQ_MEM_RECLAIM, 0);
+	if (!wq_normal_) {
+		LOGe("failed to allocate a workqueue (wq_normal_).");
 		goto error3;
 	}
-	wq_io_ = alloc_workqueue(WQ_IO_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_io_) {
-		LOGe("failed to allocate a workqueue (wq_io_).");
+	wq_unbound_ = alloc_workqueue(WQ_UNBOUND_NAME, WQ_MEM_RECLAIM | WQ_UNBOUND, 0);
+	if (!wq_unbound_) {
+		LOGe("failed to allocate a workqueue (wq_unbound_).");
 		goto error4;
 	}
-	wq_ol_ = alloc_workqueue(WQ_OL_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_ol_) {
-		LOGe("failed to allocate a workqueue (wq_ol_).");
-		goto error5;
-	}
 	wq_misc_ = alloc_workqueue(WQ_MISC_NAME, WQ_MEM_RECLAIM, 0);
-	if (!wq_ol_) {
+	if (!wq_misc_) {
 		LOGe("failed to allocate a workqueue (wq_misc_).");
-		goto error6;
+		goto error5;
 	}
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -581,15 +572,13 @@ static bool pre_register(void)
 	return true;
 
 #if 0
-error7:
+error6:
 	destroy_workqueue(wq_misc_);
 #endif
-error6:
-	destroy_workqueue(wq_ol_);
 error5:
-	destroy_workqueue(wq_io_);
+	destroy_workqueue(wq_unbound_);
 error4:
-	destroy_workqueue(wq_logpack_);
+	destroy_workqueue(wq_normal_);
 error3:
 	bio_entry_exit();
 error2:
@@ -606,12 +595,10 @@ static void post_unregister(void)
 	/* finalize workqueue data. */
 	destroy_workqueue(wq_misc_);
 	wq_misc_ = NULL;
-	destroy_workqueue(wq_ol_);
-	wq_ol_ = NULL;
-	destroy_workqueue(wq_io_);
-	wq_io_ = NULL;
-	destroy_workqueue(wq_logpack_);
-	wq_logpack_ = NULL;
+	destroy_workqueue(wq_unbound_);
+	wq_unbound_ = NULL;
+	destroy_workqueue(wq_normal_);
+	wq_normal_ = NULL;
 
 	/* Destory kmem_cache data. */
 	bio_entry_exit();

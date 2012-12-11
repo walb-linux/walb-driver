@@ -163,8 +163,6 @@ error0:
 }
 
 /**
- * NOT TESTED YET.
- *
  * Add a bio to a logpack header.
  * Almost the same as walb_logpack_header_add_req().
  * Do not validate checksum.
@@ -218,7 +216,7 @@ bool walb_logpack_header_add_bio(
 		return true;
 	}
 	ASSERT(0 < bio_lb);
-	ASSERT(65536 > bio_lb); /* can be u16. */
+	ASSERT((1U << 16) > bio_lb); /* can be u16. */
 	bio_pb = capacity_pb(pbs, bio_lb);
 
 	if (bio_lsid % ring_buffer_size + bio_pb > ring_buffer_size) {

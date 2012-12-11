@@ -29,9 +29,8 @@ extern int walb_major_;
 /**
  * Workqueues.
  */
-extern struct workqueue_struct *wq_logpack_;
-extern struct workqueue_struct *wq_io_;
-extern struct workqueue_struct *wq_ol_;
+extern struct workqueue_struct *wq_normal_;
+extern struct workqueue_struct *wq_unbound_;
 extern struct workqueue_struct *wq_misc_;
 
 /*
@@ -118,9 +117,15 @@ struct walb_dev
 	 *
 	 * latest_lsid:
 	 *   This is used to generate new logpack.
+	 * flush_lsid:
+	 *   This is to remember the latest lsid of
+	 *   log flush request executed.
 	 * completed_lsid:
 	 *   All logpacks with lsid < completed_lsid
 	 *   have been written to the log device.
+	 * permanent_lsid:
+	 *   ALl logpacks with lsid < permanent_lsid
+	 *   have been permanent in the log device.
 	 * written_lsid:
 	 *   All logpacks with lsid < written_lsid
 	 *   have been written to the data device.
@@ -132,15 +137,20 @@ struct walb_dev
 	 *   All logpacks with lsid < oldest_lsid
 	 *   on the log device can be overwritten.
 	 *
-	 * oldest_lsid <= prev_written_lsid <= written_lsid
-	 * <= completed_lsid <= latest_lsid.
+	 * Property 1
+	 *   oldest_lsid <= prev_written_lsid <= written_lsid
+	 *   <= permanent_lsid <= completed_lsid <= latest_lsid.
+	 * Property 2
+	 *   permanent_lsid <= flush_lsid <= latest_lsid.
 	 */
 	spinlock_t lsid_lock;
 
 	u64 latest_lsid;
+	u64 flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
+	u64 permanent_lsid;
 	u64 written_lsid;
 	u64 prev_written_lsid;
 	u64 oldest_lsid;
@@ -177,6 +187,13 @@ struct walb_dev
 	   sequential write performance. */
 	unsigned int max_logpack_pb;
 
+	/* Log flush size interval must not exceed this value
+	   [physical blocks]. */
+	unsigned int log_flush_interval_pb;
+
+	/* Log flush time interval must not exceed this value [jiffies]. */
+	unsigned int log_flush_interval_jiffies;
+
 #ifdef WALB_FAST_ALGORITHM
 	/* max_pending_sectors < pending_sectors
 	   we must stop the queue. */
@@ -186,9 +203,8 @@ struct walb_dev
 	   we can restart the queue. */
 	unsigned int min_pending_sectors;
 
-	/* queue stopped period must not exceed
-	   queue_stop_time_ms. */
-	unsigned int queue_stop_timeout_ms;
+	/* queue stopped period must not exceed this value. */
+	unsigned int queue_stop_timeout_jiffies;
 #endif
 
 	/*

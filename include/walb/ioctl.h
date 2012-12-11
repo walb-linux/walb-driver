@@ -548,6 +548,11 @@ struct walb_start_param
 	   0 means there is no limitation of logpack size
 	   (practically limited by physical block size for logpack header). */
 	unsigned int max_logpack_kb;
+
+	/* Log flush intervals. */
+	unsigned int log_flush_interval_ms; /* period [ms]. */
+	unsigned int log_flush_interval_mb; /* size [MB]. */
+
 } __attribute__((packed));
 
 /**
@@ -563,6 +568,9 @@ static inline bool is_walb_start_param_valid(
 	CHECK(1 <= param->min_pending_mb);
 	CHECK(param->min_pending_mb < param->max_pending_mb);
 	CHECK(1 <= param->queue_stop_timeout_ms);
+	/* CHECK(0 <= param->log_flush_interval_ms); */
+	/* CHECK(0 <= param->log_flush_interval_mb); */
+	CHECK(param->log_flush_interval_mb * 2 <= param->max_pending_mb);
 	return true;
 error:
 	return false;

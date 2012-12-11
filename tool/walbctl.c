@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
+#include <errno.h>
 
 #include "walb/walb.h"
 #include "walb/log_device.h"
@@ -35,6 +36,15 @@ static char NOMEM_STR[] = "Memory allocation failed.\n";
 
 /* Buffer size for ioctl should be page size due to performance. */
 #define BUFFER_SIZE 4096
+
+#define PRINT_CLOSE_ERROR()					\
+	LOGe("close() failed with error: %s", strerror(errno))
+
+static int close_(int fd) {
+	int err = close(fd);
+	if (err) { PRINT_CLOSE_ERROR(); }
+	return err;
+}
 
 /*******************************************************************************
  * Static data definition.
@@ -109,7 +119,9 @@ static const char *helpstr_options_ =
 	"  MAX_LOGPACK_KB: --max_logpack_kb [size]\n"
 	"  MAX_PENDING_MB: --max_pending_mb [size] \n"
 	"  MIN_PENDING_MB: --min_pending_mb [size]\n"
-	"  QUEUE_STOP_TIMEOUT_MS: --queue_stop_timeout_ms [timeout]\n";
+	"  QUEUE_STOP_TIMEOUT_MS: --queue_stop_timeout_ms [timeout]\n"
+	"  FLUSH_INTERVAL_MB: --flush_interval_mb [size]\n"
+	"  FLUSH_INTERVAL_MS: --flush_interval_ms [timeout]\n";
 
 /**
  * Helper data structure for help command.
@@ -127,7 +139,8 @@ static struct cmdhelp cmdhelps_[] = {
 	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (N_SNAP)",
 	  "Format log device." },
 	{ "create_wdev LDEV DDEV (NAME)"
-	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB) (QUEUE_STOP_TIMEOUT_MS)",
+	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB)"
+	  " (QUEUE_STOP_TIMEOUT_MS) (FLUSH_INTERVAL_MB) (FLUSH_INTERVAL_MB)",
 	  "Make walb/walblog device." },
 	{ "delete_wdev WDEV",
 	  "Delete walb/walblog device." },
@@ -207,6 +220,8 @@ enum
 	OPT_MAX_PENDING_MB,
 	OPT_MIN_PENDING_MB,
 	OPT_QUEUE_STOP_TIMEOUT_MS,
+	OPT_FLUSH_INTERVAL_MB,
+	OPT_FLUSH_INTERVAL_MS,
 	OPT_HELP,
 };
 
@@ -327,6 +342,8 @@ static void init_config(struct config* cfg)
 	cfg->param.max_pending_mb = 32;
 	cfg->param.min_pending_mb = 16;
 	cfg->param.queue_stop_timeout_ms = 100;
+	cfg->param.log_flush_interval_mb = 16;
+	cfg->param.log_flush_interval_ms = 100;
 }
 
 /**
@@ -355,6 +372,8 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			{"max_pending_mb", 1, 0, OPT_MAX_PENDING_MB},
 			{"min_pending_mb", 1, 0, OPT_MIN_PENDING_MB},
 			{"queue_stop_timeout_ms", 1, 0, OPT_QUEUE_STOP_TIMEOUT_MS},
+			{"flush_interval_mb", 1, 0, OPT_FLUSH_INTERVAL_MB},
+			{"flush_interval_ms", 1, 0, OPT_FLUSH_INTERVAL_MS},
 			{"help", 0, 0, OPT_HELP},
 			{0, 0, 0, 0}
 		};
@@ -413,6 +432,12 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			break;
 		case OPT_QUEUE_STOP_TIMEOUT_MS:
 			cfg->param.queue_stop_timeout_ms = atoi(optarg);
+			break;
+		case OPT_FLUSH_INTERVAL_MB:
+			cfg->param.log_flush_interval_mb = atoi(optarg);
+			break;
+		case OPT_FLUSH_INTERVAL_MS:
+			cfg->param.log_flush_interval_ms = atoi(optarg);
 			break;
 		case OPT_HELP:
 			cfg->cmd_str = "help";
@@ -502,6 +527,11 @@ static bool init_walb_metadata(
 	}
 	print_super_sector(super_sect);
 #endif
+
+	if (fsync(fd)) {
+		perror("fsync failed.\n");
+		goto error1;
+	}
 
 	sector_free(super_sect);
 	return true;
@@ -673,11 +703,13 @@ static bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_f
 		LOGe("invoke_ioctl: ioctl failed.\n");
 		goto error1;
 	}
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1061,11 +1093,13 @@ static bool do_format_ldev(const struct config *cfg)
 		goto error1;
 	}
 
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1077,6 +1111,12 @@ static bool do_create_wdev(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "create_wdev") == 0);
+
+	/* Parameters check. */
+	if (!is_walb_start_param_valid(&cfg->param)) {
+		LOGe("Some parameters are not valid.\n");
+		goto error0;
+	}
 
 	/*
 	 * Check devices.
@@ -1144,12 +1184,14 @@ static bool do_create_wdev(const struct config *cfg)
 		"minor: %u\n",
 		k2u_param.name,
 		ctl.k2u.wmajor, ctl.k2u.wminor);
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	print_walb_ctl(&ctl); /* debug */
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1200,11 +1242,13 @@ static bool do_delete_wdev(const struct config *cfg)
 	}
 	ASSERT(ctl.error == 0);
 	LOGn("delete_wdev is done successfully.\n");
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1491,11 +1535,13 @@ static bool do_check_snapshot(const struct config *cfg)
 		LOGe("snapshot metadata invalid.\n");
 		goto error1;
 	}
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1552,12 +1598,14 @@ static bool do_clean_snapshot(const struct config *cfg)
 	}
 
 	/* Close and free. */
-	close(fd);
+	if (close_(fd)) {
+		goto error1;
+	}
 	sector_free(super_sect);
 	return true;
 
 error2:
-	close(fd);
+	close_(fd);
 error1:
 	sector_free(super_sect);
 error0:
@@ -1789,7 +1837,9 @@ static bool do_cat_wldev(const struct config *cfg)
 	sector_array_free(sect_ary);
 	sector_free(lhead_sect);
 	sector_free(super_sect);
-	close(fd);
+	if (close_(fd)) {
+		goto error1;
+	}
 	return true;
 
 error4:
@@ -1799,7 +1849,7 @@ error3:
 error2:
 	sector_free(super_sect);
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -1923,7 +1973,13 @@ static bool do_redo_wlog(const struct config *cfg)
 	sector_array_free(sect_ary);
 	sector_free(lhead_sect);
 	free(wh);
-	close(fd);
+	if (fsync(fd)) {
+		perror("fsync() failed.");
+		goto error1;
+	}
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error4:
@@ -1933,7 +1989,7 @@ error3:
 error2:
 	free(wh);
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -2052,8 +2108,20 @@ static bool do_redo(const struct config *cfg)
 	sector_free(lhead_sectd);
 	sector_array_free(sect_ary);
 	sector_free(super_sectd);
-	close(dfd);
-	close(lfd);
+	if (fsync(dfd)) {
+		perror("fsync data device failed.");
+		goto error2;
+	}
+	if (fsync(lfd)) {
+		perror("fsync log device failed.");
+		goto error2;
+	}
+	if (close_(dfd)) {
+		goto error1;
+	}
+	if (close_(lfd)) {
+		goto error0;
+	}
 
 	return true;
 
@@ -2064,9 +2132,9 @@ error4:
 error3:
 	sector_free(super_sectd);
 error2:
-	close(dfd);
+	close_(dfd);
 error1:
-	close(lfd);
+	close_(lfd);
 error0:
 	return false;
 }
@@ -2239,7 +2307,9 @@ static bool do_show_wldev(const struct config *cfg)
 
 	sector_free(lhead_sectd);
 	sector_free(super_sectd);
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
 error3:
@@ -2247,7 +2317,7 @@ error3:
 error2:
 	sector_free(super_sectd);
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
@@ -2549,12 +2619,13 @@ static bool do_get_version(const struct config *cfg)
 	}
 
 	printf("walb version: %"PRIu32"\n", version);
-	close(fd);
+	if (close_(fd)) {
+		goto error0;
+	}
 	return true;
 
-
 error1:
-	close(fd);
+	close_(fd);
 error0:
 	return false;
 }
