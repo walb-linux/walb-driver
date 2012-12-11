@@ -82,6 +82,7 @@ struct workqueue_struct *wq_misc_ = NULL;
 struct lsid_set
 {
 	u64 latest_lsid;
+	u64 flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
@@ -1650,6 +1651,7 @@ static void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids)
 	spin_lock(&wdev->lsid_lock);
 
 	lsids->latest_lsid = wdev->latest_lsid;
+	lsids->flush_lsid = wdev->flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	lsids->completed_lsid = wdev->completed_lsid;
 #endif
@@ -1669,6 +1671,7 @@ static void restore_lsid_set(struct walb_dev *wdev, const struct lsid_set *lsids
 	spin_lock(&wdev->lsid_lock);
 
 	wdev->latest_lsid = lsids->latest_lsid;
+	wdev->flush_lsid = lsids->flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid = lsids->completed_lsid;
 #endif
@@ -2305,7 +2308,7 @@ struct walb_dev* prepare_wdev(
 	struct request_queue *lq, *dq;
 	bool retb;
 #ifdef WALB_DEBUG
-	u64 written_lsid, latest_lsid;
+	u64 written_lsid, latest_lsid, flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
@@ -2411,10 +2414,14 @@ struct walb_dev* prepare_wdev(
 
 	/* Set parameters. */
 	wdev->max_logpack_pb = param->max_logpack_kb * 1024 / wdev->physical_bs;
-	wdev->log_flush_interval_pb = param->log_flush_interval_mb
-		* (1024 * 1024 / wdev->physical_bs);
 	wdev->log_flush_interval_jiffies =
 		msecs_to_jiffies(param->log_flush_interval_ms);
+	if (wdev->log_flush_interval_jiffies == 0) {
+		wdev->log_flush_interval_pb = 0;
+	} else {
+		wdev->log_flush_interval_pb = param->log_flush_interval_mb
+			* (1024 * 1024 / wdev->physical_bs);
+	}
 #ifdef WALB_FAST_ALGORITHM
 	ASSERT(0 < param->min_pending_mb);
 	ASSERT(param->min_pending_mb < param->max_pending_mb);
@@ -2489,11 +2496,13 @@ struct walb_dev* prepare_wdev(
 	spin_lock(&wdev->lsid_lock);
 	written_lsid = wdev->written_lsid;
 	latest_lsid = wdev->latest_lsid;
+	flush_lsid = wdev->flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	completed_lsid = wdev->completed_lsid;
 #endif
 	spin_unlock(&wdev->lsid_lock);
 	ASSERT(written_lsid == latest_lsid);
+	ASSERT(written_lsid == flush_lsid);
 #ifdef WALB_FAST_ALGORITHM
 	ASSERT(written_lsid == completed_lsid);
 #endif

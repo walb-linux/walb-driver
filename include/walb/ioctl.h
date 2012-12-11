@@ -568,8 +568,8 @@ static inline bool is_walb_start_param_valid(
 	CHECK(1 <= param->min_pending_mb);
 	CHECK(param->min_pending_mb < param->max_pending_mb);
 	CHECK(1 <= param->queue_stop_timeout_ms);
-	CHECK(1 <= param->log_flush_interval_ms);
-	CHECK(1 <= param->log_flush_interval_mb);
+	/* CHECK(0 <= param->log_flush_interval_ms); */
+	/* CHECK(0 <= param->log_flush_interval_mb); */
 	CHECK(param->log_flush_interval_mb * 2 <= param->max_pending_mb);
 	return true;
 error:

@@ -117,6 +117,9 @@ struct walb_dev
 	 *
 	 * latest_lsid:
 	 *   This is used to generate new logpack.
+	 * flush_lsid:
+	 *   This is to remember the latest lsid of
+	 *   log flush request executed.
 	 * completed_lsid:
 	 *   All logpacks with lsid < completed_lsid
 	 *   have been written to the log device.
@@ -134,12 +137,16 @@ struct walb_dev
 	 *   All logpacks with lsid < oldest_lsid
 	 *   on the log device can be overwritten.
 	 *
-	 * oldest_lsid <= prev_written_lsid <= written_lsid
-	 * <= permanent_lsid <= completed_lsid <= latest_lsid.
+	 * Property 1
+	 *   oldest_lsid <= prev_written_lsid <= written_lsid
+	 *   <= permanent_lsid <= completed_lsid <= latest_lsid.
+	 * Property 2
+	 *   permanent_lsid <= flush_lsid <= latest_lsid.
 	 */
 	spinlock_t lsid_lock;
 
 	u64 latest_lsid;
+	u64 flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
 #endif
