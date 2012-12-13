@@ -78,7 +78,7 @@ struct walb_logpack_header {
  * Macros.
  *******************************************************************************/
 
-#define MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER (((unsigned int)(1) << 16) - 1)
+#define MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER ((1U << 16) - 1)
 
 #define ASSERT_LOG_RECORD(rec) ASSERT(is_valid_log_record(rec))
 

@@ -2413,7 +2413,9 @@ struct walb_dev* prepare_wdev(
 	}
 
 	/* Set parameters. */
-	wdev->max_logpack_pb = param->max_logpack_kb * 1024 / wdev->physical_bs;
+	wdev->max_logpack_pb =
+		min(param->max_logpack_kb * 1024 / wdev->physical_bs,
+			MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER);
 	wdev->log_flush_interval_jiffies =
 		msecs_to_jiffies(param->log_flush_interval_ms);
 	if (wdev->log_flush_interval_jiffies == 0) {
