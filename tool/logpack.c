@@ -91,18 +91,20 @@ void print_logpack_header(const struct walb_logpack_header* lhead)
 			"  checksum: %08x\n"
 			"  lsid: %"PRIu64"\n"
 			"  lsid_local: %u\n"
-			"  is_padding: %u\n"
-			"  io_size: %u\n"
 			"  is_exist: %u\n"
-			"  offset: %"PRIu64"\n",
+			"  is_padding: %u\n"
+			"  is_discard: %u\n"
+			"  offset: %"PRIu64"\n"
+			"  io_size: %u\n",
 			i,
 			lhead->record[i].checksum,
 			lhead->record[i].lsid,
 			lhead->record[i].lsid_local,
-			lhead->record[i].is_padding,
-			lhead->record[i].io_size,
-			lhead->record[i].is_exist,
-			lhead->record[i].offset);
+			test_bit_u32(LOG_RECORD_EXIST, &lhead->record[i].flags),
+			test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags),
+			test_bit_u32(LOG_RECORD_DISCARD, &lhead->record[i].flags),
+			lhead->record[i].offset,
+			lhead->record[i].io_size);
 		printf("logpack lsid: %"PRIu64"\n",
 			lhead->record[i].lsid - lhead->record[i].lsid_local);
 	}
@@ -170,7 +172,7 @@ bool read_logpack_data_from_wldev(
 			lhead->record[i].lsid,
 			log_off);
 
-		if (lhead->record[i].is_padding == 0) {
+		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
 			/* Read data for the log record. */
 			if (!sector_array_pread(
 					fd, log_off, sect_ary,
@@ -262,7 +264,7 @@ bool read_logpack_data_raw(
 		u32 log_lb = lhead->record[i].io_size;
 		u32 log_pb = capacity_pb(pbs, log_lb);
 		u8 *buf_off = buf + (total_pb * pbs);
-		if (lhead->record[i].is_padding == 0) {
+		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
 
 			/* Read data of the log record. */
 			if (!read_data(fd, buf_off, log_pb * pbs)) {
@@ -327,7 +329,7 @@ bool read_logpack_data(
 		idx_pb = lhead->record[i].lsid_local - 1;
 		log_lb = lhead->record[i].io_size;
 		log_pb = capacity_pb(pbs, log_lb);
-		if (lhead->record[i].is_padding == 0) {
+		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
 
 			/* Read data of the log record. */
 			if (!sector_array_read(fd, sect_ary, idx_pb, log_pb)) {
@@ -380,7 +382,7 @@ bool redo_logpack(
 	u64 off_lb;
 
 	for (i = 0; i < n_req; i++) {
-		if (lhead->record[i].is_padding != 0) {
+		if (test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
 			continue;
 		}
 		off_lb = lhead->record[i].offset;
@@ -472,7 +474,7 @@ struct logpack* alloc_logpack(unsigned int physical_bs, unsigned int n_sectors)
 	int i;
 	int n_max = max_n_log_record_in_sector(physical_bs);
 	for (i = 0; i < n_max; i++) {
-		lhead->record[i].is_exist = 0;
+		clear_bit_u32(LOG_RECORD_EXIST, &lhead->record[i].flags);
 	}
 	return logpack;
 
@@ -591,7 +593,9 @@ bool logpack_add_io_request(
 	}
 
 	/* Padding */
-	if (is_padding) { rec->is_padding = 1; }
+	if (is_padding) {
+		set_bit_u32(LOG_RECORD_PADDING, &rec->flags);
+	}
 
 	/* Realloc sector data array if needed. */
 	int current_size = 0;
@@ -617,7 +621,7 @@ bool logpack_add_io_request(
 	/* Modify metadata in logpack header. */
 
 	/* Finalize logpack header. */
-	rec->is_exist = 1;
+	set_bit_u32(LOG_RECORD_EXIST, &rec->flags);
 	lhead->n_records++;
 	if (is_padding) { lhead->n_padding++; }
 

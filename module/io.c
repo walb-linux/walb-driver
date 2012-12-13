@@ -1372,7 +1372,7 @@ static void create_logpack_list(
 		list_add_tail(&wpack->list, wpack_list);
 		latest_lsid = get_next_lsid_unsafe(logh);
 
-		/* Decide the log device should be flushed or not. */
+		/* Decide to flush the log device or not. */
 		ASSERT(latest_lsid >= flush_lsid);
 		is_flush_size = wdev->log_flush_interval_pb > 0 &&
 			latest_lsid - flush_lsid > wdev->log_flush_interval_pb;
@@ -1389,7 +1389,7 @@ static void create_logpack_list(
 	ASSERT(!list_empty(wpack_list));
 	ASSERT(list_empty(biow_list));
 
-	/* Store latest_lsid */
+	/* Store lsids. */
 	ASSERT(latest_lsid >= latest_lsid_old);
 	spin_lock(&wdev->lsid_lock);
 	ASSERT(wdev->latest_lsid == latest_lsid_old);
@@ -1482,7 +1482,7 @@ static void logpack_calc_checksum(
 	i = 0;
 	list_for_each_entry(biow, biow_list, list) {
 
-		if (logh->record[i].is_padding) {
+		if (test_bit_u32(LOG_RECORD_PADDING, &logh->record[i].flags)) {
 			n_padding++;
 			i++;
 			/* A padding record is not the last in the logpack header. */
@@ -1550,8 +1550,17 @@ static void submit_logpack(
 	/* Submit logpack contents for each request. */
 	i = 0;
 	list_for_each_entry(biow, biow_list, list) {
-		if (biow->len == 0) {
-			/* Currently zero-sized IO will not be stored in logpack header.
+		if (test_bit_u32(LOG_RECORD_PADDING, &logh->record[i].flags)) {
+			i++;
+			/* padding record never come at last. */
+		}
+		if (test_bit_u32(LOG_RECORD_DISCARD, &logh->record[i].flags)) {
+			/* No need to execute IO to the log device. */
+			ASSERT(biow->is_discard);
+			ASSERT(biow->bio->bi_rw & REQ_DISCARD);
+			ASSERT(biow->len > 0);
+		} else if (biow->len == 0) {
+			/* Zero-sized IO will not be stored in logpack header.
 			   We just submit it and will wait for it. */
 
 			/* such bio must be flush. */
@@ -1562,10 +1571,6 @@ static void submit_logpack(
 			logpack_submit_bio_wrapper_zero(
 				biow, &biow->bioe_list, pbs, ldev);
 		} else {
-			if (logh->record[i].is_padding) {
-				i++;
-				/* padding record never come at last. */
-			}
 			ASSERT(i < logh->n_records);
 			lsid = logh->record[i].lsid;
 
@@ -1725,6 +1730,8 @@ static void logpack_submit_bio_wrapper(
 	off_lb = 0;
 	ASSERT(biow);
 	ASSERT(biow->bio);
+	ASSERT(!biow->is_discard);
+	ASSERT((biow->bio->bi_rw & REQ_DISCARD) == 0);
 
 retry_bio_entry:
 	bioe = logpack_create_bio_entry(
@@ -1958,9 +1965,9 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		CHECK(i < lhead->n_records);
 		lrec = &lhead->record[i];
 		CHECK(lrec);
-		CHECK(lrec->is_exist);
+		CHECK(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 
-		if (lrec->is_padding) {
+		if (test_bit_u32(LOG_RECORD_PADDING, &lrec->flags)) {
 			LOGd_("padding found.\n"); /* debug */
 			total_pb += capacity_pb(pbs, lrec->io_size);
 			n_padding++;
@@ -1970,7 +1977,7 @@ static bool is_prepared_pack_valid(struct pack *pack)
 			CHECK(i < lhead->n_records);
 			lrec = &lhead->record[i];
 			CHECK(lrec);
-			CHECK(lrec->is_exist);
+			CHECK(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 		}
 
 		/* Normal record. */
@@ -2679,7 +2686,7 @@ retry1:
 
 	for (i = 0; i < logh->n_records; i++) {
 		rec = &logh->record[i];
-		ASSERT(rec->is_exist);
+		ASSERT(test_bit_u32(LOG_RECORD_EXIST, &rec->flags));
 
 		n_lb = rec->io_size;
 		if (n_lb == 0) {
@@ -2705,7 +2712,7 @@ retry1:
 		}
 
 		/* Padding record and data is just ignored. */
-		if (rec->is_padding) {
+		if (test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
 			list_for_each_entry_safe(biow, biow_next,
 						&biow_list_io, list) {
 				list_del(&biow->list);
@@ -2770,7 +2777,7 @@ retry1:
 	/* Case (3): paritally invalid. */
 
 	/* Update logpack header. */
-	if (logh->record[invalid_idx - 1].is_padding) {
+	if (test_bit_u32(LOG_RECORD_PADDING, &logh->record[invalid_idx - 1].flags)) {
 		invalid_idx--;
 		ASSERT(logh->n_padding == 1);
 		logh->n_padding--;
@@ -3170,7 +3177,7 @@ static void writepack_check_and_set_flush(struct pack *wpack)
  * Wait for completion of all bio(s) and enqueue datapack tasks.
  *
  * Request success -> enqueue datapack.
- * Request failure-> all subsequent requests must fail.
+ * Request failure -> all subsequent requests must fail.
  *
  * If any write failed, wdev will be read-only mode.
  */
@@ -3446,14 +3453,14 @@ static void wait_for_bio_wrapper(
  */
 static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 {
+	struct walb_dev *wdev = biow->private_data;
+	struct bio_entry *bioe;
 	struct blk_plug plug;
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	int c;
 #endif
-
-	ASSERT(biow);
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 	/* Wait for previous overlapping writes. */
@@ -3473,10 +3480,20 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 
 	ASSERT(!list_empty(&biow->bioe_list));
 
-	/* Submit all related bio(s). */
-	if (is_plugging) { blk_start_plug(&plug); }
-	submit_bio_entry_list(&biow->bioe_list);
-	if (is_plugging) { blk_finish_plug(&plug); }
+	if (biow->is_discard &&
+		!blk_queue_discard(bdev_get_queue(wdev->ddev))) {
+		/* Data device does not support REQ_DISCARD
+		   so just ignore the request. */
+		list_for_each_entry(bioe, &biow->bioe_list, list) {
+			set_bit(BIO_UPTODATE, &bioe->bio->bi_flags);
+			bio_endio(bioe->bio, 0);
+		}
+	} else {
+		/* Submit all related bio(s). */
+		if (is_plugging) { blk_start_plug(&plug); }
+		submit_bio_entry_list(&biow->bioe_list);
+		if (is_plugging) { blk_finish_plug(&plug); }
+	}
 }
 
 /**
@@ -3955,7 +3972,7 @@ static bool pending_check_and_copy(
 
 		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
 		ASSERT(biow_tmp);
-		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
+		if (!biow_tmp->is_discard && bio_wrapper_is_overlap(biow, biow_tmp)) {
 			n_overlapped_bios++;
 			insert_to_sorted_bio_wrapper_list(biow_tmp, &biow_list);
 		}

@@ -23,7 +23,7 @@ void walb_logpack_header_print(const char *level,
 		"n_records: %u\n"
 		"n_padding: %u\n"
 		"total_io_size: %u\n"
-		"logpack_lsid: %llu",
+		"logpack_lsid: %"PRIu64"\n",
 		level,
 		lhead->checksum,
 		lhead->n_records,
@@ -35,18 +35,20 @@ void walb_logpack_header_print(const char *level,
 			"  checksum: %08x\n"
 			"  lsid: %llu\n"
 			"  lsid_local: %u\n"
-			"  is_padding: %u\n"
-			"  io_size: %u\n"
 			"  is_exist: %u\n"
-			"  offset: %llu\n",
+			"  is_padding: %u\n"
+			"  is_discard: %u\n"
+			"  offset: %"PRIu64"\n"
+			"  io_size: %u\n",
 			level, i,
 			lhead->record[i].checksum,
 			lhead->record[i].lsid,
 			lhead->record[i].lsid_local,
-			lhead->record[i].is_padding,
-			lhead->record[i].io_size,
-			lhead->record[i].is_exist,
-			lhead->record[i].offset);
+			test_bit_u32(LOG_RECORD_EXIST, &lhead->record[i].flags),
+			test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags),
+			test_bit_u32(LOG_RECORD_DISCARD, &lhead->record[i].flags),
+			lhead->record[i].offset,
+			lhead->record[i].io_size);
 		printk("%slogpack lsid: %llu\n", level,
 			lhead->record[i].lsid - lhead->record[i].lsid_local);
 	}
@@ -56,6 +58,8 @@ void walb_logpack_header_print(const char *level,
  * Add a request to a logpack header.
  * Do not validate checksum.
  *
+ * REQ_DISCARD is not supported.
+
  * @lhead log pack header.
  *   lhead->logpack_lsid must be set correctly.
  *   lhead->sector_type must be set correctly.
@@ -119,10 +123,10 @@ bool walb_logpack_header_add_req(
 		}
 
 		/* Fill the padding record contents. */
-		lhead->record[idx].is_exist = 1;
+		set_bit_u32(LOG_RECORD_PADDING, &lhead->record[idx].flags);
+		set_bit_u32(LOG_RECORD_EXIST, &lhead->record[idx].flags);
 		lhead->record[idx].lsid = req_lsid;
 		lhead->record[idx].lsid_local = req_lsid - logpack_lsid;
-		lhead->record[idx].is_padding = 1;
 		lhead->record[idx].offset = 0;
 		lhead->record[idx].io_size = (u16)capacity_lb(pbs, padding_pb);
 		lhead->n_padding++;
@@ -145,10 +149,10 @@ bool walb_logpack_header_add_req(
 	}
 
 	/* Fill the log record contents. */
-	lhead->record[idx].is_exist = 1;
+	clear_bit_u32(LOG_RECORD_PADDING, &lhead->record[idx].flags);
+	set_bit_u32(LOG_RECORD_EXIST, &lhead->record[idx].flags);
 	lhead->record[idx].lsid = req_lsid;
 	lhead->record[idx].lsid_local = req_lsid - logpack_lsid;
-	lhead->record[idx].is_padding = 0;
 	lhead->record[idx].offset = (u64)blk_rq_pos(req);
 	lhead->record[idx].io_size = (u16)req_lb;
 	lhead->n_records++;
@@ -166,6 +170,8 @@ error0:
  * Add a bio to a logpack header.
  * Almost the same as walb_logpack_header_add_req().
  * Do not validate checksum.
+ *
+ * REQ_DISCARD is supported.
  *
  * @lhead log pack header.
  *   lhead->logpack_lsid must be set correctly.
@@ -190,6 +196,8 @@ bool walb_logpack_header_add_bio(
 	unsigned int padding_pb;
 	unsigned int max_n_rec;
 	int idx;
+	u64 offset_in_ring_buffer;
+	bool is_discard;
 	UNUSED const char no_more_bio_msg[] = "no more bio can not be added.\n";
 
 	ASSERT(lhead);
@@ -197,6 +205,7 @@ bool walb_logpack_header_add_bio(
 	ASSERT(bio);
 	ASSERT_PBS(pbs);
 	ASSERT(bio->bi_rw & REQ_WRITE);
+	ASSERT(ring_buffer_size > 0);
 
 	logpack_lsid = lhead->logpack_lsid;
 	max_n_rec = max_n_log_record_in_sector(pbs);
@@ -204,7 +213,7 @@ bool walb_logpack_header_add_bio(
 
 	ASSERT(lhead->n_records <= max_n_rec);
 	if (lhead->n_records == max_n_rec) {
-		LOGd_(no_mor_bio_msg);
+		LOGd_(no_more_bio_msg);
 		goto error0;
 	}
 
@@ -218,23 +227,26 @@ bool walb_logpack_header_add_bio(
 	ASSERT(0 < bio_lb);
 	ASSERT((1U << 16) > bio_lb); /* can be u16. */
 	bio_pb = capacity_pb(pbs, bio_lb);
+	is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
+	offset_in_ring_buffer = bio_lsid % ring_buffer_size;
 
-	if (bio_lsid % ring_buffer_size + bio_pb > ring_buffer_size) {
+	/* Padding check. */
+	if (!is_discard && offset_in_ring_buffer + bio_pb > ring_buffer_size) {
 		/* Log of this request will cross the end of ring buffer.
 		   So padding is required. */
-		padding_pb = ring_buffer_size - (bio_lsid % ring_buffer_size);
+		padding_pb = ring_buffer_size - offset_in_ring_buffer;
 
 		if ((unsigned int)lhead->total_io_size + padding_pb
 			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
-			LOGd_(no_mor_bio_msg);
+			LOGd_(no_more_bio_msg);
 			goto error0;
 		}
 
 		/* Fill the padding record contents. */
-		lhead->record[idx].is_exist = 1;
+		set_bit_u32(LOG_RECORD_PADDING, &lhead->record[idx].flags);
+		set_bit_u32(LOG_RECORD_EXIST, &lhead->record[idx].flags);
 		lhead->record[idx].lsid = bio_lsid;
-		lhead->record[idx].lsid_local = bio_lsid - logpack_lsid;
-		lhead->record[idx].is_padding = 1;
+		lhead->record[idx].lsid_local = (u16)(bio_lsid - logpack_lsid);
 		lhead->record[idx].offset = 0;
 		lhead->record[idx].io_size = (u16)capacity_lb(pbs, padding_pb);
 		lhead->n_padding++;
@@ -245,28 +257,36 @@ bool walb_logpack_header_add_bio(
 		idx++;
 
 		if (lhead->n_records == max_n_rec) {
-			LOGd_(no_mor_bio_msg);
+			LOGd_(no_more_bio_msg);
 			goto error0;
 		}
 	}
 
-	if ((unsigned int)lhead->total_io_size + bio_pb
+	if (!is_discard &&
+		(unsigned int)lhead->total_io_size + bio_pb
 		> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
-		LOGd_(no_mor_bio_msg);
+		LOGd_(no_more_bio_msg);
 		goto error0;
 	}
 
 	/* Fill the log record contents. */
-	lhead->record[idx].is_exist = 1;
+	set_bit_u32(LOG_RECORD_EXIST, &lhead->record[idx].flags);
+	clear_bit_u32(LOG_RECORD_PADDING, &lhead->record[idx].flags);
 	lhead->record[idx].lsid = bio_lsid;
-	lhead->record[idx].lsid_local = bio_lsid - logpack_lsid;
-	lhead->record[idx].is_padding = 0;
+	lhead->record[idx].lsid_local = (u16)(bio_lsid - logpack_lsid);
 	lhead->record[idx].offset = (u64)bio->bi_sector;
 	lhead->record[idx].io_size = (u16)bio_lb;
 	lhead->n_records++;
-	lhead->total_io_size += bio_pb;
+	if (is_discard) {
+		set_bit_u32(LOG_RECORD_DISCARD, &lhead->record[idx].flags);
+		/* lhead->total_io_size and bio_lsid
+		   will not be added. */
+	} else {
+		clear_bit_u32(LOG_RECORD_DISCARD, &lhead->record[idx].flags);
+		lhead->total_io_size += bio_pb;
+		bio_lsid += bio_pb;
+	}
 
-	bio_lsid += bio_pb;
 	idx++;
 
 	return true;

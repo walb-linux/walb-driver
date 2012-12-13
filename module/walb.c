@@ -172,6 +172,7 @@ static u64 get_log_capacity(struct walb_dev *wdev);
 static int walb_set_name(struct walb_dev *wdev, unsigned int minor,
 			const char *name);
 static void walb_decide_flush_support(struct walb_dev *wdev);
+static void walb_discard_support(struct walb_dev *wdev);
 static bool resize_disk(struct gendisk *gd, u64 new_size);
 static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid);
 static void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids);
@@ -1531,9 +1532,9 @@ static void walb_decide_flush_support(struct walb_dev *wdev)
 	lq = bdev_get_queue(wdev->ldev);
 	dq = bdev_get_queue(wdev->ddev);
 
-	/* Accept REQ_FLUSH and REQ_FUA. */
+	/* Check REQ_FLUSH/REQ_FUA supports. */
 	if (lq->flush_flags & REQ_FLUSH && dq->flush_flags & REQ_FLUSH) {
-		if (lq->flush_flags & REQ_FUA && dq->flush_flags & REQ_FUA) {
+		if (lq->flush_flags & REQ_FUA) {
 			LOGn("Supports REQ_FLUSH | REQ_FUA.");
 			blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
 		} else {
@@ -1542,23 +1543,25 @@ static void walb_decide_flush_support(struct walb_dev *wdev)
 		}
 		blk_queue_flush_queueable(q, true);
 	} else {
-		LOGn("Supports neither REQ_FLUSH nor REQ_FUA.");
+		LOGw("REQ_FLUSH is not suported!\n"
+			"WalB can not guarantee data consistency...\n");
 	}
+}
 
-#if 0
-	if (blk_queue_discard(dq)) {
-		/* Accept REQ_DISCARD. */
-		LOGn("Supports REQ_DISCARD.");
-		q->limits.discard_granularity = PAGE_SIZE;
-		q->limits.discard_granularity = LOGICAL_BLOCK_SIZE;
-		q->limits.max_discard_sectors = UINT_MAX;
-		q->limits.discard_zeroes_data = 1;
-		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
-		/* queue_flag_set_unlocked(QUEUE_FLAG_SECDISCARD, q); */
-	} else {
-		LOGn("Not support REQ_DISCARD.");
-	}
-#endif
+/**
+ * Support discard.
+ */
+static void walb_discard_support(struct walb_dev *wdev)
+{
+	struct request_queue *q = wdev->queue;
+
+	LOGn("Supports REQ_DISCARD.");
+	q->limits.discard_granularity = wdev->physical_bs;
+
+	/* Should be stored in u16 variable and aligned. */
+	q->limits.max_discard_sectors = 1 << 15;
+	q->limits.discard_zeroes_data = 0;
+	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
 }
 
 /**
@@ -1951,6 +1954,9 @@ static int walb_prepare_device(
 
 	/* Flush support. */
 	walb_decide_flush_support(wdev);
+
+	/* Discard support. */
+	walb_discard_support(wdev);
 
 	return 0;
 

@@ -31,6 +31,7 @@ struct bio_wrapper
 	int error;
 	struct completion done;
 	bool started;
+	bool is_discard;
 
 	/* lsid of bio wrapper.
 	   This is for
