@@ -3108,10 +3108,15 @@ fin:
 	list_add_tail(&biow->list, &pack->biow_list);
 	if (biow->bio->bi_rw & REQ_FLUSH) {
 		pack->is_flush_contained = true;
-		if (lhead->n_records > 0) {
+		if (lhead->n_records > 0 && !biow->is_discard) {
 			*flush_lsidp = biow->lsid;
 		} else {
 			*flush_lsidp = *latest_lsidp;
+		}
+
+		/* debug */
+		if (biow->is_discard) {
+			LOGw("The bio has both REQ_FLUSH and REQ_DISCARD.\n");
 		}
 	}
 	LOGd_("normal end\n");
