@@ -1141,6 +1141,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	/* Initialize lsid(s). */
 	spin_lock(&wdev->lsid_lock);
 	wdev->latest_lsid = 0;
+	wdev->flush_lsid = 0;
 #ifdef WALB_FAST_ALGORITHM
 	wdev->completed_lsid = 0;
 #endif
