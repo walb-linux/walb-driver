@@ -182,7 +182,10 @@ static inline int is_valid_logpack_header(
 		CHECK(lhead->total_io_size == 0);
 		CHECK(lhead->n_padding == 0);
 	} else {
+#if 0
+		/* If All records are DISCARD, then total_io_size will be 0. */
 		CHECK(lhead->total_io_size > 0);
+#endif
 		CHECK(lhead->n_padding < lhead->n_records);
 	}
 	return 1;
@@ -223,7 +226,7 @@ error1:
  */
 static inline u64 get_next_lsid_unsafe(const struct walb_logpack_header *lhead)
 {
-	if (lhead->total_io_size == 0) {
+	if (lhead->total_io_size == 0 && lhead->n_records == 0) {
 		return lhead->logpack_lsid;
 	} else {
 		return lhead->logpack_lsid + 1 + lhead->total_io_size;

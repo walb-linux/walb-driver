@@ -1242,7 +1242,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 				wdev->permanent_lsid = latest_lsid;
 				LOGd_("log_flush_completed_data\n");
 			}
-			ASSERT(lsid < wdev->permanent_lsid);
+			ASSERT(lsid <= wdev->permanent_lsid);
 			spin_unlock(&wdev->lsid_lock);
 		}
 	skip_log_flush:
@@ -1983,12 +1983,15 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		/* Normal record. */
 		CHECK(biow->bio);
 		CHECK(biow->bio->bi_rw & REQ_WRITE);
-
 		CHECK(biow->pos == (sector_t)lrec->offset);
 		CHECK(lhead->logpack_lsid == lrec->lsid - lrec->lsid_local);
 		CHECK(biow->len == lrec->io_size);
-		total_pb += capacity_pb(pbs, lrec->io_size);
-
+		if (test_bit_u32(LOG_RECORD_DISCARD, &lrec->flags)) {
+			CHECK(biow->is_discard);
+		} else {
+			CHECK(!biow->is_discard);
+			total_pb += capacity_pb(pbs, lrec->io_size);
+		}
 		i++;
 	}
 	CHECK(i == lhead->n_records);

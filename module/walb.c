@@ -1555,7 +1555,7 @@ static void walb_discard_support(struct walb_dev *wdev)
 {
 	struct request_queue *q = wdev->queue;
 
-	LOGn("Supports REQ_DISCARD.");
+	LOGn("Supports REQ_DISCARD.\n");
 	q->limits.discard_granularity = wdev->physical_bs;
 
 	/* Should be stored in u16 variable and aligned. */
