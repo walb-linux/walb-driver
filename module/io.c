@@ -3196,6 +3196,7 @@ static void wait_for_logpack_and_submit_datapack(
 		if (biow->len == 0) {
 			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
 			list_del(&biow->list);
+			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
 			bio_endio(biow->bio, 0);
 			destroy_bio_wrapper_dec(wdev, biow);
 		} else {
@@ -3267,6 +3268,7 @@ static void wait_for_logpack_and_submit_datapack(
 
 			/* call endio here in fast algorithm,
 			   while easy algorithm call it after data device IO. */
+			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
 			bio_endio(biow->bio, 0);
 			biow->bio = NULL;
 #endif /* WALB_FAST_ALGORITHM */
