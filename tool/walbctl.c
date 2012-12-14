@@ -143,7 +143,8 @@ static struct cmdhelp cmdhelps_[] = {
 	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (N_SNAP) (DISCARD)",
 	  "Format log device." },
 	{ "create_wdev LDEV DDEV (NAME)"
-	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB)"
+	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB)\n"
+	  "             "
 	  " (QUEUE_STOP_TIMEOUT_MS) (FLUSH_INTERVAL_MB) (FLUSH_INTERVAL_MB)",
 	  "Make walb/walblog device." },
 	{ "delete_wdev WDEV",
