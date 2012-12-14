@@ -769,10 +769,16 @@ static void copied_bio_put(struct bio *bio)
 	ASSERT(bio);
 	ASSERT(!(bio->bi_flags & (1 << BIO_CLONED)));
 
+	if (bio->bi_size == 0 || (bio->bi_rw & REQ_DISCARD)) {
+		goto fin;
+	}
+
 	bio_for_each_segment(bvec, bio, i) {
 		__free_page(bvec->bv_page);
 		bvec->bv_page = NULL;
 	}
+
+fin:
 	ASSERT(atomic_read(&bio->bi_cnt) == 1);
 	bio_put(bio);
 }
@@ -1031,7 +1037,7 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 	char *dst_buf, *src_buf;
 
 	ASSERT(bio);
-	ASSERT(bio_rw(bio) == WRITE);
+	ASSERT(bio->bi_rw & REQ_WRITE);
 
 	/* We can use bio_alloc and copy all related data instead. */
 	clone = bio_clone(bio, gfp_mask);
@@ -1039,15 +1045,18 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 		goto error0;
 	}
 	clone->bi_flags &= ~(1 << BIO_CLONED);
+
+	if (bio->bi_size == 0 || (bio->bi_rw & REQ_DISCARD)) {
+		goto fin;
+	}
+
+	/* Set bv_page to NULL for all bio_vec. */
 	bio_for_each_segment(bvec, clone, i) {
 		if (bvec->bv_page) {
 			bvec->bv_page = NULL;
 		}
 	}
 
-	if (bio->bi_size == 0) {
-		goto fin;
-	}
 	/* Allocate pages and copy original data. */
 	bio_for_each_segment(bvec, clone, i) {
 		ASSERT(!bvec->bv_page);
