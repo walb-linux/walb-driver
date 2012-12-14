@@ -3213,13 +3213,15 @@ static void wait_for_logpack_and_submit_datapack(
 			}
 
 			/* Split if required due to chunk limitations. */
-		retry_split:
-			if (!split_bio_entry_list_for_chunk(
-					&biow->bioe_list,
-					wdev->ddev_chunk_sectors,
-					GFP_NOIO)) {
-				schedule();
-				goto retry_split;
+			if (!biow->is_discard) {
+			retry_split:
+				if (!split_bio_entry_list_for_chunk(
+						&biow->bioe_list,
+						wdev->ddev_chunk_sectors,
+						GFP_NOIO)) {
+					schedule();
+					goto retry_split;
+				}
 			}
 
 #ifdef WALB_FAST_ALGORITHM
