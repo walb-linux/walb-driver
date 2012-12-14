@@ -415,6 +415,7 @@ static void destroy_bio_wrapper_dec(
 static void wait_for_all_pending_io_done(struct walb_dev *wdev);
 static void wait_for_all_started_write_io_done(struct walb_dev *wdev);
 static void wait_for_all_pending_gc_done(struct walb_dev *wdev);
+static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid);
 static void flush_all_wq(void);
 
 /* Overlapping data functions. */
@@ -1175,8 +1176,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 
 	INIT_LIST_HEAD(&biow_list);
 	while (true) {
-		u64 lsid = 0, permanent_lsid, latest_lsid, flush_lsid;
-		unsigned long log_flush_jiffies;
+		u64 lsid = 0;
 
 		ASSERT(list_empty(&biow_list));
 
@@ -1201,54 +1201,12 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		if (is_empty) { break; }
 		ASSERT(n_io <= N_IO_BULK);
 
-		/* We must confirm the corresponding log has been permanent
-		   before submitting data IOs. */
-		if (wdev->log_flush_interval_jiffies == 0) {
-			goto skip_log_flush;
-		}
-	retry:
-		spin_lock(&wdev->lsid_lock);
-		permanent_lsid = wdev->permanent_lsid;
-		flush_lsid = wdev->flush_lsid;
-		latest_lsid = wdev->latest_lsid;
-		log_flush_jiffies = iocored->log_flush_jiffies;
-		spin_unlock(&wdev->lsid_lock);
-		if (lsid > permanent_lsid) {
-			int err;
-			if (lsid < flush_lsid || jiffies < log_flush_jiffies) {
-				schedule();
-				goto retry;
-			}
-			/* We must flush log device. */
-			LOGd_("lsid %"PRIu64""
-				" flush_lsid %"PRIu64""
-				" permanent_lsid %"PRIu64"\n",
-				lsid, flush_lsid, permanent_lsid);
-			spin_lock(&wdev->lsid_lock);
-			latest_lsid = wdev->latest_lsid;
-			if (wdev->flush_lsid < latest_lsid) {
-				wdev->flush_lsid = latest_lsid;
-				iocored->log_flush_jiffies =
-					jiffies + wdev->log_flush_interval_jiffies;
-			}
-			spin_unlock(&wdev->lsid_lock);
-			err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
-			if (err) {
-				LOGe("log device flush failed. to be read-only mode\n");
-				set_read_only_mode(iocored);
-			}
-			spin_lock(&wdev->lsid_lock);
-			if (wdev->permanent_lsid < latest_lsid) {
-				wdev->permanent_lsid = latest_lsid;
-				LOGd_("log_flush_completed_data\n");
-			}
-			ASSERT(lsid <= wdev->permanent_lsid);
-			spin_unlock(&wdev->lsid_lock);
-		}
-	skip_log_flush:
+		/* Wait for all previous log must be permanent
+		   before submitting data IO. */
+		wait_for_log_permanent(wdev, lsid);
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
-		/* check and insert to overlapping detection data. */
+		/* Check and insert to overlapping detection data. */
 		list_for_each_entry(biow, &biow_list, list2) {
 		retry_insert_ol:
 			spin_lock(&iocored->overlapping_data_lock);
@@ -4213,6 +4171,79 @@ static void wait_for_all_pending_gc_done(struct walb_dev *wdev)
 		msleep(100);
 	}
 	LOGn("n_pending_gc %d\n", atomic_read(&iocored->n_pending_gc));
+}
+
+/**
+ * Wait for all logs permanent which lsid <= specified 'lsid'.
+ *
+ * We must confirm the corresponding log has been permanent
+ * before submitting data IOs.
+ *
+ * Do nothing if wdev->log_flush_interval_jiffies is 0,
+ * In such case, WalB device concistency is not be kept.
+ * Set log_flush_interval_jiffies to 0 for test only.
+ *
+ * @wdev walb device.
+ * @lsid threshold lsid.
+ */
+static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	u64 permanent_lsid, flush_lsid, latest_lsid;
+	unsigned long log_flush_jiffies;
+	int err;
+
+	if (wdev->log_flush_interval_jiffies == 0) {
+		return;
+	}
+retry:
+	spin_lock(&wdev->lsid_lock);
+	permanent_lsid = wdev->permanent_lsid;
+	flush_lsid = wdev->flush_lsid;
+	latest_lsid = wdev->latest_lsid;
+	log_flush_jiffies = iocored->log_flush_jiffies;
+	spin_unlock(&wdev->lsid_lock);
+	if (lsid <= permanent_lsid) {
+		/* No need to flush log device. */
+		return;
+	}
+	if (lsid < flush_lsid || jiffies < log_flush_jiffies) {
+		/* Too early to flush log device again. */
+		schedule();
+		goto retry;
+	}
+
+	/* We must flush log device. */
+	LOGd_("lsid %"PRIu64""
+		" flush_lsid %"PRIu64""
+		" permanent_lsid %"PRIu64"\n",
+		lsid, flush_lsid, permanent_lsid);
+
+	/* Update flush_lsid. */
+	spin_lock(&wdev->lsid_lock);
+	latest_lsid = wdev->latest_lsid;
+	if (wdev->flush_lsid < latest_lsid) {
+		wdev->flush_lsid = latest_lsid;
+		iocored->log_flush_jiffies =
+			jiffies + wdev->log_flush_interval_jiffies;
+	}
+	spin_unlock(&wdev->lsid_lock);
+
+	/* Execute a flush request. */
+	err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
+	if (err) {
+		LOGe("log device flush failed. to be read-only mode\n");
+		set_read_only_mode(iocored);
+	}
+
+	/* Update permanent_lsid. */
+	spin_lock(&wdev->lsid_lock);
+	if (wdev->permanent_lsid < latest_lsid) {
+		wdev->permanent_lsid = latest_lsid;
+		LOGd_("log_flush_completed_data\n");
+	}
+	ASSERT(lsid <= wdev->permanent_lsid);
+	spin_unlock(&wdev->lsid_lock);
 }
 
 /**
