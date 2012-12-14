@@ -2390,7 +2390,8 @@ static struct bio_wrapper* create_discard_bio_wrapper_for_redo(
 	struct bio *bio;
 	struct bio_wrapper *biow;
 
-	bio = bio_alloc(GFP_NOIO, 0);
+	/* bio_alloc_(GFP_NOIO, 0) will cause kernel panic. */
+	bio = bio_alloc(GFP_NOIO, 1);
 	if (!bio) { goto error0; }
 	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
 	if (!biow) { goto error1; }
