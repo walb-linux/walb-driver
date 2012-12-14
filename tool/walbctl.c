@@ -1083,6 +1083,13 @@ static bool do_format_ldev(const struct config *cfg)
 		goto error0;
 	}
 
+	if (is_discard_supported(fd)) {
+		LOGn("Discard supported.\n");
+		discard_whole_area(fd);
+	} else {
+		LOGn("Discard not supported.\n");
+	}
+
 	bool retb = init_walb_metadata(
 		fd, lbs, pbs,
 		ddev_size / lbs,

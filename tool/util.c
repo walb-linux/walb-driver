@@ -330,6 +330,76 @@ error:
 }
 
 /**
+ * Check discard request support by
+ * trying to discard the first physical sector.
+ *
+ * @fd opened file descriptor.
+ *
+ * RETURN:
+ *   true if the device support discard requests.
+ */
+bool is_discard_supported(int fd)
+{
+	unsigned int pbs;
+	int ret;
+	u64 range[2] = { 0, 0 };
+
+	if (fd < 0) { goto error0; }
+
+	/* Physical block size [bytes]. */
+	ret = ioctl(fd, BLKPBSZGET, &pbs);
+	if (ret < 0) { goto error0; }
+	ASSERT_PBS(pbs);
+	range[1] = pbs;
+
+	/* Try to discard. */
+	ret = ioctl(fd, BLKDISCARD, &range);
+	return ret == 0;
+
+error0:
+	return false;
+}
+
+/**
+ * Discard whole area of the block device.
+ *
+ * @fd opened file descriptor.
+ *
+ * RETURN:
+ *   true if the whole device area has been discarded.
+ */
+bool discard_whole_area(int fd)
+{
+	u64 range[2] = { 0, 0 };
+	u64 dev_size;
+	int ret;
+
+	if (fd < 0) {
+		LOGe("fd < 0.\n");
+		goto error0;
+	}
+
+	/* Device size [bytes]. */
+	ret = ioctl(fd, BLKGETSIZE64, &dev_size);
+	if (ret < 0) {
+		LOGe("ioctl() failed: %s.\n", strerror(errno));
+		goto error0;
+	}
+	range[1] = dev_size;
+
+	/* Discard whole area. */
+	ret = ioctl(fd, BLKDISCARD, &range);
+	if (ret) {
+		LOGe("discard failed: %s\n", strerror(errno));
+		goto error0;
+	}
+	return true;
+
+error0:
+	return false;
+}
+
+/**
  * Generate uuid
  *
  * @uuid result uuid is stored. it must be u8[16].
