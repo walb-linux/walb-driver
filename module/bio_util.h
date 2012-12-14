@@ -46,16 +46,17 @@ static inline u32 bio_calc_checksum(struct bio *bio, u32 salt)
 /**
  * Print request flags for debug.
  */
-static inline void print_bio_flags(struct bio *bio)
+static inline void print_bio_flags(const char *flag, struct bio *bio)
 {
 	ASSERT(bio);
-	LOGd("REQ_FLAGS: "
+	printk("%s""REQ_FLAGS: "
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
 		"%s%s%s%s%s"
 		"%s%s%s%s\n",
+		flag,
 		((bio->bi_rw & REQ_WRITE) ?		  "REQ_WRITE" : ""),
 		((bio->bi_rw & REQ_FAILFAST_DEV) ?	  " REQ_FAILFAST_DEV" : ""),
 		((bio->bi_rw & REQ_FAILFAST_TRANSPORT) ? " REQ_FAILFAST_TRANSPORT" : ""),
