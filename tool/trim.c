@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 	int ret = ioctl(fd, BLKSECDISCARD, &range);
 #endif
 	if (ret) {
-		perror("trim is not supported.");
+		LOGe("ioctl() error: %s\n", strerror(errno));
 		goto error1;
 	}
 
