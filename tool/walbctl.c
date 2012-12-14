@@ -64,6 +64,9 @@ struct config
 
 	int n_snapshots; /* maximum number of snapshots to keep */
 
+	/* Discard flags. */
+	bool nodiscard;
+
 	char *wdev_name; /* walb device */
 	char *wldev_name;  /* walblog device */
 	u64 lsid; /* lsid */
@@ -105,6 +108,7 @@ struct map_str_to_fn
 static const char *helpstr_options_ =
 	"OPTIONS:\n"
 	"  N_SNAP: --n_snap [max number of snapshots]\n"
+	"  DISCARD: --nodiscard\n"
 	"  SIZE:   --size [size of stuff]\n"
 	"  LRANGE: --lsid0 [from lsid] --lsid1 [to lsid]\n"
 	"  (NYI)TRANGE: --time0 [from time] --time1 [to time]\n"
@@ -136,10 +140,11 @@ struct cmdhelp
  * Help string.
  */
 static struct cmdhelp cmdhelps_[] = {
-	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (N_SNAP)",
+	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (N_SNAP) (DISCARD)",
 	  "Format log device." },
 	{ "create_wdev LDEV DDEV (NAME)"
-	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB)"
+	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB)\n"
+	  "             "
 	  " (QUEUE_STOP_TIMEOUT_MS) (FLUSH_INTERVAL_MB) (FLUSH_INTERVAL_MB)",
 	  "Make walb/walblog device." },
 	{ "delete_wdev WDEV",
@@ -207,6 +212,7 @@ enum
 	OPT_LDEV = 1,
 	OPT_DDEV,
 	OPT_N_SNAP,
+	OPT_NODISCARD,
 	OPT_WDEV,
 	OPT_WLDEV,
 	OPT_LSID,
@@ -333,6 +339,8 @@ static void init_config(struct config* cfg)
 
 	cfg->n_snapshots = 10000;
 
+	cfg->nodiscard = false;
+
 	cfg->lsid0 = (u64)(-1);
 	cfg->lsid1 = (u64)(-1);
 
@@ -359,6 +367,7 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			{"ldev", 1, 0, OPT_LDEV}, /* log device */
 			{"ddev", 1, 0, OPT_DDEV}, /* data device */
 			{"n_snap", 1, 0, OPT_N_SNAP}, /* num of snapshots */
+			{"nodiscard", 0, 0, OPT_NODISCARD},
 			{"wdev", 1, 0, OPT_WDEV}, /* walb device */
 			{"wldev", 1, 0, OPT_WLDEV}, /* walb log device */
 			{"lsid", 1, 0, OPT_LSID}, /* lsid */
@@ -393,6 +402,9 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			break;
 		case OPT_N_SNAP:
 			cfg->n_snapshots = atoi(optarg);
+			break;
+		case OPT_NODISCARD:
+			cfg->nodiscard = true;
 			break;
 		case OPT_WDEV:
 			cfg->wdev_name = strdup(optarg);
@@ -1021,6 +1033,7 @@ static bool do_format_ldev(const struct config *cfg)
 {
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "format_ldev") == 0);
+	bool retb;
 
 	/*
 	 * Check devices.
@@ -1083,7 +1096,19 @@ static bool do_format_ldev(const struct config *cfg)
 		goto error0;
 	}
 
-	bool retb = init_walb_metadata(
+	/* Discard if necessary. */
+	if (!cfg->nodiscard && is_discard_supported(fd)) {
+		LOGn("Try to discard whole area of the log device...");
+		retb = discard_whole_area(fd);
+		if (!retb) {
+			LOGe("Discard whole area failed.\n");
+			goto error1;
+		}
+		LOGn("done\n");
+	}
+
+	/* Initialize metadata. */
+	retb = init_walb_metadata(
 		fd, lbs, pbs,
 		ddev_size / lbs,
 		ldev_size / lbs,

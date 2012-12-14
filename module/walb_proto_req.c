@@ -2516,9 +2516,9 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		CHECK(i < lhead->n_records);
 		lrec = &lhead->record[i];
 		CHECK(lrec);
-		CHECK(lrec->is_exist);
+		CHECK(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 
-		if (lrec->is_padding) {
+		if (test_bit_u32(LOG_RECORD_PADDING, &lrec->flags)) {
 			LOGd_("padding found.\n"); /* debug */
 			total_pb += capacity_pb(pbs, lrec->io_size);
 			n_padding++;
@@ -2528,7 +2528,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 			CHECK(i < lhead->n_records);
 			lrec = &lhead->record[i];
 			CHECK(lrec);
-			CHECK(lrec->is_exist);
+			CHECK(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 		}
 
 		/* Normal record. */
@@ -2608,7 +2608,7 @@ static void logpack_calc_checksum(
 	i = 0;
 	list_for_each_entry(reqe, req_ent_list, list) {
 
-		if (lhead->record[i].is_padding) {
+		if (test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
 			n_padding++;
 			i++;
 			/* A padding record is not the last in the logpack header. */
@@ -2952,7 +2952,7 @@ static bool logpack_submit(
 			/* You do not need to submit it
 			   because logpack header bio already has REQ_FLUSH. */
 		} else {
-			if (lhead->record[i].is_padding) {
+			if (test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
 				i++;
 				/* padding record never come last. */
 			}

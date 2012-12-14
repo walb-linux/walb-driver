@@ -14,37 +14,43 @@
  * Definition of structures.
  *******************************************************************************/
 
+enum {
+	LOG_RECORD_EXIST = 0,
+	LOG_RECORD_PADDING, /* Non-zero if this is padding log */
+	LOG_RECORD_DISCARD, /* Discard IO */
+};
+
 /**
  * Log record.
  */
 struct walb_log_record {
 
-	/* 8 + 2 * 4 + 8 * 2 = 32 bytes */
+	/* (4 + 4) + 8 + (2 + 2 + 4) + 8 = 32 bytes */
 
 	/* Just sum of the array assuming data contents
 	   as an array of u32 integer.
 	   If is_padding non-zero, checksum is not calcurated.
 	   You must use the salt that is unique for each device. */
 	u32 checksum;
+
+	/* Flags with LOG_RECORD_XXX indicators. */
+	u32 flags;
+
+	/* IO offset [logical sector]. */
+	u64 offset;
+
+	/* IO size [logical sector].
+	   512B * (65K - 1) = (32M-512)B is the maximum request size. */
+	u16 io_size;
+
+	/* Local sequence id as the data offset in the log record.
+	   lsid - lsid_local is logpack lsid. */
+	u16 lsid_local;
+
 	u32 reserved1;
 
-	u64 lsid; /* Log sequence id of the record. */
-
-	u16 lsid_local; /* Local sequence id as the data offset in the log record.
-			   lsid - lsid_local is logpack lsid. */
-	u16 is_padding; /* Non-zero if this is padding log */
-	u16 io_size; /* IO size [logical sector].
-			512B * (65K - 1) = (32M-512)B is the maximum request size. */
-	u16 is_exist; /* Non-zero if this record is exist. */
-
-	u64 offset; /* IO offset [logical sector]. */
-
-	/*
-	 * Data offset in the ring buffer.
-	 *   offset = lsid_to_offset(lsid)
-	 * Offset of the log record header.
-	 *   offset = lsid_to_offset(lsid) - lsid_local
-	 */
+	/* Log sequence id of the record. */
+	u64 lsid;
 
 } __attribute__((packed));
 
@@ -55,17 +61,28 @@ struct walb_log_record {
  */
 struct walb_logpack_header {
 
-	u32 checksum; /* checksum of whole log pack.
-			 You must use the salt. */
-	u16 sector_type; /* type identifier */
-	u16 total_io_size; /* Total io size in the log pack
-			      [physical sector].
-			      (Log pack size is total_io_size + 1.) */
-	u64 logpack_lsid; /* logpack lsid */
+	/* Checksum of the logpack header.
+	   You must use the salt that is unique for each device. */
+	u32 checksum;
 
-	u16 n_records; /* Number of log records in the log pack.
-			  This includes padding records also. */
-	u16 n_padding; /* Number of padding record. 0 or 1. */
+	/* Type identifier */
+	u16 sector_type;
+
+	/* Total io size in the log pack [physical sector].
+	   Log pack size is total_io_size + 1.
+	   Discard request's size is not included. */
+	u16 total_io_size;
+
+	/* logpack lsid [physical sector]. */
+	u64 logpack_lsid;
+
+	/* Number of log records in the log pack.
+	   This includes padding records also. */
+	u16 n_records;
+
+	/* Number of padding record. 0 or 1. */
+	u16 n_padding;
+
 	u32 reserved1;
 
 	struct walb_log_record record[0];
@@ -78,7 +95,7 @@ struct walb_logpack_header {
  * Macros.
  *******************************************************************************/
 
-#define MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER (((unsigned int)(1) << 16) - 1)
+#define MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER ((1U << 16) - 1)
 
 #define ASSERT_LOG_RECORD(rec) ASSERT(is_valid_log_record(rec))
 
@@ -125,16 +142,7 @@ static inline unsigned int max_n_log_record_in_sector(unsigned int pbs)
 static inline void log_record_init(struct walb_log_record *rec)
 {
 	ASSERT(rec);
-
-	rec->checksum = 0;
-	rec->lsid = 0;
-
-	rec->lsid_local = 0;
-	rec->is_padding = 0;
-	rec->io_size = 0;
-	rec->is_exist = 0;
-
-	rec->offset = 0;
+	memset(rec, 0, sizeof(*rec));
 }
 
 /**
@@ -145,7 +153,7 @@ static inline void log_record_init(struct walb_log_record *rec)
 static inline int is_valid_log_record(struct walb_log_record *rec)
 {
 	CHECK(rec);
-	CHECK(rec->is_exist);
+	CHECK(test_bit_u32(LOG_RECORD_EXIST, &rec->flags));
 
 	CHECK(rec->io_size > 0);
 	CHECK(rec->lsid_local > 0);
@@ -174,7 +182,10 @@ static inline int is_valid_logpack_header(
 		CHECK(lhead->total_io_size == 0);
 		CHECK(lhead->n_padding == 0);
 	} else {
+#if 0
+		/* If All records are DISCARD, then total_io_size will be 0. */
 		CHECK(lhead->total_io_size > 0);
+#endif
 		CHECK(lhead->n_padding < lhead->n_records);
 	}
 	return 1;
@@ -215,7 +226,7 @@ error1:
  */
 static inline u64 get_next_lsid_unsafe(const struct walb_logpack_header *lhead)
 {
-	if (lhead->total_io_size == 0) {
+	if (lhead->total_io_size == 0 && lhead->n_records == 0) {
 		return lhead->logpack_lsid;
 	} else {
 		return lhead->logpack_lsid + 1 + lhead->total_io_size;

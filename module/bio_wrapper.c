@@ -113,10 +113,12 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 		biow->bio = bio;
 		biow->pos = bio->bi_sector;
 		biow->len = bio->bi_size >> 9;
+		biow->is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
 	} else {
 		biow->bio = NULL;
 		biow->pos = 0;
 		biow->len = 0;
+		biow->is_discard = false;
 	}
 	biow->started = false;
 #ifdef WALB_FAST_ALGORITHM

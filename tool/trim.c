@@ -16,11 +16,20 @@
 
 int main(int argc, char *argv[])
 {
-	if (argc != 2) {
+	if (argc < 2) {
 		LOGe("Specify a block device.\n");
 		goto error0;
 	}
 	const char *dev_name = argv[1];
+
+	u64 start_off = 0;
+	u64 end_off = (u64)(-1);
+	if (argc >= 4) {
+		start_off = (u64)atoll(argv[2]);
+		start_off *= 512;
+		end_off = (u64)atoll(argv[3]);
+		end_off *= 512;
+	}
 
 	if (check_bdev(dev_name) < 0) {
 		LOGe("Check block device failed %s.\n", dev_name);
@@ -32,10 +41,13 @@ int main(int argc, char *argv[])
 		goto error0;
 	}
 	ASSERT(len % 512 == 0);
+	if (end_off > len) {
+		end_off = len;
+	}
 
 	u64 range[2];
-	range[0] = 0;
-	range[1] = len;
+	range[0] = start_off;
+	range[1] = end_off;
 
 	int fd = open(dev_name, O_RDWR);
 	if (fd < 0) {
@@ -50,7 +62,7 @@ int main(int argc, char *argv[])
 	int ret = ioctl(fd, BLKSECDISCARD, &range);
 #endif
 	if (ret) {
-		perror("trim is not supported.");
+		LOGe("ioctl() error: %s\n", strerror(errno));
 		goto error1;
 	}
 

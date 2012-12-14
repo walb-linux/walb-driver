@@ -20,12 +20,14 @@
 void print_binary_hex(const u8* data, size_t size);
 bool get_datetime_str(time_t t, char* buf, size_t n);
 
-/* for block device information */
+/* Block device operations. */
 int check_bdev(const char* path);
 int get_bdev_logical_block_size(const char* devpath);
 int get_bdev_physical_block_size(const char* devpath);
 u64 get_bdev_size(const char* devpath);
 dev_t get_bdev_devt(const char *devpath);
+bool is_discard_supported(int fd);
+bool discard_whole_area(int fd);
 
 /* uuid functions */
 void generate_uuid(u8* uuid);

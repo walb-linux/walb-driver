@@ -477,7 +477,14 @@ static bool init_queue_and_disk(struct simple_blk_dev *sdev)
 	blk_queue_io_opt(q, sdev->pbs);
 
 	/* Accept REQ_DISCARD. */
+#if 0
 	/* Do nothing. */
+#else
+	q->limits.discard_granularity = PAGE_SIZE;
+	q->limits.max_discard_sectors = -1;
+	q->limits.discard_zeroes_data = 0;
+	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+#endif
 
 	/* Accept REQ_FLUSH and REQ_FUA. */
 	/* Do nothing. */

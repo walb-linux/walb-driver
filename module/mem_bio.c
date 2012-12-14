@@ -69,6 +69,13 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
 	sector = bio->bi_sector;
 	block_id = (u64)sector;
 
+	if (bio->bi_rw & REQ_DISCARD) {
+		/* debug */
+		LOGn("DISCARD pos %"PRIu64" len %"PRIu64"\n",
+			block_id, (u64)bio->bi_size >> 9);
+		return;
+	}
+
 	is_write = bio->bi_rw & REQ_WRITE;
 
 	bio_for_each_segment(bvec, bio, i) {
