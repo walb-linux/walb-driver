@@ -349,6 +349,8 @@ static struct bio_wrapper* create_log_bio_wrapper_for_redo(
 static bool prepare_data_bio_for_redo(
 	struct walb_dev *wdev, struct bio_wrapper *biow,
 	u64 pos, unsigned int len);
+static struct bio_wrapper* create_discard_bio_wrapper_for_redo(
+	struct walb_dev *wdev, u64 pos, unsigned int len);
 static void destroy_bio_wrapper_for_redo(
 	struct walb_dev *wdev, struct bio_wrapper* biow);
 static void bio_end_io_for_redo(struct bio *bio, int error);
@@ -371,6 +373,10 @@ static u32 calc_checksum_for_redo(
 	unsigned int n_lb, unsigned int pbs, u32 salt,
 	struct list_head *biow_list);
 static void create_data_io_for_redo(
+	struct walb_dev *wdev,
+	struct walb_log_record *rec,
+	struct list_head *biow_list);
+static void create_discard_data_io_for_redo(
 	struct walb_dev *wdev,
 	struct walb_log_record *rec,
 	struct list_head *biow_list);
@@ -2369,6 +2375,49 @@ error0:
 }
 
 /**
+ * Create discard bio wrapper for redo.
+ *
+ * @wdev walb device.
+ * @pos IO position [logical block].
+ * @len IO size [logical block].
+ *
+ * RETURN:
+ *   Created bio_wrapper data in success, or NULL.
+ */
+static struct bio_wrapper* create_discard_bio_wrapper_for_redo(
+	struct walb_dev *wdev, u64 pos, unsigned int len)
+{
+	struct bio *bio;
+	struct bio_wrapper *biow;
+
+	/* bio_alloc_(GFP_NOIO, 0) will cause kernel panic. */
+	bio = bio_alloc(GFP_NOIO, 1);
+	if (!bio) { goto error0; }
+	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
+	if (!biow) { goto error1; }
+
+	bio->bi_bdev = wdev->ddev;
+	bio->bi_sector = (sector_t)pos;
+	bio->bi_rw = WRITE | REQ_DISCARD;
+	bio->bi_end_io = bio_end_io_for_redo;
+	bio->bi_private = biow;
+	bio->bi_size = len;
+
+	init_bio_wrapper(biow, bio);
+	ASSERT(biow->is_discard);
+	ASSERT(!biow->private_data);
+	return biow;
+#if 0
+error2:
+	destroy_bio_wrapper_dec(wdev, biow);
+#endif
+error1:
+	bio_put(bio);
+error0:
+	return NULL;
+}
+
+/**
  * Destroy bio wrapper created by create_bio_wrapper_for_redo().
  */
 static void destroy_bio_wrapper_for_redo(
@@ -2403,7 +2452,13 @@ static void bio_end_io_for_redo(struct bio *bio, int error)
 	ASSERT(biow);
 
 	LOGd_("pos %"PRIu64"\n", (u64)biow->pos);
-	ASSERT(biow->private_data); /* sector data */
+#ifdef WALB_DEBUG
+	if (biow->is_discard) {
+		ASSERT(!biow->private_data);
+	} else {
+		ASSERT(biow->private_data); /* sector data */
+	}
+#endif
 
 	biow->error = error;
 	bio_put(bio);
@@ -2601,7 +2656,6 @@ static bool redo_logpack(
 	struct walb_dev *wdev;
 	struct sector_data *sectd;
 	struct walb_logpack_header *logh;
-	struct walb_log_record *rec;
 	unsigned int i, invalid_idx = 0;
 	struct list_head biow_list_pack, biow_list_io, biow_list_ready;
 	unsigned int n_pb, n_lb, n;
@@ -2647,8 +2701,14 @@ retry1:
 	}
 
 	for (i = 0; i < logh->n_records; i++) {
-		rec = &logh->record[i];
+		struct walb_log_record *rec = &logh->record[i];
+		const bool is_discard =
+			test_bit_u32(LOG_RECORD_DISCARD, &rec->flags);
+		const bool is_padding =
+			test_bit_u32(LOG_RECORD_PADDING, &rec->flags);
+
 		ASSERT(test_bit_u32(LOG_RECORD_EXIST, &rec->flags));
+		ASSERT(list_empty(&biow_list_io));
 
 		n_lb = rec->io_size;
 		if (n_lb == 0) {
@@ -2656,6 +2716,20 @@ retry1:
 			continue;
 		}
 		n_pb = capacity_pb(pbs, n_lb);
+
+		if (is_discard) {
+			if (blk_queue_discard(bdev_get_queue(wdev->ddev))) {
+				create_discard_data_io_for_redo(
+					wdev, rec, &biow_list_ready);
+			} else {
+				/* Do nothing. */
+			}
+			continue;
+		}
+
+		/*
+		 * Normal IO.
+		 */
 
 		/* Move the corresponding biow to biow_list_io. */
 		ASSERT(list_empty(&biow_list_io));
@@ -2674,7 +2748,7 @@ retry1:
 		}
 
 		/* Padding record and data is just ignored. */
-		if (test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
+		if (is_padding) {
 			list_for_each_entry_safe(biow, biow_next,
 						&biow_list_io, list) {
 				list_del(&biow->list);
@@ -2844,7 +2918,6 @@ static u32 calc_checksum_for_redo(
  *
  * @wdev walb device.
  * @rec log record.
- * @pbs physical block size [bytes].
  * @biow_list biow list
  *   where each biow->private data is sector data.
  *   Each biow will be replaced for data io.
@@ -2865,6 +2938,7 @@ static void create_data_io_for_redo(
 	ASSERT_PBS(pbs);
 	ASSERT(biow_list);
 	ASSERT(!list_empty(biow_list));
+	ASSERT(!test_bit_u32(LOG_RECORD_DISCARD, &rec->flags));
 
 	off = rec->offset;
 	n_lb = rec->io_size;
@@ -2897,6 +2971,33 @@ static void create_data_io_for_redo(
 		list_move_tail(&biow->list, biow_list);
 	}
 	ASSERT(list_empty(&new_list));
+}
+
+/**
+ * Create discard data io for redo.
+ *
+ * @wdev walb device.
+ * @rec log record (must be discard)
+ * @biow_list biow list
+ *   created bio wrapper will be added to the tail.
+ */
+static void create_discard_data_io_for_redo(
+	struct walb_dev *wdev,
+	struct walb_log_record *rec,
+	struct list_head *biow_list)
+{
+	struct bio_wrapper *biow;
+
+	ASSERT(rec);
+	ASSERT(test_bit_u32(LOG_RECORD_DISCARD, &rec->flags));
+
+retry:
+	biow = create_discard_bio_wrapper_for_redo(wdev, rec->offset, rec->io_size);
+	if (!biow) {
+		schedule();
+		goto retry;
+	}
+	list_add_tail(&biow->list, biow_list);
 }
 
 /**
