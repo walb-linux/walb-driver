@@ -488,7 +488,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	bioe->error = error;
 	bi_cnt = atomic_read(&bio->bi_cnt);
 #ifdef WALB_FAST_ALGORITHM
-	if (bio->bi_rw & WRITE) {
+	if (bio->bi_rw & REQ_WRITE) {
 		if (bioe->bio_orig) {
 			/* 2 for data, 1 for log. */
 			ASSERT(bi_cnt == 2 || bi_cnt == 1);
@@ -741,6 +741,7 @@ static void clear_flush_bit_of_bio_entry_list(struct list_head *bioe_list)
 	const unsigned long mask = REQ_FLUSH | REQ_FUA;
 
 	list_for_each_entry(bioe, bioe_list, list) {
+		ASSERT(bioe->bio);
 		ASSERT(bioe->bio->bi_rw & REQ_WRITE);
 		bioe->bio->bi_rw &= ~mask;
 	}
