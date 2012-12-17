@@ -4525,6 +4525,10 @@ void iocore_finalize(struct walb_dev *wdev)
 	bio_wrapper_exit();
 	pack_cache_put();
 	treemap_memory_manager_put();
+
+#ifdef WALB_DEBUG
+	LOGn("n_allocated_pages: %u\n", bio_entry_get_n_allocated_pages());
+#endif
 }
 
 /**
