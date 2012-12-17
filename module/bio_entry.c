@@ -768,17 +768,13 @@ static void copied_bio_put(struct bio *bio)
 	int i;
 	ASSERT(bio);
 	ASSERT(!(bio->bi_flags & (1 << BIO_CLONED)));
-
-	if (bio->bi_size == 0 || (bio->bi_rw & REQ_DISCARD)) {
-		goto fin;
-	}
+	ASSERT(!(bio->bi_rw & REQ_DISCARD));
 
 	bio_for_each_segment(bvec, bio, i) {
 		__free_page(bvec->bv_page);
 		bvec->bv_page = NULL;
 	}
 
-fin:
 	ASSERT(atomic_read(&bio->bi_cnt) == 1);
 	bio_put(bio);
 }
@@ -902,10 +898,12 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 		bioe->bio = bio;
 		bioe->pos = bio->bi_sector;
 		bioe->len = bio->bi_size >> 9;
+		bioe->is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
 	} else {
 		bioe->bio = NULL;
 		bioe->pos = 0;
 		bioe->len = 0;
+		bioe->is_discard = false;
 	}
 
 #ifdef WALB_FAST_ALGORITHM
@@ -1104,7 +1102,9 @@ void init_copied_bio_entry(
 	ASSERT(bio_with_copy);
 
 	init_bio_entry(bioe, bio_with_copy);
-	bioe->is_own_pages = true;
+	if (bioe->len > 0 && !bioe->is_discard) {
+		bioe->is_own_pages = true;
+	}
 	bio_get(bio_with_copy);
 }
 #endif

@@ -36,6 +36,7 @@ struct bio_entry
 				 this is the original bio
 				 while bio member is the first splitted one.
 				 You must finalize the bio_orig. */
+	bool is_discard; /* If true the bio is discard request. */
 
 #ifdef WALB_FAST_ALGORITHM
 	bool is_copied; /* true if read is done by copy from pending data. */
