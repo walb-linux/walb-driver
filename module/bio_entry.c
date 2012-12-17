@@ -23,6 +23,13 @@ static struct kmem_cache *bio_entry_cache_ = NULL;
 /* shared coutner of the cache. */
 static atomic_t shared_cnt_ = ATOMIC_INIT(0);
 
+/*
+ * Allocated pages by alloc_page().
+ */
+#ifdef WALB_DEBUG
+static atomic_t n_allocated_pages_ = ATOMIC_INIT(0);
+#endif
+
 /*******************************************************************************
  * Struct data.
  *******************************************************************************/
@@ -60,6 +67,10 @@ struct bio_pair2
 /*******************************************************************************
  * Static functions prototype.
  *******************************************************************************/
+
+/* Page allocation/deallocation. */
+static inline struct page* alloc_page_inc(gfp_t gfp_mask);
+static inline void free_page_dec(struct page *page);
 
 /* For bio_cursor */
 #ifdef WALB_FAST_ALGORITHM
@@ -119,6 +130,34 @@ static struct bio_entry* bio_entry_list_get_first_nonzero(
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
+
+/**
+ * Page allocator with counter.
+ */
+static inline struct page* alloc_page_inc(gfp_t gfp_mask)
+{
+	struct page *p;
+
+	p = alloc_page(gfp_mask);
+#ifdef WALB_DEBUG
+	if (p) {
+		atomic_inc(&n_allocated_pages_);
+	}
+#endif
+	return p;
+}
+
+/**
+ * Page deallocator with counter.
+ */
+static inline void free_page_dec(struct page *page)
+{
+	ASSERT(page);
+	__free_page(page);
+#ifdef WALB_DEBUG
+	atomic_dec(&n_allocated_pages_);
+#endif
+}
 
 #ifdef WALB_FAST_ALGORITHM
 UNUSED static void bio_cursor_print(
@@ -768,17 +807,13 @@ static void copied_bio_put(struct bio *bio)
 	int i;
 	ASSERT(bio);
 	ASSERT(!(bio->bi_flags & (1 << BIO_CLONED)));
-
-	if (bio->bi_size == 0 || (bio->bi_rw & REQ_DISCARD)) {
-		goto fin;
-	}
+	ASSERT(!(bio->bi_rw & REQ_DISCARD));
 
 	bio_for_each_segment(bvec, bio, i) {
-		__free_page(bvec->bv_page);
+		free_page_dec(bvec->bv_page);
 		bvec->bv_page = NULL;
 	}
 
-fin:
 	ASSERT(atomic_read(&bio->bi_cnt) == 1);
 	bio_put(bio);
 }
@@ -902,10 +937,12 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 		bioe->bio = bio;
 		bioe->pos = bio->bi_sector;
 		bioe->len = bio->bi_size >> 9;
+		bioe->is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
 	} else {
 		bioe->bio = NULL;
 		bioe->pos = 0;
 		bioe->len = 0;
+		bioe->is_discard = false;
 	}
 
 #ifdef WALB_FAST_ALGORITHM
@@ -1060,7 +1097,7 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 	/* Allocate pages and copy original data. */
 	bio_for_each_segment(bvec, clone, i) {
 		ASSERT(!bvec->bv_page);
-		bvec->bv_page = alloc_page(gfp_mask);
+		bvec->bv_page = alloc_page_inc(gfp_mask);
 		if (!bvec->bv_page) {
 			goto error1;
 		}
@@ -1084,7 +1121,7 @@ fin:
 error1:
 	bio_for_each_segment(bvec, clone, i) {
 		if (bvec->bv_page) {
-			__free_page(bvec->bv_page);
+			free_page_dec(bvec->bv_page);
 			bvec->bv_page = NULL;
 		}
 	}
@@ -1104,7 +1141,9 @@ void init_copied_bio_entry(
 	ASSERT(bio_with_copy);
 
 	init_bio_entry(bioe, bio_with_copy);
-	bioe->is_own_pages = true;
+	if (bioe->len > 0 && !bioe->is_discard) {
+		bioe->is_own_pages = true;
+	}
 	bio_get(bio_with_copy);
 }
 #endif
@@ -1454,6 +1493,13 @@ bool split_bio_entry_list_for_chunk(
 error0:
 	return false;
 }
+
+#ifdef WALB_DEBUG
+unsigned int bio_entry_get_n_allocated_pages(void)
+{
+	return atomic_read(&n_allocated_pages_);
+}
+#endif
 
 /**
  * Initilaize bio_entry cache.

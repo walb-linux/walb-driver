@@ -36,6 +36,7 @@ struct bio_entry
 				 this is the original bio
 				 while bio member is the first splitted one.
 				 You must finalize the bio_orig. */
+	bool is_discard; /* If true the bio is discard request. */
 
 #ifdef WALB_FAST_ALGORITHM
 	bool is_copied; /* true if read is done by copy from pending data. */
@@ -95,6 +96,10 @@ bool should_split_bio_entry_list_for_chunk(
 bool split_bio_entry_list_for_chunk(
 	struct list_head *bio_ent_list,
 	unsigned int chunk_sectors, gfp_t gfp_mask);
+
+#ifdef WALB_DEBUG
+unsigned int bio_entry_get_n_allocated_pages(void);
+#endif
 
 /********************************************************************************
  * Init/exit.
