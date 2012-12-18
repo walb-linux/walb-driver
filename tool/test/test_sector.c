@@ -11,6 +11,7 @@
 #include "walb/sector.h"
 #include "random.h"
 #include "util.h"
+#include "walb_util.h"
 
 #define TEST_FILE "tmp/test_sector_data"
 

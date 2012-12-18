@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "util.h"
+#include "walb_util.h"
 #include "snapshot.h"
 
 /*******************************************************************************

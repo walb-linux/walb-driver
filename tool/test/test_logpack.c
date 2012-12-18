@@ -10,6 +10,7 @@
 
 #include "walb/block_size.h"
 #include "util.h"
+#include "walb_util.h"
 #include "logpack.h"
 
 #define DATA_DEV_SIZE (32 * 1024 * 1024)

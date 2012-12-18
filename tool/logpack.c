@@ -9,6 +9,7 @@
 
 #include "walb/block_size.h"
 #include "util.h"
+#include "walb_util.h"
 #include "logpack.h"
 
 /*******************************************************************************

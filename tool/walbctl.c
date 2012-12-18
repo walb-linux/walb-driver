@@ -24,6 +24,7 @@
 
 #include "random.h"
 #include "util.h"
+#include "walb_util.h"
 #include "logpack.h"
 #include "snapshot.h"
 #include "walblog_format.h"

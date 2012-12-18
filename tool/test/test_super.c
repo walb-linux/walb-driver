@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "util.h"
+#include "walb_util.h"
 #include "walb/super.h"
 
 #define DATA_DEV_SIZE (32 * 1024 * 1024)
