@@ -201,6 +201,13 @@ bool walb_read_super_sector(
 		goto error0;
 	}
 
+	/* Validate version number. */
+	if (sect->version != WALB_VERSION) {
+		LOGe("walb version mismatch: superblock: %u module %u\n",
+			sect->version, WALB_VERSION);
+		goto error0;
+	}
+
 #ifdef WALB_DEBUG
 	walb_print_super_sector(sect);
 #endif

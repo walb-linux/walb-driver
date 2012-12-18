@@ -23,11 +23,13 @@
  */
 struct walb_super_sector {
 
-	/* (4 * 4) + (2 * 4) + 16 + 64 + (8 * 5) = 144 bytes */
+	/* (2 * 2) + (4) +
+	   (4 * 4) + 16 + 64 + (8 * 4) = 136 bytes */
 
 	/*
 	 * Constant value inside the kernel.
 	 * Lock is not required to read these variables.
+	 * Freeze will be required to change the values.
 	 *
 	 * Constant value inside kernel.
 	 *   logical_bs, physical_bs
@@ -42,8 +44,19 @@ struct walb_super_sector {
 	 *   written_lsid
 	 */
 
+	/* sector type */
+	u16 sector_type; /* must be SECTOR_TYPE_SUPER. */
+
+	/* Version number. */
+	u16 version;
+
 	/* Check sum of the super block */
 	u32 checksum;
+
+	/************************************************************
+	 * The above properties must be shared by
+	 * any super sector version.
+	 ************************************************************/
 
 	/* Both log and data device have
 	   the same logical block size and physical block size.
@@ -55,19 +68,15 @@ struct walb_super_sector {
 	/* Number of physical blocks for snapshot metadata. */
 	u32 snapshot_metadata_size;
 
+	/* Log checksum must use this. */
+	u32 log_checksum_salt;
+
 	/* UUID of the wal device. */
 	u8 uuid[16];
 
 	/* Name of the walb device.
 	 * terminated by '\0'. */
 	char name[DISK_NAME_LEN];
-
-	/* sector type */
-	u16 sector_type; /* must be SECTOR_TYPE_SUPER. */
-	u16 reserved1;
-
-	/* Log checksum must use this. */
-	u32 log_checksum_salt;
 
 	/* Offset of the oldest log record inside ring buffer.
 	   [physical block] */
@@ -115,6 +124,8 @@ static inline int is_valid_super_sector_raw(
 
 	/* sector type */
 	CHECK(sect->sector_type == SECTOR_TYPE_SUPER);
+	/* version */
+	CHECK(sect->version == WALB_VERSION);
 	/* block size */
 	CHECK(sect->physical_bs == pbs);
 	CHECK(sect->physical_bs >= sect->logical_bs);

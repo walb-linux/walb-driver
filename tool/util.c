@@ -879,6 +879,7 @@ void init_super_sector_raw(
 	/* Set sector type. */
 	super_sect->sector_type = SECTOR_TYPE_SUPER;
 	/* Fill parameters. */
+	super_sect->version = WALB_VERSION;
 	super_sect->logical_bs = lbs;
 	super_sect->physical_bs = pbs;
 	super_sect->snapshot_metadata_size = n_sectors;

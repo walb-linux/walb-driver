@@ -12,18 +12,59 @@
 #define WALBLOG_HEADER_SIZE 4096
 
 /**
+ * For walblog_header.flags.
+ * Currently not used.
+ */
+#if 0
+enum {
+	/* The log means full backup. */
+	WL_HEADER_FULL_BACKUP,
+	/* The log is stream. */
+	WL_HEADER_STREAM,
+	/* The log is consolidated (lsid of each log is meaningless). */
+	WL_HEADER_CONSOLIDATED,
+};
+#endif
+
+/**
+ * Compression type.
+ * Currently not used.
+ */
+#if 0
+enum {
+	COMPRESS_NONE = 0,
+	COMPRESS_SNAPPY,
+	COMPRESS_GZIP,
+	COMPRESS_LZMA2,
+};
+#endif
+
+/**
  * Walblog file header.
  */
 struct walblog_header
 {
-	u16 header_size; /* must be WALBLOG_HEADER_SIZE */
-	u16 sector_type; /* must be SECTOR_TYPE_WALBLOG_HEADER */
-	u32 checksum; /* walblog_header checksum. */
+	/* Must be SECTOR_TYPE_WALBLOG_HEADER */
+	u16 sector_type;
 
-	/* walb version */
-	u32 version;
+	/* WalB version. */
+	u16 version;
 
-	/* checksum salt for log header and IO data. */
+	/* Must be WALBLOG_HEADER_SIZE */
+	u16 header_size;
+
+	u16 reserved1;
+
+	/* Checksum of walblog_header. */
+	u32 checksum;
+
+	/**************************************************
+	 * The above properties must be shared
+	 * by all version of walblog_header.
+	 **************************************************/
+
+	/* Checksum salt for log header and IO data.
+	   Walblog headers do not use the salt. */
 	u32 log_checksum_salt;
 
 	/* Block size */
@@ -37,7 +78,16 @@ struct walblog_header
 	u64 begin_lsid;
 	u64 end_lsid; /* may be larger than lsid of
 			 the next of the end logpack. */
-};
+#if 0
+	/* Flags. */
+	u32 flags;
+
+	/* Compression type. */
+	u16 compress_type;
+
+	u16 reserved2;
+#endif
+} __attribute__((packed));
 
 /**
  * Print walblog header.
