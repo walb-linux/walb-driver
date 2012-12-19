@@ -27,8 +27,6 @@
 #include <linux/fs.h>
 
 
-#define formatString(fmt, args...) \
-    walb::util::formatStringT<256>(fmt, ##args)
 #define RT_ERR(fmt, args...)                        \
     std::runtime_error(formatString(fmt, ##args))
 
@@ -38,28 +36,20 @@ namespace util {
 /**
  * Create a std::string using printf() like formatting.
  */
-template<int n>
-std::string formatStringT(const char * format, ...)
+std::string formatString(const char * format, ...)
 {
-    std::string st;
-    int ret;
-    st.resize(n);
+    char *p = nullptr;
 
-    for (int i = 0; i < 2; i++) {
-        va_list args;
-        va_start(args, format);
-        ret = ::vsnprintf(&st[0], st.size(), format, args);
-        va_end(args);
-        if (ret < 0) {
-            throw std::runtime_error("vsnprintf failed.");
-        }
-        if (static_cast<size_t>(ret) >= st.size()) {
-            st.resize(ret + 1);
-        } else {
-            break;
-        }
+    va_list args;
+    va_start(args, format);
+    int ret = ::vasprintf(&p, format, args);
+    va_end(args);
+    if (ret < 0) {
+        ::free(p);
+        throw std::runtime_error("vasprintf failed.");
     }
-    st.resize(ret);
+    std::string st(p, ret);
+    ::free(p);
     return st;
 }
 
@@ -91,7 +81,7 @@ void testFormatString()
     }
 
     {
-        std::string st(formatStringT<10>("%s%s", "0123456789", "0123456789"));
+        std::string st(formatString("%s%s", "0123456789", "0123456789"));
         ::printf("%s %zu\n", st.c_str(), st.size());
         assert(st.size() == 20);
     }
