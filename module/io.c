@@ -3652,7 +3652,7 @@ static void enqueue_wait_task_if_necessary(struct walb_dev *wdev)
 		wdev,
 		IOCORE_STATE_WAIT_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
-		wq_unbound_,
+		wq_nrt_,
 		task_wait_for_logpack_list);
 }
 
@@ -3667,7 +3667,7 @@ static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
 		wdev,
 		IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
-		wq_unbound_,
+		wq_nrt_,
 		task_submit_bio_wrapper_list);
 }
 
@@ -4322,6 +4322,7 @@ retry:
 static void flush_all_wq(void)
 {
 	flush_workqueue(wq_normal_);
+	flush_workqueue(wq_nrt_);
 	flush_workqueue(wq_unbound_);
 }
 

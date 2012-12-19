@@ -30,6 +30,7 @@ extern int walb_major_;
  * Workqueues.
  */
 extern struct workqueue_struct *wq_normal_;
+extern struct workqueue_struct *wq_nrt_;
 extern struct workqueue_struct *wq_unbound_;
 extern struct workqueue_struct *wq_misc_;
 

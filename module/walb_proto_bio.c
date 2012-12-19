@@ -79,6 +79,10 @@ module_param_named(max_logpack_size_kb, max_logpack_size_kb_, int, S_IRUGO);
 #define WQ_NORMAL_NAME "wq_normal"
 struct workqueue_struct *wq_normal_ = NULL;
 
+/* Non-reentrant wq for IO. */
+#define WQ_NRT_NAME "wq_nrt"
+struct workqueue_struct *wq_nrt_ = NULL;
+
 /* Unbound wq for IO. */
 #define WQ_UNBOUND_NAME "wq_unbound"
 struct workqueue_struct *wq_unbound_ = NULL;
@@ -547,15 +551,20 @@ static bool pre_register(void)
 		LOGe("failed to allocate a workqueue (wq_normal_).");
 		goto error3;
 	}
+	wq_nrt_ = alloc_workqueue(WQ_NRT_NAME, WQ_MEM_RECLAIM | WQ_NON_REENTRANT, 0);
+	if (!wq_nrt_) {
+		LOGe("failed to allocate a workqueue (wq_nrt_).");
+		goto error4;
+	}
 	wq_unbound_ = alloc_workqueue(WQ_UNBOUND_NAME, WQ_MEM_RECLAIM | WQ_UNBOUND, 0);
 	if (!wq_unbound_) {
 		LOGe("failed to allocate a workqueue (wq_unbound_).");
-		goto error4;
+		goto error5;
 	}
 	wq_misc_ = alloc_workqueue(WQ_MISC_NAME, WQ_MEM_RECLAIM, 0);
 	if (!wq_misc_) {
 		LOGe("failed to allocate a workqueue (wq_misc_).");
-		goto error5;
+		goto error6;
 	}
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -572,11 +581,13 @@ static bool pre_register(void)
 	return true;
 
 #if 0
-error6:
+error7:
 	destroy_workqueue(wq_misc_);
 #endif
-error5:
+error6:
 	destroy_workqueue(wq_unbound_);
+error5:
+	destroy_workqueue(wq_nrt_);
 error4:
 	destroy_workqueue(wq_normal_);
 error3:
@@ -597,6 +608,8 @@ static void post_unregister(void)
 	wq_misc_ = NULL;
 	destroy_workqueue(wq_unbound_);
 	wq_unbound_ = NULL;
+	destroy_workqueue(wq_nrt_);
+	wq_nrt_ = NULL;
 	destroy_workqueue(wq_normal_);
 	wq_normal_ = NULL;
 

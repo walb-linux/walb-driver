@@ -65,9 +65,11 @@ module_param_named(is_sync_superblock, is_sync_superblock_, int, S_IRUGO|S_IWUSR
 /**
  * Workqueues.
  */
-#define WQ_NORMAL_NAME "wq_normal"
+#define WQ_NORMAL_NAME "walb_wq_normal"
 struct workqueue_struct *wq_normal_ = NULL;
-#define WQ_UNBOUND_NAME "wq_unbound"
+#define WQ_NRT_NAME "walb_wq_nrt"
+struct workqueue_struct *wq_nrt_ = NULL;
+#define WQ_UNBOUND_NAME "walb_wq_unbound"
 struct workqueue_struct *wq_unbound_ = NULL;
 #define WQ_MISC_NAME "wq_misc"
 struct workqueue_struct *wq_misc_ = NULL;
@@ -1865,6 +1867,12 @@ static bool initialize_workqueues(void)
 		LOGe(MSG, WQ_NORMAL_NAME);
 		goto error;
 	}
+	wq_nrt_ = alloc_workqueue(WQ_NRT_NAME,
+				WQ_MEM_RECLAIM | WQ_NON_REENTRANT, 0);
+	if (!wq_nrt_) {
+		LOGe(MSG, WQ_NRT_NAME);
+		goto error;
+	}
 	wq_unbound_ = alloc_workqueue(WQ_UNBOUND_NAME,
 				WQ_MEM_RECLAIM | WQ_UNBOUND, WQ_UNBOUND_MAX_ACTIVE);
 	if (!wq_unbound_) {
@@ -1895,6 +1903,10 @@ static void finalize_workqueues(void)
 	if (wq_unbound_) {
 		destroy_workqueue(wq_unbound_);
 		wq_unbound_ = NULL;
+	}
+	if (wq_nrt_) {
+		destroy_workqueue(wq_nrt_);
+		wq_nrt_ = NULL;
 	}
 	if (wq_normal_) {
 		destroy_workqueue(wq_normal_);
