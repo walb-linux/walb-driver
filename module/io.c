@@ -285,7 +285,6 @@ static void task_wait_for_logpack_list(struct work_struct *work);
 #ifdef WALB_OVERLAPPING_SERIALIZE
 static void task_submit_write_bio_wrapper(struct work_struct *work);
 #endif
-static void task_wait_for_write_bio_wrapper(struct work_struct *work);
 static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work);
 static void task_submit_bio_wrapper_list(struct work_struct *work);
 
@@ -1122,26 +1121,8 @@ static void task_submit_write_bio_wrapper(struct work_struct *work)
 
 	/* Submit related bios. */
 	submit_write_bio_wrapper(biow, is_plugging);
-
-	/* Enqueue wait task. */
-	INIT_WORK(&biow->work, task_wait_for_write_bio_wrapper);
-	queue_work(wq_unbound_, &biow->work);
 }
 #endif
-
-/**
- * Datapack wait task.
- */
-static void task_wait_for_write_bio_wrapper(struct work_struct *work)
-{
-	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
-	struct walb_dev *wdev = biow->private_data;
-
-	ASSERT(wdev);
-
-	wait_for_write_bio_wrapper(wdev, biow);
-	complete(&biow->done);
-}
 
 /**
  * Wait for all related bio(s) for a bio_wrapper and gc it.
@@ -1245,16 +1226,10 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			} else {
 				/* Submit bio wrapper. */
 				submit_write_bio_wrapper(biow, is_plugging);
-				/* Enqueue wait task. */
-				INIT_WORK(&biow->work, task_wait_for_write_bio_wrapper);
-				queue_work(wq_unbound_, &biow->work);
 			}
 #else
 			/* Submit bio wrapper. */
 			submit_write_bio_wrapper(biow, is_plugging);
-			/* Enqueue wait task. */
-			INIT_WORK(&biow->work, task_wait_for_write_bio_wrapper);
-			queue_work(wq_unbound_, &biow->work);
 #endif
 		}
 		blk_finish_plug(&plug);
@@ -1805,9 +1780,6 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	struct bio_wrapper *biow, *biow_next;
-	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
-	unsigned long rtimeo;
-	int c;
 	struct walb_logpack_header *logh;
 	u64 written_lsid = INVALID_LSID;
 
@@ -1817,15 +1789,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 		list_del(&wpack->list);
 		list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
 			list_del(&biow->list);
-			c = 0;
-		retry:
-			rtimeo = wait_for_completion_timeout(&biow->done, timeo);
-			if (rtimeo == 0) {
-				LOGn("timeout(%d): biow %p bio %p pos %"PRIu64" len %u\n",
-					c, biow, biow->bio, (u64)biow->pos, biow->len);
-				c++;
-				goto retry;
-			}
+			wait_for_write_bio_wrapper(wdev, biow);
 			if (biow->error) {
 				LOGe("data IO error. to be read-only mode.\n");
 				set_read_only_mode(iocored);
@@ -4492,6 +4456,10 @@ bool iocore_initialize(struct walb_dev *wdev)
 
 	return true;
 
+#if 0
+error7:
+	finalize_worker(&iocored->gc_worker_data);
+#endif
 error6:
 	destroy_iocore_data(iocored);
 	wdev->private_data = NULL;
