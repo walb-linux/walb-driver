@@ -15,6 +15,16 @@
 #include <algorithm>
 #include <vector>
 #include <queue>
+#include <mutex>
+#include <cstring>
+
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
 
 namespace walb {
 namespace util {
@@ -24,22 +34,30 @@ namespace util {
  */
 std::string formatString(const char * format, ...)
 {
-    std::vector<char> buf(1024);
+    std::string st;
     va_list args;
+    int ret;
 
-    assert(format);
+    st.resize(256);
 
-    while (true) {
+    for (int i = 0; i < 2; i++) {
         va_start(args, format);
-        size_t ret = ::vsnprintf(&buf[0], buf.size(), format, args);
+        ret = ::vsnprintf(&st[0], st.size(), format, args);
         va_end(args);
-        if (ret >= buf.size()) {
-            buf.resize(ret + 1);
-        } else {
-            break;
+        if (ret < 0) {
+            throw std::runtime_error("vsnprintf failed.");
         }
+        if (static_cast<size_t>(ret) >= st.size()) {
+            st.resize(ret + 1);
+            continue;
+        }
+        if (static_cast<size_t>(ret) + 1 < st.size()) {
+            st.resize(ret + 1);
+        }
+        assert(ret + 1 == st.size());
+        break;
     }
-    return std::string(&buf[0]);
+    return st;
 }
 
 #if 0
@@ -101,6 +119,8 @@ private:
     int fd_;
     size_t deviceSize_;
 
+    std::once_flag close_flag_;
+
 public:
     BlockDevice(const std::string& name, const Mode mode, bool isDirect)
         : name_(name)
@@ -130,13 +150,18 @@ public:
     }
 
     ~BlockDevice() {
+        close();
+    }
 
-        if (fd_ > 0) {
-            if (::close(fd_) < 0) {
-                ::fprintf(::stderr, "close() failed.\n");
-            }
-            fd_ = -1;
-        }
+    void close() {
+        std::call_once(close_flag_, [&]() {
+                if (fd_ > 0) {
+                    if (::close(fd_) < 0) {
+                        ::fprintf(::stderr, "close() failed.\n");
+                    }
+                    fd_ = -1;
+                }
+            });
     }
 
     /**
@@ -160,9 +185,8 @@ public:
         while (s < size) {
             ssize_t ret = ::read(fd_, &buf[s], size - s);
             if (ret < 0) {
-                std::string e("read failed: ");
-                e += strerror(errno);
-                throw std::runtime_error(e);
+                throw std::runtime_error(
+                    formatString("read failed: %s.", ::strerror(errno)));
             }
             s += ret;
         }
@@ -180,24 +204,34 @@ public:
         while (s < size) {
             ssize_t ret = ::write(fd_, &buf[s], size - s);
             if (ret < 0) {
-                std::string e("write failed: ");
-                e += ::strerror(errno);
-                throw std::runtime_error(e);
+                throw std::runtime_error(
+                    formatString("write failed: %s.", ::strerror(errno)));
             }
             s += ret;
         }
     }
 
     /**
-     * Flush written data.
+     * fdatasync.
      */
-    void flush() {
+    void fdatasync() {
 
         int ret = ::fdatasync(fd_);
         if (ret) {
-            std::string e("flush failed: ");
-            e += ::strerror(errno);
-            throw std::runtime_error(e);
+            throw std::runtime_error(
+                formatString("fdsync failed: %s.", ::strerror(errno)));
+        }
+    }
+
+    /**
+     * fsync.
+     */
+    void fsync() {
+
+        int ret = ::fsync(fd_);
+        if (ret) {
+            throw std::runtime_error(
+                formatString("fsync failed: %s.", ::strerror(errno)));
         }
     }
 
@@ -222,10 +256,9 @@ private:
 
         fd = ::open(name.c_str(), flags);
         if (fd < 0) {
-            std::stringstream ss;
-            ss << "open failed: " << name
-               << " " << ::strerror(errno) << ".";
-            throw std::runtime_error(ss.str());
+            throw std::runtime_error(
+                formatString("open %s failed: %s.",
+                             name.c_str(), ::strerror(errno)));
         }
         return fd;
     }
