@@ -26,21 +26,27 @@
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 
+
+#define formatString(fmt, args...) \
+    walb::util::formatStringT<256>(fmt, ##args)
+#define RT_ERR(fmt, args...)                        \
+    std::runtime_error(formatString(fmt, ##args))
+
 namespace walb {
 namespace util {
 
 /**
  * Create a std::string using printf() like formatting.
  */
-std::string formatString(const char * format, ...)
+template<int n>
+std::string formatStringT(const char * format, ...)
 {
     std::string st;
-    va_list args;
     int ret;
-
-    st.resize(256);
+    st.resize(n);
 
     for (int i = 0; i < 2; i++) {
+        va_list args;
         va_start(args, format);
         ret = ::vsnprintf(&st[0], st.size(), format, args);
         va_end(args);
@@ -49,15 +55,46 @@ std::string formatString(const char * format, ...)
         }
         if (static_cast<size_t>(ret) >= st.size()) {
             st.resize(ret + 1);
-            continue;
+        } else {
+            break;
         }
-        if (static_cast<size_t>(ret) + 1 < st.size()) {
-            st.resize(ret + 1);
-        }
-        assert(ret + 1 == st.size());
-        break;
     }
+    st.resize(ret);
     return st;
+}
+
+/**
+ * formatString() test.
+ */
+void testFormatString()
+{
+    {
+        std::string st(formatString("%s%c%s", "012", (char)0, "345"));
+        for (int i = 0; i < st.size(); i++) {
+            printf("%0x ", st[i]);
+        }
+        printf("\n size %zu\n", st.size());
+        assert(st.size() == 7);
+    }
+
+    {
+        std::string st(formatString(""));
+        ::printf("%s %zu\n", st.c_str(), st.size());
+    }
+
+    {
+        try {
+            std::string st(formatString(nullptr));
+            assert(false);
+        } catch (std::runtime_error& e) {
+        }
+    }
+
+    {
+        std::string st(formatStringT<10>("%s%s", "0123456789", "0123456789"));
+        ::printf("%s %zu\n", st.c_str(), st.size());
+        assert(st.size() == 20);
+    }
 }
 
 #if 0
@@ -106,35 +143,31 @@ static inline double getTime()
     return t;
 }
 
-enum Mode
-{
-    READ_MODE, WRITE_MODE, MIX_MODE
-};
-
 class BlockDevice
 {
 private:
     std::string name_;
-    Mode mode_;
+    int openFlags_;
     int fd_;
     size_t deviceSize_;
 
     std::once_flag close_flag_;
 
 public:
-    BlockDevice(const std::string& name, const Mode mode, bool isDirect)
+    BlockDevice(const std::string& name, int flags)
         : name_(name)
-        , mode_(mode)
-        , fd_(openDevice(name, mode, isDirect))
+        , openFlags_(flags)
+        , fd_(openDevice(name, flags))
         , deviceSize_(getDeviceSizeFirst(fd_)) {
 #if 0
-        ::printf("device %s size %zu mode %d isDirect %d\n",
-                 name_.c_str(), size_, mode_, isDirect_);
+        ::printf("device %s size %zu isWrite %d isDirect %d\n",
+                 name_.c_str(), deviceSize_,
+                 openFlags_ & O_RDWR != 0, openFlags_ & O_DIRECT != 0);
 #endif
     }
     explicit BlockDevice(BlockDevice&& rhs)
         : name_(std::move(rhs.name_))
-        , mode_(rhs.mode_)
+        , openFlags_(rhs.openFlags_)
         , fd_(rhs.fd_)
         , deviceSize_(rhs.deviceSize_) {
 
@@ -143,7 +176,7 @@ public:
     BlockDevice& operator=(BlockDevice&& rhs) {
 
         name_ = std::move(rhs.name_);
-        mode_ = rhs.mode_;
+        openFlags_ = rhs.openFlags_;
         fd_ = rhs.fd_; rhs.fd_ = -1;
         deviceSize_= rhs.deviceSize_;
         return *this;
@@ -185,8 +218,7 @@ public:
         while (s < size) {
             ssize_t ret = ::read(fd_, &buf[s], size - s);
             if (ret < 0) {
-                throw std::runtime_error(
-                    formatString("read failed: %s.", ::strerror(errno)));
+                throw RT_ERR("read failed: %s.", ::strerror(errno));
             }
             s += ret;
         }
@@ -198,14 +230,12 @@ public:
     void write(off_t oft, size_t size, char* buf) {
 
         if (deviceSize_ < oft + size) { throw EofError(); }
-        if (mode_ == READ_MODE) { throw std::runtime_error("write is not permitted."); }
         ::lseek(fd_, oft, SEEK_SET);
         size_t s = 0;
         while (s < size) {
             ssize_t ret = ::write(fd_, &buf[s], size - s);
             if (ret < 0) {
-                throw std::runtime_error(
-                    formatString("write failed: %s.", ::strerror(errno)));
+                throw RT_ERR("write failed: %s.", ::strerror(errno));
             }
             s += ret;
         }
@@ -218,8 +248,7 @@ public:
 
         int ret = ::fdatasync(fd_);
         if (ret) {
-            throw std::runtime_error(
-                formatString("fdsync failed: %s.", ::strerror(errno)));
+            throw RT_ERR("fdsync failed: %s.", ::strerror(errno));
         }
     }
 
@@ -230,36 +259,52 @@ public:
 
         int ret = ::fsync(fd_);
         if (ret) {
-            throw std::runtime_error(
-                formatString("fsync failed: %s.", ::strerror(errno)));
+            throw RT_ERR("fsync failed: %s.", ::strerror(errno));
         }
     }
 
-    Mode getMode() const { return mode_; }
+    int getFlags() const { return openFlags_; }
     int getFd() const { return fd_; }
+
+    /**
+     * Get physical block device.
+     */
+    unsigned int getPhysicalBlockSize() const {
+
+        unsigned int pbs;
+
+        if (::ioctl(fd_, BLKPBSZGET, &pbs) < 0) {
+            throw RT_ERR("Getting physical block size failed.");
+        }
+        assert(pbs > 0);
+
+        return pbs;
+    }
 
 private:
 
     /**
      * Helper function for constructor.
      */
-    static int openDevice(const std::string& name, Mode mode, bool isDirect) {
+    static int openDevice(const std::string& name, int flags) {
 
-        int fd;
-        int flags = 0;
-        switch (mode) {
-        case READ_MODE:  flags = O_RDONLY; break;
-        case WRITE_MODE: flags = O_WRONLY; break;
-        case MIX_MODE:   flags = O_RDWR;   break;
-        }
-        if (isDirect) { flags |= O_DIRECT; }
-
-        fd = ::open(name.c_str(), flags);
+        /* Open */
+        int fd = ::open(name.c_str(), flags);
         if (fd < 0) {
-            throw std::runtime_error(
-                formatString("open %s failed: %s.",
-                             name.c_str(), ::strerror(errno)));
+            throw RT_ERR("open %s failed: %s.",
+                         name.c_str(), ::strerror(errno));
         }
+
+        /* Check the file is the block device. */
+        struct stat sb;
+        if (::stat(name.c_str(), &sb) < 0) {
+            throw RT_ERR("stat failed: %s.", ::strerror(errno));
+        }
+
+        if ((sb.st_mode & S_IFMT) != S_IFBLK) {
+            throw RT_ERR("%s is not a block device.", name.c_str());
+        }
+
         return fd;
     }
 
@@ -272,14 +317,12 @@ private:
         size_t ret;
         struct stat s;
         if (::fstat(fd, &s) < 0) {
-            std::string msg(formatString("fstat failed: %s.", ::strerror(errno)));
-            throw std::runtime_error(msg);
+            throw RT_ERR("fstat failed: %s.", ::strerror(errno));
         }
         if ((s.st_mode & S_IFMT) == S_IFBLK) {
             size_t size;
             if (::ioctl(fd, BLKGETSIZE64, &size) < 0) {
-                std::string msg(formatString("ioctl failed: %s.", ::strerror(errno)));
-                throw std::runtime_error(msg);
+                throw RT_ERR("ioctl failed: %s.", ::strerror(errno));
             }
             ret = size;
         } else {
