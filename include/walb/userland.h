@@ -6,6 +6,10 @@
 #ifndef WALB_USERLAND_H
 #define WALB_USERLAND_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Integer types */
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
@@ -46,6 +50,10 @@ typedef int64_t s64;
 #endif
 #ifndef max
 #define max(x, y) ((x) > (y) ? (x) : (y))
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif /* WALB_USERLAND_H */

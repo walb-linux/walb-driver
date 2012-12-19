@@ -10,6 +10,10 @@
 #include "util.h"
 #include "checksum.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*******************************************************************************
  * Definition of structures.
  *******************************************************************************/
@@ -241,5 +245,9 @@ static inline u64 get_next_lsid(const struct walb_logpack_header *lhead)
 	ASSERT(is_valid_logpack_header(lhead));
 	return get_next_lsid_unsafe(lhead);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_LOG_RECORD_H */

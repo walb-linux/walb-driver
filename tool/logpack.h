@@ -12,6 +12,9 @@
 #include "walb/log_record.h"
 #include "walb/log_device.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 bool read_logpack_header_from_wldev(
 	int fd,
@@ -112,5 +115,9 @@ static inline u64 logpack_get_lsid(struct logpack* logpack)
 	ASSERT_LOGPACK(logpack);
 	return logpack_get_header(logpack)->logpack_lsid;
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_LOGPACK_USER_H */

@@ -8,6 +8,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Disk name length.
  *
@@ -36,5 +40,9 @@ struct walb_disk_data
 	unsigned int minor;
 
 } __attribute__((packed));
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_DISK_NAME_H */

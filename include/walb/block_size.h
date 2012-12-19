@@ -8,6 +8,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*******************************************************************************
  * Macros.
  *******************************************************************************/
@@ -126,5 +130,9 @@ static inline u64 capacity_lb(unsigned int pbs, u64 capacity_pb)
 {
 	return addr_lb(pbs, capacity_pb);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_BLOCK_SIZE_H */

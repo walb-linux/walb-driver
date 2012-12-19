@@ -13,6 +13,10 @@
 #include "walb/log_device.h"
 #include "walb/snapshot.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Prototypes for utility functions.
  */
@@ -26,5 +30,8 @@ bool read_snapshot_sector(
 	int fd, const struct sector_data *super_sect,
 	struct sector_data *snap_sect, u32 idx);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_SNAPSHOT_USER_H */

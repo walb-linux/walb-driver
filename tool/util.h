@@ -13,6 +13,10 @@
 
 #include "walb/common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* utility */
 void print_binary_hex(const u8* data, size_t size);
 bool get_datetime_str(time_t t, char* buf, size_t n);
@@ -43,5 +47,9 @@ bool read_sectors_raw(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int 
 bool read_sector_raw(int fd, u8* sector_buf, u32 sector_size, u64 offset);
 bool write_sectors_raw(int fd, const u8* sectors_buf, u32 sector_size, u64 offset, int n);
 bool write_sector_raw(int fd, const u8* sector_buf, u32 sector_size, u64 offset);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_UTIL_USER_H */

@@ -10,6 +10,10 @@
 #include "super.h"
 #include "snapshot.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * FORMAT: Log pack.
  *
@@ -246,5 +250,9 @@ get_logpack_header_const(const struct sector_data *sect)
 	ASSERT_SECTOR_DATA(sect);
 	return (const struct walb_logpack_header *)(sect->data);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_LOG_DEVICE_H */

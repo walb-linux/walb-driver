@@ -8,6 +8,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Check macro for is_valid_* functions.
  */
@@ -111,5 +115,9 @@ static inline int test_bit_u32(int nr, const u32 *addr)
 	u32 mask = 1U << nr;
 	return (*addr & mask) != 0;
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_UTIL_H */

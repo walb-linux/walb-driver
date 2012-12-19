@@ -19,6 +19,10 @@
 
 #include "walb/userland.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Read /dev/urandom to generate random value.
  *
@@ -89,5 +93,9 @@ static inline void test_random()
 		printf("%d\n", get_random(10));
 	}
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_RANDOM_USER_H */

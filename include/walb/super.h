@@ -11,6 +11,10 @@
 #include "block_size.h"
 #include "util.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Assert macro.
  */
@@ -201,5 +205,9 @@ static inline const struct walb_super_sector* get_super_sector_const(
 	ASSERT_SECTOR_DATA(sect);
 	return (const struct walb_super_sector *)(sect->data);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_SUPER_H */

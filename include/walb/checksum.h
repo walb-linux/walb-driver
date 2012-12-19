@@ -8,6 +8,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Calculate checksum incrementally.
  *
@@ -58,5 +62,9 @@ static inline u32 checksum(const u8 *data, u32 size, u32 salt)
 {
 	return checksum_finish(checksum_partial(salt, data, size));
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_CHECKSUM_H */

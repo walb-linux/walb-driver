@@ -8,6 +8,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Determine whether a bit is set.
  *
@@ -39,5 +43,9 @@ static inline void clear_u64bits(int nr, u64 *bits)
 	ASSERT(0 <= nr && nr < 64);
 	(*bits) &= ~((u64)(1) << nr);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_U64BITS_H */

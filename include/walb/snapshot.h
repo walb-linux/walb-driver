@@ -10,6 +10,10 @@
 #include "sector.h"
 #include "u64bits.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*******************************************************************************
  * Macro definition.
  *******************************************************************************/
@@ -593,5 +597,9 @@ static inline int is_valid_snapshot_sector(const struct sector_data *sect)
 #endif
 	return (count == 0);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_SNAPSHOT_H */

@@ -11,6 +11,10 @@
 #include "walb/walb.h"
 #include "walb/log_device.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Bitmap functions for debug. */
 void print_bitmap(const u8* bitmap, size_t size);
 void print_u32bitmap(const u32 bitmap);
@@ -69,5 +73,9 @@ void init_super_sector(
 void print_super_sector(const struct sector_data *sect);
 bool read_super_sector(int fd, struct sector_data *sect);
 bool write_super_sector(int fd, const struct sector_data *sect);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_WALB_UTIL_USER_H */

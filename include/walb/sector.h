@@ -9,6 +9,10 @@
 #include "walb.h"
 #include "checksum.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*******************************************************************************
  * Data definitions.
  *******************************************************************************/
@@ -636,5 +640,8 @@ static inline void sector_array_memset(
 	}
 }
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_SECTOR_H */

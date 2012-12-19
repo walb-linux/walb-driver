@@ -16,6 +16,10 @@
 #include <sys/ioctl.h>
 #endif /* __KERNEL__ */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * If you want to assign device minor automatically, specify this.
  */
@@ -575,5 +579,9 @@ static inline bool is_walb_start_param_valid(
 error:
 	return false;
 };
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_IOCTL_H */

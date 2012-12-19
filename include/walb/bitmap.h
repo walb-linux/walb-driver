@@ -8,6 +8,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Bitmap structure for walb.
  */
@@ -199,5 +203,9 @@ static inline void walb_bitmap_print(struct walb_bitmap *bmp)
 	}
 	PRINT(KERN_INFO, "\n");
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_BITMAP_H */
