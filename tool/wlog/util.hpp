@@ -70,7 +70,7 @@ void testFormatString()
 {
     {
         std::string st(formatString("%s%c%s", "012", (char)0, "345"));
-        for (int i = 0; i < st.size(); i++) {
+        for (size_t i = 0; i < st.size(); i++) {
             printf("%0x ", st[i]);
         }
         printf("\n size %zu\n", st.size());

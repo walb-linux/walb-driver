@@ -13,20 +13,14 @@
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 
+#include "util.hpp"
 #include "aio_util.hpp"
 
 #include "walb/walb.h"
-// #include "util.h"
 
-#if 0
-#include <cstdint>
-typedef uint64_t u64;
-typedef uint32_t u32;
-typedef uint16_t u16;
-typedef uint8_t u8;
-#endif
-
-
+/**
+ * Wlcat command configuration.
+ */
 class Config
 {
 private:
@@ -38,40 +32,20 @@ public:
     Config(int argc, char* argv[]) {
 
         if (argc != 4) {
-            throw std::runtime_error("Specify just 3 values.");
+            throw RT_ERR("Specify just 3 values.");
         }
         deviceName_ = std::string(argv[1]);
         lsid0_ = static_cast<u64>(::atoll(argv[2]));
         lsid1_ = static_cast<u64>(::atoll(argv[3]));
 
         if (lsid0_ > lsid1_) {
-            throw std::runtime_error("Invalid lsid range.");
+            throw RT_ERR("Invalid lsid range.");
         }
     }
 
     const char* deviceName() const { return deviceName_.c_str(); }
     u64 lsid0() const { return lsid0_; }
     u64 lsid1() const { return lsid1_; }
-};
-
-/**
- * Superblock wrapper.
- */
-class WalbSuperBlock
-{
-private:
-    int fd_;
-    std::vector<u8> data_;
-
-public:
-    WalbSuperBlock(int fd, size_t blockSize)
-        : fd_(fd)
-        , data_(blockSize) {
-
-        /* now editing */
-    }
-
-    /* now editing */
 };
 
 /**
@@ -95,7 +69,7 @@ private:
 public:
     WalbLogRead(const Config& config, size_t bufferSize)
         : config_(config)
-        , bd_(config.deviceName(), walb::util::READ_MODE, true)
+        , bd_(config.deviceName(), O_RDONLY | O_DIRECT)
         , blockSize_(getBlockSize(bd_.getFd()))
         , queueSize_(getQueueSize(bufferSize, blockSize_))
         , aio_(bd_.getFd(), queueSize_)
@@ -108,7 +82,7 @@ public:
     bool read(int outFd) {
 
         if (outFd <= 0) {
-            throw std::runtime_error("outFd is not valid.");
+            throw RT_ERR("outFd is not valid.");
         }
 
         //readLogpack(lsid_);
@@ -122,6 +96,10 @@ public:
 private:
 
     bool readLogpack() {
+
+
+
+
 
         /* now editing */
         return false;
@@ -143,9 +121,7 @@ private:
         }
 
         if ((sb.st_mode & S_IFMT) != S_IFBLK) {
-            std::string msg(walb::util::formatString(
-                                "%s is not a block device.", deviceName));
-            throw std::runtime_error(msg);
+            throw RT_ERR("%s is not a block device.", deviceName);
         }
 
         return fd;
@@ -158,7 +134,7 @@ private:
         assert(fd > 0);
 
         if (::ioctl(fd, BLKPBSZGET, &pbs) < 0) {
-            throw std::runtime_error("Getting physical block size failed.");
+            throw RT_ERR("Getting physical block size failed.");
         }
         assert(pbs > 0);
 
@@ -169,7 +145,7 @@ private:
 
         size_t qs = bufferSize / blockSize;
         if (qs == 0) {
-            throw std::runtime_error("Queue size is must be positive.");
+            throw RT_ERR("Queue size is must be positive.");
         }
         return qs;
     }
