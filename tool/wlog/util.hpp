@@ -11,12 +11,36 @@
 #include <cassert>
 #include <stdexcept>
 #include <sstream>
+#include <cstdarg>
 #include <algorithm>
 #include <vector>
 #include <queue>
 
 namespace walb {
 namespace util {
+
+/**
+ * Create a std::string using printf() like formatting.
+ */
+std::string formatString(const char * format, ...)
+{
+    std::vector<char> buf(1024);
+    va_list args;
+
+    assert(format);
+
+    while (true) {
+        va_start(args, format);
+        size_t ret = ::vsnprintf(&buf[0], buf.size(), format, args);
+        va_end(args);
+        if (ret >= buf.size()) {
+            buf.resize(ret + 1);
+        } else {
+            break;
+        }
+    }
+    return std::string(&buf[0]);
+}
 
 #if 0
 /**
@@ -82,7 +106,7 @@ public:
         : name_(name)
         , mode_(mode)
         , fd_(openDevice(name, mode, isDirect))
-        , deviceSize_(getDeviceSizeFirst()) {
+        , deviceSize_(getDeviceSizeFirst(fd_)) {
 #if 0
         ::printf("device %s size %zu mode %d isDirect %d\n",
                  name_.c_str(), size_, mode_, isDirect_);
@@ -108,7 +132,9 @@ public:
     ~BlockDevice() {
 
         if (fd_ > 0) {
-            ::close(fd_);
+            if (::close(fd_) < 0) {
+                ::fprintf(::stderr, "close() failed.\n");
+            }
             fd_ = -1;
         }
     }
@@ -183,7 +209,7 @@ private:
     /**
      * Helper function for constructor.
      */
-    int openDevice(const std::string& name, Mode mode, bool isDirect) {
+    static int openDevice(const std::string& name, Mode mode, bool isDirect) {
 
         int fd;
         int flags = 0;
@@ -208,21 +234,19 @@ private:
      * Helper function for constructor.
      * Get device size in bytes.
      */
-    size_t getDeviceSizeFirst() const {
+    static size_t getDeviceSizeFirst(int fd) {
 
         size_t ret;
         struct stat s;
-        if (::fstat(fd_, &s) < 0) {
-            std::stringstream ss;
-            ss << "fstat failed: " << name_ << " " << ::strerror(errno) << ".";
-            throw std::runtime_error(ss.str());
+        if (::fstat(fd, &s) < 0) {
+            std::string msg(formatString("fstat failed: %s.", ::strerror(errno)));
+            throw std::runtime_error(msg);
         }
         if ((s.st_mode & S_IFMT) == S_IFBLK) {
             size_t size;
-            if (::ioctl(fd_, BLKGETSIZE64, &size) < 0) {
-                std::stringstream ss;
-                ss << "ioctl failed: " << name_ << " " << ::strerror(errno) << ".";
-                throw std::runtime_error(ss.str());
+            if (::ioctl(fd, BLKGETSIZE64, &size) < 0) {
+                std::string msg(formatString("ioctl failed: %s.", ::strerror(errno)));
+                throw std::runtime_error(msg);
             }
             ret = size;
         } else {
