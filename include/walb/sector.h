@@ -136,7 +136,7 @@ static inline struct sector_data* sector_alloc(
 
 	ASSERT(sector_size > 0);
 
-	sect = MALLOC(sizeof(struct sector_data), gfp_mask);
+	sect = (struct sector_data *)MALLOC(sizeof(struct sector_data), gfp_mask);
 	if (!sect) { goto error0; }
 	sect->size = sector_size;
 	sect->data = AMALLOC(sector_size, sector_size, gfp_mask);
@@ -286,7 +286,8 @@ static inline struct sector_data_array* sector_array_alloc(
 	ASSERT(sector_size > 0);
 
 	/* For itself. */
-	sect_ary = MALLOC(sizeof(struct sector_data_array), mask);
+	sect_ary = (struct sector_data_array *)
+		MALLOC(sizeof(struct sector_data_array), mask);
 	if (!sect_ary) { goto nomem0; }
 
 	/* For array of sector pointer. */
@@ -351,7 +352,7 @@ static inline int sector_array_realloc(
 
 	} else if (sect_ary->size < n_sectors) {
 		/* Grow */
-		new_ary = REALLOC(sect_ary->array,
+		new_ary = (struct sector_data **)REALLOC(sect_ary->array,
 				sizeof(struct sector_data *) * n_sectors, mask);
 		if (!new_ary) { goto error0; }
 		for (i = sect_ary->size; i < n_sectors; i++) {

@@ -107,13 +107,13 @@ inline void print_wlog_header(struct walblog_header* wh)
 
 	printf("*****walblog header*****\n"
 		"checksum: %08x\n"
-		"version: %"PRIu32"\n"
-		"log_checksum_salt: %"PRIu32"\n"
-		"logical_bs: %"PRIu32"\n"
-		"physical_bs: %"PRIu32"\n"
+		"version: %" PRIu32"\n"
+		"log_checksum_salt: %" PRIu32"\n"
+		"logical_bs: %" PRIu32"\n"
+		"physical_bs: %" PRIu32"\n"
 		"uuid: %s\n"
-		"begin_lsid: %"PRIu64"\n"
-		"end_lsid: %"PRIu64"\n",
+		"begin_lsid: %" PRIu64"\n"
+		"end_lsid: %" PRIu64"\n",
 		wh->checksum,
 		wh->version,
 		wh->log_checksum_salt,

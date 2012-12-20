@@ -6,6 +6,10 @@
 #ifndef WALB_COMMON_H
 #define WALB_COMMON_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Assert macro, integer typedef, etc.
  */
@@ -128,5 +132,9 @@ static inline void* amalloc(size_t size, size_t align)
 	} while(0)
 
 #define WALB_CHECK(cond) WALB_CHECK_LABEL(cond, error)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_COMMON_H */

@@ -81,7 +81,7 @@ static inline void print_walb_ctl(
 		"command: %d\n"
 		"val_int: %d\n"
 		"val_u32: %u\n"
-		"val_u64: %"PRIu64"\n"
+		"val_u64: %" PRIu64"\n"
 		"error: %d\n"
 
 		"u2k.wdevt: (%u:%u)\n"

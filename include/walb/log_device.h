@@ -134,7 +134,7 @@ static inline u64 get_super_sector0_offset(int sector_size)
 	}
 #endif
 	ASSERT(PAGE_SIZE % sector_size == 0);
-	return PAGE_SIZE/sector_size; /* skip reserved page */
+	return PAGE_SIZE / sector_size; /* skip reserved page */
 }
 
 /**

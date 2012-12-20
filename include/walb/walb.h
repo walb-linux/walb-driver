@@ -9,6 +9,10 @@
 #include "common.h"
 #include "disk_name.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define WALB_VERSION 1
 
 /**
@@ -62,5 +66,9 @@ static inline bool is_lsid_range_valid(u64 lsid0, u64 lsid1)
  * Maximum pending data size allowed.
  */
 #define MAX_PENDING_MB 16384 /* 16GB */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* WALB_H */

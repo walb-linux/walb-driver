@@ -123,6 +123,7 @@ struct walb_logpack_header {
 static inline unsigned int max_n_log_record_in_sector(unsigned int pbs);
 static inline void log_record_init(struct walb_log_record *rec);
 static inline int is_valid_log_record(struct walb_log_record *rec);
+static inline int is_valid_log_record_const(const struct walb_log_record *rec);
 static inline int is_valid_logpack_header(const struct walb_logpack_header *lhead);
 static inline u64 get_next_lsid(const struct walb_logpack_header *lhead);
 
@@ -169,6 +170,12 @@ static inline int is_valid_log_record(struct walb_log_record *rec)
 	return 1; /* valid */
 error:
 	return 0; /* invalid */
+}
+
+static inline int is_valid_log_record_const(
+	const struct walb_log_record *rec)
+{
+  return is_valid_log_record((struct walb_log_record *)rec);
 }
 
 /**
@@ -228,7 +235,7 @@ static inline int is_valid_logpack_header_with_checksum(
 error0:
 	return 0;
 error1:
-	LOGe("logpack header checksum is invalid (lsid %"PRIu64").\n",
+	LOGe("logpack header checksum is invalid (lsid %" PRIu64").\n",
 		lhead->logpack_lsid);
 	return 0;
 }

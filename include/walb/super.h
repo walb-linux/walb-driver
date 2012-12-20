@@ -160,7 +160,8 @@ error:
 static inline int is_valid_super_sector(const struct sector_data* sect)
 {
 	if (!is_valid_sector_data(sect)) { return 0; }
-	return is_valid_super_sector_raw(sect->data, sect->size);
+	return is_valid_super_sector_raw(
+		(const walb_super_sector *)sect->data, sect->size);
 }
 
 /**
