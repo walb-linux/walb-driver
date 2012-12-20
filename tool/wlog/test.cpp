@@ -1,9 +1,9 @@
+#include <cstdint>
 #include <cstdio>
-#include <string>
-#include "util.hpp"
+#include <cinttypes>
 
 int main()
 {
-  walb::util::testFormatString();
-
+    printf("%" PRIu64"\n", (uint64_t)0);
+    return 0;
 }

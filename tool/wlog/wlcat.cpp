@@ -14,6 +14,7 @@
 #include <linux/fs.h>
 
 #include "util.hpp"
+#include "walb_util.hpp"
 #include "aio_util.hpp"
 
 #include "walb/walb.h"
@@ -56,93 +57,117 @@ class WalbLogRead
 private:
     const Config& config_;
     walb::util::BlockDevice bd_;
+    walb::util::WalbSuperBlock super_;
     const size_t blockSize_;
     const size_t queueSize_;
     walb::aio::Aio aio_;
     walb::util::BlockBuffer bb_;
+    unsigned int nPending_;
     u64 lsid_;
-
-    class LsidToOffset {
-        /* now editing */
-    };
+    u64 aheadLsid_;
 
 public:
     WalbLogRead(const Config& config, size_t bufferSize)
         : config_(config)
         , bd_(config.deviceName(), O_RDONLY | O_DIRECT)
-        , blockSize_(getBlockSize(bd_.getFd()))
-        , queueSize_(getQueueSize(bufferSize, blockSize_))
+        , super_(bd_)
+        , blockSize_(bd_.getPhysicalBlockSize())
+        , queueSize_(getQueueSizeStatic(bufferSize, blockSize_))
         , aio_(bd_.getFd(), queueSize_)
-        , bb_(queueSize_, blockSize_)
-        , lsid_(config.lsid0()) {
+        , bb_(queueSize_ * 2, blockSize_)
+        , nPending_(0)
+        , lsid_(config.lsid0())
+        , aheadLsid_(lsid_) {
 
         LOGn("blockSize %zu\n", blockSize_); //debug
     }
 
-    bool read(int outFd) {
+    ~WalbLogRead() {
+        while (nPending_ > 0) {
+            aio_.waitOne();
+            nPending_--;
+        }
+    }
 
+    bool read(int outFd) {
         if (outFd <= 0) {
             throw RT_ERR("outFd is not valid.");
         }
 
-        //readLogpack(lsid_);
+        while (lsid_ < config_.lsid1()) {
+            walb::util::WalbLogpack pack = readLogpack();
+            bb_.free(pack.totalIoSize() + 1);
 
+            ::printf("%" PRIu64"\n", pack.header().logpack_lsid);
+        }
+
+        return false;
         /* now editing */
-
     }
-
-
 
 private:
 
-    bool readLogpack() {
+    walb::util::WalbLogpack readLogpack() {
 
+        walb::util::WalbLogpack pack(blockSize_, super_.getLogChecksumSalt());
 
+        std::queue<walb::aio::AioData> aioDataQ;
+        u64 lsid = readBlocks(1, aioDataQ);
+        walb::aio::AioData &aiod = aioDataQ.front();
+        struct walb_logpack_header *logh =
+            (struct walb_logpack_header *)aiod.buf;
+        pack.setHeader(logh);
+        aioDataQ.pop();
 
+        if (!pack.isHeaderValid()) {
+            throw RT_ERR("invalid logpack header.");
+        }
+        if (pack.header().logpack_lsid != lsid) {
+            throw RT_ERR("logpack %" PRIu64" is not the expected one %" PRIu64".",
+                         pack.header().logpack_lsid, lsid);
+        }
 
+        int nBlocks = pack.totalIoSize();
+        readBlocks(nBlocks, aioDataQ);
+        for (int i = 0; i < nBlocks; i++) {
+            walb::aio::AioData &aiod = aioDataQ.front();
+            pack.addBlock((u8 *)aiod.buf);
+            aioDataQ.pop();
+        }
+        assert(aioDataQ.empty());
 
-        /* now editing */
-        return false;
+        if (!pack.isDataValid()) {
+            throw RT_ERR("invalid logpack data.");
+        }
+        return std::move(pack);
     }
 
-    static int openDevice(const char* deviceName) {
-
-        int fd = ::open(deviceName, O_RDONLY | O_DIRECT);
-        if (fd < 0) {
-            throw std::runtime_error("Open failed.");
+    u64 readBlocks(size_t nr, std::queue<walb::aio::AioData>& aioDataQueue) {
+        if (nr > nPending_) {
+            throw RT_ERR("Number of requests exceeds the buffer size.");
         }
+        readAhead();
+        aio_.wait(nr, aioDataQueue);
+        nPending_ -= nr;
+        readAhead();
 
-        /* Check the file is the block device. */
-        struct stat sb;
-        if (::stat(deviceName, &sb) < 0) {
-            std::string msg("stat failed: ");
-            msg += strerror(errno);
-            throw std::runtime_error(msg);
-        }
-
-        if ((sb.st_mode & S_IFMT) != S_IFBLK) {
-            throw RT_ERR("%s is not a block device.", deviceName);
-        }
-
-        return fd;
+        u64 ret = lsid_;
+        lsid_ += nr;
+        return ret;
     }
 
-    static unsigned int getBlockSize(int fd) {
-
-        unsigned int pbs;
-
-        assert(fd > 0);
-
-        if (::ioctl(fd, BLKPBSZGET, &pbs) < 0) {
-            throw RT_ERR("Getting physical block size failed.");
+    void readAhead() {
+        while (nPending_ < queueSize_) {
+            off_t oft = super_.getOffsetFromLsid(lsid_) * blockSize_;
+            char *buf = bb_.alloc();
+            aio_.prepareRead(oft, blockSize_, buf);
+            aheadLsid_++;
+            nPending_++;
         }
-        assert(pbs > 0);
-
-        return pbs;
+        aio_.submit();
     }
 
-    static size_t getQueueSize(size_t bufferSize, size_t blockSize) {
-
+    static size_t getQueueSizeStatic(size_t bufferSize, size_t blockSize) {
         size_t qs = bufferSize / blockSize;
         if (qs == 0) {
             throw RT_ERR("Queue size is must be positive.");
@@ -163,6 +188,7 @@ int main(int argc, char* argv[])
     try {
         Config config(argc, argv);
         WalbLogRead wlRead(config, BUFFER_SIZE);
+        wlRead.read(1);
 
     } catch (std::runtime_error& e) {
         LOGe("Error: %s\n", e.what());

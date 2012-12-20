@@ -35,8 +35,8 @@ wlredo: wlredo.o
 .c.o:
 	$(CC) $(CFLAGS) -c $<
 
-wlcat.o: wlcat.cpp aio_util.hpp util.hpp
-wlredo.o: wlredo.cpp aio_util.hpp util.hpp
+wlcat.o: wlcat.cpp aio_util.hpp util.hpp walb_util.hpp
+wlredo.o: wlredo.cpp aio_util.hpp util.hpp walb_util.hpp
 #util.o: util.c util.h walb_random.h
 
 clean:

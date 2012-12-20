@@ -65,6 +65,12 @@ typedef std::shared_ptr<AioData> AioDataPtr;
 
 /**
  * Asynchronous IO wrapper.
+ *
+ * (1) call prepareXXX() once or more.
+ * (2) call submit() to submit all prepared IOs.
+ * (3) call waitOne() or wait().
+ *
+ * You can issue up to 'queueSize' IOs concurrently.
  */
 class Aio
 {
@@ -173,6 +179,10 @@ public:
      */
     bool prepareFlush() {
 
+        if (aioQueue_.size() > queueSize_) {
+            return false;
+        }
+
         auto* ptr = aioDataBuf_.next();
         aioQueue_.push(ptr);
         ptr->type = IOTYPE_FLUSH;
@@ -214,9 +224,9 @@ public:
     /**
      * Wait several IO(s) completed.
      *
-     * @nr number of waiting IO(s).
+     * @nr number of waiting IO(s). nr >= 0.
      * @events event array for temporary use.
-     * @aioQueue AioDataPtr of completed IO will be pushed into it.
+     * @aio Queue AioDataPtr of completed IO will be pushed into it.
      */
     void wait(size_t nr, std::queue<AioData>& aioDataQueue) {
 

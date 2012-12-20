@@ -28,7 +28,7 @@
 
 
 #define RT_ERR(fmt, args...)                        \
-    std::runtime_error(formatString(fmt, ##args))
+    std::runtime_error(walb::util::formatString(fmt, ##args))
 
 namespace walb {
 namespace util {
@@ -139,7 +139,10 @@ private:
     std::string name_;
     int openFlags_;
     int fd_;
-    size_t deviceSize_;
+    bool isBlockDevice_;
+    size_t deviceSize_; // [bytes].
+    unsigned int lbs_; // logical block size [bytes].
+    unsigned int pbs_; // physical block size [bytes].
 
     std::once_flag close_flag_;
 
@@ -148,35 +151,50 @@ public:
         : name_(name)
         , openFlags_(flags)
         , fd_(openDevice(name, flags))
-        , deviceSize_(getDeviceSizeFirst(fd_)) {
-#if 0
-        ::printf("device %s size %zu isWrite %d isDirect %d\n",
+        , isBlockDevice_(isBlockDeviceStatic(fd_))
+        , deviceSize_(getDeviceSizeStatic(fd_))
+        , lbs_(getLogicalBlockSizeStatic(fd_))
+        , pbs_(getPhysicalBlockSizeStatic(fd_)) {
+#if 1
+        ::printf("device %s size %zu isWrite %d isDirect %d isBlockDevice %d "
+                 "lbs %u pbs %u\n",
                  name_.c_str(), deviceSize_,
-                 openFlags_ & O_RDWR != 0, openFlags_ & O_DIRECT != 0);
+                 (openFlags_ & O_RDWR) != 0, (openFlags_ & O_DIRECT) != 0,
+                 isBlockDevice_, lbs_, pbs_);
 #endif
     }
+
     explicit BlockDevice(BlockDevice&& rhs)
         : name_(std::move(rhs.name_))
         , openFlags_(rhs.openFlags_)
         , fd_(rhs.fd_)
-        , deviceSize_(rhs.deviceSize_) {
+        , isBlockDevice_(rhs.isBlockDevice_)
+        , deviceSize_(rhs.deviceSize_)
+        , lbs_(rhs.lbs_)
+        , pbs_(rhs.pbs_) {
 
         rhs.fd_ = -1;
     }
+
     BlockDevice& operator=(BlockDevice&& rhs) {
 
         name_ = std::move(rhs.name_);
         openFlags_ = rhs.openFlags_;
         fd_ = rhs.fd_; rhs.fd_ = -1;
+        isBlockDevice_ = rhs.isBlockDevice_;
         deviceSize_= rhs.deviceSize_;
+        lbs_ = rhs.lbs_;
+        pbs_ = rhs.pbs_;
         return *this;
     }
 
-    ~BlockDevice() {
-        close();
-    }
+    ~BlockDevice() { close(); }
+
+    class EofError : public std::exception {};
 
     void close() {
+        //::fprintf(::stderr, "close called.\n");
+
         std::call_once(close_flag_, [&]() {
                 if (fd_ > 0) {
                     if (::close(fd_) < 0) {
@@ -188,16 +206,6 @@ public:
     }
 
     /**
-     * Get device size [byte].
-     */
-    size_t getDeviceSize() const {
-
-        return deviceSize_;
-    }
-
-    class EofError : public std::exception {};
-
-    /**
      * Read data and fill a buffer.
      */
     void read(off_t oft, size_t size, char* buf) {
@@ -206,9 +214,13 @@ public:
         ::lseek(fd_, oft, SEEK_SET);
         size_t s = 0;
         while (s < size) {
+            ::fprintf(::stderr, "read %d %p &buf[%zu], %zu\n", fd_, &buf[s], s, size - s);
             ssize_t ret = ::read(fd_, &buf[s], size - s);
             if (ret < 0) {
                 throw RT_ERR("read failed: %s.", ::strerror(errno));
+            }
+            if (ret == 0) {
+                throw EofError();
             }
             s += ret;
         }
@@ -226,6 +238,9 @@ public:
             ssize_t ret = ::write(fd_, &buf[s], size - s);
             if (ret < 0) {
                 throw RT_ERR("write failed: %s.", ::strerror(errno));
+            }
+            if (ret == 0) {
+                throw EofError();
             }
             s += ret;
         }
@@ -253,75 +268,117 @@ public:
         }
     }
 
+    /**
+     * Get device size [byte].
+     */
+    size_t getDeviceSize() const { return deviceSize_; }
+
+    /**
+     * Open flags.
+     */
     int getFlags() const { return openFlags_; }
+
+    /**
+     * File descriptor.
+     */
     int getFd() const { return fd_; }
 
     /**
-     * Get physical block device.
+     * RETURN:
+     *   True if the descriptor is of a block device file,
+     *   or false.
      */
-    unsigned int getPhysicalBlockSize() const {
+    bool isBlockDevice() const { return isBlockDevice_; }
 
-        unsigned int pbs;
-
-        if (::ioctl(fd_, BLKPBSZGET, &pbs) < 0) {
-            throw RT_ERR("Getting physical block size failed.");
-        }
-        assert(pbs > 0);
-
-        return pbs;
-    }
+    unsigned int getPhysicalBlockSize() const { return pbs_; }
+    unsigned int getLogicalBlockSize() const { return lbs_; }
 
 private:
-
     /**
      * Helper function for constructor.
      */
     static int openDevice(const std::string& name, int flags) {
 
-        /* Open */
         int fd = ::open(name.c_str(), flags);
         if (fd < 0) {
             throw RT_ERR("open %s failed: %s.",
                          name.c_str(), ::strerror(errno));
         }
+        return fd;
+    }
 
-        /* Check the file is the block device. */
-        struct stat sb;
-        if (::stat(name.c_str(), &sb) < 0) {
+    static void statStatic(int fd, struct stat *s) {
+
+        assert(fd >= 0);
+        assert(s);
+        if (::fstat(fd, s) < 0) {
             throw RT_ERR("stat failed: %s.", ::strerror(errno));
         }
+    }
 
-        if ((sb.st_mode & S_IFMT) != S_IFBLK) {
-            throw RT_ERR("%s is not a block device.", name.c_str());
+    static unsigned int getPhysicalBlockSizeStatic(int fd) {
+
+        assert(fd >= 0);
+
+        if (!isBlockDeviceStatic(fd)) {
+            return 512;
         }
 
-        return fd;
+        unsigned int pbs;
+        if (::ioctl(fd, BLKPBSZGET, &pbs) < 0) {
+            throw RT_ERR("Getting physical block size failed.");
+        }
+        assert(pbs > 0);
+        return pbs;
+    }
+
+    static unsigned int getLogicalBlockSizeStatic(int fd) {
+
+        assert(fd >= 0);
+
+        if (!isBlockDeviceStatic(fd)) {
+            return 512;
+        }
+
+        unsigned int lbs;
+        if (::ioctl(fd, BLKSSZGET, &lbs) < 0) {
+            throw RT_ERR("Geting logical block size failed.");
+        }
+        assert(lbs > 0);
+        return lbs;
+    }
+
+    static bool isBlockDeviceStatic(int fd) {
+
+        assert(fd >= 0);
+
+        struct stat s;
+        statStatic(fd, &s);
+        return (s.st_mode & S_IFMT) == S_IFBLK;
     }
 
     /**
      * Helper function for constructor.
      * Get device size in bytes.
+     *
+     * RETURN:
+     *   device size [bytes].
+     * EXCEPTION:
+     *   std::runtime_error.
      */
-    static size_t getDeviceSizeFirst(int fd) {
+    static size_t getDeviceSizeStatic(int fd) {
 
-        size_t ret;
-        struct stat s;
-        if (::fstat(fd, &s) < 0) {
-            throw RT_ERR("fstat failed: %s.", ::strerror(errno));
-        }
-        if ((s.st_mode & S_IFMT) == S_IFBLK) {
+        if (isBlockDeviceStatic(fd)) {
             size_t size;
             if (::ioctl(fd, BLKGETSIZE64, &size) < 0) {
                 throw RT_ERR("ioctl failed: %s.", ::strerror(errno));
             }
-            ret = size;
+            return size;
         } else {
-            ret = s.st_size;
+            struct stat s;
+            statStatic(fd, &s);
+            return static_cast<size_t>(s.st_size);
         }
-#if 0
-        std::cout << "devicesize: " << ret << std::endl; //debug
-#endif
-        return ret;
     }
 };
 
@@ -446,12 +503,14 @@ private:
     const size_t nr_;
     std::vector<char *> bufArray_;
     size_t idx_;
+    size_t allocated_;
 
 public:
     BlockBuffer(size_t nr, size_t blockSize)
         : nr_(nr)
         , bufArray_(nr)
-        , idx_(0) {
+        , idx_(0)
+        , allocated_(0) {
 
         assert(blockSize % 512 == 0);
         for (size_t i = 0; i < nr; i++) {
@@ -470,11 +529,24 @@ public:
         }
     }
 
-    char* next() {
+    char* alloc() {
 
+        if (allocated_ >= nr_) {
+            throw std::bad_alloc();
+        }
         char *ret = bufArray_[idx_];
         idx_ = (idx_ + 1) % nr_;
+        allocated_++;
         return ret;
+    }
+
+    void free(unsigned int nr) {
+
+        if (allocated_ < nr) {
+            allocated_ = 0;
+        } else {
+            allocated_ -= nr;
+        }
     }
 };
 
