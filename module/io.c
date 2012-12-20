@@ -4277,7 +4277,7 @@ retry:
 		/* No need to flush log device. */
 		return;
 	}
-	if (lsid < flush_lsid || jiffies < log_flush_jiffies) {
+	if (lsid < flush_lsid && jiffies < log_flush_jiffies) {
 		/* Too early to flush log device again. */
 		schedule();
 		goto retry;
