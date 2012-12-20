@@ -30,9 +30,14 @@ enum {
 	IOCORE_STATE_FAILURE = 0,
 	IOCORE_STATE_READ_ONLY,
 	IOCORE_STATE_LOG_OVERFLOW,
+
+	/* These are for workqueue tasks management. */
 	IOCORE_STATE_SUBMIT_TASK_WORKING,
+	IOCORE_STATE_SUBMIT_TASK_TERMINATING,
 	IOCORE_STATE_WAIT_TASK_WORKING,
+	IOCORE_STATE_WAIT_TASK_TERMINATING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
+	IOCORE_STATE_SUBMIT_DATA_TASK_TERMINATING,
 };
 
 /**
@@ -88,6 +93,13 @@ struct iocore_data
 	struct list_head datapack_submit_queue;
 	spinlock_t logpack_gc_queue_lock;
 	struct list_head logpack_gc_queue;
+
+	/*
+	 * In order to serialize tasks.
+	 */
+	struct completion logpack_submit_done;
+	struct completion logpack_wait_done;
+	struct completion datapack_submit_done;
 
 	/* Number of pending bio(s). */
 	atomic_t n_pending_bio;
@@ -980,13 +992,23 @@ static void task_submit_logpack_list(struct work_struct *work)
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	struct list_head wpack_list;
-	bool is_empty, is_working;
+	bool is_empty, ret;
 	struct list_head biow_list;
 	struct bio_wrapper *biow, *biow_next;
 	int n_io;
 
 	destroy_pack_work(pwork);
 	pwork = NULL;
+
+	/* Wait for the previous task if necessary. */
+	ret = test_bit(
+		IOCORE_STATE_SUBMIT_TASK_TERMINATING, &iocored->flags);
+	if (ret) {
+		wait_for_completion(&iocored->logpack_submit_done);
+	}
+
+	LOGd_("begin\n");
+	init_completion(&iocored->logpack_submit_done);
 
 	INIT_LIST_HEAD(&biow_list);
 	INIT_LIST_HEAD(&wpack_list);
@@ -998,10 +1020,14 @@ static void task_submit_logpack_list(struct work_struct *work)
 		spin_lock(&iocored->logpack_submit_queue_lock);
 		is_empty = list_empty(&iocored->logpack_submit_queue);
 		if (is_empty) {
-			is_working = test_and_clear_bit(
+			ret = test_and_set_bit(
+				IOCORE_STATE_SUBMIT_TASK_TERMINATING,
+				&iocored->flags);
+			ASSERT(!ret);
+			ret = test_and_clear_bit(
 				IOCORE_STATE_SUBMIT_TASK_WORKING,
 				&iocored->flags);
-			ASSERT(is_working);
+			ASSERT(ret);
 		}
 		n_io = 0;
 		list_for_each_entry_safe(biow, biow_next,
@@ -1039,6 +1065,14 @@ static void task_submit_logpack_list(struct work_struct *work)
 		/* Enqueue wait task. */
 		enqueue_wait_task_if_necessary(wdev);
 	}
+
+	LOGd_("end\n");
+
+	/* Notify the next task. */
+	ret = test_and_clear_bit(
+		IOCORE_STATE_SUBMIT_TASK_TERMINATING, &iocored->flags);
+	ASSERT(ret);
+	complete(&iocored->logpack_submit_done);
 }
 
 /**
@@ -1061,12 +1095,22 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 	struct walb_dev *wdev = pwork->data;
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
-	bool is_empty, is_working;
+	bool is_empty, ret;
 	struct list_head wpack_list;
 	int n_pack;
 
 	destroy_pack_work(pwork);
 	pwork = NULL;
+
+	/* Wait for the previous task if necessary. */
+	ret = test_bit(
+		IOCORE_STATE_WAIT_TASK_TERMINATING, &iocored->flags);
+	if (ret) {
+		wait_for_completion(&iocored->logpack_wait_done);
+	}
+
+	LOGd_("begin\n");
+	init_completion(&iocored->logpack_wait_done);
 
 	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
@@ -1076,10 +1120,14 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		spin_lock(&iocored->logpack_wait_queue_lock);
 		is_empty = list_empty(&iocored->logpack_wait_queue);
 		if (is_empty) {
-			is_working = test_and_clear_bit(
+			ret = test_and_set_bit(
+				IOCORE_STATE_WAIT_TASK_TERMINATING,
+				&iocored->flags);
+			ASSERT(!ret);
+			ret = test_and_clear_bit(
 				IOCORE_STATE_WAIT_TASK_WORKING,
 				&iocored->flags);
-			ASSERT(is_working);
+			ASSERT(ret);
 		}
 		n_pack = 0;
 		list_for_each_entry_safe(wpack, wpack_next,
@@ -1108,6 +1156,14 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		/* Wakeup the gc task. */
 		wakeup_worker(&iocored->gc_worker_data);
 	}
+
+	LOGd_("end\n");
+
+	/* Notify the next task. */
+	ret = test_and_clear_bit(
+		IOCORE_STATE_WAIT_TASK_TERMINATING, &iocored->flags);
+	ASSERT(ret);
+	complete(&iocored->logpack_wait_done);
 }
 
 /**
@@ -1158,9 +1214,18 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 	/* const bool is_plugging = true; */
 	unsigned int n_io;
 
-	LOGd_("begin.\n");
 	destroy_pack_work(pwork);
 	pwork = NULL;
+
+	/* Wait for the previous task if necessary. */
+	ret = test_bit(
+		IOCORE_STATE_SUBMIT_DATA_TASK_TERMINATING, &iocored->flags);
+	if (ret) {
+		wait_for_completion(&iocored->datapack_submit_done);
+	}
+
+	LOGd_("begin.\n");
+	init_completion(&iocored->datapack_submit_done);
 
 	INIT_LIST_HEAD(&biow_list);
 	while (true) {
@@ -1172,6 +1237,10 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		spin_lock(&iocored->datapack_submit_queue_lock);
 		is_empty = list_empty(&iocored->datapack_submit_queue);
 		if (is_empty) {
+			ret = test_and_set_bit(
+				IOCORE_STATE_SUBMIT_DATA_TASK_TERMINATING,
+				&iocored->flags);
+			ASSERT(!ret);
 			ret = test_and_clear_bit(
 				IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 				&iocored->flags);
@@ -1234,7 +1303,14 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		}
 		blk_finish_plug(&plug);
 	}
+
 	LOGd_("end.\n");
+
+	/* Notify the next task. */
+	ret = test_and_clear_bit(
+		IOCORE_STATE_SUBMIT_DATA_TASK_TERMINATING, &iocored->flags);
+	ASSERT(ret);
+	complete(&iocored->datapack_submit_done);
 }
 
 /**
@@ -3637,7 +3713,7 @@ static void enqueue_submit_task_if_necessary(struct walb_dev *wdev)
 		wdev,
 		IOCORE_STATE_SUBMIT_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
-		wq_normal_,
+		wq_unbound_,
 		task_submit_logpack_list);
 }
 
@@ -3652,7 +3728,7 @@ static void enqueue_wait_task_if_necessary(struct walb_dev *wdev)
 		wdev,
 		IOCORE_STATE_WAIT_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
-		wq_nrt_,
+		wq_unbound_,
 		task_wait_for_logpack_list);
 }
 
@@ -3667,7 +3743,7 @@ static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
 		wdev,
 		IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
-		wq_nrt_,
+		wq_unbound_,
 		task_submit_bio_wrapper_list);
 }
 
