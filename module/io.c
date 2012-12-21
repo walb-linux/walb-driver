@@ -434,6 +434,8 @@ static void wait_for_all_started_write_io_done(struct walb_dev *wdev);
 static void wait_for_all_pending_gc_done(struct walb_dev *wdev);
 static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid);
 static void flush_all_wq(void);
+static void change_state_from_working_to_terminating(
+	int working_bit, int terminating_bit, unsigned long *flag_p);
 
 /* Overlapping data functions. */
 #ifdef WALB_OVERLAPPING_SERIALIZE
@@ -990,12 +992,9 @@ static void task_submit_logpack_list(struct work_struct *work)
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct walb_dev *wdev = pwork->data;
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-	struct pack *wpack, *wpack_next;
 	struct list_head wpack_list;
-	bool is_empty, ret;
 	struct list_head biow_list;
-	struct bio_wrapper *biow, *biow_next;
-	int n_io;
+	bool ret;
 
 	destroy_pack_work(pwork);
 	pwork = NULL;
@@ -1013,6 +1012,11 @@ static void task_submit_logpack_list(struct work_struct *work)
 	INIT_LIST_HEAD(&biow_list);
 	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
+		struct pack *wpack, *wpack_next;
+		struct bio_wrapper *biow, *biow_next;
+		bool is_empty;
+		unsigned int n_io = 0;
+
 		ASSERT(list_empty(&biow_list));
 		ASSERT(list_empty(&wpack_list));
 
@@ -1020,16 +1024,11 @@ static void task_submit_logpack_list(struct work_struct *work)
 		spin_lock(&iocored->logpack_submit_queue_lock);
 		is_empty = list_empty(&iocored->logpack_submit_queue);
 		if (is_empty) {
-			ret = test_and_set_bit(
+			change_state_from_working_to_terminating(
+				IOCORE_STATE_SUBMIT_TASK_WORKING,
 				IOCORE_STATE_SUBMIT_TASK_TERMINATING,
 				&iocored->flags);
-			ASSERT(!ret);
-			ret = test_and_clear_bit(
-				IOCORE_STATE_SUBMIT_TASK_WORKING,
-				&iocored->flags);
-			ASSERT(ret);
 		}
-		n_io = 0;
 		list_for_each_entry_safe(biow, biow_next,
 					&iocored->logpack_submit_queue, list) {
 			list_move_tail(&biow->list, &biow_list);
@@ -1094,10 +1093,8 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct walb_dev *wdev = pwork->data;
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-	struct pack *wpack, *wpack_next;
-	bool is_empty, ret;
+	bool ret;
 	struct list_head wpack_list;
-	int n_pack;
 
 	destroy_pack_work(pwork);
 	pwork = NULL;
@@ -1114,22 +1111,20 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 
 	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
+		struct pack *wpack, *wpack_next;
+		bool is_empty;
+		unsigned int n_pack = 0;
 		ASSERT(list_empty(&wpack_list));
 
 		/* Dequeue logpack list from the submit queue. */
 		spin_lock(&iocored->logpack_wait_queue_lock);
 		is_empty = list_empty(&iocored->logpack_wait_queue);
 		if (is_empty) {
-			ret = test_and_set_bit(
+			change_state_from_working_to_terminating(
+				IOCORE_STATE_WAIT_TASK_WORKING,
 				IOCORE_STATE_WAIT_TASK_TERMINATING,
 				&iocored->flags);
-			ASSERT(!ret);
-			ret = test_and_clear_bit(
-				IOCORE_STATE_WAIT_TASK_WORKING,
-				&iocored->flags);
-			ASSERT(ret);
 		}
-		n_pack = 0;
 		list_for_each_entry_safe(wpack, wpack_next,
 					&iocored->logpack_wait_queue, list) {
 			list_move_tail(&wpack->list, &wpack_list);
@@ -1206,13 +1201,8 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct walb_dev *wdev = pwork->data;
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-	bool is_empty, ret;
 	struct list_head biow_list;
-	struct bio_wrapper *biow, *biow_next;
-	struct blk_plug plug;
-	const bool is_plugging = false;
-	/* const bool is_plugging = true; */
-	unsigned int n_io;
+	bool ret;
 
 	destroy_pack_work(pwork);
 	pwork = NULL;
@@ -1229,7 +1219,11 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 
 	INIT_LIST_HEAD(&biow_list);
 	while (true) {
+		struct bio_wrapper *biow, *biow_next;
+		bool is_empty;
 		u64 lsid = 0;
+		unsigned int n_io = 0;
+		struct blk_plug plug;
 
 		ASSERT(list_empty(&biow_list));
 
@@ -1237,16 +1231,11 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		spin_lock(&iocored->datapack_submit_queue_lock);
 		is_empty = list_empty(&iocored->datapack_submit_queue);
 		if (is_empty) {
-			ret = test_and_set_bit(
+			change_state_from_working_to_terminating(
+				IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 				IOCORE_STATE_SUBMIT_DATA_TASK_TERMINATING,
 				&iocored->flags);
-			ASSERT(!ret);
-			ret = test_and_clear_bit(
-				IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
-				&iocored->flags);
-			ASSERT(ret);
 		}
-		n_io = 0;
 		list_for_each_entry_safe(biow, biow_next,
 					&iocored->datapack_submit_queue, list2) {
 			list_move_tail(&biow->list2, &biow_list);
@@ -1282,6 +1271,8 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		/* Submit all. */
 		blk_start_plug(&plug);
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
+			const bool is_plugging = false;
+
 			list_del(&biow->list2);
 
 			/* Clear flush bit. */
@@ -3707,9 +3698,7 @@ error0:
  */
 static void enqueue_submit_task_if_necessary(struct walb_dev *wdev)
 {
-	struct pack_work *pwork;
-
-	pwork = enqueue_task_if_necessary(
+	enqueue_task_if_necessary(
 		wdev,
 		IOCORE_STATE_SUBMIT_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
@@ -3722,9 +3711,7 @@ static void enqueue_submit_task_if_necessary(struct walb_dev *wdev)
  */
 static void enqueue_wait_task_if_necessary(struct walb_dev *wdev)
 {
-	struct pack_work *pwork;
-
-	pwork = enqueue_task_if_necessary(
+	enqueue_task_if_necessary(
 		wdev,
 		IOCORE_STATE_WAIT_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
@@ -3737,9 +3724,7 @@ static void enqueue_wait_task_if_necessary(struct walb_dev *wdev)
  */
 static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
 {
-	struct pack_work *pwork;
-
-	pwork = enqueue_task_if_necessary(
+	enqueue_task_if_necessary(
 		wdev,
 		IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
@@ -4400,6 +4385,19 @@ static void flush_all_wq(void)
 	flush_workqueue(wq_normal_);
 	flush_workqueue(wq_nrt_);
 	flush_workqueue(wq_unbound_);
+}
+
+/**
+ * Set terminating_bit and clear working_bit.
+ */
+static void change_state_from_working_to_terminating(
+	int working_bit, int terminating_bit, unsigned long *flags_p)
+{
+	int ret;
+	ret = test_and_set_bit(terminating_bit, flags_p);
+	ASSERT(!ret);
+	ret = test_and_clear_bit(working_bit, flags_p);
+	ASSERT(ret);
 }
 
 /**
