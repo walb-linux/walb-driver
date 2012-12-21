@@ -498,18 +498,24 @@ void printThroughput(size_t blockSize, size_t nio, double periodInSec)
 /**
  * Aligned
  */
+template<typename T>
 static inline
-std::shared_ptr<char> allocateBlock(size_t alignment, size_t size)
+std::shared_ptr<T> allocateBlock(size_t alignment, size_t size)
 {
-    char *p = nullptr;
+    T *p = nullptr;
     int ret = ::posix_memalign((void **)&p, alignment, size);
     if (ret) {
         throw std::bad_alloc();
     }
     assert(p != nullptr);
-    return std::shared_ptr<char>(p, [](char *p) { ::free(p); });
+    //::printf("allocated %p\n", p);
+    return std::shared_ptr<T>(p, [](T *p) {
+            //::printf("freed %p\n", p);
+            ::free(p);
+        });
 }
 
+template<typename T>
 class BlockAllocator
 {
 private:
@@ -521,8 +527,8 @@ public:
         : alignment_(alignment)
         , size_(size) {}
 
-    std::shared_ptr<char> alloc() {
-        return allocateBlock(alignment_, size_);
+    std::shared_ptr<T> alloc() {
+        return allocateBlock<T>(alignment_, size_);
     }
 };
 

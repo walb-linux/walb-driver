@@ -11,6 +11,7 @@
 #include <cassert>
 #include <memory>
 #include <cstdlib>
+#include <functional>
 
 #include "util.hpp"
 #include "walb/super.h"
@@ -28,7 +29,13 @@ private:
     BlockDevice& bd_;
     const unsigned int pbs_;
     const u64 offset_;
-    std::unique_ptr<u8> data_;
+
+    struct FreeDeleter {
+        void operator()(u8 *p) {
+            ::free(p);
+        }
+    };
+    std::unique_ptr<u8, FreeDeleter> data_;
 
 public:
     WalbSuperBlock(BlockDevice& bd)
@@ -167,7 +174,6 @@ private:
         return (const struct walb_super_sector *)data_.get();
     }
 
-
     bool isValid() const {
         if (::is_valid_super_sector_raw(super(), pbs_) == 0) {
             return false;
@@ -176,107 +182,60 @@ private:
     }
 };
 
-class WalbLogpack
+/**
+ *
+ */
+class WalbLogpackHeader
 {
 private:
-    unsigned int pbs_; // physical block size.
-    u32 salt_; // checksum salt.
-    struct walb_logpack_header *logh_;
-    std::vector<u8 *> data_;
+    std::shared_ptr<u8> ptr_;
+    const unsigned int pbs_;
+    const u32 salt_;
 
 public:
-    WalbLogpack(unsigned int pbs, u32 checksumSalt)
-        : pbs_(pbs)
-        , salt_(checksumSalt)
-        , logh_()
-        , data_() {}
-    ~WalbLogpack() {}
-
-    WalbLogpack(WalbLogpack&& rhs)
-        : pbs_(rhs.pbs_)
-        , salt_(rhs.salt_)
-        , logh_(rhs.logh_)
-        , data_(std::move(rhs.data_)) {
-        rhs.logh_ = nullptr;
-    }
-
-    void setHeader(struct walb_logpack_header *logh) {
-        assert(logh);
-        logh_ = logh;
-        data_.reserve(logh->total_io_size);
-    }
-
-    void addBlock(u8 *block) {
-        assert(block);
-        data_.push_back(block);
+    WalbLogpackHeader(std::shared_ptr<u8> ptr, unsigned int pbs, u32 salt)
+        : ptr_(ptr)
+        , pbs_(pbs)
+        , salt_(salt) {
+        ASSERT_PBS(pbs);
     }
 
     struct walb_logpack_header& header() {
-        if (!logh_) {
-            throw RT_ERR("logpack header is null.");
-        }
-        return *logh_;
+        checkPointer();
+        return *(struct walb_logpack_header *)ptr_.get();
     }
 
     const struct walb_logpack_header& header() const {
-        if (!logh_) {
-            throw RT_ERR("logpack header is null.");
-        }
-        return *logh_;
+        checkPointer();
+        return *(struct walb_logpack_header *)ptr_.get();
     }
+
+    unsigned int pbs() const { return pbs_; }
+
+    u32 salt() const { return salt_; }
+    unsigned int totalIoSize() const { return header().total_io_size; }
+    unsigned int nRecords() const { return header().n_records; }
+    unsigned int nPadding() const { return header().n_padding; }
 
     /**
      * N'th log record.
      */
-    struct walb_log_record& operator[](size_t pos) {
-        return record(pos);
-    }
-
-    const struct walb_log_record& operator[](size_t pos) const {
-        return record(pos);
-    }
+    struct walb_log_record& operator[](size_t pos) { return record(pos); }
+    const struct walb_log_record& operator[](size_t pos) const { return record(pos); }
 
     struct walb_log_record& record(size_t pos) {
-        if (!logh_) { throw RT_ERR("Header is null."); }
         checkIndexRange(pos);
-        return logh_->record[pos];
+        return header().record[pos];
     }
 
     const struct walb_log_record& record(size_t pos) const {
-        if (!logh_) { throw RT_ERR("Header is null"); }
         checkIndexRange(pos);
-        return logh_->record[pos];
-    }
-
-    unsigned int totalIoSize() const {
-        return logh_ ? logh_->total_io_size : 0;
-    }
-
-    unsigned int nRecords() const {
-        return logh_ ? logh_->n_records : 0;
-    }
-
-    bool isHeaderValid() const {
-        if (!logh_) { return false; }
-        return ::is_valid_logpack_header_with_checksum(logh_, pbs_, salt_) != 0;
-    }
-
-    bool isDataValid() const {
-        if (!logh_) { return false; }
-        for (unsigned int i = 0; i < nRecords(); i++) {
-            const auto &rec = record(i);
-            if (!::is_valid_log_record_const(&rec)) {
-                ::printf("record %u invalid\n", i); /* debug */
-                return false;
-            }
-            if (rec.io_size == 0) { continue; }
-            if (calcIoChecksum(i) != rec.checksum) { return false; }
-        }
-        return true;
+        return header().record[pos];
     }
 
     bool isValid() const {
-        return isHeaderValid() && isDataValid();
+        return ::is_valid_logpack_header_with_checksum(
+            &header(), pbs_, salt()) != 0;
     }
 
     void printRecord(size_t pos) const {
@@ -322,37 +281,115 @@ public:
     }
 
 private:
+    void checkPointer() const {
+        if (!ptr_.get()) { throw RT_ERR("Header is null."); }
+    }
 
-    u32 calcIoChecksum(size_t pos) const {
-        const auto &rec = record(pos);
+    void checkIndexRange(size_t pos) const {
+        if (pos >= nRecords()) { throw RT_ERR("index out of range."); }
+    }
+};
+
+/**
+ * Log data of an IO.
+ */
+class WalbLogpackData
+{
+private:
+    WalbLogpackHeader& logh_;
+    size_t pos_;
+    std::vector<std::shared_ptr<u8> > data_;
+
+public:
+    WalbLogpackData(WalbLogpackHeader& logh, size_t pos)
+        : logh_(logh)
+        , pos_(pos)
+        , data_() {
+        assert(pos < logh.nRecords());
+        data_.reserve(logh.nRecords());
+    }
+
+    void addBlock(std::shared_ptr<u8> block) {
+        data_.push_back(block);
+    }
+
+    struct walb_log_record& record() {
+        return logh_.record(pos_);
+    }
+
+    const struct walb_log_record& record() const {
+        return logh_.record(pos_);
+    }
+
+    unsigned int pbs() const { return logh_.pbs(); }
+
+    bool isExist() const {
+        return test_bit_u32(LOG_RECORD_EXIST, &record().flags);
+    }
+
+    bool isPadding() const {
+        return test_bit_u32(LOG_RECORD_PADDING, &record().flags);
+    }
+
+    bool isDiscard() const {
+        return test_bit_u32(LOG_RECORD_DISCARD, &record().flags);
+    }
+
+    bool hasData() const {
+        return isExist() && !isDiscard();
+    }
+
+    bool hasDataForChecksum() const {
+        return isExist() && !isDiscard() && !isPadding();
+    }
+
+    unsigned int ioSizeLb() const {
+        return record().io_size;
+    }
+
+    unsigned int ioSizePb() const {
+        return capacity_pb(pbs(), ioSizeLb());
+    }
+
+    bool isValid() const {
+        const auto &rec = record();
+        if (!::is_valid_log_record_const(&rec)) {
+            return false;
+        }
+        if (hasDataForChecksum() && calcIoChecksum() != rec.checksum) {
+            return false;
+        }
+        return true;
+    }
+
+private:
+    u32 calcIoChecksum() const {
+        unsigned int pbs = logh_.pbs();
+        const auto &rec = record();
+        assert(hasDataForChecksum());
         assert(rec.io_size > 0);
-        size_t start = rec.lsid_local - 1;
-        unsigned int n_pb = capacity_pb(pbs_, rec.io_size);
-        unsigned int remaining =
-            static_cast<unsigned int>(rec.io_size) * LOGICAL_BLOCK_SIZE;
+        unsigned int nPb = ioSizePb();
+        unsigned int remaining = ioSizeLb() * LOGICAL_BLOCK_SIZE;
 
-        u32 csum = salt_;
-        for (size_t i = start; i < start + n_pb; i++) {
-            if (remaining >= pbs_) {
+        if (nPb != data_.size()) {
+            throw RT_ERR("There is not sufficient data block.");
+        }
+
+        u32 csum = logh_.salt();
+        for (size_t i = 0; i < nPb; i++) {
+            if (remaining >= pbs) {
                 csum = ::checksum_partial(
-                    csum, data_[i], pbs_);
-                remaining -= pbs_;
+                    csum, data_[i].get(), pbs);
+                remaining -= pbs;
             } else {
                 csum = ::checksum_partial(
-                    csum, data_[i], remaining);
+                    csum, data_[i].get(), remaining);
                 remaining = 0;
             }
         }
         csum = ::checksum_finish(csum);
-        ::printf("csum %08x(%u)\n", csum, csum); //debug
+        //::printf("csum %08x(%u)\n", csum, csum); //debug
         return csum;
-    }
-
-    void checkIndexRange(size_t pos) const {
-        assert(logh_);
-        if (pos >= logh_->n_records) {
-            throw RT_ERR("index out of range.");
-        }
     }
 };
 

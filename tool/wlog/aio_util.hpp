@@ -105,6 +105,9 @@ private:
     std::vector<struct iocb *> iocbs_; /* temporal use for submit. */
     std::vector<struct io_event> ioEvents_; /* temporal use for wait. */
 
+    /* Key: buffer pointer, value: aiodata if IO is completed, or NULL. */
+    std::unordered_map<char *, AioData *> pendingIOs_;
+
 public:
     /**
      * @fd Opened file descripter.
@@ -115,7 +118,8 @@ public:
         , queueSize_(queueSize)
         , aioDataBuf_(queueSize * 2)
         , iocbs_(queueSize)
-        , ioEvents_(queueSize) {
+        , ioEvents_(queueSize)
+        , pendingIOs_() {
 
         assert(fd_ >= 0);
         ::io_queue_init(queueSize_, &ctx_);
@@ -212,6 +216,8 @@ public:
             aioQueue_.pop();
             iocbs_[i] = &ptr->iocb;
             ptr->beginTime = beginTime;
+            assert(pendingIOs_.find(ptr->buf) == pendingIOs_.end());
+            pendingIOs_.insert(std::make_pair(ptr->buf, nullptr));
         }
         assert(aioQueue_.empty());
         int err = ::io_submit(ctx_, nr, &iocbs_[0]);
@@ -222,6 +228,26 @@ public:
     }
 
     /**
+     * Wait for an IO.
+     *
+     * Do not use wait()/waitOne() and waitFor() concurrently.
+     */
+    AioData* waitFor(char *buf) {
+        auto &m = pendingIOs_;
+        assert(m.find(buf) != m.end());
+        while (!m[buf]) {
+            auto *aiod = waitOne_(false);
+            assert(aiod->buf);
+            assert(m.find(aiod->buf) != m.end());
+            m[aiod->buf] = aiod;
+        }
+        auto *p = m[buf];
+        m.erase(buf);
+        assert(p);
+        return p;
+    }
+
+    /**
      * Wait several IO(s) completed.
      *
      * @nr number of waiting IO(s). nr >= 0.
@@ -229,6 +255,32 @@ public:
      * @aio Queue AioDataPtr of completed IO will be pushed into it.
      */
     void wait(size_t nr, std::queue<AioData>& aioDataQueue) {
+        wait_(nr, aioDataQueue, true);
+    }
+
+    /**
+     * Wait just one IO completed.
+     *
+     * @return aio data pointer.
+     *   This data is available at least before calling
+     *   queueSize_ times of prepareWrite/prepareRead.
+     */
+    AioData* waitOne() {
+        return waitOne_(true);
+    }
+
+private:
+
+    /**
+     * Wait several IO(s) completed.
+     *
+     * @nr number of waiting IO(s). nr >= 0.
+     * @events event array for temporary use.
+     * @aio Queue AioDataPtr of completed IO will be pushed into it.
+     * @isDeletePendingData true if items will be deleted from pendingIOs_.
+     */
+    void wait_(size_t nr, std::queue<AioData>& aioDataQueue,
+               bool isDeletePendingData) {
 
         size_t done = 0;
         bool isError = false;
@@ -246,6 +298,11 @@ public:
                 }
                 ptr->endTime = endTime;
                 aioDataQueue.push(*ptr);
+
+                assert(pendingIOs_.find(ptr->buf) != pendingIOs_.end());
+                if (isDeletePendingData) {
+                    pendingIOs_.erase(ptr->buf);
+                }
             }
             done += tmpNr;
         }
@@ -258,11 +315,13 @@ public:
     /**
      * Wait just one IO completed.
      *
+     * @isDeletePendingData true if items will be deleted from pendingIOs_.
+     *
      * @return aio data pointer.
      *   This data is available at least before calling
      *   queueSize_ times of prepareWrite/prepareRead.
      */
-    AioData* waitOne() {
+    AioData* waitOne_(bool isDeletePendingData) {
 
         auto& event = ioEvents_[0];
         int err = ::io_getevents(ctx_, 1, 1, &event, NULL);
@@ -277,8 +336,14 @@ public:
             throw EofError();
         }
         ptr->endTime = endTime;
+
+        assert(pendingIOs_.find(ptr->buf) != pendingIOs_.end());
+        if (isDeletePendingData) {
+            pendingIOs_.erase(ptr->buf);
+        }
         return ptr;
     }
+
 };
 
 } // namespace aio

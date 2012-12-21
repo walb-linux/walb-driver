@@ -64,10 +64,16 @@ private:
     const size_t queueSize_;
     walb::aio::Aio aio_;
     //walb::util::BlockBuffer bb_;
-    walb::util::BlockAllocator ba_;
-    std::queue<std::shared_ptr<char> > blkPtrQueue_;
-    unsigned int nPending_;
-    u64 lsid_;
+    walb::util::BlockAllocator<u8> ba_;
+
+    struct Block {
+        u64 lsid;
+        std::shared_ptr<u8> ptr;
+        Block(u64 lsid, std::shared_ptr<u8> ptr)
+            : lsid(lsid), ptr(ptr) {}
+    };
+
+    std::queue<Block> ioQ_;
     u64 aheadLsid_;
 
 public:
@@ -80,18 +86,19 @@ public:
         , aio_(bd_.getFd(), queueSize_)
           //, bb_(queueSize_ * 2, blockSize_)
         , ba_(blockSize_, blockSize_)
-        , blkPtrQueue_()
-        , nPending_(0)
-        , lsid_(config.lsid0())
-        , aheadLsid_(lsid_) {
+        , ioQ_()
+        , aheadLsid_(config.lsid0()) {
 
         LOGn("blockSize %zu\n", blockSize_); //debug
     }
 
     ~WalbLogRead() {
-        while (nPending_ > 0) {
-            aio_.waitOne();
-            nPending_--;
+        while (!ioQ_.empty()) {
+            Block &b = ioQ_.front();
+            try {
+                aio_.waitFor(reinterpret_cast<char *>(b.ptr.get()));
+            } catch (...) {}
+            ioQ_.pop();
         }
     }
 
@@ -100,8 +107,20 @@ public:
             throw RT_ERR("outFd is not valid.");
         }
 
-        while (lsid_ < config_.lsid1()) {
-            walb::util::WalbLogpack pack = readLogpack();
+        u64 lsid = config_.lsid0();
+
+        while (lsid < config_.lsid1()) {
+
+            readAhead();
+
+            walb::util::WalbLogpackHeader logh = readLogpackHeader();
+            //logh.print(); //debug
+
+            for (size_t i = 0; i < logh.nRecords(); i++) {
+                walb::util::WalbLogpackData logd(logh, i);
+                readLogpackData(logd);
+            }
+
             //bb_.free(pack.totalIoSize() + 1);
 
             // for (size_t i = 0; i < pack.totalIoSize(); i++) {
@@ -109,7 +128,7 @@ public:
             // }
 
             //::printf("freeblocks: %zu\n", bb_.getNumFreeBlocks());
-            ::printf("%" PRIu64"\n", pack.header().logpack_lsid);
+            ::printf("%" PRIu64"\n", logh.header().logpack_lsid);
         }
 
         return false;
@@ -118,75 +137,65 @@ public:
 
 private:
 
-    walb::util::WalbLogpack readLogpack() {
+    walb::util::WalbLogpackHeader readLogpackHeader() {
+        auto block = readBlock();
+        walb::util::WalbLogpackHeader logh(
+            block.ptr, super_.getPhysicalBlockSize(), super_.getLogChecksumSalt());
 
-        walb::util::WalbLogpack pack(blockSize_, super_.getLogChecksumSalt());
-
-        std::queue<walb::aio::AioData> aioDataQ;
-        u64 lsid = readBlocks(1, aioDataQ);
-        walb::aio::AioData &aiod = aioDataQ.front();
-        struct walb_logpack_header *logh =
-            (struct walb_logpack_header *)aiod.buf;
-        pack.setHeader(logh);
-        aioDataQ.pop();
-
-        if (!pack.isHeaderValid()) {
+        if (!logh.isValid()) {
             throw RT_ERR("invalid logpack header.");
         }
-        if (pack.header().logpack_lsid != lsid) {
+        if (logh.header().logpack_lsid != block.lsid) {
             throw RT_ERR("logpack %" PRIu64" is not the expected one %" PRIu64".",
-                         pack.header().logpack_lsid, lsid);
+                         logh.header().logpack_lsid, block.lsid);
         }
 
-        int nBlocks = pack.totalIoSize();
-        readBlocks(nBlocks, aioDataQ);
-        for (int i = 0; i < nBlocks; i++) {
-            walb::aio::AioData &aiod = aioDataQ.front();
-            pack.addBlock((u8 *)aiod.buf);
-            aioDataQ.pop();
-        }
-        assert(aioDataQ.empty());
-
-#if 1
-        pack.print(); // debug
-#endif
-
-        if (!pack.isDataValid()) {
-            throw RT_ERR("invalid logpack data.");
-        }
-        return std::move(pack);
+        /* now editing */
+        //return std::move(logh);
+        return logh;
     }
 
-    u64 readBlocks(size_t nr, std::queue<walb::aio::AioData>& aioDataQueue) {
-        size_t beforeSize = aioDataQueue.size();
-        if (nr > queueSize_) {
-            throw RT_ERR("Number of requests exceeds the buffer size.");
-        }
-        readAhead();
-        aio_.wait(nr, aioDataQueue);
-        size_t afterSize = aioDataQueue.size();
-        assert(afterSize - beforeSize == nr);
-        nPending_ -= nr;
-        readAhead();
+    void readLogpackData(walb::util::WalbLogpackData& logd) {
+        if (!logd.hasData()) { return; }
 
-        u64 ret = lsid_;
-        lsid_ += nr;
-        return ret;
+        std::queue<walb::aio::AioData> aioDataQ;
+        //::printf("ioSizePb: %u\n", logd.ioSizePb()); //debug
+
+        for (size_t i = 0; i < logd.ioSizePb(); i++) {
+            auto block = readBlock();
+            logd.addBlock(block.ptr);
+        }
+
+        if (!logd.isValid()) {
+            throw RT_ERR("invalid logpack data.");
+        }
+    }
+
+    /**
+     * Read next block.
+     */
+    Block readBlock() {
+        auto b = ioQ_.front();
+        char *p = reinterpret_cast<char *>(b.ptr.get());
+        auto *aiod = aio_.waitFor(p);
+        assert(aiod->buf == p);
+        ioQ_.pop();
+        return b;
     }
 
     void readAhead() {
         size_t nio = 0;
-        while (nPending_ < queueSize_) {
+        while (ioQ_.size() < queueSize_) {
             off_t oft = super_.getOffsetFromLsid(aheadLsid_) * blockSize_;
             //char *buf = bb_.alloc();
-            std::shared_ptr<char> p = ba_.alloc();
-            //::printf("nFreeBlocks: %zu\n", bb_.getNumFreeBlocks()); //debug
-            bool ret = aio_.prepareRead(oft, blockSize_, p.get());
+            Block b(aheadLsid_, ba_.alloc());
+            bool ret = aio_.prepareRead(
+                oft, blockSize_,
+                reinterpret_cast<char *>(b.ptr.get()));
             assert(ret);
-            blkPtrQueue_.push(p);
+            ioQ_.push(b);
             nio++;
             aheadLsid_++;
-            nPending_++;
         }
         if (nio > 0) {
             aio_.submit();
@@ -204,7 +213,7 @@ private:
 
 const size_t KILO = 1024;
 const size_t MEGA = KILO * 1024;
-const size_t BUFFER_SIZE = 32 * MEGA;
+const size_t BUFFER_SIZE = 1 * MEGA;
 
 int main(int argc, char* argv[])
 {
