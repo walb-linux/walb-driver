@@ -8,6 +8,8 @@
 #include <string>
 #include <cstdio>
 #include <stdexcept>
+#include <queue>
+#include <memory>
 
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -61,7 +63,9 @@ private:
     const size_t blockSize_;
     const size_t queueSize_;
     walb::aio::Aio aio_;
-    walb::util::BlockBuffer bb_;
+    //walb::util::BlockBuffer bb_;
+    walb::util::BlockAllocator ba_;
+    std::queue<std::shared_ptr<char> > blkPtrQueue_;
     unsigned int nPending_;
     u64 lsid_;
     u64 aheadLsid_;
@@ -74,7 +78,9 @@ public:
         , blockSize_(bd_.getPhysicalBlockSize())
         , queueSize_(getQueueSizeStatic(bufferSize, blockSize_))
         , aio_(bd_.getFd(), queueSize_)
-        , bb_(queueSize_ * 2, blockSize_)
+          //, bb_(queueSize_ * 2, blockSize_)
+        , ba_(blockSize_, blockSize_)
+        , blkPtrQueue_()
         , nPending_(0)
         , lsid_(config.lsid0())
         , aheadLsid_(lsid_) {
@@ -96,8 +102,13 @@ public:
 
         while (lsid_ < config_.lsid1()) {
             walb::util::WalbLogpack pack = readLogpack();
-            bb_.free(pack.totalIoSize() + 1);
+            //bb_.free(pack.totalIoSize() + 1);
 
+            // for (size_t i = 0; i < pack.totalIoSize(); i++) {
+            //     blkPtrQueue_.pop();
+            // }
+
+            //::printf("freeblocks: %zu\n", bb_.getNumFreeBlocks());
             ::printf("%" PRIu64"\n", pack.header().logpack_lsid);
         }
 
@@ -136,6 +147,10 @@ private:
         }
         assert(aioDataQ.empty());
 
+#if 1
+        pack.print(); // debug
+#endif
+
         if (!pack.isDataValid()) {
             throw RT_ERR("invalid logpack data.");
         }
@@ -143,11 +158,14 @@ private:
     }
 
     u64 readBlocks(size_t nr, std::queue<walb::aio::AioData>& aioDataQueue) {
-        if (nr > nPending_) {
+        size_t beforeSize = aioDataQueue.size();
+        if (nr > queueSize_) {
             throw RT_ERR("Number of requests exceeds the buffer size.");
         }
         readAhead();
         aio_.wait(nr, aioDataQueue);
+        size_t afterSize = aioDataQueue.size();
+        assert(afterSize - beforeSize == nr);
         nPending_ -= nr;
         readAhead();
 
@@ -157,14 +175,22 @@ private:
     }
 
     void readAhead() {
+        size_t nio = 0;
         while (nPending_ < queueSize_) {
-            off_t oft = super_.getOffsetFromLsid(lsid_) * blockSize_;
-            char *buf = bb_.alloc();
-            aio_.prepareRead(oft, blockSize_, buf);
+            off_t oft = super_.getOffsetFromLsid(aheadLsid_) * blockSize_;
+            //char *buf = bb_.alloc();
+            std::shared_ptr<char> p = ba_.alloc();
+            //::printf("nFreeBlocks: %zu\n", bb_.getNumFreeBlocks()); //debug
+            bool ret = aio_.prepareRead(oft, blockSize_, p.get());
+            assert(ret);
+            blkPtrQueue_.push(p);
+            nio++;
             aheadLsid_++;
             nPending_++;
         }
-        aio_.submit();
+        if (nio > 0) {
+            aio_.submit();
+        }
     }
 
     static size_t getQueueSizeStatic(size_t bufferSize, size_t blockSize) {
@@ -174,12 +200,11 @@ private:
         }
         return qs;
     }
-
 };
 
 const size_t KILO = 1024;
 const size_t MEGA = KILO * 1024;
-const size_t BUFFER_SIZE = 16 * MEGA;
+const size_t BUFFER_SIZE = 32 * MEGA;
 
 int main(int argc, char* argv[])
 {

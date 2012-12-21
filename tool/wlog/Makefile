@@ -18,8 +18,8 @@ CFLAGS += -pg
 else
 endif
 
-LDFLAGS = -laio -lpthread
-#LDFLAGS = -static -laio -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
+#LDFLAGS = -laio -lpthread
+LDFLAGS = -static -laio -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
 
 BINARIES = wlcat wlredo
 

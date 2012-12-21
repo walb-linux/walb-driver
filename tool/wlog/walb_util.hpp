@@ -38,10 +38,14 @@ public:
         , data_(allocAlignedBufferStatic(pbs_)) {
 
         /* Read the superblock. */
+#if 1
         ::printf("offset %" PRIu64" pbs %u\n", offset_ * pbs_, pbs_);
+#endif
         bd_.read(offset_ * pbs_, pbs_, (char *)data_.get());
 
-        print(); // debug
+#if 1
+        print(); //debug
+#endif
 
         /* Check. */
         if (!isValid()) {
@@ -193,7 +197,6 @@ public:
         , salt_(rhs.salt_)
         , logh_(rhs.logh_)
         , data_(std::move(rhs.data_)) {
-
         rhs.logh_ = nullptr;
     }
 
@@ -206,6 +209,13 @@ public:
     void addBlock(u8 *block) {
         assert(block);
         data_.push_back(block);
+    }
+
+    struct walb_logpack_header& header() {
+        if (!logh_) {
+            throw RT_ERR("logpack header is null.");
+        }
+        return *logh_;
     }
 
     const struct walb_logpack_header& header() const {
@@ -256,16 +266,59 @@ public:
         for (unsigned int i = 0; i < nRecords(); i++) {
             const auto &rec = record(i);
             if (!::is_valid_log_record_const(&rec)) {
+                ::printf("record %u invalid\n", i); /* debug */
                 return false;
             }
             if (rec.io_size == 0) { continue; }
-            if (calcIoChecksum(i) != 0) { return false; }
+            if (calcIoChecksum(i) != rec.checksum) { return false; }
         }
         return true;
     }
 
     bool isValid() const {
         return isHeaderValid() && isDataValid();
+    }
+
+    void printRecord(size_t pos) const {
+        const struct walb_log_record &rec = record(pos);
+        ::printf("record %zu\n"
+                 "  checksum: %08x(%u)\n"
+                 "  lsid: %" PRIu64"\n"
+                 "  lsid_local: %u\n"
+                 "  is_exist: %u\n"
+                 "  is_padding: %u\n"
+                 "  is_discard: %u\n"
+                 "  offset: %" PRIu64"\n"
+                 "  io_size: %u\n",
+                 pos,
+                 rec.checksum, rec.checksum,
+                 rec.lsid, rec.lsid_local,
+                 ::test_bit_u32(LOG_RECORD_EXIST, &rec.flags),
+                 ::test_bit_u32(LOG_RECORD_PADDING, &rec.flags),
+                 ::test_bit_u32(LOG_RECORD_DISCARD, &rec.flags),
+                 rec.offset, rec.io_size);
+    }
+
+    void printHeader() const {
+        const struct walb_logpack_header &logh = header();
+        ::printf("*****logpack header*****\n"
+                 "checksum: %08x(%u)\n"
+                 "n_records: %u\n"
+                 "n_padding: %u\n"
+                 "total_io_size: %u\n"
+                 "logpack_lsid: %" PRIu64"\n",
+                 logh.checksum, logh.checksum,
+                 logh.n_records,
+                 logh.n_padding,
+                 logh.total_io_size,
+                 logh.logpack_lsid);
+    }
+
+    void print() const {
+        printHeader();
+        for (size_t i = 0; i < nRecords(); i++) {
+            printRecord(i);
+        }
     }
 
 private:
@@ -287,11 +340,12 @@ private:
             } else {
                 csum = ::checksum_partial(
                     csum, data_[i], remaining);
-
                 remaining = 0;
             }
         }
-        return ::checksum_finish(csum);
+        csum = ::checksum_finish(csum);
+        ::printf("csum %08x(%u)\n", csum, csum); //debug
+        return csum;
     }
 
     void checkIndexRange(size_t pos) const {

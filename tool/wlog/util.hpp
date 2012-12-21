@@ -17,6 +17,7 @@
 #include <queue>
 #include <mutex>
 #include <cstring>
+#include <memory>
 
 #include <sys/time.h>
 #include <sys/types.h>
@@ -495,6 +496,37 @@ void printThroughput(size_t blockSize, size_t nio, double periodInSec)
 }
 
 /**
+ * Aligned
+ */
+static inline
+std::shared_ptr<char> allocateBlock(size_t alignment, size_t size)
+{
+    char *p = nullptr;
+    int ret = ::posix_memalign((void **)&p, alignment, size);
+    if (ret) {
+        throw std::bad_alloc();
+    }
+    assert(p != nullptr);
+    return std::shared_ptr<char>(p, [](char *p) { ::free(p); });
+}
+
+class BlockAllocator
+{
+private:
+    const size_t alignment_;
+    const size_t size_;
+
+public:
+    BlockAllocator(size_t alignment, size_t size)
+        : alignment_(alignment)
+        , size_(size) {}
+
+    std::shared_ptr<char> alloc() {
+        return allocateBlock(alignment_, size_);
+    }
+};
+
+/**
  * Ring buffer for block data.
  */
 class BlockBuffer
@@ -547,6 +579,12 @@ public:
         } else {
             allocated_ -= nr;
         }
+    }
+
+    size_t getNumFreeBlocks() const {
+
+        assert(nr_ >= allocated_);
+        return nr_ - allocated_;
     }
 };
 
