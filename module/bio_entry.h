@@ -98,6 +98,7 @@ bool split_bio_entry_list_for_chunk(
 	unsigned int chunk_sectors, gfp_t gfp_mask);
 
 #ifdef WALB_DEBUG
+unsigned int bio_entry_get_n_allocated(void);
 unsigned int bio_entry_get_n_allocated_pages(void);
 #endif
 

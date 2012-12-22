@@ -54,6 +54,7 @@ test-completion-mod-objs := test_completion.o
 test-vmalloc-mod-objs := test_vmalloc.o
 test-bdev-mod-objs := test_bdev.o
 test-sort-mod-objs := test_sort.o treemap.o
+test-bio-entry-mod-objs := test_bio_entry.o bio_entry.o bio_wrapper.o
 
 simple-blk-mod-objs := simple_blk.o
 BASE_BIO_OBJS = base_bio.o size_list.o
@@ -94,6 +95,7 @@ test-completion-mod.o \
 test-vmalloc-mod.o \
 test-bdev-mod.o \
 test-sort-mod.o \
+test-bio-entry-mod.o \
 simple-blk-mod.o \
 none-bio-mod.o \
 none-req-mod.o \

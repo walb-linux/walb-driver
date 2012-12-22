@@ -19,7 +19,7 @@
  *******************************************************************************/
 
 /* kmem cache for bio_entry. */
-#define KMEM_CACHE_BIO_WRAPPER_NAME "bio_wrapper_cache"
+#define KMEM_CACHE_BIO_WRAPPER_NAME "walb_bio_wrapper_cache"
 static struct kmem_cache *bio_wrapper_cache_ = NULL;
 
 /* shared coutner of the cache. */
@@ -264,6 +264,8 @@ void bio_wrapper_exit(void)
 {
 	int cnt;
 
+	LOGd("begin\n");
+	
 	cnt = atomic_dec_return(&shared_cnt_);
 
 	if (cnt > 0) {
@@ -277,6 +279,7 @@ void bio_wrapper_exit(void)
 		kmem_cache_destroy(bio_wrapper_cache_);
 		bio_wrapper_cache_ = NULL;
 	}
+	LOGd("end\n");
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

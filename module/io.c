@@ -4682,8 +4682,8 @@ void iocore_finalize(struct walb_dev *wdev)
 	wdev->private_data = NULL;
 
 	pack_work_exit();
-	bio_entry_exit();
 	bio_wrapper_exit();
+	bio_entry_exit();
 	pack_cache_put();
 	treemap_memory_manager_put();
 

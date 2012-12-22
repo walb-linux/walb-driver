@@ -17,11 +17,18 @@
  *******************************************************************************/
 
 /* kmem cache for bio_entry. */
-#define KMEM_CACHE_BIO_ENTRY_NAME "bio_entry_cache"
+#define KMEM_CACHE_BIO_ENTRY_NAME "walb_bio_entry_cache"
 static struct kmem_cache *bio_entry_cache_ = NULL;
 
 /* shared coutner of the cache. */
 static atomic_t shared_cnt_ = ATOMIC_INIT(0);
+
+/*
+ * Number of bio_entry allocated.
+ */
+#ifdef WALB_DEBUG
+static atomic_t n_allocated_ = ATOMIC_INIT(0);
+#endif
 
 /*
  * Allocated pages by alloc_page().
@@ -964,6 +971,9 @@ struct bio_entry* alloc_bio_entry(gfp_t gfp_mask)
 		LOGd("kmem_cache_alloc() failed.");
 		goto error0;
 	}
+#ifdef WALB_DEBUG
+	atomic_inc(&n_allocated_);
+#endif
 	return bioe;
 
 error0:
@@ -1011,6 +1021,9 @@ void destroy_bio_entry(struct bio_entry *bioe)
 		bio_put(bio);
 #endif
 	}
+#ifdef WALB_DEBUG
+	atomic_dec(&n_allocated_);
+#endif
 	kmem_cache_free(bio_entry_cache_, bioe);
 
 	LOGd_("destroy_bio_entry() end.\n");
@@ -1495,6 +1508,13 @@ error0:
 }
 
 #ifdef WALB_DEBUG
+unsigned int bio_entry_get_n_allocated(void)
+{
+	return atomic_read(&n_allocated_);
+}
+#endif
+
+#ifdef WALB_DEBUG
 unsigned int bio_entry_get_n_allocated_pages(void)
 {
 	return atomic_read(&n_allocated_pages_);
@@ -1507,7 +1527,7 @@ unsigned int bio_entry_get_n_allocated_pages(void)
 bool bio_entry_init(void)
 {
 	int cnt;
-	LOGd("bio_entry_init begin\n");
+	LOGd("begin\n");
 
 	cnt = atomic_inc_return(&shared_cnt_);
 	if (cnt > 1) {
@@ -1522,7 +1542,7 @@ bool bio_entry_init(void)
 		LOGe("failed to create a kmem_cache (bio_entry).\n");
 		goto error;
 	}
-	LOGd("bio_entry_init end\n");
+	LOGd("end\n");
 	return true;
 error:
 	LOGd("bio_entry_init failed\n");
@@ -1535,6 +1555,7 @@ error:
 void bio_entry_exit(void)
 {
 	int cnt;
+	LOGd("begin\n");
 
 	cnt = atomic_dec_return(&shared_cnt_);
 
@@ -1546,9 +1567,15 @@ void bio_entry_exit(void)
 		return;
 	} else {
 		ASSERT(cnt == 0);
+#ifdef WALB_DEBUG
+		LOGw("n_allocated %u n_allocated_pages %u\n",
+			bio_entry_get_n_allocated(),
+			bio_entry_get_n_allocated_pages());
+#endif
 		kmem_cache_destroy(bio_entry_cache_);
 		bio_entry_cache_ = NULL;
 	}
+	LOGd("end\n");
 }
 
 MODULE_LICENSE("Dual BSD/GPL");
