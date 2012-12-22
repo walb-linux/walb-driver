@@ -38,6 +38,8 @@ enum {
 	IOCORE_STATE_WAIT_TASK_TERMINATING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_TERMINATING,
+	IOCORE_STATE_WAIT_DATA_TASK_WORKING,
+	IOCORE_STATE_WAIT_DATA_TASK_TERMINATING,
 };
 
 /**
@@ -82,6 +84,8 @@ struct iocore_data
 	 *   writepack list.
 	 * datapack_submit_queue:
 	 *   bio_wrapper list.
+	 * datapack_wait_queue:
+	 *   bio_wrapper list.
 	 * logpack_gc_queue:
 	 *   writepack list.
 	 */
@@ -91,6 +95,8 @@ struct iocore_data
 	struct list_head logpack_wait_queue;
 	spinlock_t datapack_submit_queue_lock;
 	struct list_head datapack_submit_queue;
+	spinlock_t datapack_wait_queue_lock;
+	struct list_head datapack_wait_queue;
 	spinlock_t logpack_gc_queue_lock;
 	struct list_head logpack_gc_queue;
 
@@ -100,6 +106,7 @@ struct iocore_data
 	struct completion logpack_submit_done;
 	struct completion logpack_wait_done;
 	struct completion datapack_submit_done;
+	struct completion datapack_wait_done;
 
 	/* Number of pending bio(s). */
 	atomic_t n_pending_bio;
@@ -299,6 +306,7 @@ static void task_submit_write_bio_wrapper(struct work_struct *work);
 #endif
 static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work);
 static void task_submit_bio_wrapper_list(struct work_struct *work);
+static void task_wait_for_bio_wrapper_list(struct work_struct *work);
 
 /* Logpack GC */
 static void run_gc_logpack_list(void *data);
@@ -423,6 +431,7 @@ static struct bio_entry* submit_flush(struct block_device *bdev);
 static void enqueue_submit_task_if_necessary(struct walb_dev *wdev);
 static void enqueue_wait_task_if_necessary(struct walb_dev *wdev);
 static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev);
+static void enqueue_wait_data_task_if_necessary(struct walb_dev *wdev);
 static struct bio_wrapper* alloc_bio_wrapper_inc(
 	struct walb_dev *wdev, gfp_t gfp_mask);
 static void start_write_bio_wrapper(
@@ -1168,10 +1177,18 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 static void task_submit_write_bio_wrapper(struct work_struct *work)
 {
 	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
+	struct walb_dev *wdev = biow->private_data;
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	const bool is_plugging = true;
 
 	/* Submit related bios. */
 	submit_write_bio_wrapper(biow, is_plugging);
+
+	/* Enqueue wait task. */
+	spin_lock(&iocored->datapack_wait_queue_lock);
+	list_add_tail(&biow->list2, &iocored->datapack_wait_queue);
+	spin_unlock(&iocored->datapack_wait_queue_lock);
+	enqueue_wait_data_task_if_necessary(wdev);
 }
 #endif
 
@@ -1273,14 +1290,13 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
 			const bool is_plugging = false;
 
-			list_del(&biow->list2);
-
 			/* Clear flush bit. */
 			clear_flush_bit_of_bio_entry_list(&biow->bioe_list);
 
 #ifdef WALB_OVERLAPPING_SERIALIZE
 			if (biow->n_overlapping > 0) {
 				/* Enqueue submit task. */
+				list_del(&biow->list2);
 				INIT_WORK(&biow->work, task_submit_write_bio_wrapper);
 				queue_work(wq_unbound_, &biow->work);
 			} else {
@@ -1293,6 +1309,14 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 #endif
 		}
 		blk_finish_plug(&plug);
+
+		/* Enqueue wait task. */
+		spin_lock(&iocored->datapack_wait_queue_lock);
+		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
+			list_move_tail(&biow->list2, &iocored->datapack_wait_queue);
+		}
+		spin_unlock(&iocored->datapack_wait_queue_lock);
+		enqueue_wait_data_task_if_necessary(wdev);
 	}
 
 	LOGd_("end.\n");
@@ -1302,6 +1326,74 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		IOCORE_STATE_SUBMIT_DATA_TASK_TERMINATING, &iocored->flags);
 	ASSERT(ret);
 	complete(&iocored->datapack_submit_done);
+}
+
+/**
+ * Wait for bio wrapper list for data device.
+ */
+static void task_wait_for_bio_wrapper_list(struct work_struct *work)
+{
+	struct pack_work *pwork = container_of(work, struct pack_work, work);
+	struct walb_dev *wdev = pwork->data;
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct list_head biow_list;
+	bool ret;
+
+	destroy_pack_work(pwork);
+	pwork = NULL;
+
+	/* Wait for the previous task if necessary. */
+	ret = test_bit(
+		IOCORE_STATE_WAIT_DATA_TASK_TERMINATING, &iocored->flags);
+	if (ret) {
+		wait_for_completion(&iocored->datapack_wait_done);
+	}
+
+	LOGd_("begin.\n");
+	init_completion(&iocored->datapack_wait_done);
+
+	INIT_LIST_HEAD(&biow_list);
+	while (true) {
+		struct bio_wrapper *biow, *biow_next;
+		bool is_empty;
+		unsigned int n_io = 0;
+
+		ASSERT(list_empty(&biow_list));
+
+		/* Dequeue all bio wrappers from the submit queue. */
+		spin_lock(&iocored->datapack_wait_queue_lock);
+		is_empty = list_empty(&iocored->datapack_wait_queue);
+		if (is_empty) {
+			change_state_from_working_to_terminating(
+				IOCORE_STATE_WAIT_DATA_TASK_WORKING,
+				IOCORE_STATE_WAIT_DATA_TASK_TERMINATING,
+				&iocored->flags);
+		}
+		list_for_each_entry_safe(biow, biow_next,
+					&iocored->datapack_wait_queue, list2) {
+			list_move_tail(&biow->list2, &biow_list);
+			n_io++;
+			if (n_io == N_IO_BULK) { break; }
+		}
+		spin_unlock(&iocored->datapack_wait_queue_lock);
+		if (is_empty) { break; }
+		ASSERT(n_io <= N_IO_BULK);
+
+		/* Wait for write bio wrapper and notify to gc task. */
+		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
+			list_del(&biow->list2);
+			wait_for_write_bio_wrapper(wdev, biow);
+			complete(&biow->done);
+		}
+	}
+
+	LOGd_("end.\n");
+
+	/* Notify the next task. */
+	ret = test_and_clear_bit(
+		IOCORE_STATE_WAIT_DATA_TASK_TERMINATING, &iocored->flags);
+	ASSERT(ret);
+	complete(&iocored->datapack_wait_done);
 }
 
 /**
@@ -1855,8 +1947,19 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 	list_for_each_entry_safe(wpack, wpack_next, wpack_list, list) {
 		list_del(&wpack->list);
 		list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
+			const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
+			unsigned long rtimeo;
+			int c = 0;
+			
 			list_del(&biow->list);
-			wait_for_write_bio_wrapper(wdev, biow);
+               retry:
+			rtimeo = wait_for_completion_timeout(&biow->done, timeo);
+			if (rtimeo == 0) {
+				LOGn("timeout(%d): biow %p bio %p pos %"PRIu64" len %u\n",
+					c, biow, biow->bio, (u64)biow->pos, biow->len);
+				c++;
+				goto retry;
+			}
 			if (biow->error) {
 				LOGe("data IO error. to be read-only mode.\n");
 				set_read_only_mode(iocored);
@@ -2048,10 +2151,12 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	INIT_LIST_HEAD(&iocored->logpack_submit_queue);
 	INIT_LIST_HEAD(&iocored->logpack_wait_queue);
 	INIT_LIST_HEAD(&iocored->datapack_submit_queue);
+	INIT_LIST_HEAD(&iocored->datapack_wait_queue);
 	INIT_LIST_HEAD(&iocored->logpack_gc_queue);
 	spin_lock_init(&iocored->logpack_submit_queue_lock);
 	spin_lock_init(&iocored->logpack_wait_queue_lock);
 	spin_lock_init(&iocored->datapack_submit_queue_lock);
+	spin_lock_init(&iocored->datapack_wait_queue_lock);
 	spin_lock_init(&iocored->logpack_gc_queue_lock);
 
 	/* To wait all IO for underlying devices done. */
@@ -3730,6 +3835,19 @@ static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
 		&get_iocored_from_wdev(wdev)->flags,
 		wq_unbound_,
 		task_submit_bio_wrapper_list);
+}
+
+/**
+ * Enqueue datapack wait task if necessary.
+ */
+static void enqueue_wait_data_task_if_necessary(struct walb_dev *wdev)
+{
+	enqueue_task_if_necessary(
+		wdev,
+		IOCORE_STATE_WAIT_DATA_TASK_WORKING,
+		&get_iocored_from_wdev(wdev)->flags,
+		wq_unbound_,
+		task_wait_for_bio_wrapper_list);
 }
 
 /**
