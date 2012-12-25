@@ -134,6 +134,84 @@ static inline double getTime()
     return t;
 }
 
+class EofError : public std::exception {
+    virtual const char *what() const noexcept {
+        return "eof error";
+    }
+};
+
+class FdReader
+{
+private:
+    int fd_;
+public:
+    FdReader(int fd)
+        : fd_(fd) {}
+
+    /**
+     * read.
+     */
+    void read(char *buf, size_t size) {
+        size_t s = 0;
+        while (s < size) {
+            ssize_t ret = ::read(fd_, &buf[s], size - s);
+            if (ret < 0) {
+                throw RT_ERR("read failed: %s.", ::strerror(errno));
+            }
+            if (ret == 0) {
+                throw EofError();
+            }
+            s += ret;
+        }
+    }
+};
+
+class FdWriter
+{
+private:
+    int fd_;
+public:
+    FdWriter(int fd)
+        : fd_(fd) {}
+
+    /**
+     * write.
+     */
+    void write(char *buf, size_t size) {
+        size_t s = 0;
+        while (s < size) {
+            ssize_t ret = ::write(fd_, &buf[s], size - s);
+            if (ret < 0) {
+                throw RT_ERR("write failed: %s.", ::strerror(errno));
+            }
+            if (ret == 0) {
+                throw EofError();
+            }
+            s += ret;
+        }
+    }
+
+    /**
+     * fdatasync.
+     */
+    void fdatasync() {
+        int ret = ::fdatasync(fd_);
+        if (ret) {
+            throw RT_ERR("fdsync failed: %s.", ::strerror(errno));
+        }
+    }
+
+    /**
+     * fsync.
+     */
+    void fsync() {
+        int ret = ::fsync(fd_);
+        if (ret) {
+            throw RT_ERR("fsync failed: %s.", ::strerror(errno));
+        }
+    }
+};
+
 class BlockDevice
 {
 private:
@@ -156,7 +234,7 @@ public:
         , deviceSize_(getDeviceSizeStatic(fd_))
         , lbs_(getLogicalBlockSizeStatic(fd_))
         , pbs_(getPhysicalBlockSizeStatic(fd_)) {
-#if 1
+#if 0
         ::printf("device %s size %zu isWrite %d isDirect %d isBlockDevice %d "
                  "lbs %u pbs %u\n",
                  name_.c_str(), deviceSize_,
@@ -190,8 +268,6 @@ public:
     }
 
     ~BlockDevice() { close(); }
-
-    class EofError : public std::exception {};
 
     void close() {
         //::fprintf(::stderr, "close called.\n");

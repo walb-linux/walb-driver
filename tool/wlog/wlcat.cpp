@@ -69,12 +69,21 @@ private:
     struct Block {
         u64 lsid;
         std::shared_ptr<u8> ptr;
+        walb::aio::AioDataPtr aiod;
         Block(u64 lsid, std::shared_ptr<u8> ptr)
-            : lsid(lsid), ptr(ptr) {}
+            : lsid(lsid), ptr(ptr), aiod() {}
     };
 
     std::queue<Block> ioQ_;
     u64 aheadLsid_;
+
+    class InvalidLogpackData : public std::exception
+    {
+    public:
+        virtual const char *what() const noexcept {
+            return "invalid logpack data.";
+        }
+    };
 
 public:
     WalbLogRead(const Config& config, size_t bufferSize)
@@ -93,55 +102,99 @@ public:
     }
 
     ~WalbLogRead() {
+        //::printf("~WalbLogRead\n"); //debug
         while (!ioQ_.empty()) {
             Block &b = ioQ_.front();
             try {
-                aio_.waitFor(reinterpret_cast<char *>(b.ptr.get()));
+                aio_.waitFor(b.aiod->key);
             } catch (...) {}
             ioQ_.pop();
         }
     }
 
-    bool read(int outFd) {
+    void read(int outFd) {
         if (outFd <= 0) {
             throw RT_ERR("outFd is not valid.");
         }
 
-        u64 lsid = config_.lsid0();
+        walb::util::FdWriter writer(outFd);
 
+        /* Write walblog header. */
+        walb::util::WalbLogFileHeader wh;
+        wh.init(super_.getPhysicalBlockSize(), super_.getLogChecksumSalt(),
+                super_.getUuid(), config_.lsid0(), config_.lsid1());
+#if 1
+        wh.write(outFd);
+#endif
+
+        u64 lsid = config_.lsid0();
         while (lsid < config_.lsid1()) {
+            bool isEnd = false;
 
             readAhead();
-
             walb::util::WalbLogpackHeader logh = readLogpackHeader();
             //logh.print(); //debug
 
+            std::queue<std::shared_ptr<walb::util::WalbLogpackData> > q;
+
+            /* Read a logpack */
             for (size_t i = 0; i < logh.nRecords(); i++) {
-                walb::util::WalbLogpackData logd(logh, i);
-                readLogpackData(logd);
+                readAhead();
+                std::shared_ptr<walb::util::WalbLogpackData> p(
+                    new walb::util::WalbLogpackData(logh, i));
+                try {
+                    readLogpackData(*p);
+                    q.push(p);
+                } catch (InvalidLogpackData& e) {
+                    logh.shrink(i);
+                    isEnd = true;
+                    break;
+                }
             }
 
-            //bb_.free(pack.totalIoSize() + 1);
+            /* Write the logpack. */
+            if (logh.nRecords() > 0) {
+                /* Write the header. */
+                auto p = logh.getBlock();
+#if 1
+                writer.write(reinterpret_cast<char *>(p.get()), logh.pbs());
+#endif
+                /* Write the IO data. */
+                while (!q.empty()) {
+                    auto logd = q.front();
+                    q.pop();
+                    if (!logd->hasData()) {
+                        continue;
+                    }
+                    for (size_t i = 0; i < logd->ioSizePb(); i++) {
+                        auto p = logd->getBlock(i);
+#if 1
+                        writer.write(reinterpret_cast<char *>(p.get()), logh.pbs());
+#endif
+                    }
+                }
+            }
 
-            // for (size_t i = 0; i < pack.totalIoSize(); i++) {
-            //     blkPtrQueue_.pop();
-            // }
+            //::printf("%" PRIu64"\n", logh.header().logpack_lsid);
 
-            //::printf("freeblocks: %zu\n", bb_.getNumFreeBlocks());
-            ::printf("%" PRIu64"\n", logh.header().logpack_lsid);
+            if (isEnd) {
+                break;
+            }
+            lsid = logh.nextLogpackLsid();
         }
-
-        return false;
-        /* now editing */
+#if 1
+        writer.fdatasync();
+#endif
     }
 
 private:
-
+    /**
+     * Read a logpack header.
+     */
     walb::util::WalbLogpackHeader readLogpackHeader() {
         auto block = readBlock();
         walb::util::WalbLogpackHeader logh(
             block.ptr, super_.getPhysicalBlockSize(), super_.getLogChecksumSalt());
-
         if (!logh.isValid()) {
             throw RT_ERR("invalid logpack header.");
         }
@@ -149,25 +202,21 @@ private:
             throw RT_ERR("logpack %" PRIu64" is not the expected one %" PRIu64".",
                          logh.header().logpack_lsid, block.lsid);
         }
-
-        /* now editing */
-        //return std::move(logh);
         return logh;
     }
 
+    /**
+     * Read a logpack data.
+     */
     void readLogpackData(walb::util::WalbLogpackData& logd) {
         if (!logd.hasData()) { return; }
-
-        std::queue<walb::aio::AioData> aioDataQ;
         //::printf("ioSizePb: %u\n", logd.ioSizePb()); //debug
-
         for (size_t i = 0; i < logd.ioSizePb(); i++) {
             auto block = readBlock();
             logd.addBlock(block.ptr);
         }
-
         if (!logd.isValid()) {
-            throw RT_ERR("invalid logpack data.");
+            throw InvalidLogpackData();
         }
     }
 
@@ -175,10 +224,15 @@ private:
      * Read next block.
      */
     Block readBlock() {
+        if (ioQ_.empty()) {
+            throw RT_ERR("ioQ empty.");
+        }
         auto b = ioQ_.front();
-        char *p = reinterpret_cast<char *>(b.ptr.get());
-        auto *aiod = aio_.waitFor(p);
-        assert(aiod->buf == p);
+        //::printf("aioKey: %u\n", b.aioKey); //debug
+        auto aiod = aio_.waitFor(b.aiod->key);
+        assert(aiod->key == b.aiod->key);
+        assert(aiod->buf == reinterpret_cast<char *>(b.ptr.get()));
+        assert(aiod->done);
         ioQ_.pop();
         return b;
     }
@@ -189,10 +243,13 @@ private:
             off_t oft = super_.getOffsetFromLsid(aheadLsid_) * blockSize_;
             //char *buf = bb_.alloc();
             Block b(aheadLsid_, ba_.alloc());
-            bool ret = aio_.prepareRead(
+            walb::aio::AioDataPtr p = aio_.prepareRead(
                 oft, blockSize_,
                 reinterpret_cast<char *>(b.ptr.get()));
-            assert(ret);
+            if (p.get() == nullptr) {
+                throw RT_ERR("allocate failed.");
+            }
+            b.aiod = p;
             ioQ_.push(b);
             nio++;
             aheadLsid_++;
@@ -213,13 +270,16 @@ private:
 
 const size_t KILO = 1024;
 const size_t MEGA = KILO * 1024;
-const size_t BUFFER_SIZE = 1 * MEGA;
+const size_t BUFFER_SIZE = 4 * MEGA;
 
 int main(int argc, char* argv[])
 {
     int ret = 0;
 
     try {
+#if 0
+        walb::aio::testAioDataAllocator();
+#endif
         Config config(argc, argv);
         WalbLogRead wlRead(config, BUFFER_SIZE);
         wlRead.read(1);
@@ -227,7 +287,9 @@ int main(int argc, char* argv[])
     } catch (std::runtime_error& e) {
         LOGe("Error: %s\n", e.what());
         ret = 1;
-
+    } catch (std::exception& e) {
+        LOGe("Exception: %s\n", e.what());
+        ret = 1;
     } catch (...) {
         LOGe("Caught other error.\n");
         ret = 1;

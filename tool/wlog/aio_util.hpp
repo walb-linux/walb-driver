@@ -15,7 +15,6 @@
 #include <unordered_map>
 #include <map>
 #include <string>
-// #include <algorithm>
 #include <exception>
 #include <cerrno>
 #include <cstdio>
@@ -33,6 +32,7 @@
 #include <libaio.h>
 
 #include "util.hpp"
+#include "../random.h"
 
 namespace walb {
 namespace aio {
@@ -49,6 +49,7 @@ enum IoType
  */
 struct AioData
 {
+    unsigned int key;
     IoType type;
     struct iocb iocb;
     off_t oft;
@@ -56,12 +57,73 @@ struct AioData
     char *buf;
     double beginTime;
     double endTime;
+    bool done;
 };
 
 /**
  * Pointer to AioData.
  */
 typedef std::shared_ptr<AioData> AioDataPtr;
+
+/**
+ * Simple allocator of AioData.
+ */
+class AioDataAllocator
+{
+private:
+    unsigned int key_;
+
+public:
+    AioDataAllocator()
+        : key_(0) {}
+
+    AioDataPtr alloc() {
+        AioData *p = new AioData();
+        p->key = key_++;
+        return AioDataPtr(p);
+    }
+};
+
+UNUSED
+static void testAioDataAllocator()
+{
+    AioDataAllocator allocator;
+    std::queue<AioDataPtr> queue;
+    const size_t nTrials = 1000000;
+
+    while (queue.size() < 64) {
+        AioDataPtr p = allocator.alloc();
+        queue.push(p);
+        //::printf("add %u\n", p->key);
+    }
+
+    double bTime = util::getTime();
+    for (size_t i = 0; i < nTrials; i++) {
+        int nr = ::get_random(10);
+        for (int j = 0; j < nr; j++) {
+            AioDataPtr p = queue.front();
+            queue.pop();
+            queue.push(p);
+        }
+        AioDataPtr p = queue.front();
+        queue.pop();
+        //::printf("del %u\n", p->key);
+
+        p = allocator.alloc();
+        queue.push(p);
+        //::printf("add %u\n", p->key);
+    }
+    double eTime = util::getTime();
+
+    while (!queue.empty()) {
+        AioDataPtr p = queue.front();
+        queue.pop();
+        //::printf("del %u\n", p->key);
+    }
+    ::printf("%.06f sec. %.f /sec.\n",
+             (eTime - bTime),
+             (double)nTrials / (eTime - bTime));
+}
 
 /**
  * Asynchronous IO wrapper.
@@ -78,35 +140,29 @@ private:
     const int fd_;
     const size_t queueSize_;
     io_context_t ctx_;
-    std::queue<AioData *> aioQueue_;
 
-    class AioDataBuffer
-    {
-    private:
-        const size_t size_;
-        size_t idx_;
-        std::vector<AioData> aioVec_;
+    AioDataAllocator allocator_;
 
-    public:
-        AioDataBuffer(size_t size)
-            : size_(size)
-            , idx_(0)
-            , aioVec_(size) {}
+    /* Prepared but not submitted. */
+    std::queue<AioDataPtr> submitQueue_;
 
-        AioData* next() {
+    /*
+     * Submitted but not returned.
+     * Key: AioData.key, value: aiodata.
+     */
+    std::unordered_map<unsigned int, AioDataPtr> pendingIOs_;
 
-            AioData *ret = &aioVec_[idx_];
-            idx_ = (idx_ + 1) % size_;
-            return ret;
-        }
-    };
+    /*
+     * Completed IOs.
+     * Each ptr->done must be true, and it must exist in the pendingIOs_.
+     */
+    std::queue<AioDataPtr> completedIOs_;
 
-    AioDataBuffer aioDataBuf_;
-    std::vector<struct iocb *> iocbs_; /* temporal use for submit. */
-    std::vector<struct io_event> ioEvents_; /* temporal use for wait. */
+    /* temporal use for submit. */
+    std::vector<struct iocb *> iocbs_;
 
-    /* Key: buffer pointer, value: aiodata if IO is completed, or NULL. */
-    std::unordered_map<char *, AioData *> pendingIOs_;
+    /* temporal use for wait. */
+    std::vector<struct io_event> ioEvents_;
 
 public:
     /**
@@ -116,63 +172,69 @@ public:
     Aio(int fd, size_t queueSize)
         : fd_(fd)
         , queueSize_(queueSize)
-        , aioDataBuf_(queueSize * 2)
+        , allocator_()
+        , submitQueue_()
+        , pendingIOs_()
+        , completedIOs_()
         , iocbs_(queueSize)
-        , ioEvents_(queueSize)
-        , pendingIOs_() {
-
+        , ioEvents_(queueSize) {
         assert(fd_ >= 0);
         ::io_queue_init(queueSize_, &ctx_);
     }
 
     ~Aio() {
+        //::printf("~Aio()\n"); //debug
         ::io_queue_release(ctx_);
     }
 
-    class EofError : public std::exception {};
+    class EofError : public std::exception {
+        virtual const char *what() const noexcept {
+            return "eof error";
+        }
+    };
 
     /**
      * Prepare a read IO.
      */
-    bool prepareRead(off_t oft, size_t size, char* buf) {
-
-        if (aioQueue_.size() > queueSize_) {
-            return false;
+    AioDataPtr prepareRead(off_t oft, size_t size, char* buf) {
+        if (submitQueue_.size() >= queueSize_) {
+            return AioDataPtr();
         }
 
-        auto* ptr = aioDataBuf_.next();
-        aioQueue_.push(ptr);
+        AioDataPtr ptr = allocator_.alloc();
+        submitQueue_.push(ptr);
         ptr->type = IOTYPE_READ;
         ptr->oft = oft;
         ptr->size = size;
         ptr->buf = buf;
         ptr->beginTime = 0.0;
         ptr->endTime = 0.0;
+        ptr->done = false;
         ::io_prep_pread(&ptr->iocb, fd_, buf, size, oft);
-        ptr->iocb.data = ptr;
-        return true;
+        ptr->iocb.data = reinterpret_cast<void *>(ptr->key);
+        return ptr;
     }
 
     /**
      * Prepare a write IO.
      */
-    bool prepareWrite(off_t oft, size_t size, char* buf) {
-
-        if (aioQueue_.size() > queueSize_) {
-            return false;
+    AioDataPtr prepareWrite(off_t oft, size_t size, char* buf) {
+        if (submitQueue_.size() >= queueSize_) {
+            return AioDataPtr();
         }
 
-        auto* ptr = aioDataBuf_.next();
-        aioQueue_.push(ptr);
+        AioDataPtr ptr = allocator_.alloc();
+        submitQueue_.push(ptr);
         ptr->type = IOTYPE_WRITE;
         ptr->oft = oft;
         ptr->size = size;
         ptr->buf = buf;
         ptr->beginTime = 0.0;
         ptr->endTime = 0.0;
+        ptr->done = false;
         ::io_prep_pwrite(&ptr->iocb, fd_, buf, size, oft);
-        ptr->iocb.data = ptr;
-        return true;
+        ptr->iocb.data = reinterpret_cast<void *>(ptr->key);
+        return ptr;
     }
 
     /**
@@ -181,49 +243,57 @@ public:
      * Currently aio flush is not supported
      * by almost all filesystems and block devices.
      */
-    bool prepareFlush() {
-
-        if (aioQueue_.size() > queueSize_) {
-            return false;
+    AioDataPtr prepareFlush() {
+        if (submitQueue_.size() >= queueSize_) {
+            return AioDataPtr();
         }
 
-        auto* ptr = aioDataBuf_.next();
-        aioQueue_.push(ptr);
+        AioDataPtr ptr = allocator_.alloc();
+        submitQueue_.push(ptr);
         ptr->type = IOTYPE_FLUSH;
         ptr->oft = 0;
         ptr->size = 0;
-        ptr->buf = NULL;
+        ptr->buf = nullptr;
         ptr->beginTime = 0.0;
         ptr->endTime = 0.0;
+        ptr->done = false;
         ::io_prep_fdsync(&ptr->iocb, fd_);
-        ptr->iocb.data = ptr;
-        return true;
+        ptr->iocb.data = reinterpret_cast<void *>(ptr->key);
+        return ptr;
     }
 
     /**
      * Submit all prepared IO(s).
      */
     void submit() {
-
-        size_t nr = aioQueue_.size();
+        size_t nr = submitQueue_.size();
         if (nr == 0) {
             return;
         }
         assert(iocbs_.size() >= nr);
         double beginTime = util::getTime();
         for (size_t i = 0; i < nr; i++) {
-            auto* ptr = aioQueue_.front();
-            aioQueue_.pop();
+            AioDataPtr ptr = submitQueue_.front();
+            submitQueue_.pop();
             iocbs_[i] = &ptr->iocb;
             ptr->beginTime = beginTime;
-            assert(pendingIOs_.find(ptr->buf) == pendingIOs_.end());
-            pendingIOs_.insert(std::make_pair(ptr->buf, nullptr));
+            assert(pendingIOs_.find(ptr->key) == pendingIOs_.end());
+            pendingIOs_.insert(std::make_pair(ptr->key, ptr));
+            //::printf("submit %u %p\n", ptr->key, ptr->buf); //debug
         }
-        assert(aioQueue_.empty());
-        int err = ::io_submit(ctx_, nr, &iocbs_[0]);
-        if (err != static_cast<int>(nr)) {
-            /* ::printf("submit error %d.\n", err); */
-            throw EofError();
+        assert(submitQueue_.empty());
+
+        size_t done = 0;
+        while (done < nr) {
+            //::printf("try to submit %zu\n", nr - done); //debug
+            int err = ::io_submit(ctx_, nr - done, &iocbs_[done]);
+            if (err < 0) {
+                ::printf("submit %zu error %d\n", nr - done, err); //debug
+                throw EofError();
+            } else {
+                //::printf("submitted %d\n", err); //debug
+                done += err;
+            }
         }
     }
 
@@ -232,30 +302,44 @@ public:
      *
      * Do not use wait()/waitOne() and waitFor() concurrently.
      */
-    AioData* waitFor(char *buf) {
+    AioDataPtr waitFor(unsigned int key) {
+        //::printf("waitFor %u\n", key); //debug
         auto &m = pendingIOs_;
-        assert(m.find(buf) != m.end());
-        while (!m[buf]) {
-            auto *aiod = waitOne_(false);
-            assert(aiod->buf);
-            assert(m.find(aiod->buf) != m.end());
-            m[aiod->buf] = aiod;
+        if (m.find(key) == m.end()) {
+            throw RT_ERR("Aio with key %u is not found.\n");
         }
-        auto *p = m[buf];
-        m.erase(buf);
-        assert(p);
-        return p;
+        AioDataPtr p0 = m[key];
+        while (!p0->done) {
+            AioDataPtr p1 = waitOne_(false);
+            p1->done = true;
+            if (p0 != p1) {
+                completedIOs_.push(p1);
+            } else {
+                assert(p1->done);
+            }
+        }
+        m.erase(key);
+        return p0;
     }
 
     /**
      * Wait several IO(s) completed.
      *
      * @nr number of waiting IO(s). nr >= 0.
-     * @events event array for temporary use.
-     * @aio Queue AioDataPtr of completed IO will be pushed into it.
+     * @queue completed AioDataPtr(s) will be inserted to.
      */
-    void wait(size_t nr, std::queue<AioData>& aioDataQueue) {
-        wait_(nr, aioDataQueue, true);
+    void wait(size_t nr, std::queue<AioDataPtr>& queue) {
+        while (nr > 0 && !completedIOs_.empty()) {
+            AioDataPtr p = completedIOs_.front();
+            completedIOs_.pop();
+            assert(pendingIOs_.find(p->key) != pendingIOs_.end());
+            pendingIOs_.erase(p->key);
+            queue.push(p);
+            nr--;
+        }
+        if (nr > 0) {
+            wait_(nr, queue, true);
+        }
     }
 
     /**
@@ -265,23 +349,27 @@ public:
      *   This data is available at least before calling
      *   queueSize_ times of prepareWrite/prepareRead.
      */
-    AioData* waitOne() {
-        return waitOne_(true);
+    AioDataPtr waitOne() {
+        if (completedIOs_.empty()) {
+            return waitOne_(true);
+        } else {
+            AioDataPtr p = completedIOs_.front();
+            completedIOs_.pop();
+            assert(pendingIOs_.find(p->key) != pendingIOs_.end());
+            pendingIOs_.erase(p->key);
+            return p;
+        }
     }
 
 private:
-
     /**
      * Wait several IO(s) completed.
      *
      * @nr number of waiting IO(s). nr >= 0.
-     * @events event array for temporary use.
-     * @aio Queue AioDataPtr of completed IO will be pushed into it.
-     * @isDeletePendingData true if items will be deleted from pendingIOs_.
+     * @queue completed AioDataPtr(s) will be inserted to.
+     * @isDelete AioDataPtr will be deleted from pendingIOs_ if true.
      */
-    void wait_(size_t nr, std::queue<AioData>& aioDataQueue,
-               bool isDeletePendingData) {
-
+    void wait_(size_t nr, std::queue<AioDataPtr>& queue, bool isDelete) {
         size_t done = 0;
         bool isError = false;
         while (done < nr) {
@@ -291,23 +379,27 @@ private:
             }
             double endTime = util::getTime();
             for (size_t i = done; i < done + tmpNr; i++) {
-                auto* iocb = static_cast<struct iocb *>(ioEvents_[i].obj);
-                auto* ptr = static_cast<AioData *>(iocb->data);
-                if (ioEvents_[i].res != ptr->iocb.u.c.nbytes) {
+                struct iocb* iocb = static_cast<struct iocb *>(ioEvents_[i].obj);
+                unsigned int key =
+                    static_cast<unsigned int>(
+                        reinterpret_cast<uintptr_t>(iocb->data));
+                if (ioEvents_[i].res != iocb->u.c.nbytes) {
                     isError = true;
                 }
+                assert(pendingIOs_.find(key) != pendingIOs_.end());
+                AioDataPtr ptr = pendingIOs_[key];
+                assert(!ptr->done);
+                ptr->done = true;
                 ptr->endTime = endTime;
-                aioDataQueue.push(*ptr);
-
-                assert(pendingIOs_.find(ptr->buf) != pendingIOs_.end());
-                if (isDeletePendingData) {
-                    pendingIOs_.erase(ptr->buf);
+                queue.push(ptr);
+                if (isDelete) {
+                    pendingIOs_.erase(key);
                 }
             }
             done += tmpNr;
         }
         if (isError) {
-            // ::printf("wait error.\n");
+            ::printf("wait_ error.\n"); //debug
             throw EofError();
         }
     }
@@ -315,35 +407,37 @@ private:
     /**
      * Wait just one IO completed.
      *
-     * @isDeletePendingData true if items will be deleted from pendingIOs_.
+     * @isDelete AioDataPtr will be deleted from pendingIOs_ if true.
      *
      * @return aio data pointer.
      *   This data is available at least before calling
      *   queueSize_ times of prepareWrite/prepareRead.
      */
-    AioData* waitOne_(bool isDeletePendingData) {
-
+    AioDataPtr waitOne_(bool isDelete) {
         auto& event = ioEvents_[0];
         int err = ::io_getevents(ctx_, 1, 1, &event, NULL);
         double endTime = util::getTime();
         if (err != 1) {
             throw std::runtime_error("io_getevents failed.");
         }
-        auto* iocb = static_cast<struct iocb *>(event.obj);
-        auto* ptr = static_cast<AioData *>(iocb->data);
-        if (event.res != ptr->iocb.u.c.nbytes) {
-            // ::printf("waitOne error %lu\n", event.res);
+        struct iocb *iocb = static_cast<struct iocb *>(event.obj);
+        unsigned int key =
+            static_cast<unsigned int>(
+                reinterpret_cast<uintptr_t>(iocb->data));
+        if (event.res != iocb->u.c.nbytes) {
+            ::printf("waitOne_ error %lu\n", event.res); //debug
             throw EofError();
         }
+        assert(pendingIOs_.find(key) != pendingIOs_.end());
+        AioDataPtr ptr = pendingIOs_[key];
         ptr->endTime = endTime;
-
-        assert(pendingIOs_.find(ptr->buf) != pendingIOs_.end());
-        if (isDeletePendingData) {
-            pendingIOs_.erase(ptr->buf);
+        assert(!ptr->done);
+        ptr->done = true;
+        if (isDelete) {
+            pendingIOs_.erase(key);
         }
         return ptr;
     }
-
 };
 
 } // namespace aio

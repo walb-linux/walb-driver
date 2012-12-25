@@ -16,6 +16,7 @@
 #include "util.hpp"
 #include "walb/super.h"
 #include "walb/log_device.h"
+#include "../walblog_format.h"
 
 namespace walb {
 namespace util {
@@ -45,12 +46,12 @@ public:
         , data_(allocAlignedBufferStatic(pbs_)) {
 
         /* Read the superblock. */
-#if 1
+#if 0
         ::printf("offset %" PRIu64" pbs %u\n", offset_ * pbs_, pbs_);
 #endif
         bd_.read(offset_ * pbs_, pbs_, (char *)data_.get());
 
-#if 1
+#if 0
         print(); //debug
 #endif
 
@@ -183,7 +184,7 @@ private:
 };
 
 /**
- *
+ * Logpack header.
  */
 class WalbLogpackHeader
 {
@@ -198,6 +199,10 @@ public:
         , pbs_(pbs)
         , salt_(salt) {
         ASSERT_PBS(pbs);
+    }
+
+    std::shared_ptr<u8> getBlock() const {
+        return ptr_;
     }
 
     struct walb_logpack_header& header() {
@@ -216,6 +221,7 @@ public:
     unsigned int totalIoSize() const { return header().total_io_size; }
     unsigned int nRecords() const { return header().n_records; }
     unsigned int nPadding() const { return header().n_padding; }
+    u64 logpackLsid() const { return header().logpack_lsid; }
 
     /**
      * N'th log record.
@@ -235,7 +241,7 @@ public:
 
     bool isValid() const {
         return ::is_valid_logpack_header_with_checksum(
-            &header(), pbs_, salt()) != 0;
+            &header(), pbs(), salt()) != 0;
     }
 
     void printRecord(size_t pos) const {
@@ -280,6 +286,51 @@ public:
         }
     }
 
+    /**
+     * Shrink.
+     */
+    void shrink(size_t invalidIdx) {
+        assert(invalidIdx < nRecords());
+
+        /* Check the last valid record is padding or not. */
+        if (invalidIdx > 0 &&
+            ::test_bit_u32(LOG_RECORD_PADDING, &record(invalidIdx - 1).flags)) {
+            invalidIdx--;
+            header().n_padding--;
+            assert(header().n_padding == 0);
+        }
+
+        /* Invalidate records. */
+        for (size_t i = invalidIdx; i < nRecords(); i++) {
+            ::log_record_init(&record(i));
+        }
+
+        /* Set n_records and total_io_size. */
+        header().n_records = invalidIdx;
+        header().total_io_size = 0;
+        for (size_t i = 0; i < nRecords(); i++) {
+            auto &rec = record(i);
+            if (!::test_bit_u32(LOG_RECORD_DISCARD, &rec.flags)) {
+                header().total_io_size += ::capacity_pb(pbs(), rec.io_size);
+            }
+        }
+
+        /* Calculate checksum. */
+        header().checksum = 0;
+        header().checksum = ::checksum(ptr_.get(), pbs(), salt());
+
+        assert(isValid());
+    }
+
+    /* Get next logpack lsid. */
+    u64 nextLogpackLsid() const {
+        if (nRecords() > 0) {
+            return logpackLsid() + 1 + totalIoSize();
+        } else {
+            return logpackLsid();
+        }
+    }
+
 private:
     void checkPointer() const {
         if (!ptr_.get()) { throw RT_ERR("Header is null."); }
@@ -311,6 +362,12 @@ public:
 
     void addBlock(std::shared_ptr<u8> block) {
         data_.push_back(block);
+    }
+
+    std::shared_ptr<u8> getBlock(size_t idx) const {
+        assert(hasData());
+        assert(idx < ioSizePb());
+        return data_[idx];
     }
 
     struct walb_log_record& record() {
@@ -390,6 +447,62 @@ private:
         csum = ::checksum_finish(csum);
         //::printf("csum %08x(%u)\n", csum, csum); //debug
         return csum;
+    }
+};
+
+/**
+ * Walb logfile header.
+ */
+class WalbLogFileHeader
+{
+private:
+    std::vector<u8> data_;
+
+public:
+    WalbLogFileHeader()
+        : data_(WALBLOG_HEADER_SIZE, 0) {}
+
+    void init(unsigned int pbs, u32 salt, const u8 *uuid, u64 beginLsid, u64 endLsid) {
+        ::memset(&data_[0], 0, WALBLOG_HEADER_SIZE);
+        header().sector_type = SECTOR_TYPE_WALBLOG_HEADER;
+        header().version = WALB_VERSION;
+        header().header_size = WALBLOG_HEADER_SIZE;
+        header().log_checksum_salt = salt;
+        header().logical_bs = LOGICAL_BLOCK_SIZE;
+        header().physical_bs = pbs;
+        ::memcpy(header().uuid, uuid, 16);
+        header().begin_lsid = beginLsid;
+        header().end_lsid = endLsid;
+    }
+
+    void read(int fd) {
+        util::FdReader fdr(fd);
+        fdr.read(reinterpret_cast<char *>(&data_[0]), WALBLOG_HEADER_SIZE);
+    }
+
+    void write(int fd) {
+        header().checksum = 0;
+        header().checksum = ::checksum(&data_[0], WALBLOG_HEADER_SIZE, 0);
+        util::FdWriter fdw(fd);
+        fdw.write(reinterpret_cast<char *>(&data_[0]), WALBLOG_HEADER_SIZE);
+    }
+
+    struct walblog_header& header() {
+        return *reinterpret_cast<struct walblog_header *>(&data_[0]);
+    }
+
+    const struct walblog_header& header() const {
+        return *reinterpret_cast<const struct walblog_header *>(&data_[0]);
+    }
+
+    bool isValid() const {
+        CHECKd(::checksum(&data_[0], WALBLOG_HEADER_SIZE, 0) == 0);
+        CHECKd(header().sector_type == SECTOR_TYPE_WALBLOG_HEADER);
+        CHECKd(header().version == WALB_VERSION);
+        CHECKd(header().begin_lsid < header().end_lsid);
+        return true;
+      error:
+        return false;
     }
 };
 
