@@ -525,22 +525,22 @@ bool realloc_logpack(struct logpack* logpack, int n_sectors)
  */
 bool is_valid_logpack(struct logpack* logpack, bool is_checksum, u32 salt)
 {
-	CHECK(logpack != NULL);
-	CHECK(logpack->head_sect != NULL);
-	CHECK(logpack->data_sects != NULL);
-	CHECK(logpack->logical_bs > 0);
-	CHECK(logpack->physical_bs >= logpack->logical_bs);
-	CHECK(logpack->physical_bs % logpack->logical_bs == 0);
-	CHECK(logpack->physical_bs == logpack->head_sect->size);
-	CHECK(is_valid_sector_data(logpack->head_sect));
-	CHECK(is_valid_sector_data_array(logpack->data_sects));
+	CHECKd(logpack != NULL);
+	CHECKd(logpack->head_sect != NULL);
+	CHECKd(logpack->data_sects != NULL);
+	CHECKd(logpack->logical_bs > 0);
+	CHECKd(logpack->physical_bs >= logpack->logical_bs);
+	CHECKd(logpack->physical_bs % logpack->logical_bs == 0);
+	CHECKd(logpack->physical_bs == logpack->head_sect->size);
+	CHECKd(is_valid_sector_data(logpack->head_sect));
+	CHECKd(is_valid_sector_data_array(logpack->data_sects));
 
 	if (is_checksum) {
-		CHECK(is_valid_logpack_header_with_checksum(
+		CHECKd(is_valid_logpack_header_with_checksum(
 				logpack->head_sect->data,
 				logpack->head_sect->size, salt));
 	} else {
-		CHECK(is_valid_logpack_header(logpack->head_sect->data));
+		CHECKd(is_valid_logpack_header(logpack->head_sect->data));
 	}
 	return true;
 error:

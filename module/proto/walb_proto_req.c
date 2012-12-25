@@ -2492,31 +2492,31 @@ static bool is_valid_prepared_pack(struct pack *pack)
 
 	LOGd_("is_valid_prepared_pack begin.\n");
 
-	CHECK(pack);
-	CHECK(pack->logpack_header_sector);
+	CHECKd(pack);
+	CHECKd(pack->logpack_header_sector);
 
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	pbs = pack->logpack_header_sector->size;
 	ASSERT_PBS(pbs);
-	CHECK(lhead);
-	CHECK(is_valid_logpack_header(lhead));
+	CHECKd(lhead);
+	CHECKd(is_valid_logpack_header(lhead));
 
-	CHECK(!list_empty(&pack->req_ent_list));
+	CHECKd(!list_empty(&pack->req_ent_list));
 
 	i = 0;
 	total_pb = 0;
 	list_for_each_entry(reqe, &pack->req_ent_list, list) {
 
-		CHECK(reqe->req);
+		CHECKd(reqe->req);
 		if (blk_rq_sectors(reqe->req) == 0) {
-			CHECK(reqe->req->cmd_flags & REQ_FLUSH);
+			CHECKd(reqe->req->cmd_flags & REQ_FLUSH);
 			continue;
 		}
 
-		CHECK(i < lhead->n_records);
+		CHECKd(i < lhead->n_records);
 		lrec = &lhead->record[i];
-		CHECK(lrec);
-		CHECK(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
+		CHECKd(lrec);
+		CHECKd(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 
 		if (test_bit_u32(LOG_RECORD_PADDING, &lrec->flags)) {
 			LOGd_("padding found.\n"); /* debug */
@@ -2525,28 +2525,28 @@ static bool is_valid_prepared_pack(struct pack *pack)
 			i++;
 
 			/* The padding record is not the last. */
-			CHECK(i < lhead->n_records);
+			CHECKd(i < lhead->n_records);
 			lrec = &lhead->record[i];
-			CHECK(lrec);
-			CHECK(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
+			CHECKd(lrec);
+			CHECKd(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 		}
 
 		/* Normal record. */
-		CHECK(reqe->req);
-		CHECK(reqe->req->cmd_flags & REQ_WRITE);
+		CHECKd(reqe->req);
+		CHECKd(reqe->req->cmd_flags & REQ_WRITE);
 
-		CHECK(blk_rq_pos(reqe->req) == (sector_t)lrec->offset);
-		CHECK(lhead->logpack_lsid == lrec->lsid - lrec->lsid_local);
-		CHECK(blk_rq_sectors(reqe->req) == lrec->io_size);
+		CHECKd(blk_rq_pos(reqe->req) == (sector_t)lrec->offset);
+		CHECKd(lhead->logpack_lsid == lrec->lsid - lrec->lsid_local);
+		CHECKd(blk_rq_sectors(reqe->req) == lrec->io_size);
 		total_pb += capacity_pb(pbs, lrec->io_size);
 
 		i++;
 	}
-	CHECK(i == lhead->n_records);
-	CHECK(total_pb == lhead->total_io_size);
-	CHECK(n_padding == lhead->n_padding);
+	CHECKd(i == lhead->n_records);
+	CHECKd(total_pb == lhead->total_io_size);
+	CHECKd(n_padding == lhead->n_padding);
 	if (lhead->n_records == 0) {
-		CHECK(pack->is_zero_flush_only);
+		CHECKd(pack->is_zero_flush_only);
 	}
 	LOGd_("is_valid_prepared_pack succeeded.\n");
 	return true;
@@ -2569,7 +2569,7 @@ static bool is_valid_pack_list(struct list_head *pack_list)
 	struct pack *pack;
 
 	list_for_each_entry(pack, pack_list, list) {
-		CHECK(is_valid_prepared_pack(pack));
+		CHECKd(is_valid_prepared_pack(pack));
 	}
 	return true;
 error:

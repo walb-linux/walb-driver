@@ -15,20 +15,16 @@ extern "C" {
 /**
  * Check macro for is_valid_* functions.
  */
-#define CHECKL(label, cond) do {					\
-		if (!(cond)) {						\
-			LOGe("CHECK failed at line %d.\n", __LINE__);	\
-			goto label;					\
-		}							\
-	} while (0)
-#define CHECK(cond) CHECKL(error, cond)
-#define CHECKL_MSG(label, cond, msg) do {	\
-		if (!(cond)) {			\
-			LOGe("%s", msg);	\
-			goto label;		\
-		}				\
-	} while (0)
-#define CHECK_MSG(cond, msg) CHECKL_MSG(error, cond, msg)
+#define CHECK(label, cond, msg, level) do {   \
+	if (!(cond)) {			     \
+		LOG ## level("CHECK failed at %s line %d: %s", __func__, __LINE__, msg); \
+		goto label;							\
+	}								\
+} while (0)
+
+#define CHECKLd(label, cond) CHECK(label, cond, "", d)
+#define CHECKd(cond) CHECK(error, cond, "", d)
+#define CHECKe(cond) CHECK(error, cond, "", e)
 
 /**
  * Sprint byte array.

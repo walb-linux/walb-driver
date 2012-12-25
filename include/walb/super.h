@@ -124,27 +124,27 @@ static inline int is_valid_super_sector_raw(
 	const struct walb_super_sector *sect, unsigned int pbs)
 {
 	/* physical_bs */
-	CHECK(is_valid_pbs(pbs));
+	CHECKd(is_valid_pbs(pbs));
 
 	/* sector type */
-	CHECK(sect->sector_type == SECTOR_TYPE_SUPER);
+	CHECKd(sect->sector_type == SECTOR_TYPE_SUPER);
 	/* version */
-	CHECK(sect->version == WALB_VERSION);
+	CHECKd(sect->version == WALB_VERSION);
 	/* block size */
-	CHECK(sect->physical_bs == pbs);
-	CHECK(sect->physical_bs >= sect->logical_bs);
-	CHECK(sect->physical_bs % sect->logical_bs == 0);
+	CHECKd(sect->physical_bs == pbs);
+	CHECKd(sect->physical_bs >= sect->logical_bs);
+	CHECKd(sect->physical_bs % sect->logical_bs == 0);
 	/* lsid consistency. */
-	CHECK(sect->oldest_lsid != INVALID_LSID);
-	CHECK(sect->written_lsid != INVALID_LSID);
-	CHECK(sect->oldest_lsid <= sect->written_lsid);
+	CHECKd(sect->oldest_lsid != INVALID_LSID);
+	CHECKd(sect->written_lsid != INVALID_LSID);
+	CHECKd(sect->oldest_lsid <= sect->written_lsid);
 #if 0
 	/* Ring buffer overflow is allowed. */
-	CHECK(sect->written_lsid - sect->oldest_lsid <= sect->ring_buffer_size);
+	CHECKd(sect->written_lsid - sect->oldest_lsid <= sect->ring_buffer_size);
 #endif
 
 	/* device name. */
-	CHECK(strnlen(sect->name, DISK_NAME_LEN) < DISK_NAME_LEN);
+	CHECKd(strnlen(sect->name, DISK_NAME_LEN) < DISK_NAME_LEN);
 
 	return 1;
 error:
@@ -161,7 +161,7 @@ static inline int is_valid_super_sector(const struct sector_data* sect)
 {
 	if (!is_valid_sector_data(sect)) { return 0; }
 	return is_valid_super_sector_raw(
-		(const walb_super_sector *)sect->data, sect->size);
+		(const struct walb_super_sector *)sect->data, sect->size);
 }
 
 /**
