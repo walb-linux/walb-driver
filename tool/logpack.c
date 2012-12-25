@@ -162,6 +162,10 @@ bool read_logpack_data_from_wldev(
 
 	total_pb = 0;
 	for (i = 0; i < n_req; i++) {
+		if (test_bit_u32(LOG_RECORD_DISCARD, &lhead->record[i].flags)) {
+			continue;
+		}
+
 		log_lb = lhead->record[i].io_size;
 
 		/* Calculate num of physical blocks. */
@@ -173,7 +177,11 @@ bool read_logpack_data_from_wldev(
 			lhead->record[i].lsid,
 			log_off);
 
-		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
+		if (test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
+			/* memset zero instead of read due to padding area. */
+			sector_array_memset(
+				sect_ary, total_pb * pbs, log_pb * pbs, 0);
+		} else {
 			/* Read data for the log record. */
 			if (!sector_array_pread(
 					fd, log_off, sect_ary,
@@ -190,10 +198,6 @@ bool read_logpack_data_from_wldev(
 					csum, lhead->record[i].checksum);
 				goto error0;
 			}
-		} else {
-			/* memset zero instead of read due to padding area. */
-			sector_array_memset(
-				sect_ary, total_pb * pbs, log_pb * pbs, 0);
 		}
 		total_pb += log_pb;
 	}
@@ -327,11 +331,13 @@ bool read_logpack_data(
 
 	total_pb = 0;
 	for (i = 0; i < n_req; i++) {
+		if (test_bit_u32(LOG_RECORD_DISCARD, &lhead->record[i].flags)) {
+			continue;
+		}
 		idx_pb = lhead->record[i].lsid_local - 1;
 		log_lb = lhead->record[i].io_size;
 		log_pb = capacity_pb(pbs, log_lb);
 		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
-
 			/* Read data of the log record. */
 			if (!sector_array_read(fd, sect_ary, idx_pb, log_pb)) {
 				LOGe("read log data failed.\n");
