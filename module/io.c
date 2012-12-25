@@ -1950,7 +1950,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 			const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 			unsigned long rtimeo;
 			int c = 0;
-			
+
 			list_del(&biow->list);
                retry:
 			rtimeo = wait_for_completion_timeout(&biow->done, timeo);
@@ -2961,8 +2961,10 @@ retry1:
 	logh->n_records = invalid_idx;
 	logh->total_io_size = 0;
 	for (i = 0; i < logh->n_records; i++) {
-		logh->total_io_size += capacity_pb(
-			pbs, logh->record[i].io_size);
+		if (!test_bit_u32(LOG_RECORD_DISCARD, &logh->record[i].flags)) {
+			logh->total_io_size += capacity_pb(
+				pbs, logh->record[i].io_size);
+		}
 	}
 	logh->checksum = 0;
 	logh->checksum = checksum(
