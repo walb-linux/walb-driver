@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
+#include <linux/delay.h>
 
 #include "bio_entry.h"
 #include "bio_wrapper.h"
@@ -20,7 +21,6 @@ struct test_struct
 	int b;
 	void *p;
 };
-
 
 static int __init test_init(void)
 {
@@ -49,7 +49,7 @@ static int __init test_init(void)
 	} else {
 		LOGn("kmem_cache_create size %u failed.\n", obj_size_);
 	}
-	
+
 	return -1;
 }
 
