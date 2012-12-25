@@ -214,7 +214,9 @@ static inline int is_valid_logpack_header_with_checksum(
 	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt)
 {
 	CHECKL(error0, is_valid_logpack_header(lhead));
-	CHECKL(error1, checksum((const u8 *)lhead, pbs, salt) == 0);
+	if (lhead->n_records > 0) {
+		CHECKL(error1, checksum((const u8 *)lhead, pbs, salt) == 0);
+	}
 	return 1;
 error0:
 	return 0;
