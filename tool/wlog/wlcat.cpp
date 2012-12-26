@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <queue>
 #include <memory>
+#include <deque>
 
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -69,12 +70,135 @@ private:
     struct Block {
         u64 lsid;
         std::shared_ptr<u8> ptr;
-        walb::aio::AioDataPtr aiod;
+        
         Block(u64 lsid, std::shared_ptr<u8> ptr)
-            : lsid(lsid), ptr(ptr), aiod() {}
+            : lsid(lsid), ptr(ptr) {}
+        
+        Block(const Block &rhs)
+            : lsid(rhs.lsid), ptr(rhs.ptr) {}
+        
+        void print(::FILE *p) const {
+            ::fprintf(p, "Block lsid %" PRIu64" ptr %p",
+                      lsid, ptr.get());
+        }
     };
 
-    std::queue<Block> ioQ_;
+    struct Io {
+        off_t offset; // [bytes].
+        size_t size; // [bytes].
+        unsigned int aioKey;
+        bool done;
+        std::deque<Block> blocks;
+
+        Io(off_t offset, size_t size)
+            : offset(offset), size(size)
+            , aioKey(0), done(false), blocks() {}
+
+        std::shared_ptr<u8> ptr() {
+            return blocks.front().ptr;
+        }
+
+        void print(::FILE *p) const {
+            ::fprintf(p, "IO offset: %zu size: %zu aioKey: %u done: %d\n",
+                      offset, size, aioKey, done ? 1 : 0);
+            for (auto &b : blocks) {
+                ::fprintf(p, "  ");
+                b.print(p);
+                ::fprintf(p, "\n");
+            }
+        }
+    };
+
+    typedef std::shared_ptr<Io> IoPtr;
+    
+    class IoQueue {
+    private:
+        std::deque<IoPtr> ioQ_;
+        const walb::util::WalbSuperBlock& super_;
+        const size_t blockSize_;
+        static constexpr size_t maxIoSize_ = 1024 * 1024;
+        
+    public:
+        explicit IoQueue(const walb::util::WalbSuperBlock& super,
+                         size_t blockSize)
+            : ioQ_(), super_(super), blockSize_(blockSize) {}
+        
+        void addBlock(const Block& block) {
+            IoPtr iop = createIo(block);
+            if (ioQ_.empty()) {
+                ioQ_.push_back(iop);
+                return;
+            }
+            if (tryMerge(ioQ_.back(), iop)) {
+                //::fprintf(::stderr, "merged %zu\n", ioQ_.back()->size); //debug
+                return;
+            }
+            ioQ_.push_back(iop);
+        }
+
+        IoPtr pop() {
+            IoPtr p = ioQ_.front();
+            ioQ_.pop_front();
+            return p;
+        }
+
+        bool empty() const {
+            return ioQ_.empty();
+        }
+
+        std::shared_ptr<u8> ptr() {
+            return ioQ_.front()->ptr();
+        }
+
+    private:
+        IoPtr createIo(const Block& block) {
+            off_t offset = super_.getOffsetFromLsid(block.lsid) * blockSize_;
+            IoPtr p(new Io(offset, blockSize_));
+            p->blocks.push_back(block);
+            return p;
+        }
+
+        bool tryMerge(IoPtr io0, IoPtr io1) {
+
+            //io0->print(::stderr); //debug
+            //io1->print(::stderr); //debug
+            
+            assert(!io1->blocks.empty());
+            if (io0->blocks.empty()) {
+                io0 = std::move(io1);
+                return true;
+            }
+
+            /* Check mas io size. */
+            if (io0->size + io1->size > maxIoSize_) {
+                return false;
+            }
+
+            /* Check Io targets and buffers are adjacent. */
+            if (io0->offset + static_cast<off_t>(io0->size) != io1->offset) {
+                //::fprintf(::stderr, "offset mismatch\n"); //debug
+                return false;
+            }
+            u8 *p0 = io0->blocks.back().ptr.get();
+            u8 *p1 = io1->blocks.front().ptr.get();
+            if (p0 + blockSize_ != p1) {
+                //::fprintf(::stderr, "buffer mismatch\n"); //debug
+                return false;
+            }
+
+            /* Merge. */
+            io0->size += io1->size;
+            while (!io1->blocks.empty()) {
+                Block &b = io1->blocks.front();
+                io0->blocks.push_back(b);
+                io1->blocks.pop_front();
+            }
+            return true;
+        }
+    };
+
+    std::queue<IoPtr> ioQ_;
+    size_t nPendingBlocks_;
     u64 aheadLsid_;
 
     class InvalidLogpackData : public std::exception
@@ -95,17 +219,18 @@ public:
         , aio_(bd_.getFd(), queueSize_)
         , ba_(queueSize_ * 2, blockSize_, blockSize_)
         , ioQ_()
+        , nPendingBlocks_(0)
         , aheadLsid_(config.lsid0()) {
 
-        LOGn("blockSize %zu\n", blockSize_); //debug
+        //LOGn("blockSize %zu\n", blockSize_); //debug
     }
 
     ~WalbLogRead() {
         //::printf("~WalbLogRead\n"); //debug
         while (!ioQ_.empty()) {
-            Block &b = ioQ_.front();
+            IoPtr p = ioQ_.front();
             try {
-                aio_.waitFor(b.aiod->key);
+                aio_.waitFor(p->aioKey);
             } catch (...) {}
             ioQ_.pop();
         }
@@ -226,33 +351,49 @@ private:
         if (ioQ_.empty()) {
             throw RT_ERR("ioQ empty.");
         }
-        auto b = ioQ_.front();
-        //::printf("aioKey: %u\n", b.aioKey); //debug
-        auto aiod = aio_.waitFor(b.aiod->key);
-        assert(aiod->key == b.aiod->key);
-        assert(aiod->buf == reinterpret_cast<char *>(b.ptr.get()));
-        assert(aiod->done);
-        ioQ_.pop();
+        IoPtr iop = ioQ_.front();
+        if (!iop->done) {
+            aio_.waitFor(iop->aioKey);
+            iop->done = true;
+        }
+        Block b = iop->blocks.front();
+        iop->blocks.pop_front();
+        if (iop->blocks.empty()) {
+            ioQ_.pop();
+        }
+        nPendingBlocks_--;
         return b;
     }
 
     void readAhead() {
-        size_t nio = 0;
-        while (ioQ_.size() < queueSize_) {
-            off_t oft = super_.getOffsetFromLsid(aheadLsid_) * blockSize_;
-            //char *buf = bb_.alloc();
+        /* Prepare blocks and IOs. */
+        IoQueue ioQ(super_, blockSize_);
+        while (nPendingBlocks_ < queueSize_) {
             Block b(aheadLsid_, ba_.alloc());
-            walb::aio::AioDataPtr p = aio_.prepareRead(
-                oft, blockSize_,
-                reinterpret_cast<char *>(b.ptr.get()));
-            if (p.get() == nullptr) {
+            if (b.ptr.get() == nullptr) {
                 throw RT_ERR("allocate failed.");
             }
-            b.aiod = p;
-            ioQ_.push(b);
-            nio++;
+            ioQ.addBlock(b);
             aheadLsid_++;
+            nPendingBlocks_++;
         }
+
+        /* Prepare aio. */
+        size_t nio = 0;
+        while (!ioQ.empty()) {
+            IoPtr iop = ioQ.pop();
+            unsigned int key = aio_.prepareRead(
+                iop->offset, iop->size,
+                reinterpret_cast<char *>(iop->ptr().get()));
+            if (key == 0) {
+                throw RT_ERR("prpeareRead failed.");
+            }
+            iop->aioKey = key;
+            nio++;
+            ioQ_.push(iop);
+        }
+
+        /* Submit. */
         if (nio > 0) {
             aio_.submit();
         }
