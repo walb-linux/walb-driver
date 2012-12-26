@@ -18,6 +18,7 @@
 #include <mutex>
 #include <cstring>
 #include <memory>
+#include <unordered_map>
 
 #include <sys/time.h>
 #include <sys/types.h>
@@ -28,7 +29,7 @@
 #include <linux/fs.h>
 
 
-#define RT_ERR(fmt, args...)                        \
+#define RT_ERR(fmt, args...)                                    \
     std::runtime_error(walb::util::formatString(fmt, ##args))
 
 namespace walb {
@@ -572,6 +573,133 @@ void printThroughput(size_t blockSize, size_t nio, double periodInSec)
 }
 
 /**
+ * Simple Ring buffer for struct T.
+ */
+template<typename T>
+class DataBuffer
+{
+private:
+    const size_t size_;
+    size_t idx_;
+    size_t allocated_;
+    std::vector<bool> bmp_;
+    std::vector<T> data_;
+
+public:
+    DataBuffer(size_t size)
+        : size_(size)
+        , idx_(0)
+        , allocated_(0)
+        , bmp_(size, false)
+        , data_(size) {}
+
+    T* alloc() {
+        if (allocated_ >= size_) {
+            return nullptr;
+        }
+        if (bmp_[idx_]) {
+            return nullptr;
+        }
+        T *p = &data_[idx_];
+        //::fprintf(::stderr, "alloc %zu %p\n", idx_, p); //debug
+        bmp_[idx_] = true;
+        allocated_++;
+        idx_ = (idx_ + 1) % size_;
+        return p;
+    }
+
+    void free(T *p) {
+        size_t i = toIdx(p);
+        //::fprintf(::stderr, "free %zu %p %d\n", i, p, bmp_[i] ? 1 : 0); //debug
+        assert(bmp_[i]);
+        assert(allocated_ > 0);
+        bmp_[i] = false;
+        allocated_--;
+    }
+private:
+    size_t toIdx(T *p) const {
+        uintptr_t p0 = reinterpret_cast<uintptr_t>(&data_[0]);
+        uintptr_t p1 = reinterpret_cast<uintptr_t>(p);
+        constexpr size_t s = sizeof(T);
+        assert(p0 <= p1);
+        assert(p1 < p0 + size_ * s);
+        assert((p1 - p0) % s == 0);
+        return (p1 - p0) / s;
+    }
+};
+
+/**
+ * Ring buffer for block data.
+ */
+template<typename T>
+class BlockBuffer
+{
+private:
+    const size_t nr_;
+    std::vector<bool> bmp_;
+    std::unordered_map<uintptr_t, size_t> map_; /* pointer, index. */
+    std::vector<T*> ary_;
+    size_t idx_;
+    size_t allocated_;
+
+public:
+    BlockBuffer(size_t nr, size_t alignment, size_t blockSize)
+        : nr_(nr)
+        , bmp_(nr, false)
+        , map_()
+        , ary_(nr)
+        , idx_(0)
+        , allocated_(0) {
+        assert(blockSize % alignment == 0);
+        for (size_t i = 0; i < nr; i++) {
+            T *p = nullptr;
+            int ret = ::posix_memalign((void **)&p, alignment, blockSize);
+            assert(ret == 0);
+            assert(p != nullptr);
+            ary_[i] = p;
+            map_[reinterpret_cast<uintptr_t>(p)] = i;
+        }
+    }
+
+    ~BlockBuffer() {
+        for (size_t i = 0; i < nr_; i++) {
+            ::free(ary_[i]);
+        }
+    }
+
+    T* alloc() {
+        if (allocated_ >= nr_) {
+            return nullptr;
+        }
+        if (bmp_[idx_]) {
+            return nullptr;
+        }
+        T *p = ary_[idx_];
+        //::fprintf(::stderr, "alloc %zu %p\n", idx_, p); //debug
+        bmp_[idx_] = true;
+        allocated_++;
+        idx_ = (idx_ + 1) % nr_;
+        return p;
+    }
+
+    void free(T *p) {
+        size_t i = toIdx(p);
+        //::fprintf(::stderr, "free %zu %p\n", i, p); //debug
+        assert(bmp_[i]);
+        assert(allocated_ > 0);
+        allocated_--;
+        bmp_[i] = false;
+    }
+
+private:
+    size_t toIdx(T *p) const {
+        uintptr_t pu = reinterpret_cast<uintptr_t>(p);
+        assert(map_.find(pu) != map_.end());
+        return map_.at(pu);
+    }
+};
+
+/**
  * Aligned
  */
 template<typename T>
@@ -591,6 +719,7 @@ std::shared_ptr<T> allocateBlock(size_t alignment, size_t size)
         });
 }
 
+#if 0
 template<typename T>
 class BlockAllocator
 {
@@ -607,68 +736,35 @@ public:
         return allocateBlock<T>(alignment_, size_);
     }
 };
-
-/**
- * Ring buffer for block data.
- */
-class BlockBuffer
+#else
+template<typename T>
+class BlockAllocator
 {
 private:
     const size_t nr_;
-    std::vector<char *> bufArray_;
-    size_t idx_;
-    size_t allocated_;
+    const size_t alignment_;
+    const size_t size_;
+    BlockBuffer<T> bb_;
 
 public:
-    BlockBuffer(size_t nr, size_t blockSize)
+    BlockAllocator(size_t nr, size_t alignment, size_t size)
         : nr_(nr)
-        , bufArray_(nr)
-        , idx_(0)
-        , allocated_(0) {
+        , alignment_(alignment)
+        , size_(size)
+        , bb_(nr, alignment, size) {}
 
-        assert(blockSize % 512 == 0);
-        for (size_t i = 0; i < nr; i++) {
-            char *p = nullptr;
-            int ret = ::posix_memalign((void **)&p, 512, blockSize);
-            assert(ret == 0);
-            assert(p != nullptr);
-            bufArray_[i] = p;
-        }
-    }
-
-    ~BlockBuffer() {
-
-        for (size_t i = 0; i < nr_; i++) {
-            ::free(bufArray_[i]);
-        }
-    }
-
-    char* alloc() {
-
-        if (allocated_ >= nr_) {
-            throw std::bad_alloc();
-        }
-        char *ret = bufArray_[idx_];
-        idx_ = (idx_ + 1) % nr_;
-        allocated_++;
-        return ret;
-    }
-
-    void free(unsigned int nr) {
-
-        if (allocated_ < nr) {
-            allocated_ = 0;
+    std::shared_ptr<T> alloc() {
+        T *p = bb_.alloc();
+        if (p != nullptr) {
+            return std::shared_ptr<T>(p, [&](T *p) {
+                    bb_.free(p);
+                });
         } else {
-            allocated_ -= nr;
+            return allocateBlock<T>(alignment_, size_);
         }
-    }
-
-    size_t getNumFreeBlocks() const {
-
-        assert(nr_ >= allocated_);
-        return nr_ - allocated_;
     }
 };
+#endif
 
 } //namespace util
 } //namespace walb
