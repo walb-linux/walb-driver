@@ -1750,7 +1750,7 @@ static bool do_cat_wldev(const struct config *cfg)
 	int lbs = get_bdev_logical_block_size(cfg->wldev_name);
 	int pbs = get_bdev_physical_block_size(cfg->wldev_name);
 
-	int fd = open(cfg->wldev_name, O_RDONLY);
+	int fd = open(cfg->wldev_name, O_RDONLY | O_DIRECT);
 	if (fd < 0) {
 		perror("open failed.");
 		goto error0;
@@ -2294,7 +2294,7 @@ static bool do_show_wldev(const struct config *cfg)
 	}
 	unsigned int pbs = get_bdev_physical_block_size(cfg->wldev_name);
 
-	int fd = open(cfg->wldev_name, O_RDONLY);
+	int fd = open(cfg->wldev_name, O_RDONLY | O_DIRECT);
 	if (fd < 0) { perror("open failed"); goto error0; }
 
 	/* Allocate memory and read super block */
