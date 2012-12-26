@@ -396,6 +396,12 @@ bool redo_logpack(
 		idx_lb = addr_lb(sect_ary->sector_size,
 				lhead->record[i].lsid_local - 1);
 		n_lb = lhead->record[i].io_size;
+		if (test_bit_u32(LOG_RECORD_DISCARD, &lhead->record[i].flags)) {
+			/* If the data device supports discard request,
+			   you must issue discard requests. */
+			/* now editing */
+			continue;
+		}
 		if (!sector_array_pwrite_lb(fd, off_lb, sect_ary, idx_lb, n_lb)) {
 			LOGe("write sectors failed.\n");
 			goto error0;
