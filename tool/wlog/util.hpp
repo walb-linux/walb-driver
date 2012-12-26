@@ -630,41 +630,38 @@ private:
 
 /**
  * Ring buffer for block data.
+ *
+ * typename T must be (char) or (unsigned char).
  */
 template<typename T>
 class BlockBuffer
 {
 private:
     const size_t nr_;
+    const size_t blockSize_;
     std::vector<bool> bmp_;
-    std::unordered_map<uintptr_t, size_t> map_; /* pointer, index. */
-    std::vector<T*> ary_;
+    T *ary_;
     size_t idx_;
     size_t allocated_;
 
 public:
     BlockBuffer(size_t nr, size_t alignment, size_t blockSize)
         : nr_(nr)
+        , blockSize_(blockSize)
         , bmp_(nr, false)
-        , map_()
-        , ary_(nr)
+        , ary_(nullptr)
         , idx_(0)
         , allocated_(0) {
         assert(blockSize % alignment == 0);
-        for (size_t i = 0; i < nr; i++) {
-            T *p = nullptr;
-            int ret = ::posix_memalign((void **)&p, alignment, blockSize);
-            assert(ret == 0);
-            assert(p != nullptr);
-            ary_[i] = p;
-            map_[reinterpret_cast<uintptr_t>(p)] = i;
+        int ret = ::posix_memalign((void **)&ary_, alignment, blockSize * nr);
+        if (ret) {
+            throw std::bad_alloc();
         }
+        assert(ary_ != nullptr);
     }
 
     ~BlockBuffer() {
-        for (size_t i = 0; i < nr_; i++) {
-            ::free(ary_[i]);
-        }
+        ::free(ary_);
     }
 
     T* alloc() {
@@ -674,7 +671,7 @@ public:
         if (bmp_[idx_]) {
             return nullptr;
         }
-        T *p = ary_[idx_];
+        T *p = &ary_[idx_ * blockSize_];
         //::fprintf(::stderr, "alloc %zu %p\n", idx_, p); //debug
         bmp_[idx_] = true;
         allocated_++;
@@ -693,9 +690,14 @@ public:
 
 private:
     size_t toIdx(T *p) const {
-        uintptr_t pu = reinterpret_cast<uintptr_t>(p);
-        assert(map_.find(pu) != map_.end());
-        return map_.at(pu);
+        uintptr_t pu0 = reinterpret_cast<uintptr_t>(ary_);
+        uintptr_t pu1 = reinterpret_cast<uintptr_t>(p);
+
+        assert(pu0 <= pu1);
+        assert(pu1 < pu0 + (nr_ * blockSize_));
+        assert((pu1 - pu0) % blockSize_ == 0);
+        
+        return (pu1 - pu0) / blockSize_;
     }
 };
 
