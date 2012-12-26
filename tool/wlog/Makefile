@@ -21,7 +21,8 @@ endif
 #LDFLAGS = -laio -lpthread
 LDFLAGS = -static -laio -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
 
-BINARIES = wlcat wlredo
+#BINARIES = wlcat wlredo
+BINARIES = wlcat
 
 all: $(BINARIES)
 
