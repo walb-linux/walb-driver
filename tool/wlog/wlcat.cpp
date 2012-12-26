@@ -93,8 +93,7 @@ public:
         , blockSize_(bd_.getPhysicalBlockSize())
         , queueSize_(getQueueSizeStatic(bufferSize, blockSize_))
         , aio_(bd_.getFd(), queueSize_)
-          //, bb_(queueSize_ * 2, blockSize_)
-        , ba_(blockSize_, blockSize_)
+        , ba_(queueSize_ * 2, blockSize_, blockSize_)
         , ioQ_()
         , aheadLsid_(config.lsid0()) {
 
@@ -268,9 +267,9 @@ private:
     }
 };
 
-const size_t KILO = 1024;
-const size_t MEGA = KILO * 1024;
-const size_t BUFFER_SIZE = 4 * MEGA;
+constexpr size_t KILO = 1024;
+constexpr size_t MEGA = KILO * 1024;
+constexpr size_t BUFFER_SIZE = 4 * MEGA;
 
 int main(int argc, char* argv[])
 {

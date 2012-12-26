@@ -68,6 +68,7 @@ typedef std::shared_ptr<AioData> AioDataPtr;
 /**
  * Simple allocator of AioData.
  */
+#if 0
 class AioDataAllocator
 {
 private:
@@ -83,6 +84,37 @@ public:
         return AioDataPtr(p);
     }
 };
+#else
+class AioDataAllocator
+{
+private:
+    unsigned int key_;
+    walb::util::DataBuffer<AioData> buf_;
+
+public:
+    AioDataAllocator()
+        : key_(0)
+        , buf_(16384) {}
+
+    explicit AioDataAllocator(size_t size)
+        : key_(0)
+        , buf_(size) {}
+
+    AioDataPtr alloc() {
+        AioData *p = buf_.alloc();
+        if (p != nullptr) {
+            p->key = key_++;
+            return AioDataPtr(p, [&](AioData *p) {
+                    buf_.free(p);
+                });
+        } else {
+            AioDataPtr p(new AioData());
+            p->key = key_++;
+            return p;
+        }
+    }
+};
+#endif
 
 UNUSED
 static void testAioDataAllocator()
@@ -172,7 +204,7 @@ public:
     Aio(int fd, size_t queueSize)
         : fd_(fd)
         , queueSize_(queueSize)
-        , allocator_()
+        , allocator_(queueSize * 2)
         , submitQueue_()
         , pendingIOs_()
         , completedIOs_()
