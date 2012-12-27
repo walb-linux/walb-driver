@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Cat walb log device.
+ * @brief Read walb log device and archive it.
  * @author HOSHINO Takashi
  *
  * (C) 2012 Cybozu Labs, Inc.
@@ -55,7 +55,7 @@ public:
 /**
  * To read WalB log.
  */
-class WalbLogRead
+class WalbLogReader
 {
 private:
     const Config& config_;
@@ -210,7 +210,7 @@ private:
     };
 
 public:
-    WalbLogRead(const Config& config, size_t bufferSize)
+    WalbLogReader(const Config& config, size_t bufferSize)
         : config_(config)
         , bd_(config.deviceName(), O_RDONLY | O_DIRECT)
         , super_(bd_)
@@ -225,8 +225,8 @@ public:
         //LOGn("blockSize %zu\n", blockSize_); //debug
     }
 
-    ~WalbLogRead() {
-        //::printf("~WalbLogRead\n"); //debug
+    ~WalbLogReader() {
+        //::printf("~WalbLogReader\n"); //debug
         while (!ioQ_.empty()) {
             IoPtr p = ioQ_.front();
             try {
@@ -236,7 +236,10 @@ public:
         }
     }
 
-    void read(int outFd) {
+    /**
+     * Read walb log from the device and write to outFd with wl header.
+     */
+    void catLog(int outFd) {
         if (outFd <= 0) {
             throw RT_ERR("outFd is not valid.");
         }
@@ -421,8 +424,8 @@ int main(int argc, char* argv[])
         walb::aio::testAioDataAllocator();
 #endif
         Config config(argc, argv);
-        WalbLogRead wlRead(config, BUFFER_SIZE);
-        wlRead.read(1);
+        WalbLogReader wlReader(config, BUFFER_SIZE);
+        wlReader.catLog(1);
 
     } catch (std::runtime_error& e) {
         LOGe("Error: %s\n", e.what());

@@ -410,13 +410,9 @@ public:
         return isExist() && !isDiscard() && !isPadding();
     }
 
-    unsigned int ioSizeLb() const {
-        return record().io_size;
-    }
-
-    unsigned int ioSizePb() const {
-        return capacity_pb(pbs(), ioSizeLb());
-    }
+    unsigned int ioSizeLb() const { return record().io_size; }
+    unsigned int ioSizePb() const { return capacity_pb(pbs(), ioSizeLb()); }
+    u64 offset() const { return record().offset; }
 
     bool isValid(bool isChecksum = true) const {
         const auto &rec = record();
