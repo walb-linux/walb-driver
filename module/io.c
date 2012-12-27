@@ -1258,7 +1258,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			list_move_tail(&biow->list2, &biow_list);
 			n_io++;
 			lsid = biow->lsid;
-			if (n_io == N_IO_BULK) { break; }
+			if (n_io >= N_IO_BULK) { break; }
 		}
 		spin_unlock(&iocored->datapack_submit_queue_lock);
 		if (is_empty) { break; }
@@ -1373,7 +1373,7 @@ static void task_wait_for_bio_wrapper_list(struct work_struct *work)
 					&iocored->datapack_wait_queue, list2) {
 			list_move_tail(&biow->list2, &biow_list);
 			n_io++;
-			if (n_io == N_IO_BULK) { break; }
+			if (n_io >= N_IO_BULK) { break; }
 		}
 		spin_unlock(&iocored->datapack_wait_queue_lock);
 		if (is_empty) { break; }
