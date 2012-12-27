@@ -32,10 +32,10 @@ enum {
 	IOCORE_STATE_LOG_OVERFLOW,
 
 	/* These are for workqueue tasks management. */
-	IOCORE_STATE_SUBMIT_TASK_WORKING,
-	IOCORE_STATE_SUBMIT_TASK_TERMINATING,
-	IOCORE_STATE_WAIT_TASK_WORKING,
-	IOCORE_STATE_WAIT_TASK_TERMINATING,
+	IOCORE_STATE_SUBMIT_LOG_TASK_WORKING,
+	IOCORE_STATE_SUBMIT_LOG_TASK_TERMINATING,
+	IOCORE_STATE_WAIT_LOG_TASK_WORKING,
+	IOCORE_STATE_WAIT_LOG_TASK_TERMINATING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_TERMINATING,
 	IOCORE_STATE_WAIT_DATA_TASK_WORKING,
@@ -1010,7 +1010,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 
 	/* Wait for the previous task if necessary. */
 	ret = test_bit(
-		IOCORE_STATE_SUBMIT_TASK_TERMINATING, &iocored->flags);
+		IOCORE_STATE_SUBMIT_LOG_TASK_TERMINATING, &iocored->flags);
 	if (ret) {
 		wait_for_completion(&iocored->logpack_submit_done);
 	}
@@ -1034,8 +1034,8 @@ static void task_submit_logpack_list(struct work_struct *work)
 		is_empty = list_empty(&iocored->logpack_submit_queue);
 		if (is_empty) {
 			change_state_from_working_to_terminating(
-				IOCORE_STATE_SUBMIT_TASK_WORKING,
-				IOCORE_STATE_SUBMIT_TASK_TERMINATING,
+				IOCORE_STATE_SUBMIT_LOG_TASK_WORKING,
+				IOCORE_STATE_SUBMIT_LOG_TASK_TERMINATING,
 				&iocored->flags);
 		}
 		list_for_each_entry_safe(biow, biow_next,
@@ -1078,7 +1078,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 
 	/* Notify the next task. */
 	ret = test_and_clear_bit(
-		IOCORE_STATE_SUBMIT_TASK_TERMINATING, &iocored->flags);
+		IOCORE_STATE_SUBMIT_LOG_TASK_TERMINATING, &iocored->flags);
 	ASSERT(ret);
 	complete(&iocored->logpack_submit_done);
 }
@@ -1110,7 +1110,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 
 	/* Wait for the previous task if necessary. */
 	ret = test_bit(
-		IOCORE_STATE_WAIT_TASK_TERMINATING, &iocored->flags);
+		IOCORE_STATE_WAIT_LOG_TASK_TERMINATING, &iocored->flags);
 	if (ret) {
 		wait_for_completion(&iocored->logpack_wait_done);
 	}
@@ -1130,8 +1130,8 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		is_empty = list_empty(&iocored->logpack_wait_queue);
 		if (is_empty) {
 			change_state_from_working_to_terminating(
-				IOCORE_STATE_WAIT_TASK_WORKING,
-				IOCORE_STATE_WAIT_TASK_TERMINATING,
+				IOCORE_STATE_WAIT_LOG_TASK_WORKING,
+				IOCORE_STATE_WAIT_LOG_TASK_TERMINATING,
 				&iocored->flags);
 		}
 		list_for_each_entry_safe(wpack, wpack_next,
@@ -1165,7 +1165,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 
 	/* Notify the next task. */
 	ret = test_and_clear_bit(
-		IOCORE_STATE_WAIT_TASK_TERMINATING, &iocored->flags);
+		IOCORE_STATE_WAIT_LOG_TASK_TERMINATING, &iocored->flags);
 	ASSERT(ret);
 	complete(&iocored->logpack_wait_done);
 }
@@ -3807,7 +3807,7 @@ static void enqueue_submit_task_if_necessary(struct walb_dev *wdev)
 {
 	enqueue_task_if_necessary(
 		wdev,
-		IOCORE_STATE_SUBMIT_TASK_WORKING,
+		IOCORE_STATE_SUBMIT_LOG_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
 		wq_unbound_,
 		task_submit_logpack_list);
@@ -3820,7 +3820,7 @@ static void enqueue_wait_task_if_necessary(struct walb_dev *wdev)
 {
 	enqueue_task_if_necessary(
 		wdev,
-		IOCORE_STATE_WAIT_TASK_WORKING,
+		IOCORE_STATE_WAIT_LOG_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
 		wq_unbound_,
 		task_wait_for_logpack_list);
