@@ -128,10 +128,11 @@ public:
                  "metadataSize: %u\n"
                  "logChecksumSalt: %u\n"
                  "name: %s\n"
-                 "ringBufferSize: %" PRIu64"\n"
-                 "oldestLsid: %" PRIu64"\n"
-                 "writtenLsid: %" PRIu64"\n"
-                 "deviceSize: %" PRIu64"\n",
+                 "ringBufferSize: %" PRIu64 "\n"
+                 "oldestLsid: %" PRIu64 "\n"
+                 "writtenLsid: %" PRIu64 "\n"
+                 "deviceSize: %" PRIu64 "\n"
+                 "ringBufferOffset: %" PRIu64 "\n",
                  getSectorType(),
                  getVersion(),
                  getChecksum(),
@@ -143,7 +144,8 @@ public:
                  getRingBufferSize(),
                  getOldestLsid(),
                  getWrittenLsid(),
-                 getDeviceSize());
+                 getDeviceSize(),
+                 getRingBufferOffset());
 
         ::printf("uuid: ");
         for (int i = 0; i < 16; i++) {
