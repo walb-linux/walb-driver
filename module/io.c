@@ -4441,7 +4441,7 @@ static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	u64 permanent_lsid, flush_lsid, latest_lsid;
-	unsigned long log_flush_jiffies;
+	unsigned long log_flush_jiffies, current_jiffies;
 	int err;
 
 	if (wdev->log_flush_interval_jiffies == 0) {
@@ -4454,13 +4454,14 @@ retry:
 	latest_lsid = wdev->latest_lsid;
 	log_flush_jiffies = iocored->log_flush_jiffies;
 	spin_unlock(&wdev->lsid_lock);
-	if (lsid <= permanent_lsid) {
+	if (lsid < permanent_lsid) {
 		/* No need to flush log device. */
 		return;
 	}
-	if (lsid < flush_lsid && jiffies < log_flush_jiffies) {
+	current_jiffies = jiffies;
+	if (lsid < flush_lsid && current_jiffies < log_flush_jiffies) {
 		/* Too early to flush log device again. */
-		schedule();
+		msleep(jiffies_to_msecs(log_flush_jiffies - current_jiffies));
 		goto retry;
 	}
 
