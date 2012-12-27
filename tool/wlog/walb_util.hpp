@@ -175,11 +175,15 @@ private:
         return (const struct walb_super_sector *)data_.get();
     }
 
-    bool isValid() const {
+    bool isValid(bool isChecksum = true) const {
         if (::is_valid_super_sector_raw(super(), pbs_) == 0) {
             return false;
         }
-        return ::checksum(data_.get(), pbs_, 0) == 0;
+        if (isChecksum) {
+            return true;
+        } else {
+            return ::checksum(data_.get(), pbs_, 0) == 0;
+        }
     }
 };
 
@@ -239,9 +243,13 @@ public:
         return header().record[pos];
     }
 
-    bool isValid() const {
-        return ::is_valid_logpack_header_with_checksum(
-            &header(), pbs(), salt()) != 0;
+    bool isValid(bool isChecksum = true) const {
+        if (isChecksum) {
+            return ::is_valid_logpack_header_with_checksum(
+                &header(), pbs(), salt()) != 0;
+        } else {
+            return ::is_valid_logpack_header(&header()) != 0;
+        }
     }
 
     void printRecord(size_t pos) const {
@@ -408,12 +416,13 @@ public:
         return capacity_pb(pbs(), ioSizeLb());
     }
 
-    bool isValid() const {
+    bool isValid(bool isChecksum = true) const {
         const auto &rec = record();
         if (!::is_valid_log_record_const(&rec)) {
             return false;
         }
-        if (hasDataForChecksum() && calcIoChecksum() != rec.checksum) {
+        if (isChecksum && hasDataForChecksum() &&
+            calcIoChecksum() != rec.checksum) {
             return false;
         }
         return true;
@@ -495,11 +504,13 @@ public:
         return *reinterpret_cast<const struct walblog_header *>(&data_[0]);
     }
 
-    bool isValid() const {
-        CHECKd(::checksum(&data_[0], WALBLOG_HEADER_SIZE, 0) == 0);
+    bool isValid(bool isChecksum = true) const {
         CHECKd(header().sector_type == SECTOR_TYPE_WALBLOG_HEADER);
         CHECKd(header().version == WALB_VERSION);
         CHECKd(header().begin_lsid < header().end_lsid);
+        if (isChecksum) {
+            CHECKd(::checksum(&data_[0], WALBLOG_HEADER_SIZE, 0) == 0);
+        }
         return true;
       error:
         return false;
