@@ -70,13 +70,13 @@ private:
     struct Block {
         u64 lsid;
         std::shared_ptr<u8> ptr;
-        
+
         Block(u64 lsid, std::shared_ptr<u8> ptr)
             : lsid(lsid), ptr(ptr) {}
-        
+
         Block(const Block &rhs)
             : lsid(rhs.lsid), ptr(rhs.ptr) {}
-        
+
         void print(::FILE *p) const {
             ::fprintf(p, "Block lsid %" PRIu64" ptr %p",
                       lsid, ptr.get());
@@ -110,19 +110,19 @@ private:
     };
 
     typedef std::shared_ptr<Io> IoPtr;
-    
+
     class IoQueue {
     private:
         std::deque<IoPtr> ioQ_;
         const walb::util::WalbSuperBlock& super_;
         const size_t blockSize_;
         static constexpr size_t maxIoSize_ = 1024 * 1024;
-        
+
     public:
         explicit IoQueue(const walb::util::WalbSuperBlock& super,
                          size_t blockSize)
             : ioQ_(), super_(super), blockSize_(blockSize) {}
-        
+
         void addBlock(const Block& block) {
             IoPtr iop = createIo(block);
             if (ioQ_.empty()) {
@@ -162,7 +162,7 @@ private:
 
             //io0->print(::stderr); //debug
             //io1->print(::stderr); //debug
-            
+
             assert(!io1->blocks.empty());
             if (io0->blocks.empty()) {
                 io0 = std::move(io1);

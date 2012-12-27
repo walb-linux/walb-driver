@@ -292,7 +292,9 @@ public:
         ::lseek(fd_, oft, SEEK_SET);
         size_t s = 0;
         while (s < size) {
+#if 0
             ::fprintf(::stderr, "read %d %p &buf[%zu], %zu\n", fd_, &buf[s], s, size - s);
+#endif
             ssize_t ret = ::read(fd_, &buf[s], size - s);
             if (ret < 0) {
                 throw RT_ERR("read failed: %s.", ::strerror(errno));
@@ -313,6 +315,9 @@ public:
         ::lseek(fd_, oft, SEEK_SET);
         size_t s = 0;
         while (s < size) {
+#if 0
+            ::fprintf(::stderr, "write %d %p &buf[%zu], %zu\n", fd_, &buf[s], s, size - s);
+#endif
             ssize_t ret = ::write(fd_, &buf[s], size - s);
             if (ret < 0) {
                 throw RT_ERR("write failed: %s.", ::strerror(errno));
@@ -696,7 +701,7 @@ private:
         assert(pu0 <= pu1);
         assert(pu1 < pu0 + (nr_ * blockSize_));
         assert((pu1 - pu0) % blockSize_ == 0);
-        
+
         return (pu1 - pu0) / blockSize_;
     }
 };
