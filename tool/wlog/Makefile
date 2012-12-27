@@ -38,7 +38,6 @@ wlredo: wlredo.o
 
 wlcat.o: wlcat.cpp aio_util.hpp util.hpp walb_util.hpp
 wlredo.o: wlredo.cpp aio_util.hpp util.hpp walb_util.hpp
-#util.o: util.c util.h walb_random.h
 
 clean:
 	rm -f $(BINARIES) *.o
