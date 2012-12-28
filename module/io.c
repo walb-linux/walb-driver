@@ -508,7 +508,11 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	}
 #endif
 	if (!uptodate) {
-		LOGn("BIO_UPTODATE is false (rw %lu pos %"PRIu64" len %u).\n",
+		unsigned int devt;
+		ASSERT(bio->bi_bdev);
+		devt = bio->bi_bdev->bd_dev;
+		LOGn("BIO_UPTODATE is false (dev %u:%u rw %lu pos %"PRIu64" len %u).\n",
+			MAJOR(devt), MINOR(devt),
 			bioe->bio->bi_rw, (u64)bioe->pos, bioe->len);
 	}
 
