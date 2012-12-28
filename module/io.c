@@ -19,6 +19,11 @@
 #include "logpack.h"
 #include "super.h"
 
+/**
+ * If defined, data IOs will be sorted for better performance.
+ */
+#define WALB_SORT_DATA_IO
+
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
@@ -203,8 +208,15 @@ struct redo_pack
  *******************************************************************************/
 
 #define WORKER_NAME_GC "walb_gc"
-#define N_PACK_BULK 32
-#define N_IO_BULK 128
+
+/* If you prefer small response to large throughput, set N_PACK_BULK smaller. */
+#define N_PACK_BULK 64
+
+/* If you use IO-scheduling-sensitive storage for the data device,
+ * you should set larger N_IO_BULK value.
+ * For example, HDD with little cache.
+ * This must not be so large because we use insertion sort. */
+#define N_IO_BULK 1024
 
 /* Maximum size of log to read ahead for redo [logical block].
    Currently 8MB. */
@@ -413,9 +425,11 @@ static bool writepack_add_bio_wrapper(
 	u64 *latest_lsidp, u64 *flush_lsidp,
 	struct walb_dev *wdev, gfp_t gfp_mask);
 #ifdef WALB_FAST_ALGORITHM
-static void insert_to_sorted_bio_wrapper_list(
+static void insert_to_sorted_bio_wrapper_list_by_lsid(
 	struct bio_wrapper *biow, struct list_head *biow_list);
 #endif
+void insert_to_sorted_bio_wrapper_list_by_pos(
+	struct bio_wrapper *biow, struct list_head *biow_list);
 static void writepack_check_and_set_flush(struct pack *wpack);
 static void wait_for_logpack_and_submit_datapack(
 	struct walb_dev *wdev, struct pack *wpack);
@@ -423,6 +437,9 @@ static void wait_for_write_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 static void wait_for_bio_wrapper(
 	struct bio_wrapper *biow, bool is_endio, bool is_delete);
+#ifdef WALB_OVERLAPPING_SERIALIZE
+static void wait_for_overlapped_io_done(struct bio_wrapper *biow);
+#endif
 static void submit_write_bio_wrapper(
 	struct bio_wrapper *biow, bool is_plugging);
 static void submit_read_bio_wrapper(
@@ -1185,6 +1202,9 @@ static void task_submit_write_bio_wrapper(struct work_struct *work)
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	const bool is_plugging = true;
 
+	/* Wait for overlapping IOs. */
+	wait_for_overlapped_io_done(biow);
+
 	/* Submit related bios. */
 	submit_write_bio_wrapper(biow, is_plugging);
 
@@ -1222,7 +1242,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 	struct pack_work *pwork = container_of(work, struct pack_work, work);
 	struct walb_dev *wdev = pwork->data;
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-	struct list_head biow_list;
+	struct list_head biow_list, biow_list_sorted;
 	bool ret;
 
 	destroy_pack_work(pwork);
@@ -1239,6 +1259,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 	init_completion(&iocored->datapack_submit_done);
 
 	INIT_LIST_HEAD(&biow_list);
+	INIT_LIST_HEAD(&biow_list_sorted);
 	while (true) {
 		struct bio_wrapper *biow, *biow_next;
 		bool is_empty;
@@ -1247,6 +1268,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		struct blk_plug plug;
 
 		ASSERT(list_empty(&biow_list));
+		ASSERT(list_empty(&biow_list_sorted));
 
 		/* Dequeue all bio wrappers from the submit queue. */
 		spin_lock(&iocored->datapack_submit_queue_lock);
@@ -1289,10 +1311,9 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		}
 #endif /* WALB_OVERLAPPING_SERIALIZE */
 
-		/* Submit all. */
-		blk_start_plug(&plug);
+		/* Sort IOs and submit. */
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
-			const bool is_plugging = false;
+			list_del(&biow->list2);
 
 			/* Clear flush bit. */
 			clear_flush_bit_of_bio_entry_list(&biow->bioe_list);
@@ -1300,23 +1321,38 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 #ifdef WALB_OVERLAPPING_SERIALIZE
 			if (biow->n_overlapping > 0) {
 				/* Enqueue submit task. */
-				list_del(&biow->list2);
 				INIT_WORK(&biow->work, task_submit_write_bio_wrapper);
 				queue_work(wq_unbound_, &biow->work);
 			} else {
-				/* Submit bio wrapper. */
-				submit_write_bio_wrapper(biow, is_plugging);
+#ifdef WALB_SORT_DATA_IO
+				/* Sort. */
+				insert_to_sorted_bio_wrapper_list_by_pos(
+					biow, &biow_list_sorted);
+#else /* WALB_SORT_DATA_IO */
+				list_add_tail(biow, &biow_list_sorted);
+#endif /* WALB_SORT_DATA_IO */
 			}
-#else
+#else /* WALB_OVERLAPPING_SERIALIZE */
+#ifdef WALB_SORT_DATA_IO
+			/* Sort. */
+			insert_to_sorted_bio_wrapper_list_by_pos(
+				biow, &biow_list_sorted);
+#else /* WALB_SORT_DATA_IO */
+			list_add_tail(biow, &biow_list_sorted);
+#endif /* WALB_SORT_DATA_IO */
+#endif /* WALB_OVERLAPPING_SERIALIZE */
+		}
+		blk_start_plug(&plug);
+		list_for_each_entry_safe(biow, biow_next, &biow_list_sorted, list2) {
+			const bool is_plugging = false;
 			/* Submit bio wrapper. */
 			submit_write_bio_wrapper(biow, is_plugging);
-#endif
 		}
 		blk_finish_plug(&plug);
 
 		/* Enqueue wait task. */
 		spin_lock(&iocored->datapack_wait_queue_lock);
-		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
+		list_for_each_entry_safe(biow, biow_next, &biow_list_sorted, list2) {
 			list_move_tail(&biow->list2, &iocored->datapack_wait_queue);
 		}
 		spin_unlock(&iocored->datapack_wait_queue_lock);
@@ -3334,9 +3370,12 @@ error0:
  *
  * They are sorted by biow->lsid.
  * Use biow->list3 for list operations.
+ *
+ * @biow (struct bio_wrapper *)
+ * @biow_list (struct list_head *)
  */
 #ifdef WALB_FAST_ALGORITHM
-static void insert_to_sorted_bio_wrapper_list(
+static void insert_to_sorted_bio_wrapper_list_by_lsid(
 	struct bio_wrapper *biow, struct list_head *biow_list)
 {
 	struct bio_wrapper *biow_tmp, *biow_next;
@@ -3378,6 +3417,65 @@ static void insert_to_sorted_bio_wrapper_list(
 #endif
 }
 #endif
+
+/**
+ * Insert a bio wrapper to a sorted bio wrapper list.
+ * using insertion sort.
+ *
+ * They are sorted by biow->pos.
+ * Use biow->list2 for list operations.
+ *
+ * Sort cost is O(n^2) in a worst case,
+ * while the cost is O(1) in sequential write.
+ *
+ * @biow (struct bio_wrapper *)
+ * @biow_list (struct list_head *)
+ */
+void insert_to_sorted_bio_wrapper_list_by_pos(
+	struct bio_wrapper *biow, struct list_head *biow_list)
+{
+	struct bio_wrapper *biow_tmp, *biow_next;
+	bool moved;
+#ifdef WALB_DEBUG
+	sector_t pos;
+#endif
+
+	ASSERT(biow);
+	ASSERT(biow_list);
+
+	if (!list_empty(biow_list)) {
+		/* last entry. */
+		biow_tmp = list_entry(biow_list->prev, struct bio_wrapper, list2);
+		ASSERT(biow_tmp);
+		if (biow->pos > biow_tmp->pos) {
+			list_add_tail(&biow->list2, biow_list);
+			return;
+		}
+	}
+	moved = false;
+	list_for_each_entry_safe_reverse(biow_tmp, biow_next, biow_list, list2) {
+		if (biow->pos > biow_tmp->pos) {
+			list_add(&biow->list2, &biow_tmp->list2);
+			moved = true;
+			break;
+		}
+	}
+	if (!moved) {
+		list_add(&biow->list2, biow_list);
+	}
+
+	/* debug */
+#ifdef WALB_DEBUG
+	pos = 0;
+	/* LOGn("begin\n"); */
+	list_for_each_entry_safe(biow_tmp, biow_next, biow_list, list2) {
+		/* LOGn("%" PRIu64 "\n", (u64)biow_tmp->pos); */
+		ASSERT(pos <= biow_tmp->pos);
+		pos = biow_tmp->pos;
+	}
+	/* LOGn("end\n"); */
+#endif
+}
 
 /**
  * Check whether wpack is zero-flush-only and set the flag.
@@ -3674,20 +3772,14 @@ static void wait_for_bio_wrapper(
 }
 
 /**
- * Submit datapack.
+ * Wait for all overlapped IOs done.
  */
-static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
-{
-	struct walb_dev *wdev = biow->private_data;
-	struct bio_entry *bioe;
-	struct blk_plug plug;
 #ifdef WALB_OVERLAPPING_SERIALIZE
+static void wait_for_overlapped_io_done(struct bio_wrapper *biow)
+{
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	int c;
-#endif
-
-#ifdef WALB_OVERLAPPING_SERIALIZE
 	/* Wait for previous overlapping writes. */
 	if (biow->n_overlapping > 0) {
 		c = 0;
@@ -3701,9 +3793,24 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 			goto retry;
 		}
 	}
+	ASSERT(biow->n_overlapping == 0);
+}
 #endif
 
+/**
+ * Submit data io.
+ */
+static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
+{
+	struct walb_dev *wdev = biow->private_data;
+	struct bio_entry *bioe;
+	struct blk_plug plug;
+
+	ASSERT(biow);
 	ASSERT(!list_empty(&biow->bioe_list));
+#ifdef WALB_OVERLAPPING_SERIALIZE
+	ASSERT(biow->n_overlapping == 0);
+#endif
 
 	if (biow->is_discard &&
 		!blk_queue_discard(bdev_get_queue(wdev->ddev))) {
@@ -4206,7 +4313,8 @@ static bool pending_check_and_copy(
 		ASSERT(biow_tmp);
 		if (!biow_tmp->is_discard && bio_wrapper_is_overlap(biow, biow_tmp)) {
 			n_overlapped_bios++;
-			insert_to_sorted_bio_wrapper_list(biow_tmp, &biow_list);
+			insert_to_sorted_bio_wrapper_list_by_lsid(
+				biow_tmp, &biow_list);
 		}
 		if (!multimap_cursor_next(&cur)) {
 			break;
