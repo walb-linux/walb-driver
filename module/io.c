@@ -3341,6 +3341,9 @@ static void insert_to_sorted_bio_wrapper_list(
 {
 	struct bio_wrapper *biow_tmp, *biow_next;
 	bool moved;
+#ifdef WALB_DEBUG
+	u64 lsid;
+#endif
 
 	ASSERT(biow);
 	ASSERT(biow_list);
@@ -3351,13 +3354,13 @@ static void insert_to_sorted_bio_wrapper_list(
 		ASSERT(biow_tmp);
 		if (biow->lsid < biow_tmp->lsid) {
 			list_add(&biow->list3, biow_list);
+			return;
 		}
-		return;
 	}
 	moved = false;
 	list_for_each_entry_safe(biow_tmp, biow_next, biow_list, list3) {
 		if (biow->lsid < biow_tmp->lsid) {
-			list_add(&biow->list3, &biow_tmp->list3);
+			list_add_tail(&biow->list3, &biow_tmp->list3);
 			moved = true;
 			break;
 		}
@@ -3365,6 +3368,14 @@ static void insert_to_sorted_bio_wrapper_list(
 	if (!moved) {
 		list_add_tail(&biow->list3, biow_list);
 	}
+
+#ifdef WALB_DEBUG
+	lsid = 0;
+	list_for_each_entry_safe(biow_tmp, biow_next, biow_list, list3) {
+		ASSERT(lsid <= biow_tmp->lsid);
+		lsid = biow_tmp->lsid;
+	}
+#endif
 }
 #endif
 
