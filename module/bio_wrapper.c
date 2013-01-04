@@ -265,7 +265,7 @@ void bio_wrapper_exit(void)
 	int cnt;
 
 	LOGd("begin\n");
-	
+
 	cnt = atomic_dec_return(&shared_cnt_);
 
 	if (cnt > 0) {
