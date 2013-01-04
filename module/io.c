@@ -198,13 +198,16 @@ struct redo_pack
 #define WORKER_NAME_GC "walb_gc"
 
 /* If you prefer small response to large throughput, set N_PACK_BULK smaller. */
-#define N_PACK_BULK 64
+#define N_PACK_BULK 128
 
 /* If you use IO-scheduling-sensitive storage for the data device,
  * you should set larger N_IO_BULK value.
  * For example, HDD with little cache.
- * This must not be so large because we use insertion sort. */
-#define N_IO_BULK 1024
+ * This must not be so large because we use insertion sort.
+ * In addition, the value must not exceed 256 due to
+ * limitation of concurrent tasks with an unbound workqueue.
+ */
+#define N_IO_BULK 256
 
 /* Maximum size of log to read ahead for redo [logical block].
    Currently 8MB. */
