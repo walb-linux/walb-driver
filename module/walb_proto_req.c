@@ -101,7 +101,7 @@ struct workqueue_struct *wq_read_ = NULL;
 
 /**
  * A write pack.
- * There are no overlapping requests in a pack.
+ * There are no overlapped requests in a pack.
  */
 struct pack
 {
@@ -193,15 +193,15 @@ struct pdata
 	atomic_t n_pending_req; /* Number of pending request(s).
 				   This will be used for exit. */
 
-#ifdef WALB_OVERLAPPING_SERIALIZE
+#ifdef WALB_OVERLAPPED_SERIALIZE
 	/**
 	 * All req_entry data may not keep reqe->bio_ent_list.
 	 * You must keep address and size information in another way.
 	 */
-	spinlock_t overlapping_data_lock; /* Use spin_lock()/spin_unlock(). */
-	struct multimap *overlapping_data; /* key: blk_rq_pos(req),
+	spinlock_t overlapped_data_lock; /* Use spin_lock()/spin_unlock(). */
+	struct multimap *overlapped_data; /* key: blk_rq_pos(req),
 					      val: pointer to req_entry. */
-	unsigned int max_req_sectors_in_overlapping; /* Maximum request size [logical block]. */
+	unsigned int max_req_sectors_in_overlapped; /* Maximum request size [logical block]. */
 #endif
 
 #ifdef WALB_FAST_ALGORITHM
@@ -233,7 +233,7 @@ static struct treemap_memory_manager mmgr_;
 #define TREE_NODE_CACHE_NAME "walb_proto_req_node_cache"
 #define TREE_CELL_HEAD_CACHE_NAME "walb_proto_req_cell_head_cache"
 #define TREE_CELL_CACHE_NAME "walb_proto_req_cell_cache"
-#define N_ITEMS_IN_MEMPOOL (128 * 2) /* for pending data and overlapping data. */
+#define N_ITEMS_IN_MEMPOOL (128 * 2) /* for pending data and overlapped data. */
 
 /*******************************************************************************
  * Macros definition.
@@ -394,13 +394,13 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 	struct pack *wpack, struct wrapper_blk_dev *wrdev);
 #endif
 
-/* Overlapping data functions. */
-#ifdef WALB_OVERLAPPING_SERIALIZE
-static bool overlapping_check_and_insert(
-	struct multimap *overlapping_data, unsigned int *max_req_sectors_p,
+/* Overlapped data functions. */
+#ifdef WALB_OVERLAPPED_SERIALIZE
+static bool overlapped_check_and_insert(
+	struct multimap *overlapped_data, unsigned int *max_req_sectors_p,
 	struct req_entry *reqe, gfp_t gfp_mask);
-static void overlapping_delete_and_notify(
-	struct multimap *overlapping_data, unsigned int *max_req_sectors_p,
+static void overlapped_delete_and_notify(
+	struct multimap *overlapped_data, unsigned int *max_req_sectors_p,
 	struct req_entry *reqe);
 #endif
 
@@ -419,8 +419,8 @@ static inline bool should_stop_queue(struct pdata *pdata, struct req_entry *reqe
 static inline bool should_start_queue(struct pdata *pdata, struct req_entry *reqe);
 #endif
 
-/* For overlapping data and pending data. */
-#if defined(WALB_OVERLAPPING_SERIALIZE) || defined(WALB_FAST_ALGORITHM)
+/* For overlapped data and pending data. */
+#if defined(WALB_OVERLAPPED_SERIALIZE) || defined(WALB_FAST_ALGORITHM)
 static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1);
 #endif
 
@@ -488,7 +488,7 @@ static void stop_periodic_print_for_debug(void)
  *******************************************************************************/
 
 /**
- * Check two requests are overlapping.
+ * Check two requests are overlapped.
  */
 static inline bool is_overlap_req(struct request *req0, struct request *req1)
 {
@@ -551,14 +551,14 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	spin_lock_init(&pdata->lsid_lock);
 	spin_lock_init(&pdata->lsuper0_lock);
 
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	spin_lock_init(&pdata->overlapping_data_lock);
-	pdata->overlapping_data = multimap_create(GFP_KERNEL, &mmgr_);
-	if (!pdata->overlapping_data) {
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	spin_lock_init(&pdata->overlapped_data_lock);
+	pdata->overlapped_data = multimap_create(GFP_KERNEL, &mmgr_);
+	if (!pdata->overlapped_data) {
 		LOGe("multimap creation failed.\n");
 		goto error11;
 	}
-	pdata->max_req_sectors_in_overlapping = 0;
+	pdata->max_req_sectors_in_overlapped = 0;
 #endif
 #ifdef WALB_FAST_ALGORITHM
 	spin_lock_init(&pdata->pending_data_lock);
@@ -745,9 +745,9 @@ error2:
 error12:
 	multimap_destroy(pdata->pending_data);
 #endif
-#ifdef WALB_OVERLAPPING_SERIALIZE
+#ifdef WALB_OVERLAPPED_SERIALIZE
 error11:
-	multimap_destroy(pdata->overlapping_data);
+	multimap_destroy(pdata->overlapped_data);
 #endif
 	kfree(pdata);
 	wrdev->private_data = NULL;
@@ -788,8 +788,8 @@ static void destroy_private_data(struct wrapper_blk_dev *wrdev)
 #ifdef WALB_FAST_ALGORITHM
 	multimap_destroy(pdata->pending_data);
 #endif
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	multimap_destroy(pdata->overlapping_data);
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	multimap_destroy(pdata->overlapped_data);
 #endif
 	kfree(pdata);
 	wrdev->private_data = NULL;
@@ -1263,7 +1263,7 @@ static void destroy_pack(struct pack *pack)
 }
 
 /**
- * Check a request in a pack and a request is overlapping.
+ * Check a request in a pack and a request is overlapped.
  */
 UNUSED
 static bool is_overlap_pack_reqe(struct pack *pack, struct req_entry *reqe)
@@ -1397,7 +1397,7 @@ static bool writepack_add_req(
 			goto newpack;
 		}
 #else
-		/* Now we need not overlapping check in a pack
+		/* Now we need not overlapped check in a pack
 		   because atomicity is kept by unit of request. */
 		if (req->cmd_flags & REQ_FLUSH
 			|| is_pack_size_exceeds(lhead, pbs, max_logpack_pb, reqe)) {
@@ -1848,8 +1848,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 	struct request *req;
 	bool is_failed = false;
 	struct pdata *pdata;
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	bool is_overlapping_insert_succeeded;
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	bool is_overlapped_insert_succeeded;
 #endif
 	bool is_pending_insert_succeeded;
 	bool is_stop_queue = false;
@@ -1920,15 +1920,15 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 			/* call end_request where with fast algorithm
 			   while easy algorithm call it after data device IO. */
 			blk_end_request_all(req, 0);
-#ifdef WALB_OVERLAPPING_SERIALIZE
-			/* check and insert to overlapping detection data. */
-			spin_lock(&pdata->overlapping_data_lock);
-			is_overlapping_insert_succeeded =
-				overlapping_check_and_insert(pdata->overlapping_data,
-							&pdata->max_req_sectors_in_overlapping,
+#ifdef WALB_OVERLAPPED_SERIALIZE
+			/* check and insert to overlapped detection data. */
+			spin_lock(&pdata->overlapped_data_lock);
+			is_overlapped_insert_succeeded =
+				overlapped_check_and_insert(pdata->overlapped_data,
+							&pdata->max_req_sectors_in_overlapped,
 							reqe, GFP_ATOMIC);
-			spin_unlock(&pdata->overlapping_data_lock);
-			if (!is_overlapping_insert_succeeded) {
+			spin_unlock(&pdata->overlapped_data_lock);
+			if (!is_overlapped_insert_succeeded) {
 				spin_lock(&pdata->pending_data_lock);
 				pending_delete(pdata->pending_data,
 					&pdata->max_req_sectors_in_pending, reqe);
@@ -1969,8 +1969,8 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 	struct request *req;
 	bool is_failed = false;
 	struct pdata *pdata;
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	bool is_overlapping_insert_succeeded;
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	bool is_overlapped_insert_succeeded;
 #endif
 
 	ASSERT(wpack);
@@ -2010,15 +2010,15 @@ static void wait_logpack_and_enqueue_datapack_tasks_easy(
 				goto failed1;
 			}
 
-#ifdef WALB_OVERLAPPING_SERIALIZE
-			/* check and insert to overlapping detection data. */
-			spin_lock(&pdata->overlapping_data_lock);
-			is_overlapping_insert_succeeded =
-				overlapping_check_and_insert(pdata->overlapping_data,
-							&pdata->max_req_sectors_in_overlapping,
+#ifdef WALB_OVERLAPPED_SERIALIZE
+			/* check and insert to overlapped detection data. */
+			spin_lock(&pdata->overlapped_data_lock);
+			is_overlapped_insert_succeeded =
+				overlapped_check_and_insert(pdata->overlapped_data,
+							&pdata->max_req_sectors_in_overlapped,
 							reqe, GFP_ATOMIC);
-			spin_unlock(&pdata->overlapping_data_lock);
-			if (!is_overlapping_insert_succeeded) {
+			spin_unlock(&pdata->overlapped_data_lock);
+			if (!is_overlapped_insert_succeeded) {
 				goto failed1;
 			}
 #endif
@@ -2146,12 +2146,12 @@ static void gc_logpack_list(struct pdata *pdata, struct list_head *wpack_list)
  * Execute a write request.
  *
  * (1) create (already done)
- * (2) wait for overlapping write requests done
- *     (only when WALB_OVERLAPPING_SERIALIZE)
+ * (2) wait for overlapped write requests done
+ *     (only when WALB_OVERLAPPED_SERIALIZE)
  * (3) submit
  * (4) wait for completion
- * (5) notify waiting overlapping write requests
- *     (only when WALB_OVERLAPPING_SERIALIZE)
+ * (5) notify waiting overlapped write requests
+ *     (only when WALB_OVERLAPPED_SERIALIZE)
  * (6) notify gc_task.
  *
  * CONTEXT:
@@ -2184,19 +2184,19 @@ static void write_req_task_fast(struct work_struct *work)
 	const bool is_delete = false;
 	bool is_start_queue = false;
 	unsigned long flags;
-#ifdef WALB_OVERLAPPING_SERIALIZE
+#ifdef WALB_OVERLAPPED_SERIALIZE
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	int c;
 #endif
 
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	/* Wait for previous overlapping writes. */
-	if (reqe->n_overlapping > 0) {
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	/* Wait for previous overlapped writes. */
+	if (reqe->n_overlapped > 0) {
 		c = 0;
 	retry:
 		rtimeo = wait_for_completion_timeout(
-			&reqe->overlapping_done, timeo);
+			&reqe->overlapped_done, timeo);
 		if (rtimeo == 0) {
 			LOGw("timeout(%d): reqe %p pos %"PRIu64" sectors %u\n",
 				c, reqe, reqe->req_pos, reqe->req_sectors);
@@ -2213,13 +2213,13 @@ static void write_req_task_fast(struct work_struct *work)
 	/* Wait for completion and call end_request. */
 	wait_for_req_entry(reqe, is_end_request, is_delete);
 
-	/* Delete from overlapping detection data. */
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	spin_lock(&pdata->overlapping_data_lock);
-	overlapping_delete_and_notify(pdata->overlapping_data,
-				&pdata->max_req_sectors_in_overlapping,
+	/* Delete from overlapped detection data. */
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	spin_lock(&pdata->overlapped_data_lock);
+	overlapped_delete_and_notify(pdata->overlapped_data,
+				&pdata->max_req_sectors_in_overlapped,
 				reqe);
-	spin_unlock(&pdata->overlapping_data_lock);
+	spin_unlock(&pdata->overlapped_data_lock);
 #endif
 
 	/* Delete from pending data. */
@@ -2261,19 +2261,19 @@ static void write_req_task_easy(struct work_struct *work)
 	struct blk_plug plug;
 	const bool is_end_request = true;
 	const bool is_delete = true;
-#ifdef WALB_OVERLAPPING_SERIALIZE
+#ifdef WALB_OVERLAPPED_SERIALIZE
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	int c;
 #endif
 
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	/* Wait for previous overlapping writes. */
-	if (reqe->n_overlapping > 0) {
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	/* Wait for previous overlapped writes. */
+	if (reqe->n_overlapped > 0) {
 		c = 0;
 	retry:
 		rtimeo = wait_for_completion_timeout(
-			&reqe->overlapping_done, timeo);
+			&reqe->overlapped_done, timeo);
 		if (rtimeo == 0) {
 			LOGw("timeout(%d): reqe %p pos %"PRIu64" sectors %u\n",
 				c, reqe, reqe->req_pos, reqe->req_sectors);
@@ -2290,13 +2290,13 @@ static void write_req_task_easy(struct work_struct *work)
 	/* Wait for completion and call end_request. */
 	wait_for_req_entry(reqe, is_end_request, is_delete);
 
-	/* Delete from overlapping detection data. */
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	spin_lock(&pdata->overlapping_data_lock);
-	overlapping_delete_and_notify(pdata->overlapping_data,
-				&pdata->max_req_sectors_in_overlapping,
+	/* Delete from overlapped detection data. */
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	spin_lock(&pdata->overlapped_data_lock);
+	overlapped_delete_and_notify(pdata->overlapped_data,
+				&pdata->max_req_sectors_in_overlapped,
 				reqe);
-	spin_unlock(&pdata->overlapping_data_lock);
+	spin_unlock(&pdata->overlapped_data_lock);
 #endif
 
 	ASSERT(list_empty(&reqe->bio_ent_list));
@@ -2978,16 +2978,16 @@ failed:
 }
 
 /**
- * Overlapping check and insert.
+ * Overlapped check and insert.
  *
  * CONTEXT:
- *   overlapping_data lock must be held.
+ *   overlapped_data lock must be held.
  * RETURN:
  *   true in success, or false (memory allocation failure).
  */
-#ifdef WALB_OVERLAPPING_SERIALIZE
-static bool overlapping_check_and_insert(
-	struct multimap *overlapping_data,
+#ifdef WALB_OVERLAPPED_SERIALIZE
+static bool overlapped_check_and_insert(
+	struct multimap *overlapped_data,
 	unsigned int *max_req_sectors_p,
 	struct req_entry *reqe, gfp_t gfp_mask)
 {
@@ -2996,7 +2996,7 @@ static bool overlapping_check_and_insert(
 	int ret;
 	struct req_entry *reqe_tmp;
 
-	ASSERT(overlapping_data);
+	ASSERT(overlapped_data);
 	ASSERT(max_req_sectors_p);
 	ASSERT(reqe);
 	ASSERT(reqe->req_sectors > 0);
@@ -3009,15 +3009,15 @@ static bool overlapping_check_and_insert(
 		start_pos = 0;
 	}
 
-	multimap_cursor_init(overlapping_data, &cur);
-	reqe->n_overlapping = 0;
+	multimap_cursor_init(overlapped_data, &cur);
+	reqe->n_overlapped = 0;
 
 	/* Search the smallest candidate. */
 	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
 		goto fin;
 	}
 
-	/* Count overlapping requests previously. */
+	/* Count overlapped requests previously. */
 	while (multimap_cursor_key(&cur) < reqe->req_pos + reqe->req_sectors) {
 
 		ASSERT(multimap_cursor_is_valid(&cur));
@@ -3025,7 +3025,7 @@ static bool overlapping_check_and_insert(
 		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
 		ASSERT(reqe_tmp);
 		if (is_overlap_req_entry(reqe, reqe_tmp)) {
-			reqe->n_overlapping++;
+			reqe->n_overlapped++;
 		}
 		if (!multimap_cursor_next(&cur)) {
 			break;
@@ -3033,38 +3033,38 @@ static bool overlapping_check_and_insert(
 	}
 #if 0
 	/* debug */
-	if (reqe->n_overlapping > 0) {
-		LOGn("n_overlapping %u\n", reqe->n_overlapping);
+	if (reqe->n_overlapped > 0) {
+		LOGn("n_overlapped %u\n", reqe->n_overlapped);
 	}
 #endif
 
 fin:
-	ret = multimap_add(overlapping_data, reqe->req_pos, (unsigned long)reqe, gfp_mask);
+	ret = multimap_add(overlapped_data, reqe->req_pos, (unsigned long)reqe, gfp_mask);
 	ASSERT(ret != -EEXIST);
 	ASSERT(ret != -EINVAL);
 	if (ret) {
 		ASSERT(ret == -ENOMEM);
-		LOGe("overlapping_check_and_insert failed.\n");
+		LOGe("overlapped_check_and_insert failed.\n");
 		return false;
 	}
 	*max_req_sectors_p = max(*max_req_sectors_p, reqe->req_sectors);
-	if (reqe->n_overlapping == 0) {
-		complete(&reqe->overlapping_done);
+	if (reqe->n_overlapped == 0) {
+		complete(&reqe->overlapped_done);
 	}
 	return true;
 }
 #endif
 
 /**
- * Delete a req_entry from the overlapping data,
- * and notify waiting overlapping requests.
+ * Delete a req_entry from the overlapped data,
+ * and notify waiting overlapped requests.
  *
  * CONTEXT:
- *   overlapping_data lock must be held.
+ *   overlapped_data lock must be held.
  */
-#ifdef WALB_OVERLAPPING_SERIALIZE
-static void overlapping_delete_and_notify(
-	struct multimap *overlapping_data,
+#ifdef WALB_OVERLAPPED_SERIALIZE
+static void overlapped_delete_and_notify(
+	struct multimap *overlapped_data,
 	unsigned int *max_req_sectors_p,
 	struct req_entry *reqe)
 {
@@ -3072,10 +3072,10 @@ static void overlapping_delete_and_notify(
 	u64 max_io_size, start_pos;
 	struct req_entry *reqe_tmp;
 
-	ASSERT(overlapping_data);
+	ASSERT(overlapped_data);
 	ASSERT(max_req_sectors_p);
 	ASSERT(reqe);
-	ASSERT(reqe->n_overlapping == 0);
+	ASSERT(reqe->n_overlapped == 0);
 
 	max_io_size = *max_req_sectors_p;
 	if (reqe->req_pos > max_io_size) {
@@ -3084,23 +3084,23 @@ static void overlapping_delete_and_notify(
 		start_pos = 0;
 	}
 
-	/* Delete from the overlapping data. */
+	/* Delete from the overlapped data. */
 	reqe_tmp = (struct req_entry *)multimap_del(
-		overlapping_data, reqe->req_pos, (unsigned long)reqe);
+		overlapped_data, reqe->req_pos, (unsigned long)reqe);
 	LOGd_("reqe_tmp %p reqe %p\n", reqe_tmp, reqe); /* debug */
 	ASSERT(reqe_tmp == reqe);
 
 	/* Initialize max_req_sectors. */
-	if (multimap_is_empty(overlapping_data)) {
+	if (multimap_is_empty(overlapped_data)) {
 		*max_req_sectors_p = 0;
 	}
 
 	/* Search the smallest candidate. */
-	multimap_cursor_init(overlapping_data, &cur);
+	multimap_cursor_init(overlapped_data, &cur);
 	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
 		return;
 	}
-	/* Decrement count of overlapping requests afterward and notify if need. */
+	/* Decrement count of overlapped requests afterward and notify if need. */
 	while (multimap_cursor_key(&cur) < reqe->req_pos + reqe->req_sectors) {
 
 		ASSERT(multimap_cursor_is_valid(&cur));
@@ -3108,11 +3108,11 @@ static void overlapping_delete_and_notify(
 		reqe_tmp = (struct req_entry *)multimap_cursor_val(&cur);
 		ASSERT(reqe_tmp);
 		if (is_overlap_req_entry(reqe, reqe_tmp)) {
-			ASSERT(reqe_tmp->n_overlapping > 0);
-			reqe_tmp->n_overlapping--;
-			if (reqe_tmp->n_overlapping == 0) {
-				/* There is no overlapping request before it. */
-				complete(&reqe_tmp->overlapping_done);
+			ASSERT(reqe_tmp->n_overlapped > 0);
+			reqe_tmp->n_overlapped--;
+			if (reqe_tmp->n_overlapped == 0) {
+				/* There is no overlapped request before it. */
+				complete(&reqe_tmp->overlapped_done);
 			}
 		}
 		if (!multimap_cursor_next(&cur)) {
@@ -3188,7 +3188,7 @@ static void pending_delete(
 #endif
 
 /**
- * Check overlapping writes and copy from them.
+ * Check overlapped writes and copy from them.
  *
  * RETURN:
  *   true in success, or false due to data copy failed.
@@ -3219,10 +3219,10 @@ UNUSED static bool pending_check_and_copy(
 	/* Search the smallest candidate. */
 	multimap_cursor_init(pending_data, &cur);
 	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
-		/* No overlapping requests. */
+		/* No overlapped requests. */
 		return true;
 	}
-	/* Copy data from pending and overlapping write requests. */
+	/* Copy data from pending and overlapped write requests. */
 	while (multimap_cursor_key(&cur) < reqe->req_pos + reqe->req_sectors) {
 
 		ASSERT(multimap_cursor_is_valid(&cur));
@@ -3308,9 +3308,9 @@ static inline bool should_start_queue(struct pdata *pdata, struct req_entry *req
 #endif
 
 /**
- * Check two request entrys is overlapping.
+ * Check two request entrys is overlapped.
  */
-#if defined(WALB_OVERLAPPING_SERIALIZE) || defined(WALB_FAST_ALGORITHM)
+#if defined(WALB_OVERLAPPED_SERIALIZE) || defined(WALB_FAST_ALGORITHM)
 static inline bool is_overlap_req_entry(struct req_entry *reqe0, struct req_entry *reqe1)
 {
 	ASSERT(reqe0);
@@ -3495,10 +3495,10 @@ static bool pre_register(void)
 		goto error8;
 	}
 
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	LOGn("WalB Overlapping Detection supported.\n");
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	LOGn("WalB Overlapped Detection supported.\n");
 #else
-	LOGn("WalB Overlapping Detection not supported.\n");
+	LOGn("WalB Overlapped Detection not supported.\n");
 #endif
 #ifdef WALB_FAST_ALGORITHM
 	LOGn("WalB Fast Algorithm.\n");

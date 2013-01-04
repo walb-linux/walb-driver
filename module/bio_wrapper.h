@@ -48,9 +48,9 @@ struct bio_wrapper
 	/* True if the biow data will be fully overwritten by newer IO(s). */
 	bool is_overwritten;
 #endif
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	struct completion overlapping_done;
-	int n_overlapping; /* initial value is -1. */
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	struct completion overlapped_done;
+	int n_overlapped; /* initial value is -1. */
 #endif
 };
 
@@ -66,7 +66,7 @@ bool bio_wrapper_init(void);
 void bio_wrapper_exit(void);
 
 /**
- * Check overlapping.
+ * Check overlapped.
  */
 static inline bool bio_wrapper_is_overlap(
 	const struct bio_wrapper *biow0, const struct bio_wrapper *biow1)

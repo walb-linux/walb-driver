@@ -37,9 +37,9 @@ struct req_entry
 	   read_req_task does not use this. */
 	struct completion done;
 
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	struct completion overlapping_done;
-	int n_overlapping; /* initial value is -1. */
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	struct completion overlapped_done;
+	int n_overlapped; /* initial value is -1. */
 #endif
 
 	u64 req_pos; /* request address [logical block] */
@@ -57,7 +57,7 @@ UNUSED void req_entry_get(struct req_entry *reqe);
 UNUSED void req_entry_put(struct req_entry *reqe);
 
 #ifdef WALB_FAST_ALGORITHM
-void get_overlapping_pos_and_sectors(
+void get_overlapped_pos_and_sectors(
 	struct req_entry *reqe0,  struct req_entry *reqe1,
 	u64 *ol_req_pos_p, unsigned int *ol_req_sectors_p);
 bool data_copy_req_entry(

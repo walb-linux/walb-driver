@@ -31,7 +31,7 @@ static atomic_t shared_cnt_ = ATOMIC_INIT(0);
  *******************************************************************************/
 
 #ifdef WALB_FAST_ALGORITHM
-static void bio_wrapper_get_overlapping_pos_and_len(
+static void bio_wrapper_get_overlapped_pos_and_len(
 	struct bio_wrapper *biow0,  struct bio_wrapper *biow1,
 	u64 *ol_pos_p, unsigned int *ol_len_p);
 #endif
@@ -45,7 +45,7 @@ static void bio_wrapper_get_overlapping_pos_and_len(
  *******************************************************************************/
 
 /**
- * Get overlapping position and length of two bio entries.
+ * Get overlapped position and length of two bio entries.
  *
  * @biow0 a bio wrapper.
  * @biow1 another bio wrapper.
@@ -53,7 +53,7 @@ static void bio_wrapper_get_overlapping_pos_and_len(
  * @ol_len_p pointer to store result length [sectors].
  */
 #ifdef WALB_FAST_ALGORITHM
-static void bio_wrapper_get_overlapping_pos_and_len(
+static void bio_wrapper_get_overlapped_pos_and_len(
 	struct bio_wrapper *biow0,  struct bio_wrapper *biow1,
 	u64 *ol_pos_p, unsigned int *ol_len_p)
 {
@@ -124,9 +124,9 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 #ifdef WALB_FAST_ALGORITHM
 	biow->is_overwritten = false;
 #endif
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	init_completion(&biow->overlapping_done);
-	biow->n_overlapping = -1;
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	init_completion(&biow->overlapped_done);
+	biow->n_overlapped = -1;
 #endif
 }
 
@@ -166,7 +166,7 @@ void destroy_bio_wrapper(struct bio_wrapper *biow)
  * @gfp_mask for memory allocation in bio split.
  *
  * bio_entry(s) inside the dst->bioe_list
- * will be splitted due to overlapping border.
+ * will be splitted due to overlapped border.
  *
  * RETURN:
  *   true if copy has done successfully,
@@ -187,8 +187,8 @@ bool data_copy_bio_wrapper(
 	ASSERT(src);
 	LOGd_("begin dst %p src %p.\n", dst, src);
 
-	/* Get overlapping area. */
-	bio_wrapper_get_overlapping_pos_and_len(
+	/* Get overlapped area. */
+	bio_wrapper_get_overlapped_pos_and_len(
 		dst, src, &ol_bio_pos, &ol_bio_len);
 	ASSERT(ol_bio_len > 0);
 

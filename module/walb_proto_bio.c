@@ -567,10 +567,10 @@ static bool pre_register(void)
 		goto error6;
 	}
 
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	LOGn("WalB Overlapping Detection supported.\n");
+#ifdef WALB_OVERLAPPPED_SERIALIZE
+	LOGn("WalB Overlapped Detection supported.\n");
 #else
-	LOGn("WalB Overlapping Detection not supported.\n");
+	LOGn("WalB Overlapped Detection not supported.\n");
 #endif
 #ifdef WALB_FAST_ALGORITHM
 	LOGn("WalB Fast Algorithm.\n");

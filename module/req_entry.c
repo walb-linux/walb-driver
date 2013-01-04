@@ -68,9 +68,9 @@ struct req_entry* create_req_entry(
 	INIT_LIST_HEAD(&reqe->bio_ent_list);
 	init_completion(&reqe->done);
 
-#ifdef WALB_OVERLAPPING_SERIALIZE
-	init_completion(&reqe->overlapping_done);
-	reqe->n_overlapping = -1;
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	init_completion(&reqe->overlapped_done);
+	reqe->n_overlapped = -1;
 #endif
 	reqe->req_pos = blk_rq_pos(req);
 	reqe->req_sectors = blk_rq_sectors(req);
@@ -133,7 +133,7 @@ void req_entry_put(struct req_entry *reqe)
 }
 
 /**
- * Get overlapping position and sectors of two requests.
+ * Get overlapped position and sectors of two requests.
  *
  * @reqe0 a request entry.
  * @reqe1 another request entry.
@@ -141,7 +141,7 @@ void req_entry_put(struct req_entry *reqe)
  * @ol_req_sectors_p pointer to store result sectors [sectors].
  */
 #ifdef WALB_FAST_ALGORITHM
-void get_overlapping_pos_and_sectors(
+void get_overlapped_pos_and_sectors(
 	struct req_entry *reqe0,  struct req_entry *reqe1,
 	u64 *ol_req_pos_p, unsigned int *ol_req_sectors_p)
 {
@@ -183,7 +183,7 @@ void get_overlapping_pos_and_sectors(
  *
  * bioe->is_copied will be true when it uses data of the source.
  * bio and bioe in the destination
- * will be splitted due to overlapping border.
+ * will be splitted due to overlapped border.
  *
  * RETURN:
  *   true if copy has done successfully,
@@ -205,8 +205,8 @@ bool data_copy_req_entry(
 
 	LOGd_("begin dst %p src %p.\n", dst_reqe, src_reqe);
 
-	/* Get overlapping area. */
-	get_overlapping_pos_and_sectors(
+	/* Get overlapped area. */
+	get_overlapped_pos_and_sectors(
 		dst_reqe, src_reqe, &ol_req_pos, &ol_req_sectors);
 	ASSERT(ol_req_sectors > 0);
 

@@ -2,7 +2,7 @@
 DEBUG = 0
 DYNAMIC_DEBUG = 0
 # You can specify the following parameters.
-OVERLAP = 1 #overlapping writes serialization.
+OVERLAP = 1 #overlapped writes serialization.
 FAST_ALG = 1 # use fast algorithm instead of easy.
 ASSERT = 0 # enable ASSERT even with relase build.
 
@@ -20,7 +20,7 @@ ifeq ($(ASSERT),1)
 endif
 
 ifeq ($(OVERLAP),1)
-  DEBFLAGS += -DWALB_OVERLAPPING_SERIALIZE
+  DEBFLAGS += -DWALB_OVERLAPPED_SERIALIZE
 endif
 
 ifeq ($(FAST_ALG),1)
