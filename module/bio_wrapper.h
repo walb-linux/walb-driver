@@ -22,6 +22,7 @@ struct bio_wrapper
 	struct list_head list; /* list entry. */
 	struct list_head list2; /* another list entry. */
 	struct list_head list3; /* another list entry. */
+	struct list_head list4; /* another list entry. */
 	struct work_struct work; /* for workqueue tasks. */
 
 	struct bio *bio; /* original bio. */

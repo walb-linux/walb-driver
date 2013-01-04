@@ -1313,8 +1313,6 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 
 		/* Sort IOs and submit. */
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
-			list_del(&biow->list2);
-
 			/* Clear flush bit. */
 			clear_flush_bit_of_bio_entry_list(&biow->bioe_list);
 
@@ -1329,7 +1327,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 				insert_to_sorted_bio_wrapper_list_by_pos(
 					biow, &biow_list_sorted);
 #else /* WALB_SORT_DATA_IO */
-				list_add_tail(biow, &biow_list_sorted);
+				list_add_tail(&biow->list4, &biow_list_sorted);
 #endif /* WALB_SORT_DATA_IO */
 			}
 #else /* WALB_OVERLAPPING_SERIALIZE */
@@ -1338,21 +1336,22 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			insert_to_sorted_bio_wrapper_list_by_pos(
 				biow, &biow_list_sorted);
 #else /* WALB_SORT_DATA_IO */
-			list_add_tail(biow, &biow_list_sorted);
+			list_add_tail(&biow->list4, &biow_list_sorted);
 #endif /* WALB_SORT_DATA_IO */
 #endif /* WALB_OVERLAPPING_SERIALIZE */
 		}
 		blk_start_plug(&plug);
-		list_for_each_entry_safe(biow, biow_next, &biow_list_sorted, list2) {
+		list_for_each_entry_safe(biow, biow_next, &biow_list_sorted, list4) {
 			const bool is_plugging = false;
 			/* Submit bio wrapper. */
+			list_del(&biow->list4);
 			submit_write_bio_wrapper(biow, is_plugging);
 		}
 		blk_finish_plug(&plug);
 
 		/* Enqueue wait task. */
 		spin_lock(&iocored->datapack_wait_queue_lock);
-		list_for_each_entry_safe(biow, biow_next, &biow_list_sorted, list2) {
+		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
 			list_move_tail(&biow->list2, &iocored->datapack_wait_queue);
 		}
 		spin_unlock(&iocored->datapack_wait_queue_lock);
@@ -3423,7 +3422,7 @@ static void insert_to_sorted_bio_wrapper_list_by_lsid(
  * using insertion sort.
  *
  * They are sorted by biow->pos.
- * Use biow->list2 for list operations.
+ * Use biow->list4 for list operations.
  *
  * Sort cost is O(n^2) in a worst case,
  * while the cost is O(1) in sequential write.
@@ -3445,30 +3444,30 @@ void insert_to_sorted_bio_wrapper_list_by_pos(
 
 	if (!list_empty(biow_list)) {
 		/* last entry. */
-		biow_tmp = list_entry(biow_list->prev, struct bio_wrapper, list2);
+		biow_tmp = list_entry(biow_list->prev, struct bio_wrapper, list4);
 		ASSERT(biow_tmp);
 		if (biow->pos > biow_tmp->pos) {
-			list_add_tail(&biow->list2, biow_list);
+			list_add_tail(&biow->list4, biow_list);
 			return;
 		}
 	}
 	moved = false;
-	list_for_each_entry_safe_reverse(biow_tmp, biow_next, biow_list, list2) {
+	list_for_each_entry_safe_reverse(biow_tmp, biow_next, biow_list, list4) {
 		if (biow->pos > biow_tmp->pos) {
-			list_add(&biow->list2, &biow_tmp->list2);
+			list_add(&biow->list4, &biow_tmp->list4);
 			moved = true;
 			break;
 		}
 	}
 	if (!moved) {
-		list_add(&biow->list2, biow_list);
+		list_add(&biow->list4, biow_list);
 	}
 
 	/* debug */
 #ifdef WALB_DEBUG
 	pos = 0;
 	/* LOGn("begin\n"); */
-	list_for_each_entry_safe(biow_tmp, biow_next, biow_list, list2) {
+	list_for_each_entry_safe(biow_tmp, biow_next, biow_list, list4) {
 		/* LOGn("%" PRIu64 "\n", (u64)biow_tmp->pos); */
 		ASSERT(pos <= biow_tmp->pos);
 		pos = biow_tmp->pos;
