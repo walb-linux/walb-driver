@@ -125,7 +125,6 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 	biow->is_overwritten = false;
 #endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
-	init_completion(&biow->overlapped_done);
 	biow->n_overlapped = -1;
 #endif
 }

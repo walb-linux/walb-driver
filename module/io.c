@@ -120,7 +120,7 @@ struct iocore_data
 	 */
 	spinlock_t overlapped_data_lock; /* Use spin_lock()/spin_unlock(). */
 	struct multimap *overlapped_data; /* key: blk_rq_pos(req),
-					      val: pointer to req_entry. */
+					     val: pointer to req_entry. */
 
 	/* Maximum request size [logical block]. */
 	unsigned int max_sectors_in_overlapped;
@@ -304,9 +304,6 @@ UNUSED static void print_pack_list(
 /* Workqueue tasks. */
 static void task_submit_logpack_list(struct work_struct *work);
 static void task_wait_for_logpack_list(struct work_struct *work);
-#ifdef WALB_OVERLAPPED_SERIALIZE
-static void task_submit_write_bio_wrapper(struct work_struct *work);
-#endif
 static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work);
 static void task_submit_bio_wrapper_list(struct work_struct *work);
 static void task_wait_for_bio_wrapper_list(struct work_struct *work);
@@ -404,9 +401,6 @@ static void create_discard_data_io_for_redo(
 	struct list_head *biow_list);
 static void submit_data_bio_for_redo(
 	UNUSED struct walb_dev *wdev, struct bio_wrapper *biow);
-#ifdef WALB_OVERLAPPED_SERIALIZE
-static void task_submit_write_bio_wrapper_for_redo(struct work_struct *work);
-#endif
 
 /* Other helper functions. */
 static bool writepack_add_bio_wrapper(
@@ -428,9 +422,6 @@ static void wait_for_write_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 static void wait_for_bio_wrapper(
 	struct bio_wrapper *biow, bool is_endio, bool is_delete);
-#ifdef WALB_OVERLAPPED_SERIALIZE
-static void wait_for_overlapped_io_done(struct bio_wrapper *biow);
-#endif
 static void submit_write_bio_wrapper(
 	struct bio_wrapper *biow, bool is_plugging);
 static void submit_read_bio_wrapper(
@@ -460,7 +451,7 @@ static bool overlapped_check_and_insert(
 	struct bio_wrapper *biow, gfp_t gfp_mask);
 static void overlapped_delete_and_notify(
 	struct multimap *overlapped_data, unsigned int *max_sectors_p,
-	struct bio_wrapper *biow);
+	struct list_head *should_submit_list, struct bio_wrapper *biow);
 #endif
 
 /* Pending data functions. */
@@ -520,7 +511,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 		devt = bio->bi_bdev->bd_dev;
 		LOGn("BIO_UPTODATE is false (dev %u:%u rw %lu pos %"PRIu64" len %u).\n",
 			MAJOR(devt), MINOR(devt),
-			bioe->bio->bi_rw, (u64)bioe->pos, bioe->len);
+			bio->bi_rw, (u64)bioe->pos, bioe->len);
 	}
 
 	/* LOGd("bio_entry_end_io() begin.\n"); */
@@ -532,6 +523,14 @@ static void bio_entry_end_io(struct bio *bio, int error)
 			/* 2 for data, 1 for log. */
 			ASSERT(bi_cnt == 2 || bi_cnt == 1);
 		} else {
+			if (!(bi_cnt == 3 || bi_cnt == 1)) {
+				unsigned int devt;
+				ASSERT(bio->bi_bdev);
+				devt = bio->bi_bdev->bd_dev;
+				LOGe("dev %u:%u bi_cnt %d\n",
+					MAJOR(devt), MINOR(devt),
+					bi_cnt);
+			}
 			/* 3 for data, 1 for log. */
 			ASSERT(bi_cnt == 3 || bi_cnt == 1);
 		}
@@ -1148,23 +1147,6 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 }
 
 /**
- * Datapack submit task.
- */
-#ifdef WALB_OVERLAPPED_SERIALIZE
-static void task_submit_write_bio_wrapper(struct work_struct *work)
-{
-	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
-	const bool is_plugging = false;
-
-	/* Wait for overlapped IOs. */
-	wait_for_overlapped_io_done(biow);
-
-	/* Submit related bios. */
-	submit_write_bio_wrapper(biow, is_plugging);
-}
-#endif
-
-/**
  * Wait for all related bio(s) for a bio_wrapper and gc it.
  */
 static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
@@ -1257,11 +1239,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			clear_flush_bit_of_bio_entry_list(&biow->bioe_list);
 
 #ifdef WALB_OVERLAPPED_SERIALIZE
-			if (biow->n_overlapped > 0) {
-				/* Enqueue submit task. */
-				INIT_WORK(&biow->work, task_submit_write_bio_wrapper);
-				queue_work(wq_unbound_, &biow->work);
-			} else {
+			if (biow->n_overlapped == 0) {
 #ifdef WALB_SORT_DATA_IO
 				/* Sort. */
 				insert_to_sorted_bio_wrapper_list_by_pos(
@@ -1269,6 +1247,9 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 #else /* WALB_SORT_DATA_IO */
 				list_add_tail(&biow->list4, &biow_list_sorted);
 #endif /* WALB_SORT_DATA_IO */
+			} else {
+				LOGn("delay overlapped biow %p pos %" PRIu64 " len %u\n",
+					biow, (u64)biow->pos, biow->len); /* debug */
 			}
 #else /* WALB_OVERLAPPED_SERIALIZE */
 #ifdef WALB_SORT_DATA_IO
@@ -1908,7 +1889,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 			int c = 0;
 
 			list_del(&biow->list);
-               retry:
+		retry:
 			rtimeo = wait_for_completion_timeout(&biow->done, timeo);
 			if (rtimeo == 0) {
 				LOGn("timeout(%d): biow %p bio %p pos %"PRIu64" len %u\n",
@@ -2309,6 +2290,8 @@ static void run_gc_log_in_redo(void *data)
 	unsigned long rtimeo;
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	struct iocore_data *iocored;
+	struct list_head should_submit_list;
+	struct bio_wrapper *biow_tmp, *biow_tmp_next;
 #endif
 
 	redod = (struct redo_data *)data;
@@ -2316,6 +2299,7 @@ static void run_gc_log_in_redo(void *data)
 	INIT_LIST_HEAD(&biow_list);
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	iocored = get_iocored_from_wdev(redod->wdev);
+	INIT_LIST_HEAD(&should_submit_list);
 #endif
 
 	while (true) {
@@ -2343,13 +2327,24 @@ static void run_gc_log_in_redo(void *data)
 				c++;
 				goto retry;
 			}
-			/* Delete from overlapped detection data. */
+
 #ifdef WALB_OVERLAPPED_SERIALIZE
+			/* Delete from overlapped detection data. */
 			spin_lock(&iocored->overlapped_data_lock);
 			overlapped_delete_and_notify(
 				iocored->overlapped_data,
-				&iocored->max_sectors_in_overlapped, biow);
+				&iocored->max_sectors_in_overlapped,
+				&should_submit_list, biow);
 			spin_unlock(&iocored->overlapped_data_lock);
+
+			/* Submit overlapped. */
+			list_for_each_entry_safe(
+				biow_tmp, biow_tmp_next, &should_submit_list, list4) {
+				ASSERT(biow_tmp->n_overlapped == 0);
+				list_del(&biow_tmp->list4);
+				generic_make_request(biow_tmp->bio);
+			}
+			ASSERT(list_empty(&should_submit_list));
 #endif
 			if (biow->error) {
 				redod->error = biow->error;
@@ -2931,7 +2926,7 @@ retry1:
 	destroy_bio_wrapper_for_redo(wdev, logh_biow);
 retry2:
 	logh_biow = create_log_bio_wrapper_for_redo(
-			wdev, logh->logpack_lsid, sectd);
+		wdev, logh->logpack_lsid, sectd);
 	if (!logh_biow) {
 		schedule();
 		goto retry2;
@@ -3125,52 +3120,15 @@ retry_insert_ol:
 		goto retry_insert_ol;
 	}
 	ASSERT(biow->n_overlapped >= 0);
-	if (biow->n_overlapped > 0) {
-		/* Enqueue submit task. */
-		INIT_WORK(&biow->work, task_submit_write_bio_wrapper_for_redo);
-		queue_work(wq_unbound_, &biow->work);
-		LOGd_("n_overlapped %u\n", biow->n_overlapped);
-	} else {
+	if (biow->n_overlapped == 0) {
 		generic_make_request(biow->bio);
+	} else {
+		LOGd_("n_overlapped %u\n", biow->n_overlapped);
 	}
 #else /* WALB_OVERLAPPED_SERIALIZE */
 	generic_make_request(biow->bio);
 #endif /* WALB_OVERLAPPED_SERIALIZE */
 }
-
-/**
- * Wait overlapped IO(s) and submit.
- */
-#ifdef WALB_OVERLAPPED_SERIALIZE
-static void task_submit_write_bio_wrapper_for_redo(struct work_struct *work)
-{
-	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
-#ifdef WALB_OVERLAPPED_SERIALIZE
-	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
-	unsigned long rtimeo;
-	int c;
-#endif
-
-	ASSERT(biow);
-
-#ifdef WALB_OVERLAPPED_SERIALIZE
-	/* Wait for previous overlapped writes. */
-	if (biow->n_overlapped > 0) {
-		c = 0;
-	retry:
-		rtimeo = wait_for_completion_timeout(
-			&biow->overlapped_done, timeo);
-		if (rtimeo == 0) {
-			LOGw("timeout(%d): biow %p pos %"PRIu64" len %u\n",
-				c, biow, (u64)biow->pos, biow->len);
-			c++;
-			goto retry;
-		}
-	}
-#endif
-	generic_make_request(biow->bio);
-}
-#endif
 
 /**
  * Add a bio_wrapper to a writepack.
@@ -3593,17 +3551,37 @@ static void wait_for_write_bio_wrapper(
 	const bool is_endio = true;
 	const bool is_delete = true;
 #endif
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	struct bio_wrapper *biow_tmp, *biow_tmp_next;
+	struct list_head should_submit_list;
+#endif
 
 	/* Wait for completion and call end_request. */
 	wait_for_bio_wrapper(biow, is_endio, is_delete);
 
-	/* Delete from overlapped detection data. */
 #ifdef WALB_OVERLAPPED_SERIALIZE
+	/* Delete from overlapped detection data. */
+	ASSERT(biow->n_overlapped == 0);
+	INIT_LIST_HEAD(&should_submit_list);
 	spin_lock(&iocored->overlapped_data_lock);
 	overlapped_delete_and_notify(
 		iocored->overlapped_data,
-		&iocored->max_sectors_in_overlapped, biow);
+		&iocored->max_sectors_in_overlapped,
+		&should_submit_list, biow);
 	spin_unlock(&iocored->overlapped_data_lock);
+
+	/* Submit bio wrapper(s) which n_overlapped became 0. */
+	list_for_each_entry_safe(biow_tmp, biow_tmp_next,
+				&should_submit_list, list4) {
+		const bool is_plug = false;
+		ASSERT(biow_tmp->n_overlapped == 0);
+		ASSERT(biow_tmp != biow);
+		list_del(&biow_tmp->list4);
+		LOGn("submit overlapped biow %p pos %" PRIu64 " len %u\n",
+			biow_tmp, (u64)biow_tmp->pos, biow_tmp->len); /* debug */
+		submit_write_bio_wrapper(biow_tmp, is_plug);
+	}
+	ASSERT(list_empty(&should_submit_list));
 #endif
 
 #ifdef WALB_FAST_ALGORITHM
@@ -3686,32 +3664,6 @@ static void wait_for_bio_wrapper(
 		ASSERT(list_empty(&biow->bioe_list));
 	}
 }
-
-/**
- * Wait for all overlapped IOs done.
- */
-#ifdef WALB_OVERLAPPED_SERIALIZE
-static void wait_for_overlapped_io_done(struct bio_wrapper *biow)
-{
-	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
-	unsigned long rtimeo;
-	int c;
-	/* Wait for previous overlapped writes. */
-	if (biow->n_overlapped > 0) {
-		c = 0;
-	retry:
-		rtimeo = wait_for_completion_timeout(
-			&biow->overlapped_done, timeo);
-		if (rtimeo == 0) {
-			LOGw("timeout(%d): biow %p pos %"PRIu64" len %u\n",
-				c, biow, (u64)biow->pos, biow->len);
-			c++;
-			goto retry;
-		}
-	}
-	ASSERT(biow->n_overlapped == 0);
-}
-#endif
 
 /**
  * Submit data io.
@@ -4023,16 +3975,20 @@ fin:
 		return false;
 	}
 	*max_sectors_p = max(*max_sectors_p, biow->len);
-	if (biow->n_overlapped == 0) {
-		complete(&biow->overlapped_done);
-	}
 	return true;
 }
 #endif
 
 /**
- * Delete a req_entry from the overlapped data,
- * and notify waiting overlapped requests.
+ * Delete a bio_wrapper from the overlapped data,
+ * and waiting overlapped requests
+ *
+ * @overlapped_data overlapped data.
+ * @max_sectors_p pointer to max_sectors value.
+ * @should_submit_list bio wrapper(s) which n_overlapped became 0
+ *     will be added.
+ *     using biow->list4 for list operations.
+ * @biow biow to be deleted.
  *
  * CONTEXT:
  *   overlapped_data lock must be held.
@@ -4041,6 +3997,7 @@ fin:
 static void overlapped_delete_and_notify(
 	struct multimap *overlapped_data,
 	unsigned int *max_sectors_p,
+	struct list_head *should_submit_list,
 	struct bio_wrapper *biow)
 {
 	struct multimap_cursor cur;
@@ -4086,7 +4043,8 @@ static void overlapped_delete_and_notify(
 			biow_tmp->n_overlapped--;
 			if (biow_tmp->n_overlapped == 0) {
 				/* There is no overlapped request before it. */
-				complete(&biow_tmp->overlapped_done);
+				list_add_tail(
+					&biow_tmp->list4, should_submit_list);
 			}
 		}
 		if (!multimap_cursor_next(&cur)) {

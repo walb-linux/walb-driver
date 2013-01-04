@@ -23,6 +23,7 @@ struct bio_wrapper
 	struct list_head list2; /* another list entry. */
 	struct list_head list3; /* another list entry. */
 	struct list_head list4; /* another list entry. */
+
 	struct work_struct work; /* for workqueue tasks. */
 
 	struct bio *bio; /* original bio. */
@@ -49,7 +50,6 @@ struct bio_wrapper
 	bool is_overwritten;
 #endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
-	struct completion overlapped_done;
 	int n_overlapped; /* initial value is -1. */
 #endif
 };
