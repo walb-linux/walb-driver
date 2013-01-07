@@ -355,6 +355,9 @@ static inline int sector_array_realloc(
 		new_ary = REALLOC(sect_ary->array,
 				sizeof(struct sector_data *) * n_sectors, mask);
 		if (!new_ary) { goto error0; }
+		for (i = sect_ary->size; i < n_sectors; i++) {
+			new_ary[i] = NULL;
+		}
 		sect_ary->array = new_ary;
 		for (i = sect_ary->size; i < n_sectors; i++) {
 #ifdef __KERNEL__
