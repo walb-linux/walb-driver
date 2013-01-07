@@ -126,6 +126,26 @@ static inline int walb_bitmap_get(struct walb_bitmap *bmp, size_t idx)
  * @return Non-zero: all bits are on,
  *	   0: otherwise.
  */
+/*
+	こちらも変更しないのでconst struct walb_bitmap *bmpがよいかと
+*/
+/*
+	ロジック的にはこちらのほうが簡潔かな
+	オリジナルはbmp->size = 0のとき0を返すがこちらは!0を返す
+	論理的にはこちらが正しい(オリジナルはbmp->size = 0のときary_size - 1はsize_t(-1)になる)
+static inline int walb_bitmap_is_all_on(const struct walb_bitmap *bmp)
+{
+	size_t q = bmp->size / 8;
+	size_t r = bmp->size % 8;
+	const u8 mask = (1 << r) - 1;
+	size_t i;
+
+	for (i = 0; i < q; i++)
+		if (bmp->ary[i] != 0xff)
+			return 0;
+	return (bmp->ary[q] & mask) == mask;
+}
+*/
 static inline int walb_bitmap_is_all_on(struct walb_bitmap *bmp)
 {
 	size_t ary_size = (bmp->size + 7) / 8;
