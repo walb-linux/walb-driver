@@ -116,25 +116,19 @@ static inline int walb_bitmap_get(const struct walb_bitmap *bmp, size_t idx)
  * @return Non-zero: all bits are on,
  *	   0: otherwise.
  */
-static inline int walb_bitmap_is_all_on(struct walb_bitmap *bmp)
+static inline int walb_bitmap_is_all_on(const struct walb_bitmap *bmp)
 {
-	size_t ary_size = (bmp->size + 7) / 8;
-	size_t n_bit_in_last_byte = bmp->size % 8;
+	size_t q = bmp->size / 8;
+	size_t r = bmp->size % 8;
+	const u8 mask = (1 << r) - 1;
 	size_t i;
 
-	if (n_bit_in_last_byte == 0)
-		n_bit_in_last_byte = 8;
-
-	for (i = 0; i < ary_size - 1; i++)
-		if (bmp->ary[i] != 0xff)
-			return 0;
-
-	for (i = 0; i < n_bit_in_last_byte; i++) {
-		if (! (bmp->ary[ary_size - 1] & (1 << i))) {
+	for (i = 0; i < q; i++) {
+		if (bmp->ary[i] != 0xff) {
 			return 0;
 		}
 	}
-	return 1;
+	return (bmp->ary[q] & mask) == mask;
 }
 
 /**
