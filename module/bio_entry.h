@@ -31,19 +31,51 @@ struct bio_entry
 	int error; /* bio error status. */
 	struct completion done; /* If is_splitted is true and bio_orig is NULL,
 				   this completion never be called. */
-	bool is_splitted; /* If true, the bio is splitted one.	*/
 	struct bio *bio_orig; /* If non-NULL, is_splitted is always true and
 				 this is the original bio
 				 while bio member is the first splitted one.
 				 You must finalize the bio_orig. */
-	bool is_discard; /* If true the bio is discard request. */
+	unsigned long flags;
+};
 
+/**
+ * bio_entry.flags.
+ */
+enum {
+	/*
+	 * Information.
+	 */
+	/* Set if the bio is discard request. */
+	BIO_ENTRY_DISCARD = 0,
+	/* Set if the bio is splitted one. */
+	BIO_ENTRY_SPLITTED,
 #ifdef WALB_FAST_ALGORITHM
-	bool is_copied; /* true if read is done by copy from pending data. */
-	bool is_own_pages; /* true when pages are managed by itself.
-			      destroy_bio_entry() must free the page. */
+	/* Set if read is done by copy from pending data. */
+	BIO_ENTRY_COPIED,
+	/* Set when pages are managed by itself.
+	   destroy_bio_entry() must free the page. */
+	BIO_ENTRY_OWN_PAGES,
 #endif
 };
+
+#define bio_entry_state_is_discard(bioe) \
+	test_bit(BIO_ENTRY_DISCARD, &(bioe)->flags)
+#define bio_entry_state_set_discard(bioe) \
+	set_bit(BIO_ENTRY_DISCARD, &(bioe)->flags)
+#define bio_entry_state_is_splitted(bioe) \
+	test_bit(BIO_ENTRY_SPLITTED, &(bioe)->flags)
+#define bio_entry_state_set_splitted(bioe) \
+	set_bit(BIO_ENTRY_SPLITTED, &(bioe)->flags)
+#ifdef WALB_FAST_ALGORITHM
+#define bio_entry_state_is_copied(bioe) \
+	test_bit(BIO_ENTRY_COPIED, &(bioe)->flags)
+#define bio_entry_state_set_copied(bioe) \
+	set_bit(BIO_ENTRY_COPIED, &(bioe)->flags)
+#define bio_entry_state_is_own_pages(bioe) \
+	test_bit(BIO_ENTRY_OWN_PAGES, &(bioe)->flags)
+#define bio_entry_state_set_own_pages(bioe) \
+	set_bit(BIO_ENTRY_OWN_PAGES, &(bioe)->flags)
+#endif
 
 /**
  * bio_entry cursor.
@@ -123,7 +155,7 @@ void bio_entry_exit(void);
 static inline bool bio_entry_should_wait_completion(struct bio_entry *bioe)
 {
 	ASSERT(bioe);
-	return !bioe->is_splitted || bioe->bio_orig;
+	return !bio_entry_state_is_splitted(bioe) || bioe->bio_orig;
 }
 
 #endif /* WALB_BIO_ENTRY_H_KERNEL */

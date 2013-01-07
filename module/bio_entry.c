@@ -634,20 +634,20 @@ static struct bio_entry* bio_entry_split(
 
 	bioe1->bio = bp->bio1;
 	bioe1->len = bp->bio1->bi_size >> 9;
-	if (!bioe1->is_splitted) {
+	if (!bio_entry_state_is_splitted(bioe1)) {
 		ASSERT(!bioe1->bio_orig);
 		bioe1->bio_orig = bp->bio_orig;
 		LOGd_("bioe1->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe1->bio_orig->bi_cnt));
-		bioe1->is_splitted = true;
+		bio_entry_state_set_splitted(bioe1);
 	}
 	init_bio_entry(bioe2, bp->bio2);
-	bioe2->is_splitted = true;
+	bio_entry_state_set_splitted(bioe2);
 	LOGd_("is_splitted: %d\n"
 		"bio_orig addr %"PRIu64" size %u\n"
 		"bioe1 %p addr %"PRIu64" size %u\n"
 		"bioe2 %p addr %"PRIu64" size %u\n",
-		bioe1->is_splitted,
+		bio_entry_state_is_splitted(bioe1),
 		(u64)bp->bio_orig->bi_sector, bp->bio_orig->bi_size,
 		bioe1, (u64)bioe1->bio->bi_sector, bioe1->bio->bi_size,
 		bioe2, (u64)bioe2->bio->bi_sector, bioe2->bio->bi_size);
@@ -906,7 +906,7 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 	printk("%s""bio %p len %u, error %d is_splitted %d bio_orig %p\n",
 		level,
 		bioe->bio, bioe->len, bioe->error,
-		bioe->is_splitted, bioe->bio_orig);
+		bio_entry_state_is_splitted(bioe), bioe->bio_orig);
 	if (bioe->bio) {
 		printk("%s""bio pos %"PRIu64" bdev(%d:%d)\n",
 			level, (u64)bioe->pos,
@@ -938,24 +938,20 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 
 	init_completion(&bioe->done);
 	bioe->error = 0;
-	bioe->is_splitted = false;
 	bioe->bio_orig = NULL;
+	bioe->flags = 0;
 	if (bio) {
 		bioe->bio = bio;
 		bioe->pos = bio->bi_sector;
 		bioe->len = bio->bi_size >> 9;
-		bioe->is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
+		if (bio->bi_rw & REQ_DISCARD) {
+			bio_entry_state_set_discard(bioe);
+		}
 	} else {
 		bioe->bio = NULL;
 		bioe->pos = 0;
 		bioe->len = 0;
-		bioe->is_discard = false;
 	}
-
-#ifdef WALB_FAST_ALGORITHM
-	bioe->is_copied = false;
-	bioe->is_own_pages = false;
-#endif
 }
 
 /**
@@ -994,15 +990,15 @@ void destroy_bio_entry(struct bio_entry *bioe)
 		return;
 	}
 	if (bioe->bio_orig) {
-		ASSERT(bioe->is_splitted);
+		ASSERT(bio_entry_state_is_splitted(bioe));
 		LOGd_("bioe->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe->bio_orig->bi_cnt));
 		bio = bioe->bio_orig;
 #ifdef WALB_FAST_ALGORITHM
-		ASSERT(bioe->is_own_pages);
+		ASSERT(bio_entry_state_is_own_pages(bioe));
 #endif
 		ASSERT(!bioe->bio);
-	} else if (bioe->is_splitted) {
+	} else if (bio_entry_state_is_splitted(bioe)) {
 		bio = NULL;
 	} else {
 		bio = bioe->bio;
@@ -1012,7 +1008,7 @@ void destroy_bio_entry(struct bio_entry *bioe)
 	if (bio) {
 		LOGd_("bio_put %p\n", bio);
 #ifdef WALB_FAST_ALGORITHM
-		if (bioe->is_own_pages) {
+		if (bio_entry_state_is_own_pages(bioe)) {
 			copied_bio_put(bio);
 		} else {
 			bio_put(bio);
@@ -1154,8 +1150,8 @@ void init_copied_bio_entry(
 	ASSERT(bio_with_copy);
 
 	init_bio_entry(bioe, bio_with_copy);
-	if (bioe->len > 0 && !bioe->is_discard) {
-		bioe->is_own_pages = true;
+	if (bioe->len > 0 && !bio_entry_state_is_discard(bioe)) {
+		bio_entry_state_set_own_pages(bioe);
 	}
 	bio_get(bio_with_copy);
 }
@@ -1205,10 +1201,9 @@ bool bio_entry_list_mark_copied(
 	bio_entry_cursor_init(cur, bio_ent_list);
 	bio_entry_cursor_proceed(cur, off);
 	while (cur->off < off + sectors) {
-
 		ASSERT(bio_entry_cursor_is_boundary(cur));
 		ASSERT(cur->bioe);
-		cur->bioe->is_copied = true;
+		bio_entry_state_set_copied(cur->bioe);
 		bio_entry_cursor_proceed_to_boundary(cur);
 	}
 	ASSERT(cur->off == off + sectors);

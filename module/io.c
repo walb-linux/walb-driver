@@ -506,7 +506,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	ASSERT(bioe);
 #ifdef WALB_DEBUG
 	if (bioe->bio_orig) {
-		ASSERT(bioe->is_splitted);
+		ASSERT(bio_entry_state_is_splitted(bioe));
 		ASSERT(bioe->bio_orig == bio);
 	} else {
 		ASSERT(bioe->bio == bio);
@@ -710,11 +710,11 @@ static void submit_bio_entry_list(struct list_head *bioe_list)
 	list_for_each_entry(bioe, bioe_list, list) {
 #ifdef WALB_FAST_ALGORITHM
 #ifdef WALB_DEBUG
-		if (!bioe->is_splitted) {
+		if (!bio_entry_state_is_splitted(bioe)) {
 			ASSERT(bioe->bio->bi_end_io == bio_entry_end_io);
 		}
 #endif /* WALB_DEBUG */
-		if (bioe->is_copied) {
+		if (bio_entry_state_is_copied(bioe)) {
 			LOGd_("copied: rw %lu bioe %p pos %"PRIu64" len %u\n",
 				bioe->bio->bi_rw,
 				bioe, (u64)bioe->pos, bioe->len);
