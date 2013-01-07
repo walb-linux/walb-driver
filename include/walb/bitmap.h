@@ -109,6 +109,9 @@ static inline void walb_bitmap_off(struct walb_bitmap *bmp, size_t idx)
  * @return Non-zero: on,
  *	   0:	     off.
  */
+/*
+	変更しないのでconst struct walb_bitmap *bmpがよいかと
+*/
 static inline int walb_bitmap_get(struct walb_bitmap *bmp, size_t idx)
 {
 	size_t ary_idx = idx / 8;
