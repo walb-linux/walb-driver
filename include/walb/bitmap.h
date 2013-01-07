@@ -24,7 +24,6 @@ struct walb_bitmap
 #endif
 };
 
-
 /**
  * Create a bitmap with the specified size.
  *
@@ -33,10 +32,12 @@ struct walb_bitmap
  *
  * @return Pointer to created bitmap, or NULL.
  */
+static inline struct walb_bitmap* walb_bitmap_create(
+	size_t size
 #ifdef __KERNEL__
-static inline struct walb_bitmap* walb_bitmap_create(size_t size, gfp_t flags)
+	, gfp_t flags)
 #else
-	static inline struct walb_bitmap* walb_bitmap_create(size_t size)
+	)
 #endif
 {
 	struct walb_bitmap *bmp;
