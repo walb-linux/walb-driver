@@ -1602,7 +1602,7 @@ static void submit_logpack(
 		}
 		if (test_bit_u32(LOG_RECORD_DISCARD, &logh->record[i].flags)) {
 			/* No need to execute IO to the log device. */
-			ASSERT(biow->is_discard);
+			ASSERT(bio_wrapper_state_is_discard(biow));
 			ASSERT(biow->bio->bi_rw & REQ_DISCARD);
 			ASSERT(biow->len > 0);
 		} else if (biow->len == 0) {
@@ -1776,7 +1776,7 @@ static void logpack_submit_bio_wrapper(
 	off_lb = 0;
 	ASSERT(biow);
 	ASSERT(biow->bio);
-	ASSERT(!biow->is_discard);
+	ASSERT(!bio_wrapper_state_is_discard(biow));
 	ASSERT((biow->bio->bi_rw & REQ_DISCARD) == 0);
 
 retry_bio_entry:
@@ -2040,9 +2040,9 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		CHECK(lhead->logpack_lsid == lrec->lsid - lrec->lsid_local);
 		CHECK(biow->len == lrec->io_size);
 		if (test_bit_u32(LOG_RECORD_DISCARD, &lrec->flags)) {
-			CHECK(biow->is_discard);
+			CHECK(bio_wrapper_state_is_discard(biow));
 		} else {
-			CHECK(!biow->is_discard);
+			CHECK(!bio_wrapper_state_is_discard(biow));
 			total_pb += capacity_pb(pbs, lrec->io_size);
 		}
 		i++;
@@ -2512,7 +2512,7 @@ static struct bio_wrapper* create_discard_bio_wrapper_for_redo(
 	bio->bi_size = len;
 
 	init_bio_wrapper(biow, bio);
-	ASSERT(biow->is_discard);
+	ASSERT(bio_wrapper_state_is_discard(biow));
 	ASSERT(!biow->private_data);
 	return biow;
 #if 0
@@ -2561,7 +2561,7 @@ static void bio_end_io_for_redo(struct bio *bio, int error)
 
 	LOGd_("pos %"PRIu64"\n", (u64)biow->pos);
 #ifdef WALB_DEBUG
-	if (biow->is_discard) {
+	if (bio_wrapper_state_is_discard(biow)) {
 		ASSERT(!biow->private_data);
 	} else {
 		ASSERT(biow->private_data); /* sector data */
@@ -3241,14 +3241,14 @@ fin:
 	list_add_tail(&biow->list, &pack->biow_list);
 	if (biow->bio->bi_rw & REQ_FLUSH) {
 		pack->is_flush_contained = true;
-		if (lhead->n_records > 0 && !biow->is_discard) {
+		if (lhead->n_records > 0 && !bio_wrapper_state_is_discard(biow)) {
 			*flush_lsidp = biow->lsid;
 		} else {
 			*flush_lsidp = *latest_lsidp;
 		}
 
 		/* debug */
-		if (biow->is_discard) {
+		if (bio_wrapper_state_is_discard(biow)) {
 			LOGw("The bio has both REQ_FLUSH and REQ_DISCARD.\n");
 		}
 	}
@@ -3461,7 +3461,7 @@ static void wait_for_logpack_and_submit_datapack(
 			}
 
 			/* Split if required due to chunk limitations. */
-			if (!biow->is_discard) {
+			if (!bio_wrapper_state_is_discard(biow)) {
 			retry_split:
 				if (!split_bio_entry_list_for_chunk(
 						&biow->bioe_list,
@@ -3634,7 +3634,7 @@ static void wait_for_write_bio_wrapper(
 	spin_lock(&iocored->pending_data_lock);
 	is_start_queue = should_start_queue(wdev, biow);
 	iocored->pending_sectors -= biow->len;
-	if (!biow->is_overwritten) {
+	if (!bio_wrapper_state_is_overwritten(biow)) {
 		pending_delete(iocored->pending_data,
 			&iocored->max_sectors_in_pending, biow);
 	}
@@ -3741,7 +3741,7 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 		BUG();
 	}
 
-	if (biow->is_discard &&
+	if (bio_wrapper_state_is_discard(biow) &&
 		!blk_queue_discard(bdev_get_queue(wdev->ddev))) {
 		/* Data device does not support REQ_DISCARD
 		   so just ignore the request. */
@@ -3923,7 +3923,7 @@ static struct bio_wrapper* alloc_bio_wrapper_inc(
 	}
 
 	atomic_inc(&iocored->n_pending_bio);
-	biow->started = false;
+	biow->is_started = false;
 	return biow;
 error0:
 	return NULL;
@@ -3938,7 +3938,8 @@ static void start_write_bio_wrapper(
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	ASSERT(biow);
 
-	biow->started = true;
+	ASSERT(!biow->is_started);
+	biow->is_started = true;
 	atomic_inc(&iocored->n_started_write_bio);
 }
 
@@ -3956,7 +3957,7 @@ static void destroy_bio_wrapper_dec(
 	ASSERT(iocored);
 	ASSERT(biow);
 
-	started = biow->started;
+	started = biow->is_started;
 	destroy_bio_wrapper(biow);
 
 	atomic_dec(&iocored->n_pending_bio);
@@ -4268,7 +4269,8 @@ static bool pending_check_and_copy(
 
 		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
 		ASSERT(biow_tmp);
-		if (!biow_tmp->is_discard && bio_wrapper_is_overlap(biow, biow_tmp)) {
+		if (!bio_wrapper_state_is_discard(biow_tmp) &&
+			bio_wrapper_is_overlap(biow, biow_tmp)) {
 			n_overlapped_bios++;
 			insert_to_sorted_bio_wrapper_list_by_lsid(
 				biow_tmp, &biow_list);
@@ -4342,7 +4344,7 @@ static void pending_delete_fully_overwritten(
 		ret = biow_tmp != biow &&
 			bio_wrapper_is_overwritten_by(biow_tmp, biow);
 		if (ret) {
-			biow_tmp->is_overwritten = true;
+			set_bit(BIO_WRAPPER_OVERWRITTEN, &biow_tmp->flags);
 			ret = multimap_cursor_del(&cur);
 			ASSERT(ret);
 			ret = multimap_cursor_is_data(&cur);

@@ -109,28 +109,25 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 	biow->csum = 0;
 	biow->private_data = NULL;
 	init_completion(&biow->done);
+	biow->flags = 0;
 	if (bio) {
 		biow->bio = bio;
 		biow->pos = bio->bi_sector;
 		biow->len = bio->bi_size >> 9;
-		biow->is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
+		if (bio->bi_rw & REQ_DISCARD) {
+			set_bit(BIO_WRAPPER_DISCARD, &biow->flags);
+		}
 	} else {
 		biow->bio = NULL;
 		biow->pos = 0;
 		biow->len = 0;
-		biow->is_discard = false;
 	}
-	biow->started = false;
-#ifdef WALB_FAST_ALGORITHM
-	biow->is_overwritten = false;
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	biow->n_overlapped = -1;
 #ifdef WALB_DEBUG
 	biow->ol_id = (u64)(-1);
 #endif
 #endif
-	biow->flags = 0;
 }
 
 struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask)

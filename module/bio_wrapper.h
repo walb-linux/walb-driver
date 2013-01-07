@@ -32,8 +32,7 @@ struct bio_wrapper
 	u32 csum; /* checksum for write IO. */
 	int error;
 	struct completion done;
-	bool started;
-	bool is_discard;
+	bool is_started;
 
 	unsigned long flags; /* For atomic state management. */
 
@@ -47,10 +46,6 @@ struct bio_wrapper
 
 	void *private_data;
 
-#ifdef WALB_FAST_ALGORITHM
-	/* True if the biow data will be fully overwritten by newer IO(s). */
-	bool is_overwritten;
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	int n_overlapped; /* initial value is -1. */
 #ifdef WALB_DEBUG
@@ -65,20 +60,23 @@ struct bio_wrapper
 enum
 {
 	/* State bits. */
-	BIO_WRAPPER_STARTED = 0,
-	BIO_WRAPPER_PREPARED,
+	BIO_WRAPPER_PREPARED = 0,
 	BIO_WRAPPER_SUBMITTED,
 	BIO_WRAPPER_COMPLETED,
 
 	/* Information bit. */
 	BIO_WRAPPER_DISCARD,
+#ifdef WALB_FAST_ALGORITHM
+	/* Set if the biow data will be fully overwritten by newer IO(s). */
+	BIO_WRAPPER_OVERWRITTEN,
+#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
+	/* Set if the biow submission for data device is delayed
+	   due to overlapped. */
 	BIO_WRAPPER_DELAYED,
 #endif
 };
 
-#define bio_wrapper_state_is_started(biow) \
-	test_bit(BIO_WRAPPER_STARTED, &(biow)->flags)
 #define bio_wrapper_state_is_prepared(biow) \
 	test_bit(BIO_WRAPPER_PREPARED, &(biow)->flags)
 #define bio_wrapper_state_is_submitted(biow) \
@@ -87,6 +85,10 @@ enum
 	test_bit(BIO_WRAPPER_COMPLETED, &(biow)->flags)
 #define bio_wrapper_state_is_discard(biow) \
 	test_bit(BIO_WRAPPER_DISCARD, &(biow)->flags)
+#ifdef WALB_FAST_ALGORITHM
+#define bio_wrapper_state_is_overwritten(biow) \
+	test_bit(BIO_WRAPPER_OVERWRITTEN, &(biow)->flags)
+#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 #define bio_wrapper_state_is_delayed(biow) \
 	test_bit(BIO_WRAPPER_DELAYED, &(biow)->flags)
