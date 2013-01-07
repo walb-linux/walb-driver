@@ -282,6 +282,18 @@ static inline int is_valid_sector_data_array(const struct sector_data_array *sec
  *
  * @return pointer to allocated sector data array in success, or NULL.
  */
+/*
+	kernelじゃないバージョンがindentされていると
+	パッとみて何が違うのかがわかりにくいかも(気持ちの問題)
+
+static inline struct sector_data_array* sector_array_alloc(
+	unsigned int sector_size, unsigned int n_sectors
+#ifdef __KERNEL__
+	, gfp_t mask
+#endif
+	)
+	はどうだろう
+*/
 #ifdef __KERNEL__
 static inline struct sector_data_array* sector_array_alloc(
 	unsigned int sector_size, unsigned int n_sectors, gfp_t mask)
