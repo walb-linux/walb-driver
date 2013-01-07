@@ -446,7 +446,7 @@ static inline void sector_array_copy_detail(
 	struct sector_data_array *sect_ary,
 	unsigned int offset, void *data, unsigned int size, int is_from)
 {
-	unsigned int sect_size, sect_idx, sect_off, copied, tmp_size;
+	unsigned int sect_size, copied;
 
 	if (!data) { return; }
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
@@ -456,9 +456,9 @@ static inline void sector_array_copy_detail(
 
 	copied = 0;
 	while (copied < size) {
-		sect_idx = (offset + copied) / sect_size;
-		sect_off = (offset + copied) % sect_size;
-		tmp_size = min(sect_size - sect_off, size - copied);
+		unsigned int sect_idx = (offset + copied) / sect_size;
+		unsigned int sect_off = (offset + copied) % sect_size;
+		unsigned int tmp_size = min(sect_size - sect_off, size - copied);
 
 		if (is_from) {
 			memcpy((u8 *)sect_ary->array[sect_idx]->data + sect_off,
@@ -518,7 +518,6 @@ static inline int sector_array_compare(
 	const struct sector_data_array *sect_ary1)
 {
 	unsigned int i, sect_size;
-	int cmp;
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary1);
 
@@ -529,7 +528,7 @@ static inline int sector_array_compare(
 	}
 
 	for (i = 0; i < sect_ary0->size; i++) {
-		cmp = memcmp(sect_ary0->array[i]->data, sect_ary1->array[i]->data, sect_size);
+		int cmp = memcmp(sect_ary0->array[i]->data, sect_ary1->array[i]->data, sect_size);
 		if (cmp) { return cmp; }
 	}
 	return 0; /* the same. */
