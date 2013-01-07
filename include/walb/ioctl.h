@@ -51,6 +51,15 @@ struct walb_ctl_data {
 /**
  * Data structure for walb ioctl.
  */
+/*
+	u64 val_u64;
+	int command;
+	int val_int;
+	u32 val_u32;
+	int error;
+	の順序の方がアライメントが揃いやすい
+	基本的に(外部要因による制約がなければ)構造体は大きいsizeofのものから並べるのがよい
+*/
 struct walb_ctl {
 
 	/* Command id. */
