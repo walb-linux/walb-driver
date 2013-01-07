@@ -51,6 +51,9 @@ struct bio_wrapper
 #endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	int n_overlapped; /* initial value is -1. */
+#ifdef WALB_DEBUG
+	u64 ol_id; /* in order to check FIFO property. */
+#endif
 #endif
 };
 

@@ -124,7 +124,14 @@ struct iocore_data
 
 	/* Maximum request size [logical block]. */
 	unsigned int max_sectors_in_overlapped;
+
+#ifdef WALB_DEBUG
+	/* In order to check FIFO property. */
+	u64 overlapped_in_id;
+	u64 overlapped_out_id;
 #endif
+
+#endif /* WALB_OVERLAPPED_SERIALIZE */
 
 #ifdef WALB_FAST_ALGORITHM
 	/**
@@ -2112,6 +2119,10 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 		goto error1;
 	}
 	iocored->max_sectors_in_overlapped = 0;
+#ifdef WALB_DEBUG
+	iocored->overlapped_in_id = 0;
+	iocored->overlapped_out_id = 0;
+#endif
 #endif
 
 #ifdef WALB_FAST_ALGORITHM
@@ -3975,6 +3986,14 @@ fin:
 		return false;
 	}
 	*max_sectors_p = max(*max_sectors_p, biow->len);
+#ifdef WALB_DEBUG
+	{
+		u64 *p;
+		p = &get_iocored_from_wdev(biow->private_data)->overlapped_in_id;
+		biow->ol_id = *p;
+		(*p)++;
+	}
+#endif
 	return true;
 }
 #endif
@@ -4022,6 +4041,14 @@ static void overlapped_delete_and_notify(
 	LOGd_("biow_tmp %p biow %p\n", biow_tmp, biow); /* debug */
 	ASSERT(biow_tmp == biow);
 
+#ifdef WALB_DEBUG
+	{
+		u64 *p;
+		p = &get_iocored_from_wdev(biow->private_data)->overlapped_out_id;
+		ASSERT(biow->ol_id == *p);
+		(*p)++;
+	}
+#endif
 	/* Initialize max_sectors. */
 	if (multimap_is_empty(overlapped_data)) {
 		*max_sectors_p = 0;

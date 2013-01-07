@@ -126,6 +126,9 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 #endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	biow->n_overlapped = -1;
+#ifdef WALB_DEBUG
+	biow->ol_id = (u64)(-1);
+#endif
 #endif
 }
 
