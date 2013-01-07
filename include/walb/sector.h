@@ -190,13 +190,13 @@ static inline void sector_zeroclear(struct sector_data *sect)
  *
  * @dst destination sector.
  * @src source sector.
- *	dst->size >= src->size must be satisfied.
+ *	dst->size == src->size must be satisfied.
  */
 static inline void sector_copy(struct sector_data *dst, const struct sector_data *src)
 {
 	ASSERT_SECTOR_DATA(dst);
 	ASSERT_SECTOR_DATA(src);
-	ASSERT(dst->size >= src->size);
+	ASSERT(dst->size == src->size);
 
 	memcpy(dst->data, src->data, src->size);
 }
