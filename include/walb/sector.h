@@ -620,20 +620,20 @@ static inline void sector_array_memset(
 	unsigned int offset, unsigned int size, int val)
 {
 	unsigned int remaining = size;
-	unsigned int sect_size;
+	unsigned int ssize;
 	unsigned int idx, off;
 	unsigned int tsize;
 
 	ASSERT(size > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(sect_ary->size > 0);
-	sect_size = sect_ary->array[0]->size;
+	ssize = sect_ary->sector_size;
 
-	idx = offset / sect_size;
-	off = offset % sect_size;
+	idx = offset / ssize;
+	off = offset % ssize;
 	while (remaining > 0) {
 		ASSERT(idx < sect_ary->size);
-		tsize = min(sect_size - off, remaining);
+		tsize = min(ssize - off, remaining);
 		memset(&((u8 *)sect_ary->array[idx]->data)[off], val, tsize);
 		remaining -= tsize;
 		idx++;
