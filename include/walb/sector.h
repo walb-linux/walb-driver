@@ -400,6 +400,10 @@ static inline int sector_array_realloc(
 error1:
 	/* Grow failed. */
 	ASSERT(sect_ary->size < n_sectors);
+	/*
+		reallocが増やした領域は0初期化されていないため
+		その領域をfreeするとエラー
+	*/
 	for (i = sect_ary->size; i < n_sectors; i++) {
 		sector_free(sect_ary->array[i]);
 		sect_ary->array[i] = NULL;
