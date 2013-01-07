@@ -232,7 +232,7 @@ static inline int sector_compare(const struct sector_data *sect0,
 	if (is_same_size_sector(sect0, sect1)) {
 		return memcmp(sect0->data, sect1->data, sect1->size);
 	} else {
-		return sect0->size - sect1->size;
+		return 1;
 	}
 }
 
