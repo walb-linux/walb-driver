@@ -35,6 +35,8 @@ struct bio_wrapper
 	bool started;
 	bool is_discard;
 
+	unsigned long flags; /* For atomic state management. */
+
 	/* lsid of bio wrapper.
 	   This is for
 	   (1) sort in pending data copy,
@@ -56,6 +58,39 @@ struct bio_wrapper
 #endif
 #endif
 };
+
+/**
+ * bio_wrapper.flags.
+ */
+enum
+{
+	/* State bits. */
+	BIO_WRAPPER_STARTED = 0,
+	BIO_WRAPPER_PREPARED,
+	BIO_WRAPPER_SUBMITTED,
+	BIO_WRAPPER_COMPLETED,
+
+	/* Information bit. */
+	BIO_WRAPPER_DISCARD,
+#ifdef WALB_OVERLAPPED_SERIALIZE
+	BIO_WRAPPER_DELAYED,
+#endif
+};
+
+#define bio_wrapper_state_is_started(biow) \
+	test_bit(BIO_WRAPPER_STARTED, &(biow)->flags)
+#define bio_wrapper_state_is_prepared(biow) \
+	test_bit(BIO_WRAPPER_PREPARED, &(biow)->flags)
+#define bio_wrapper_state_is_submitted(biow) \
+	test_bit(BIO_WRAPPER_SUBMITTED, &(biow)->flags)
+#define bio_wrapper_state_is_completed(biow) \
+	test_bit(BIO_WRAPPER_COMPLETED, &(biow)->flags)
+#define bio_wrapper_state_is_discard(biow) \
+	test_bit(BIO_WRAPPER_DISCARD, &(biow)->flags)
+#ifdef WALB_OVERLAPPED_SERIALIZE
+#define bio_wrapper_state_is_delayed(biow) \
+	test_bit(BIO_WRAPPER_DELAYED, &(biow)->flags)
+#endif
 
 UNUSED void print_bio_wrapper(const char *level, struct bio_wrapper *biow);
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio);

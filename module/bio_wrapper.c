@@ -130,6 +130,7 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 	biow->ol_id = (u64)(-1);
 #endif
 #endif
+	biow->flags = 0;
 }
 
 struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask)
