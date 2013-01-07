@@ -71,12 +71,7 @@ static inline void walb_bitmap_free(struct walb_bitmap *bmp)
  */
 static inline void walb_bitmap_clear(struct walb_bitmap *bmp)
 {
-	size_t i;
-	size_t ary_size;
-	ary_size = (bmp->size + 7) / 8;
-	for (i = 0; i < ary_size; i++) {
-		bmp->ary[i] = 0;
-	}
+	memset(bmp->ary, 0, (bmp->size + 7) / 8);
 }
 
 /**
