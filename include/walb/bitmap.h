@@ -68,6 +68,9 @@ static inline void walb_bitmap_free(struct walb_bitmap *bmp)
 /**
  * Clear all bits.
  */
+/*
+	bmp->ary[i]をFREEしてないけどOK?
+*/
 static inline void walb_bitmap_clear(struct walb_bitmap *bmp)
 {
 	size_t i;
