@@ -124,12 +124,12 @@ static inline int is_valid_sector_data(const struct sector_data *sect)
  *
  * @return pointer to allocated sector data in success, or NULL.
  */
-#ifdef __KERNEL__
 static inline struct sector_data* sector_alloc(
-	unsigned int sector_size, gfp_t gfp_mask)
+	unsigned int sector_size
+#ifdef __KERNEL__
+	, gfp_t gfp_mask)
 #else
-	static inline struct sector_data* sector_alloc(
-		unsigned int sector_size)
+	)
 #endif
 {
 	struct sector_data *sect;
@@ -271,12 +271,12 @@ static inline int is_valid_sector_data_array(const struct sector_data_array *sec
  *
  * @return pointer to allocated sector data array in success, or NULL.
  */
-#ifdef __KERNEL__
 static inline struct sector_data_array* sector_array_alloc(
-	unsigned int sector_size, unsigned int n_sectors, gfp_t mask)
+	unsigned int sector_size, unsigned int n_sectors
+#ifdef __KERNEL__
+	, gfp_t mask)
 #else
-	static inline struct sector_data_array* sector_array_alloc(
-		unsigned int sector_size, unsigned int n_sectors)
+	)
 #endif
 {
 	unsigned int i;
@@ -324,14 +324,13 @@ nomem0:
  *
  * @return Non-zero in success, or 0.
  */
-#ifdef __KERNEL__
 static inline int sector_array_realloc(
 	struct sector_data_array *sect_ary,
-	unsigned int n_sectors, gfp_t mask)
+	unsigned int n_sectors
+#ifdef __KERNEL__
+	, gfp_t mask)
 #else
-	static inline int sector_array_realloc(
-		struct sector_data_array *sect_ary,
-		unsigned int n_sectors)
+	)
 #endif
 {
 	unsigned int i;
