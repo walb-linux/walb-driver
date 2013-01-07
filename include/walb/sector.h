@@ -192,6 +192,9 @@ static inline void sector_zeroclear(struct sector_data *sect)
  * @src source sector.
  *	dst->size >= src->size must be satisfied.
  */
+/*
+	データをコピーしたあとdst->size = src->sizeしないのは意図的?
+*/
 static inline void sector_copy(struct sector_data *dst, const struct sector_data *src)
 {
 	ASSERT_SECTOR_DATA(dst);
