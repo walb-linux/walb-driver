@@ -467,6 +467,9 @@ static inline const struct sector_data* get_sector_data_in_array_const(
  * @is_from Non-zero for sector_data_array <- memory.
  *	    0 for sector_data_array -> memory.
  */
+/*
+	sect_idx, sect_off, tmp_sizeはforの中で宣言可能
+*/
 static inline void sector_array_copy_detail(
 	struct sector_data_array *sect_ary,
 	unsigned int offset, void *data, unsigned int size, int is_from)
@@ -538,6 +541,9 @@ static inline void sector_array_copy_to(
  *
  * @return 0 when their size and their contents are completely the same.
  */
+/*
+	cmpはforの中で宣言可能
+*/
 static inline int sector_array_compare(
 	const struct sector_data_array *sect_ary0,
 	const struct sector_data_array *sect_ary1)
