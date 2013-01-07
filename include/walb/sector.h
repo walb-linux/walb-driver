@@ -223,6 +223,14 @@ static inline int is_same_size_sector(const struct sector_data *sect0,
  *
  * @return 0 when their size and their image is completely same.
  */
+/*
+	異なっているときは何を返すのか
+	0以外を返す(符号は関係ない)つもりなら
+	return sect0->size - sect1->size;
+	ではなく
+	return 1;
+	の方がよい。
+*/
 static inline int sector_compare(const struct sector_data *sect0,
 				const struct sector_data *sect1)
 {
