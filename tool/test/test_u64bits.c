@@ -28,7 +28,7 @@ void print_u64bits(u64 *bits)
 	printf("%0"PRIx64"\n", *bits);
 
 	for (i = 0; i < 64; i++) {
-		printf("%d", (test_u64bits(i, bits) == 0 ? 0 : 1));
+		printf("%d", (test_bit_u64(i, bits) == 0 ? 0 : 1));
 	}
 	printf("\n");
 }
@@ -38,7 +38,7 @@ bool is_the_same(int *bit_ary, u64 *bits)
 {
 	int i;
 	for (i = 0; i < 64; i++) {
-		if (test_u64bits(i, bits)) {
+		if (test_bit_u64(i, bits)) {
 			if (bit_ary[i] == 0) {
 				goto error0;
 			}
@@ -67,9 +67,9 @@ int main()
 	}
 	for (i = 0; i < 63; i++) {
 		if (bit_ary[i]) {
-			set_u64bits(i, &bits);
+			set_bit_u64(i, &bits);
 		} else {
-			clear_u64bits(i, &bits);
+			clear_bit_u64(i, &bits);
 		}
 	}
 	ASSERT(is_the_same(bit_ary, &bits));
@@ -81,10 +81,10 @@ int main()
 
 		if (get_random(2)) {
 			bit_ary[j] = 1;
-			set_u64bits(j, &bits);
+			set_bit_u64(j, &bits);
 		} else {
 			bit_ary[j] = 0;
-			clear_u64bits(j, &bits);
+			clear_bit_u64(j, &bits);
 		}
 
 		ASSERT(is_the_same(bit_ary, &bits));

@@ -8,6 +8,7 @@
 
 #include "walb.h"
 #include "util.h"
+#include "u32bits.h"
 #include "checksum.h"
 
 #ifdef __cplusplus

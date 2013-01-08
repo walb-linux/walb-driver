@@ -392,7 +392,7 @@ static inline int is_alloc_snapshot_record(
 	ASSERT(0 <= nr);
 	ASSERT(nr < 64);
 
-	return test_u64bits(nr, &get_snapshot_sector_const(sect)->bitmap);
+	return test_bit_u64(nr, &get_snapshot_sector_const(sect)->bitmap);
 }
 
 /**
@@ -404,7 +404,7 @@ static inline void set_alloc_snapshot_record(
 	ASSERT(sect);
 	ASSERT(0 <= nr && nr < 64);
 
-	set_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
+	set_bit_u64(nr, &get_snapshot_sector(sect)->bitmap);
 }
 
 /**
@@ -416,7 +416,7 @@ static inline void clear_alloc_snapshot_record(
 	ASSERT(sect);
 	ASSERT(0 <= nr && nr < 64);
 
-	clear_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
+	clear_bit_u64(nr, &get_snapshot_sector(sect)->bitmap);
 }
 
 /**
@@ -530,7 +530,7 @@ static inline int get_n_records_in_snapshot_sector_detail(
 
 	n = 0;
 	for (i = 0; i < max_n; i++) {
-		if (test_u64bits(i, &snap_sect->bitmap)) {
+		if (test_bit_u64(i, &snap_sect->bitmap)) {
 			n++;
 		}
 	}
