@@ -110,8 +110,8 @@ struct snapshot_data
 #define for_each_snapshot_sector(off, ctl, snapd)		\
 	for (off = snapd->start_offset;				\
 	     off < snapd->end_offset &&				\
-		     ({ ctl = get_control_by_offset		\
-				     (snapd, off); 1; });	\
+		     (ctl = get_control_by_offset(		\
+			     snapd, off), 1);			\
 	     off++)
 
 /**
