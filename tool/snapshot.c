@@ -109,9 +109,8 @@ bool write_snapshot_sector(
 
 	/* checksum */
 	u8 *sector_buf = (u8*)snap;
-	snap->checksum = 0;
-	u32 csum = checksum(sector_buf, sect_sz, 0);
-	snap->checksum = csum;
+	snap->checksum = 0; /* zero-clear before calculating checksum. */
+	snap->checksum = checksum(sector_buf, sect_sz, 0);
 	ASSERT(checksum(sector_buf, sect_sz, 0) == 0);
 
 	/* really write snapshot sector. */
