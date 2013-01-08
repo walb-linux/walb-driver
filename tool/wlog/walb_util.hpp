@@ -160,7 +160,6 @@ private:
     }
 
     static u8* allocAlignedBufferStatic(unsigned int pbs) {
-
         u8 *p;
         int ret = ::posix_memalign((void **)&p, pbs, pbs);
         if (ret) {
@@ -195,30 +194,32 @@ private:
 class WalbLogpackHeader
 {
 private:
-    std::shared_ptr<u8> ptr_;
+    using Block = std::shared_ptr<u8>;
+
+    Block block_;
     const unsigned int pbs_;
     const u32 salt_;
 
 public:
-    WalbLogpackHeader(std::shared_ptr<u8> ptr, unsigned int pbs, u32 salt)
-        : ptr_(ptr)
+    WalbLogpackHeader(Block block, unsigned int pbs, u32 salt)
+        : block_(block)
         , pbs_(pbs)
         , salt_(salt) {
         ASSERT_PBS(pbs);
     }
 
-    std::shared_ptr<u8> getBlock() const {
-        return ptr_;
+    Block getBlock() const {
+        return block_;
     }
 
     struct walb_logpack_header& header() {
-        checkPointer();
-        return *(struct walb_logpack_header *)ptr_.get();
+        checkBlock();
+        return *(struct walb_logpack_header *)block_.get();
     }
 
     const struct walb_logpack_header& header() const {
-        checkPointer();
-        return *(struct walb_logpack_header *)ptr_.get();
+        checkBlock();
+        return *(struct walb_logpack_header *)block_.get();
     }
 
     unsigned int pbs() const { return pbs_; }
@@ -327,7 +328,7 @@ public:
 
         /* Calculate checksum. */
         header().checksum = 0;
-        header().checksum = ::checksum(ptr_.get(), pbs(), salt());
+        header().checksum = ::checksum(block_.get(), pbs(), salt());
 
         assert(isValid());
     }
@@ -342,12 +343,16 @@ public:
     }
 
 private:
-    void checkPointer() const {
-        if (!ptr_.get()) { throw RT_ERR("Header is null."); }
+    void checkBlock() const {
+        if (block_.get() == nullptr) {
+            throw RT_ERR("Header is null.");
+        }
     }
 
     void checkIndexRange(size_t pos) const {
-        if (pos >= nRecords()) { throw RT_ERR("index out of range."); }
+        if (pos >= nRecords()) {
+            throw RT_ERR("index out of range.");
+        }
     }
 };
 
@@ -357,9 +362,11 @@ private:
 class WalbLogpackData
 {
 private:
+    using Block = std::shared_ptr<u8>;
+
     WalbLogpackHeader& logh_;
     size_t pos_;
-    std::vector<std::shared_ptr<u8> > data_;
+    std::vector<Block> data_;
 
 public:
     WalbLogpackData(WalbLogpackHeader& logh, size_t pos)
@@ -370,11 +377,11 @@ public:
         data_.reserve(logh.nRecords());
     }
 
-    void addBlock(std::shared_ptr<u8> block) {
+    void addBlock(Block block) {
         data_.push_back(block);
     }
 
-    std::shared_ptr<u8> getBlock(size_t idx) const {
+    Block getBlock(size_t idx) const {
         assert(hasData());
         assert(idx < ioSizePb());
         return data_[idx];

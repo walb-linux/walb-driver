@@ -30,31 +30,19 @@ class Config
 {
 private:
     std::string deviceName_;
-    u64 lsid0_;
-    u64 lsid1_;
 
 public:
     Config(int argc, char* argv[]) {
-
-        if (argc != 4) {
-            throw RT_ERR("Specify just 3 values.");
+        if (argc != 2) {
+            throw RT_ERR("Specify just a value.");
         }
         deviceName_ = std::string(argv[1]);
-        lsid0_ = static_cast<u64>(::atoll(argv[2]));
-        lsid1_ = static_cast<u64>(::atoll(argv[3]));
-
-        if (lsid0_ > lsid1_) {
-            throw RT_ERR("Invalid lsid range.");
-        }
     }
 
     const char* deviceName() const { return deviceName_.c_str(); }
-    u64 lsid0() const { return lsid0_; }
-    u64 lsid1() const { return lsid1_; }
 };
 
-// using Block = std::shared_ptr<u8>;
-typedef std::shared_ptr<u8> Block;
+using Block = std::shared_ptr<u8>;
 
 /**
  * Io data.
@@ -115,6 +103,10 @@ public:
     template<typename T>
     T* rawPtr() {
         return reinterpret_cast<T*>(ptr().get());
+    }
+
+    u8* rawPtr() {
+        return ptr().get();
     }
 
     void setAioKey(unsigned int aioKey) {
@@ -405,7 +397,7 @@ private:
         }
     };
 
-    typedef std::shared_ptr<walb::util::WalbLogpackData> LogDataPtr;
+    using LogDataPtr = std::shared_ptr<walb::util::WalbLogpackData>;
 
 public:
     WalbLogApplyer(const Config& config, size_t bufferSize, bool isDiscardSupport = false)
@@ -419,7 +411,6 @@ public:
         , isDiscardSupport_(isDiscardSupport)
         , ioQ_()
         , nPendingBlocks_(0) {
-        //LOGn("blockSize %zu\n", blockSize_); //debug
     }
 
     ~WalbLogApplyer() {
@@ -482,12 +473,13 @@ public:
 private:
     bool canApply() const {
         const struct walblog_header &h = wh_.header();
-        if (h.physical_bs < blockSize_ || h.physical_bs % blockSize_ != 0) {
+        bool ret = h.physical_bs >= blockSize_ &&
+            h.physical_bs % blockSize_ == 0;
+        if (!ret) {
             LOGe("Physical block size does not match %u %zu.\n",
                  h.physical_bs, blockSize_);
-            return false;
         }
-        return true;
+        return ret;
     }
 
     u32 salt() const {
@@ -538,6 +530,8 @@ private:
         /* Wait for all IO done. */
 
         /* Issue the corresponding discard IO. */
+
+        ::printf("discard is not supported now.\n");
 
         /* now editing */
     }
