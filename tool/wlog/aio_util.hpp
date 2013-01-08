@@ -63,7 +63,7 @@ struct AioData
 /**
  * Pointer to AioData.
  */
-typedef std::shared_ptr<AioData> AioDataPtr;
+using AioDataPtr = std::shared_ptr<AioData>;
 
 /**
  * Simple allocator of AioData.
