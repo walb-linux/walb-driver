@@ -1490,6 +1490,13 @@ static u64 get_log_capacity(struct walb_dev *wdev)
 /**
  * Set device name.
  *
+ * @wdev walb device.
+ * @minor minor id. This will be used for default name.
+ * @name Name to set.
+ *   If null or empty string is given and
+ *   the preset name is empty,
+ *   default name will be set using minor id.
+ *
  * @return 0 in success, or -1.
  */
 static int walb_set_name(struct walb_dev *wdev,
@@ -1504,8 +1511,10 @@ static int walb_set_name(struct walb_dev *wdev,
 	dev_name = get_super_sector(wdev->lsuper0)->name;
 
 	if (name && *name) {
+		memset(dev_name, 0, DISK_NAME_LEN);
 		snprintf(dev_name, DISK_NAME_LEN, "%s", name);
 	} else if (*dev_name == 0) {
+		memset(dev_name, 0, DISK_NAME_LEN);
 		snprintf(dev_name, DISK_NAME_LEN, "%u", minor / 2);
 	}
 	LOGd("minor %u dev_name: %s\n", minor, dev_name);
