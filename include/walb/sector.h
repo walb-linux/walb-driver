@@ -62,8 +62,8 @@ static inline void sector_copy(
 	struct sector_data *dst, const struct sector_data *src);
 static inline int is_same_size_sector(const struct sector_data *sect0,
 				const struct sector_data *sect1);
-static inline int sector_compare(const struct sector_data *sect0,
-				const struct sector_data *sect1);
+static inline int is_same_sector(
+	const struct sector_data *sect0, const struct sector_data *sect1);
 
 static inline int is_valid_sector_data_array(
 	const struct sector_data_array *sect_ary);
@@ -221,19 +221,18 @@ static inline int is_same_size_sector(const struct sector_data *sect0,
  * @sect0 1st sector.
  * @sect1 2nd sector.
  *
- * @return 0 when their size and their image is completely same.
+ * RETURN:
+ *   1 if their size and their image is completely the same,
+ *   or 0.
  */
-static inline int sector_compare(const struct sector_data *sect0,
-				const struct sector_data *sect1)
+static inline int is_same_sector(
+	const struct sector_data *sect0, const struct sector_data *sect1)
 {
 	ASSERT_SECTOR_DATA(sect0);
 	ASSERT_SECTOR_DATA(sect1);
 
-	if (is_same_size_sector(sect0, sect1)) {
-		return memcmp(sect0->data, sect1->data, sect1->size);
-	} else {
-		return 1;
-	}
+	return is_same_size_sector(sect0, sect1) &&
+		memcmp(sect0->data, sect1->data, sect1->size) == 0;
 }
 
 /*******************************************************************************

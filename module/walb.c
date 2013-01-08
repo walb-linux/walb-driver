@@ -2107,10 +2107,9 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 		goto error2;
 	}
 
-	if (sector_compare(wdev->lsuper0, lsuper0_tmp) != 0) {
+	if (!is_same_sector(wdev->lsuper0, lsuper0_tmp)) {
 		LOGe("walb_ldev_init: memcmp NG\n");
-	} else {
-		LOGe("walb_ldev_init: memcmp OK\n");
+		goto error2;
 	}
 
 	if (get_super_sector_const(wdev->lsuper0)->physical_bs
