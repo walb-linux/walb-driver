@@ -112,6 +112,10 @@ struct walb_logpack_header {
  * struct walb_log_record *lrec;
  * struct walb_logpack_header *lhead;
  */
+/*
+	({lrec = &lhead->record[i]; 1;})はgcc拡張なので
+	(lrec = &lhead->record[i], 1)がよいでしょう。
+*/
 #define for_each_logpack_record(i, lrec, lhead)				\
 	for (i = 0; i < lhead->n_records && ({lrec = &lhead->record[i]; 1;}); i++)
 
