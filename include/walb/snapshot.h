@@ -290,6 +290,10 @@ static inline int get_snapshot_name_length(const char *name)
  *
  * @return 0 if the same, false.
  */
+/*
+	昨日のsector_compareもそうだが、大小比較ではなく同一性のみを
+	チェックしたいなら関数名はis_same_***の形で!0 if the same or 0を返すのがよい
+*/
 static inline int compare_snapshot_name(const char *name0, const char *name1)
 {
 	if (name0 == NULL || name1 == NULL) { return 0; }
