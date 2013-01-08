@@ -152,7 +152,7 @@ static inline int walb_bitmap_is_all_off(const struct walb_bitmap *bmp)
 			return 0;
 		}
 	}
-	return (~(bmp->ary[q]) & mask) == mask;
+	return (bmp->ary[q] & mask) == 0;
 }
 
 /**
