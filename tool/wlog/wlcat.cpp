@@ -116,7 +116,7 @@ private:
         std::deque<IoPtr> ioQ_;
         const walb::util::WalbSuperBlock& super_;
         const size_t blockSize_;
-        static constexpr size_t maxIoSize_ = 1024 * 1024;
+        static const size_t maxIoSize_ = 1024 * 1024;
 
     public:
         explicit IoQueue(const walb::util::WalbSuperBlock& super,
@@ -411,9 +411,9 @@ private:
     }
 };
 
-constexpr size_t KILO = 1024;
-constexpr size_t MEGA = KILO * 1024;
-constexpr size_t BUFFER_SIZE = 4 * MEGA;
+const size_t KILO = 1024;
+const size_t MEGA = KILO * 1024;
+const size_t BUFFER_SIZE = 4 * MEGA;
 
 int main(int argc, char* argv[])
 {

@@ -53,28 +53,8 @@ public:
     u64 lsid1() const { return lsid1_; }
 };
 
-/**
- * Block data.
- */
-struct Block
-{
-    u64 lsid;
-    std::shared_ptr<u8> ptr;
-
-    Block(u64 lsid, std::shared_ptr<u8> ptr)
-        : lsid(lsid), ptr(ptr) {}
-
-    explicit Block(std::shared_ptr<u8> ptr)
-        : lsid(0), ptr(ptr) {}
-
-    explicit Block(const Block &rhs)
-        : lsid(rhs.lsid), ptr(rhs.ptr) {}
-
-    void print(::FILE *p) const {
-        ::fprintf(p, "Block lsid %" PRIu64" ptr %p",
-                  lsid, ptr.get());
-    }
-};
+// using Block = std::shared_ptr<u8>;
+typedef std::shared_ptr<u8> Block;
 
 /**
  * Io data.
@@ -86,17 +66,24 @@ private:
     size_t size_; // [bytes].
     unsigned int aioKey_;
     bool isDone_;
-    std::deque<std::shared_ptr<u8> > blocks_;
+    std::deque<Block> blocks_;
     unsigned int nOverlapped_; // To serialize overlapped IOs.
+
+    using IoPtr = std::shared_ptr<Io>;
 
 public:
     Io(off_t offset, size_t size)
         : offset_(offset), size_(size)
         , aioKey_(0), isDone_(false), blocks_()
-        , nOverlapping_(0) {}
+        , nOverlapped_(0) {}
 
-    explicit Io(const Io &rhs) = delete;
-    explicit Io(Io &&rhs) = delete;
+    Io(off_t offset, size_t size, Block block)
+        : Io(offset, size) {
+        setBlock(block);
+    }
+
+    Io(const Io &rhs) = delete;
+    Io(Io &&rhs) = delete;
     Io& operator=(const Io &rhs) = delete;
 
     Io& operator=(Io &&rhs) {
@@ -111,27 +98,37 @@ public:
 
     off_t offset() const { return offset_; }
     size_t size() const { return size_; }
-    bool isDone() const { return done_; }
+    bool isDone() const { return isDone_; }
     const std::deque<std::shared_ptr<u8> >& blocks() const { return blocks_; }
     unsigned int& nOverlapped() { return nOverlapped_; }
+    unsigned int aioKey() const { return aioKey_; }
+
+    void setBlock(Block b) {
+        assert(blocks_.empty());
+        blocks_.push_back(b);
+    }
 
     std::shared_ptr<u8> ptr() {
         return blocks_.front();
     }
 
     template<typename T>
-    T* firstPtr() {
-        return reinterpret_cast<T *>(blocks.front().get());
+    T* rawPtr() {
+        return reinterpret_cast<T*>(ptr().get());
+    }
+
+    void setAioKey(unsigned int aioKey) {
+        aioKey_ = aioKey;
     }
 
     bool empty() const {
-        return blocks.empty();
+        return blocks().empty();
     }
 
     void print(::FILE *p) const {
         ::fprintf(p, "IO offset: %zu size: %zu aioKey: %u done: %d\n",
-                  offset, size, aioKey, done ? 1 : 0);
-        for (auto &b : blocks) {
+                  offset_, size_, aioKey_, isDone_ ? 1 : 0);
+        for (auto &b : blocks_) {
             ::fprintf(p, " block %p\n", b.get());
         }
     }
@@ -143,20 +140,20 @@ public:
         assert(rhs.get() != nullptr);
 
         /* They must have data buffers. */
-        if (this->blocks.empty() || rhs->blocks.empty()) {
+        if (blocks_.empty() || rhs->blocks_.empty()) {
             return false;
         }
 
         /* Check Io targets and buffers are adjacent. */
-        if (this->offset + static_cast<off_t>(this->size) != rhs->offset) {
+        if (offset_ + static_cast<off_t>(size_) != rhs->offset_) {
             //::fprintf(::stderr, "offset mismatch\n"); //debug
             return false;
         }
 
         /* Check buffers are contiguous. */
-        u8 *p0 = this->blocks.front().get();
-        u8 *p1 = rhs->blocks.front().get();
-        return p0 + this->size == p1;
+        u8 *p0 = blocks_.front().get();
+        u8 *p1 = rhs->blocks_.front().get();
+        return p0 + size_ == p1;
     }
 
     /**
@@ -169,11 +166,11 @@ public:
         if (!canMerge(rhs)) {
             return false;
         }
-        this->size += rhs->size;
+        size_ += rhs->size_;
         while (!rhs->empty()) {
-            std::shared_ptr<u8> p = rhs->blocks.front();
-            this->blocks.push_back(p);
-            rhs->blocks.pop_front();
+            std::shared_ptr<u8> p = rhs->blocks_.front();
+            blocks_.push_back(p);
+            rhs->blocks_.pop_front();
         }
         return true;
     }
@@ -184,12 +181,12 @@ public:
      */
     bool isOverlapped(const IoPtr rhs) const {
         assert(rhs.get() != nullptr);
-        return this->offset + static_cast<off_t>(this->size) > rhs->offset &&
-            rhs->offset + static_cast<off_t>(rhs->size) > this->offset;
+        return offset_ + static_cast<off_t>(size_) > rhs->offset_ &&
+            rhs->offset_ + static_cast<off_t>(rhs->size_) > offset_;
     }
 };
 
-typedef std::shared_ptr<Io> IoPtr;
+using IoPtr = std::shared_ptr<Io>;
 
 /**
  * This class can merge the last IO in the queue
@@ -199,7 +196,7 @@ class IoQueue {
 private:
     std::deque<IoPtr> ioQ_;
     const size_t blockSize_;
-    static constexpr size_t maxIoSize_ = 1024 * 1024; //1MB.
+    static const size_t maxIoSize_ = 1024 * 1024; //1MB.
 
 public:
     explicit IoQueue(size_t blockSize)
@@ -252,7 +249,7 @@ private:
         }
 
         /* Check mas io size. */
-        if (io0->size + io1->size > maxIoSize_) {
+        if (io0->size() + io1->size() > maxIoSize_) {
             return false;
         }
 
@@ -268,12 +265,19 @@ private:
 class OverlappedData
 {
 private:
+    /*
+     * Key: IO offset, Value: Io pointer.
+     */
     std::multimap<off_t, IoPtr> mmap_;
     size_t maxSize_;
 
 public:
     OverlappedData()
         : mmap_(), maxSize_(0) {}
+
+    ~OverlappedData() = default;
+    OverlappedData(const OverlappedData& rhs) = delete;
+    OverlappedData& operator=(const OverlappedData& rhs) = delete;
 
     /**
      * Insert to the overlapped data.
@@ -292,7 +296,7 @@ public:
         off_t key1 = iop->offset() + iop->size();
 
         /* Count overlapped IOs. */
-        std::multimap<unsigned int, IoPtr>::iterator it = mmap_.lower_bound(key0);
+        auto it = mmap_.lower_bound(key0);
         while (it != mmap_.end() && it->first < key1) {
             IoPtr p = it->second;
             if (p->isOverlapped(iop)) {
@@ -302,7 +306,7 @@ public:
         }
 
         /* Insert iop. */
-        mmap_.insert(std::mk_pair(iop->offset(), iop));
+        mmap_.insert(std::make_pair(iop->offset(), iop));
 
         /* Update maxSize_. */
         if (maxSize_ < iop->size()) {
@@ -315,28 +319,13 @@ public:
      *
      * (1) Delete from the overlapping data.
      * (2) Decrement the overlapping IOs in the data.
-     * (3) IOs where iop->nOverlapping became 0 will be added to the ioQ.
+     * (3) IOs where iop->nOverlapped became 0 will be added to the ioQ.
      */
     void del(IoPtr iop, std::queue<IoPtr> &ioQ) {
         assert(iop.get() != nullptr);
 
         /* Delete iop. */
-        auto pair = mmap_.equal_range(iop->offset());
-        std::multimap<unsigned int, IoPtr>::iterator it, it1;
-        it = pair.first;
-        it1 = pair.second;
-        bool isDeleted = false;
-        while (it != mmap_.end() && it != it1) {
-            assert(it->first == iop->offset());
-            IoPtr p = it->second;
-            if (p == iop) {
-                mmap_.erase(it);
-                isDeleted = true;
-                break;
-            }
-            it++;
-        }
-        assert(isDeleted);
+        deleteFromMap(iop);
 
         /* Reset maxSize_ if empty. */
         if (mmap_.empty()) {
@@ -348,10 +337,10 @@ public:
         if (iop->offset() > static_cast<off_t>(maxSize_)) {
             key0 = iop->offset() - static_cast<off_t>(maxSize_);
         }
-        oft_t key1 = iop->offset() + iop->size();
+        off_t key1 = iop->offset() + iop->size();
 
         /* Decrement nOverlapped of overlapped IOs. */
-        std::multimap<unsigned int, IoPtr>::iterator it = mmap_.lower_bound(key0);
+        auto it = mmap_.lower_bound(key0);
         while (it != mmap_.end() && it->first < key1) {
             IoPtr p = it->second;
             if (p->isOverlapped(iop)) {
@@ -365,14 +354,36 @@ public:
     }
 
     bool empty() const {
-        mmap_.empty();
+        return mmap_.empty();
+    }
+
+private:
+    /**
+     * Delete an IoPtr from the map.
+     */
+    void deleteFromMap(IoPtr iop) {
+        auto pair = mmap_.equal_range(iop->offset());
+        auto it = pair.first;
+        auto it1 = pair.second;
+        bool isDeleted = false;
+        while (it != mmap_.end() && it != it1) {
+            assert(it->first == iop->offset());
+            IoPtr p = it->second;
+            if (p == iop) {
+                mmap_.erase(it);
+                isDeleted = true;
+                break;
+            }
+            it++;
+        }
+        assert(isDeleted);
     }
 };
 
 /**
  * To apply walb log.
  */
-class WalbLogWrite
+class WalbLogApplyer
 {
 private:
     const Config& config_;
@@ -397,7 +408,7 @@ private:
     typedef std::shared_ptr<walb::util::WalbLogpackData> LogDataPtr;
 
 public:
-    WalbLogWrite(const Config& config, size_t bufferSize, bool isDiscardSupport = false)
+    WalbLogApplyer(const Config& config, size_t bufferSize, bool isDiscardSupport = false)
         : config_(config)
         , bd_(config.deviceName(), O_RDWR | O_DIRECT)
         , blockSize_(bd_.getPhysicalBlockSize())
@@ -411,12 +422,12 @@ public:
         //LOGn("blockSize %zu\n", blockSize_); //debug
     }
 
-    ~WalbLogWrite() {
+    ~WalbLogApplyer() {
         while (!ioQ_.empty()) {
             IoPtr p = ioQ_.front();
             ioQ_.pop();
             try {
-                aio_.waitFor(p->aioKey);
+                aio_.waitFor(p->aioKey());
             } catch (...) {}
         }
     }
@@ -445,13 +456,13 @@ public:
         while (true) {
             try {
                 Block b = readBlock(fdr);
-                walb::util::WalbLogpackHeader logh(b.ptr, blockSize_, salt());
+                walb::util::WalbLogpackHeader logh(b, blockSize_, salt());
                 if (!logh.isValid()) {
                     break;
                 }
                 for (size_t i = 0; i < logh.nRecords(); i++) {
                     LogDataPtr logd = allocLogData(logh, i);
-                    readLogpackData(*logd);
+                    readLogpackData(*logd, fdr);
                     createIoAndSubmit(*logd);
                 }
             } catch (walb::util::EofError &e) {
@@ -472,7 +483,8 @@ private:
     bool canApply() const {
         const struct walblog_header &h = wh_.header();
         if (h.physical_bs < blockSize_ || h.physical_bs % blockSize_ != 0) {
-            LOGe("Physical block size differ %u %u.\n", h.physical_bs);
+            LOGe("Physical block size does not match %u %zu.\n",
+                 h.physical_bs, blockSize_);
             return false;
         }
         return true;
@@ -489,12 +501,12 @@ private:
     /**
      * Read a logpack data.
      */
-    void readLogpackData(walb::util::WalbLogpackData &logd, FdReader &fdr) {
+    void readLogpackData(walb::util::WalbLogpackData &logd, walb::util::FdReader &fdr) {
         if (!logd.hasData()) { return; }
         //::printf("ioSizePb: %u\n", logd.ioSizePb()); //debug
         for (size_t i = 0; i < logd.ioSizePb(); i++) {
-            auto block = readBlock();
-            logd.addBlock(block.ptr);
+            auto block = readBlock(fdr);
+            logd.addBlock(block);
         }
         if (!logd.isValid()) {
             throw InvalidLogpackData();
@@ -504,12 +516,12 @@ private:
     /**
      * Read a block data from a fd reader.
      */
-    Block readBlock(FdReader& fdr) {
-        Block b(0, bs_.alloc());
-        if (b.ptr.get() == nullptr) {
+    Block readBlock(walb::util::FdReader& fdr) {
+        Block b = ba_.alloc();
+        if (b.get() == nullptr) {
             throw RT_ERR("allocate failed.");
         }
-        char *p = reinterpret_cast<char *>(b.ptr.get());
+        char *p = reinterpret_cast<char *>(b.get());
         fdr.read(p, blockSize_);
         return b;
     }
@@ -518,9 +530,7 @@ private:
      * Create an IO.
      */
     IoPtr createIo(off_t offset, size_t size, std::shared_ptr<u8> block) {
-        IoPtr p(new Io(offset, size));
-        p->blocks.push_back(block);
-        return p;
+        return IoPtr(new Io(offset, size, block));
     }
 
     void executeDiscard(walb::util::WalbLogpackData &logd) {
@@ -542,9 +552,9 @@ private:
 
     /**
      * @iop iop to be deleted.
-     * @ioQ All iop(s) will be added where iop->nOverlapping became 0.
+     * @ioQ All iop(s) will be added where iop->nOverlapped became 0.
      */
-    void deleteFromOverlappingData(IoPtr iop, std::queue<IoPtr> ioQ) {
+    void deleteFromOverlappedData(IoPtr iop, std::queue<IoPtr> ioQ) {
 
 
 
@@ -565,29 +575,29 @@ private:
             /* Wait for a IO. */
             if (!ioQ_.empty()) {
                 IoPtr iop = ioQ_.front();
-                size_t nBlocks = bytesToPb(iop->size);
+                size_t nBlocks = bytesToPb(iop->size());
                 ioQ_.pop();
-                assert(iop->nOverlapping == 0);
-                assert(iop->aioKey != 0);
-                aio_.waitFor(iop->aioKey);
-                deleteFromOverlappingData(iop, ioQ);
-                nDone += nBlocks;
+                assert(iop->nOverlapped() == 0);
+                assert(iop->aioKey() != 0);
+                aio_.waitFor(iop->aioKey());
+                deleteFromOverlappedData(iop, ioQ);
                 nPendingBlocks_ -= nBlocks;
             }
             /* Submit overlapping IOs. */
             size_t nIo = 0;
             while (!ioQ.empty()) {
                 IoPtr iop = ioQ.front();
-                size_t nBlocks = bytesToPb(iop->size);
+                size_t nBlocks = bytesToPb(iop->size());
                 if (nPendingBlocks_ + nBlocks > queueSize_) {
                     break;
                 }
                 ioQ.pop();
-                assert(iop->nOverlapping == 0);
-                iop->aioKey = aio_.prepareWrite(iop->offset, iop->size, iop->firstPtr<char>());
+                assert(iop->nOverlapped() == 0);
+                iop->setAioKey(
+                    aio_.prepareWrite(
+                        iop->offset(), iop->size(), iop->rawPtr<char>()));
                 ioQ_.push(iop);
                 nIo++;
-                nDone -= nBlocks;
                 nPendingBlocks_ += nBlocks;
             }
             if (nIo > 0) {
@@ -634,8 +644,8 @@ private:
             assert(!ioQ_.empty());
             IoPtr iop = ioQ_.front();
             ioQ_.pop();
-            aio_.waitFor(iop->aioKey);
-            nPendingBlocks_ -= bytesToPb(iop->size);
+            aio_.waitFor(iop->aioKey());
+            nPendingBlocks_ -= bytesToPb(iop->size());
         }
 
         /* Create IOs. */
@@ -661,17 +671,18 @@ private:
         assert(remaining == 0);
         assert(nBlocks > 0);
         nPendingBlocks_ += nBlocks;
-        assert(nPendingBlock_ <= queueSize_);
+        assert(nPendingBlocks_ <= queueSize_);
 
         /* Submit IOs. */
         size_t nIo = 0;
         while (!ioQ.empty()) {
-            IoPtr iop = ioQ.front();
-            ioQ.pop();
+            IoPtr iop = ioQ.pop();
             insertToOverlappingData(iop);
-            if (iop->nOverlapping == 0) {
-                iop->aioKey = aio_.prepareWrite(iop->offset, iop->size, iop->firstPtr<char>());
-                assert(iop->aioKey > 0);
+            if (iop->nOverlapped() == 0) {
+                iop->setAioKey(
+                    aio_.prepareWrite(
+                        iop->offset(), iop->size(), iop->rawPtr<char>()));
+                assert(iop->aioKey() > 0);
                 ioQ_.push(iop);
                 nIo++;
             }
@@ -690,9 +701,9 @@ private:
     }
 };
 
-constexpr size_t KILO = 1024;
-constexpr size_t MEGA = KILO * 1024;
-constexpr size_t BUFFER_SIZE = 4 * MEGA;
+const size_t KILO = 1024;
+const size_t MEGA = KILO * 1024;
+const size_t BUFFER_SIZE = 4 * MEGA;
 
 int main(int argc, char* argv[])
 {
@@ -701,7 +712,7 @@ int main(int argc, char* argv[])
     try {
         Config config(argc, argv);
         WalbLogApplyer wlApp(config, BUFFER_SIZE);
-        wlRead.read(1);
+        wlApp.readAndApply(0);
 
     } catch (std::runtime_error& e) {
         LOGe("Error: %s\n", e.what());
