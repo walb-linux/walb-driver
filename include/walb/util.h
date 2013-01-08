@@ -96,6 +96,10 @@ static inline void set_bit_u32(int nr, u32 *addr)
 	*addr |= mask;
 }
 
+/*
+	別に構わないのだけどu64bits.hのclear_u64bits
+	たちとの名前の整合性が…
+*/
 /**
  * clear_bit for u32.
  * This is not atomic operation.
