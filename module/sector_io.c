@@ -248,6 +248,10 @@ bool walb_write_super_sector(
 	sect->sector_type = SECTOR_TYPE_SUPER;
 
 	/* Generate checksum. */
+/*
+	sect->checksum = checksum((u8 *)sect, pbs, 0);
+	でよいのでは。
+*/
 	sect->checksum = 0;
 	csum = checksum((u8 *)sect, pbs, 0);
 	sect->checksum = csum;
