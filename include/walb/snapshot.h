@@ -146,7 +146,7 @@ static inline int is_valid_snapshot_record(
 /* Snapshot name related. */
 static inline int is_valid_snapshot_name(const char *name);
 static inline int get_snapshot_name_length(const char *name);
-static inline int compare_snapshot_name(
+static inline int is_same_snapshot_name(
 	const char *name0, const char *name1);
 
 /* Snapshot sector. */
@@ -286,15 +286,22 @@ static inline int get_snapshot_name_length(const char *name)
 }
 
 /**
- * Compare two strings as snapshot name.
+ * Compare two snapshot names.
  *
- * @return 0 if the same, false.
+ * @name0 if NULL, 0 will be returned.
+ * @name1 if NULL, 0 will be returned.
+ *
+ * RETURN:
+ *   Non-zero if the same, or 0.
  */
-static inline int compare_snapshot_name(const char *name0, const char *name1)
+static inline int is_same_snapshot_name(
+	const char *name0, const char *name1)
 {
-	if (name0 == NULL || name1 == NULL) { return 0; }
-
-	return strncmp(name0, name1, SNAPSHOT_NAME_MAX_LEN);
+	if (name0 && name1) {
+		return strncmp(name0, name1, SNAPSHOT_NAME_MAX_LEN) == 0;
+	} else {
+		return 0;
+	}
 }
 
 /*******************************************************************************
@@ -438,8 +445,7 @@ static inline int get_idx_of_snapshot_record_by_name_in_sector(
 	ASSERT_SECTOR_DATA(sect);
 
 	for_each_snapshot_record(i, rec, sect) {
-
-		if (compare_snapshot_name(rec->name, name) == 0 &&
+		if (is_same_snapshot_name(rec->name, name) &&
 			is_valid_snapshot_record(rec)) {
 			return i;
 		}
