@@ -8,6 +8,7 @@
 
 #include "walb.h"
 #include "util.h"
+#include "u32bits.h"
 #include "checksum.h"
 
 #ifdef __cplusplus
@@ -113,7 +114,7 @@ struct walb_logpack_header {
  * struct walb_logpack_header *lhead;
  */
 #define for_each_logpack_record(i, lrec, lhead)				\
-	for (i = 0; i < lhead->n_records && ({lrec = &lhead->record[i]; 1;}); i++)
+	for (i = 0; i < lhead->n_records && (lrec = &lhead->record[i], 1); i++)
 
 /*******************************************************************************
  * Prototype of static inline functions.

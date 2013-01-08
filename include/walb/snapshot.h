@@ -69,15 +69,15 @@ extern "C" {
 #define for_each_snapshot_record(i, rec, sect)				\
 	for (i = 0;							\
 	     i < get_max_n_records_in_snapshot_sector((sect)->size) &&	\
-		     ({ rec = &get_snapshot_sector			\
-				     (sect)->record[i]; 1; });		\
+		     (rec = &get_snapshot_sector			\
+			     (sect)->record[i], 1);			\
 	     i++)
 
 #define for_each_snapshot_record_const(i, rec, sect)			\
 	for (i = 0;							\
 	     i < get_max_n_records_in_snapshot_sector((sect)->size) &&	\
-		     ({ rec = &get_snapshot_sector_const		\
-				     (sect)->record[i]; 1; });		\
+		     (rec = &get_snapshot_sector_const			\
+			     (sect)->record[i], 1);			\
 	     i++)
 
 
@@ -146,7 +146,7 @@ static inline int is_valid_snapshot_record(
 /* Snapshot name related. */
 static inline int is_valid_snapshot_name(const char *name);
 static inline int get_snapshot_name_length(const char *name);
-static inline int compare_snapshot_name(
+static inline int is_same_snapshot_name(
 	const char *name0, const char *name1);
 
 /* Snapshot sector. */
@@ -286,15 +286,22 @@ static inline int get_snapshot_name_length(const char *name)
 }
 
 /**
- * Compare two strings as snapshot name.
+ * Compare two snapshot names.
  *
- * @return 0 if the same, false.
+ * @name0 if NULL, 0 will be returned.
+ * @name1 if NULL, 0 will be returned.
+ *
+ * RETURN:
+ *   Non-zero if the same, or 0.
  */
-static inline int compare_snapshot_name(const char *name0, const char *name1)
+static inline int is_same_snapshot_name(
+	const char *name0, const char *name1)
 {
-	if (name0 == NULL || name1 == NULL) { return 0; }
-
-	return strncmp(name0, name1, SNAPSHOT_NAME_MAX_LEN);
+	if (name0 && name1) {
+		return strncmp(name0, name1, SNAPSHOT_NAME_MAX_LEN) == 0;
+	} else {
+		return 0;
+	}
 }
 
 /*******************************************************************************
@@ -385,7 +392,7 @@ static inline int is_alloc_snapshot_record(
 	ASSERT(0 <= nr);
 	ASSERT(nr < 64);
 
-	return test_u64bits(nr, &get_snapshot_sector_const(sect)->bitmap);
+	return test_bit_u64(nr, &get_snapshot_sector_const(sect)->bitmap);
 }
 
 /**
@@ -397,7 +404,7 @@ static inline void set_alloc_snapshot_record(
 	ASSERT(sect);
 	ASSERT(0 <= nr && nr < 64);
 
-	set_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
+	set_bit_u64(nr, &get_snapshot_sector(sect)->bitmap);
 }
 
 /**
@@ -409,7 +416,7 @@ static inline void clear_alloc_snapshot_record(
 	ASSERT(sect);
 	ASSERT(0 <= nr && nr < 64);
 
-	clear_u64bits(nr, &get_snapshot_sector(sect)->bitmap);
+	clear_bit_u64(nr, &get_snapshot_sector(sect)->bitmap);
 }
 
 /**
@@ -438,8 +445,7 @@ static inline int get_idx_of_snapshot_record_by_name_in_sector(
 	ASSERT_SECTOR_DATA(sect);
 
 	for_each_snapshot_record(i, rec, sect) {
-
-		if (compare_snapshot_name(rec->name, name) == 0 &&
+		if (is_same_snapshot_name(rec->name, name) &&
 			is_valid_snapshot_record(rec)) {
 			return i;
 		}
@@ -524,7 +530,7 @@ static inline int get_n_records_in_snapshot_sector_detail(
 
 	n = 0;
 	for (i = 0; i < max_n; i++) {
-		if (test_u64bits(i, &snap_sect->bitmap)) {
+		if (test_bit_u64(i, &snap_sect->bitmap)) {
 			n++;
 		}
 	}

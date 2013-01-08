@@ -232,7 +232,6 @@ bool walb_write_super_sector(
 	struct block_device *ldev, struct sector_data *lsuper)
 {
 	u64 off0;
-	u32 csum;
 	struct walb_super_sector *sect;
 	unsigned int pbs;
 
@@ -247,10 +246,10 @@ bool walb_write_super_sector(
 	/* Set sector_type. */
 	sect->sector_type = SECTOR_TYPE_SUPER;
 
-	/* Generate checksum. */
+	/* Generate checksum.
+	   zero-clear before calculating checksum. */
 	sect->checksum = 0;
-	csum = checksum((u8 *)sect, pbs, 0);
-	sect->checksum = csum;
+	sect->checksum = checksum((u8 *)sect, pbs, 0);
 
 	/* Really write. */
 	off0 = get_super_sector0_offset(pbs);
