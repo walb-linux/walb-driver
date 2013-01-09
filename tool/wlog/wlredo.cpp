@@ -455,6 +455,8 @@ private:
     /* Number of blocks where the corresponding IO
        is submitted, but not completed. */
     size_t nPendingBlocks_;
+    /* Number of prepared but not submitted IOs. */
+    size_t nPreparedIos_;
     OverlappedData olData_;
 
     class InvalidLogpackData : public std::exception {
@@ -480,6 +482,7 @@ public:
         , ioQ_()
         , submitIoQ_()
         , nPendingBlocks_(0)
+        , nPreparedIos_(0)
         , olData_() {}
 
     ~WalbLogApplyer() {
@@ -515,32 +518,32 @@ public:
         }
 
         /* now editing */
-        while (true) {
-            try {
+        try {
+            while (true) {
                 Block b = readBlock(fdr);
                 walb::util::WalbLogpackHeader logh(b, blockSize_, salt());
                 if (!logh.isValid()) {
                     break;
                 }
-
-                /* debug */
 #if 0
-                logh.printShort();
+                logh.printShort(); /* debug */
 #endif
-
                 for (size_t i = 0; i < logh.nRecords(); i++) {
                     LogDataPtr logd = allocLogData(logh, i);
                     readLogpackData(*logd, fdr);
                     createIoAndSubmit(*logd);
                 }
-            } catch (walb::util::EofError &e) {
-                break;
-            } catch (InvalidLogpackData &e) {
-                break;
-            }
-        } // while (true)
+            } // while (true)
+            submitIos();
+
+        } catch (walb::util::EofError &e) {
+            ::printf("Reach input EOF.\n");
+        } catch (InvalidLogpackData &e) {
+            throw RT_ERR("InalidLogpackData");
+        }
 
         /* Wait for all pending IOs. */
+        submitIos();
         waitForAllPendingIos();
 
         /* Sync device. */
@@ -633,6 +636,7 @@ private:
      */
     void waitForAllPendingIos() {
         while (!ioQ_.empty() || !submitIoQ_.empty()) {
+            prepareIos();
             submitIos();
             waitForAnIoCompletion();
         }
@@ -715,7 +719,8 @@ private:
     /**
      * Submit IOs.
      */
-    void submitIos() {
+    void prepareIos() {
+        assert(submitIoQ_.size() <= queueSize_);
         while (!submitIoQ_.empty()) {
             IoPtr iop = submitIoQ_.front();
             submitIoQ_.pop_front();
@@ -736,11 +741,22 @@ private:
             ::printf("SUBMIT\t\t%" PRIu64 "\t%zu\t%zu\n",
                      (u64)iop->offset() >> 9, iop->size() >> 9, nPendingBlocks_);
 #endif
-
-            /* Really submit. */
-            aio_.submit();
+            nPreparedIos_++;
+#if 0
+            ::printf("nPreparedIos_ %zu\n", nPreparedIos_); //debug
+#endif
+            if (nPreparedIos_ >= queueSize_ / 2) {
+                submitIos();
+            }
         }
         assert(submitIoQ_.empty());
+    }
+
+    void submitIos() {
+        if (nPreparedIos_ > 0) {
+            aio_.submit();
+            nPreparedIos_ = 0;
+        }
     }
 
     /**
@@ -787,6 +803,7 @@ private:
 
         /* Wait for IOs if there are too much pending IOs. */
         while (!ioQ_.empty() && nPendingBlocks_ + nBlocks > queueSize_) {
+            submitIos();
             waitForAnIoCompletion();
         }
 
@@ -817,9 +834,7 @@ private:
             }
             ioQ_.push(iop);
         }
-
-        /* Really submit. */
-        submitIos();
+        prepareIos();
     }
 
     static size_t getQueueSizeStatic(size_t bufferSize, size_t blockSize) {
