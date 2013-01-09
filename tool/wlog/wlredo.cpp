@@ -441,7 +441,8 @@ private:
     const bool isDiscardSupport_;
 
     std::queue<IoPtr> ioQ_; /* serialized. */
-    std::deque<IoPtr> submitIoQ_; /* ready to submit. */
+    std::deque<IoPtr> readyIoQ_; /* ready to submit. */
+    std::deque<IoPtr> submitIoQ_;
     /* Number of blocks where the corresponding IO
        is submitted, but not completed. */
     size_t nPendingBlocks_;
@@ -470,7 +471,7 @@ public:
         , wh_()
         , isDiscardSupport_(isDiscardSupport)
         , ioQ_()
-        , submitIoQ_()
+        , readyIoQ_()
         , nPendingBlocks_(0)
         , nPreparedIos_(0)
         , olData_() {}
@@ -625,9 +626,7 @@ private:
      * There is no pending IO after returned this method.
      */
     void waitForAllPendingIos() {
-        while (!ioQ_.empty() || !submitIoQ_.empty()) {
-            prepareIos();
-            submitIos();
+        while (!ioQ_.empty() || !readyIoQ_.empty()) {
             waitForAnIoCompletion();
         }
         assert(olData_.empty());
@@ -648,6 +647,12 @@ private:
         IoPtr iop = ioQ_.front();
         ioQ_.pop();
 
+        if (!iop->isSubmitted() && !iop->isOverwritten()) {
+            /* The IO is still not submitted. */
+            prepareIos();
+            submitIos();
+        }
+
         if (iop->isSubmitted()) {
             assert(!iop->isCompleted());
             assert(iop->aioKey() > 0);
@@ -660,7 +665,7 @@ private:
         std::queue<IoPtr> tmpIoQ;
         deleteFromOverlappedData(iop, tmpIoQ);
 
-        /* Sort and insert to the head of submitIoQ_. */
+        /* Insert to the head of readyIoQ_. */
         std::deque<IoPtr> sortedQ;
         while (!tmpIoQ.empty()) {
             IoPtr p = tmpIoQ.front();
@@ -669,28 +674,7 @@ private:
                 /* No need to execute the IO. */
                 continue;
             }
-            const auto cmp = [](const IoPtr &p0, const IoPtr &p1) {
-                return p0->sequenceId() < p1->sequenceId();
-            };
-            sortedQ.insert(
-                std::lower_bound(sortedQ.begin(), sortedQ.end(), p, cmp), p);
-        }
-#ifdef DEBUG
-        u64 prev = 0;
-        for (auto p : sortedQ) {
-            assert(prev <= p->sequenceId());
-            prev = p->sequenceId();
-        }
-#endif
-        while (!sortedQ.empty()) {
-            IoPtr p = sortedQ.back();
-#if 0
-            ::printf("READY\t\t%" PRIu64 "\t%zu\n",
-                     static_cast<u64>(p->offset()) >> 9,
-                     p->size() >> 9);
-#endif
-            submitIoQ_.push_front(p);
-            sortedQ.pop_back();
+            readyIoQ_.push_front(p);
         }
 
         /* debug */
@@ -700,7 +684,7 @@ private:
                  nPendingBlocks_);
 #endif
 
-        /* all IOs added to the submitIoQ_ must satisfy
+        /* all IOs added to the readyIoQ_ must satisfy
            their nOverlapped == 0. */
 
         /* You must handle errors here. */
@@ -710,12 +694,45 @@ private:
      * Submit IOs.
      */
     void prepareIos() {
+        assert(readyIoQ_.size() <= queueSize_);
+        while (!readyIoQ_.empty()) {
+            IoPtr iop = readyIoQ_.front();
+            readyIoQ_.pop_front();
+            if (iop->isOverwritten()) {
+                /* No need to execute the IO. */
+                continue;
+            }
+#if 1
+            /* Insert to the submit queue (sorted by offset). */
+            const auto cmp = [](const IoPtr &p0, const IoPtr &p1) {
+                return p0->offset() < p1->offset();
+            };
+            submitIoQ_.insert(
+                std::lower_bound(submitIoQ_.begin(), submitIoQ_.end(),
+                                 iop, std::ref(cmp)),
+                iop);
+#else
+            /* Insert to the submit queue. */
+            submitIoQ_.push_back(iop);
+#endif
+
+            if (submitIoQ_.size() >= queueSize_ / 2) {
+                submitIos();
+            }
+        }
+        assert(readyIoQ_.empty());
+    }
+
+    void submitIos() {
+        if (submitIoQ_.empty()) {
+            return;
+        }
         assert(submitIoQ_.size() <= queueSize_);
+        size_t nBulk = 0;
         while (!submitIoQ_.empty()) {
             IoPtr iop = submitIoQ_.front();
             submitIoQ_.pop_front();
             if (iop->isOverwritten()) {
-                /* No need to execute the IO. */
                 continue;
             }
 
@@ -725,27 +742,17 @@ private:
                 iop->offset(), iop->size(), iop->rawPtr<char>());
             assert(iop->aioKey() > 0);
             iop->submit();
-
-            /* debug */
+            nBulk++;
 #if 0
             ::printf("SUBMIT\t\t%" PRIu64 "\t%zu\t%zu\n",
                      (u64)iop->offset() >> 9, iop->size() >> 9, nPendingBlocks_);
 #endif
-            nPreparedIos_++;
-#if 0
-            ::printf("nPreparedIos_ %zu\n", nPreparedIos_); //debug
-#endif
-            if (nPreparedIos_ >= queueSize_ / 2) {
-                submitIos();
-            }
         }
-        assert(submitIoQ_.empty());
-    }
-
-    void submitIos() {
-        if (nPreparedIos_ > 0) {
+        if (nBulk > 0) {
             aio_.submit();
-            nPreparedIos_ = 0;
+#if 0
+            ::printf("nBulk: %zu\n", nBulk);
+#endif
         }
     }
 
@@ -793,7 +800,6 @@ private:
 
         /* Wait for IOs if there are too much pending IOs. */
         while (!ioQ_.empty() && nPendingBlocks_ + nBlocks > queueSize_) {
-            submitIos();
             waitForAnIoCompletion();
         }
 
@@ -813,7 +819,7 @@ private:
             insertToOverlappedData(iop);
             if (iop->nOverlapped() == 0) {
                 /* Ready to submit. */
-                submitIoQ_.push_back(iop);
+                readyIoQ_.push_back(iop);
             } else {
                 /* debug */
 #if 0
