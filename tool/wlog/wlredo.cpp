@@ -675,13 +675,11 @@ private:
                 /* No need to execute the IO. */
                 continue;
             }
-            auto it = std::lower_bound(
-                sortedQ.begin(), sortedQ.end(),
-                p,
-                [](const IoPtr &p0, const IoPtr &p1) {
-                    return p0->sequenceId() < p1->sequenceId();
-                });
-            sortedQ.insert(it, p);
+            const auto cmp = [](const IoPtr &p0, const IoPtr &p1) {
+                return p0->sequenceId() < p1->sequenceId();
+            };
+            sortedQ.insert(
+                std::lower_bound(sortedQ.begin(), sortedQ.end(), p, cmp), p);
         }
 #ifdef DEBUG
         u64 prev = 0;
