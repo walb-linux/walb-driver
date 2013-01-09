@@ -134,7 +134,9 @@ public:
     void overwritten() {
         if (!isOverwritten_) {
             isOverwritten_ = true;
-            blocks_.clear(); /* No more required. */
+            if (!isSubmitted()) {
+                blocks_.clear(); /* No more required. */
+            }
         }
     }
 
