@@ -12,6 +12,7 @@
 #include <memory>
 #include <deque>
 #include <map>
+#include <algorithm>
 
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -44,6 +45,22 @@ public:
 
 using Block = std::shared_ptr<u8>;
 
+class SimpleSequenceIdGenerator
+{
+private:
+    u64 id_;
+
+public:
+    SimpleSequenceIdGenerator() : id_(0) {}
+    SimpleSequenceIdGenerator(const SimpleSequenceIdGenerator &rhs) = delete;
+    SimpleSequenceIdGenerator(SimpleSequenceIdGenerator &&rhs) = delete;
+    ~SimpleSequenceIdGenerator() = default;
+
+    u64 operator()() {
+        return id_++;
+    }
+} DefaultSequenceIdGenerator;
+
 /**
  * Io data.
  */
@@ -57,6 +74,7 @@ private:
     bool isCompleted_;
     std::deque<Block> blocks_;
     unsigned int nOverlapped_; // To serialize overlapped IOs.
+    u64 sequenceId_;
 
     using IoPtr = std::shared_ptr<Io>;
 
@@ -64,7 +82,8 @@ public:
     Io(off_t offset, size_t size)
         : offset_(offset), size_(size), aioKey_(0)
         , isSubmitted_(false), isCompleted_(false)
-        , blocks_(), nOverlapped_(0) {}
+        , blocks_(), nOverlapped_(0)
+        , sequenceId_(DefaultSequenceIdGenerator()) {}
 
     Io(off_t offset, size_t size, Block block)
         : Io(offset, size) {
@@ -83,6 +102,7 @@ public:
         isCompleted_ = rhs.isCompleted_;
         blocks_ = std::move(rhs.blocks_);
         nOverlapped_ = rhs.nOverlapped_;
+        sequenceId_ = rhs.sequenceId_;
         return *this;
     }
 
@@ -96,6 +116,7 @@ public:
     std::shared_ptr<u8> ptr() { return blocks_.front(); }
     Block block() { return ptr(); } /* This is just alias of ptr(). */
     bool empty() const { return blocks().empty(); }
+    u64 sequenceId() const { return sequenceId_; }
 
     template<typename T>
     T* rawPtr() { return reinterpret_cast<T*>(ptr().get()); }
@@ -293,13 +314,16 @@ public:
         /* Count overlapped IOs. */
         iop->nOverlapped() = 0;
         auto it = mmap_.lower_bound(key0);
+        int c = 0;
         while (it != mmap_.end() && it->first < key1) {
             IoPtr p = it->second;
             if (p->isOverlapped(iop)) {
                 iop->nOverlapped()++;
             }
             it++;
+            c++;
         }
+        //::printf("mmap.size %zu c %d\n", mmap_.size(), c); //debug
 
         /* Insert iop. */
         mmap_.insert(std::make_pair(iop->offset(), iop));
@@ -343,6 +367,11 @@ public:
             if (p->isOverlapped(iop)) {
                 p->nOverlapped()--;
                 if (p->nOverlapped() == 0) {
+#if 0
+                    ::printf("nOverlapped0\t%" PRIu64 "\t%zu\n",
+                             static_cast<u64>(p->offset()) >> 9,
+                             p->size() >> 9); /* debug */
+#endif
                     ioQ.push(p);
                 }
             }
@@ -393,7 +422,7 @@ private:
     const bool isDiscardSupport_;
 
     std::queue<IoPtr> ioQ_; /* serialized. */
-    std::queue<IoPtr> submitIoQ_; /* ready to submit. */
+    std::deque<IoPtr> submitIoQ_; /* ready to submit. */
     /* Number of blocks where the corresponding IO
        is submitted, but not completed. */
     size_t nPendingBlocks_;
@@ -464,6 +493,12 @@ public:
                 if (!logh.isValid()) {
                     break;
                 }
+
+                /* debug */
+#if 0
+                logh.printShort();
+#endif
+
                 for (size_t i = 0; i < logh.nRecords(); i++) {
                     LogDataPtr logd = allocLogData(logh, i);
                     readLogpackData(*logd, fdr);
@@ -560,7 +595,7 @@ private:
      * @iop iop to be deleted.
      * @ioQ All iop(s) will be added where iop->nOverlapped became 0.
      */
-    void deleteFromOverlappedData(IoPtr iop, std::queue<IoPtr> ioQ) {
+    void deleteFromOverlappedData(IoPtr iop, std::queue<IoPtr> &ioQ) {
         olData_.del(iop, ioQ);
     }
 
@@ -585,9 +620,23 @@ private:
      * Wait for an IO completion.
      */
     void waitForAnIoCompletion() {
+        //::printf("waitForAnIoCompletion\n"); //debug
         assert(!ioQ_.empty());
         IoPtr iop = ioQ_.front();
         ioQ_.pop();
+
+        /* debug */
+        if (!iop->isSubmitted()) {
+            ::printf("NOT_SUBMITTED\t%" PRIu64 "\t%zu\n",
+                     static_cast<u64>(iop->offset()) >> 9,
+                     iop->size() >> 9);
+            ::printf("submit queue size: %zu\n", submitIoQ_.size());
+            for (auto p : submitIoQ_) {
+                ::printf("SUBMIT_Q\t%" PRIu64 "\t%zu\n",
+                         static_cast<u64>(p->offset()) >> 9,
+                         p->size() >> 9);
+            }
+        }
 
         assert(iop->isSubmitted());
         assert(!iop->isCompleted());
@@ -595,7 +644,46 @@ private:
         aio_.waitFor(iop->aioKey());
         nPendingBlocks_ -= bytesToPb(iop->size());
         iop->complete();
-        deleteFromOverlappedData(iop, submitIoQ_);
+        std::queue<IoPtr> tmpIoQ;
+        deleteFromOverlappedData(iop, tmpIoQ);
+
+        /* Sort and insert to the head of submitIoQ_. */
+        std::deque<IoPtr> sortedQ;
+        while (!tmpIoQ.empty()) {
+            IoPtr p = tmpIoQ.front();
+            tmpIoQ.pop();
+            auto it = std::lower_bound(
+                sortedQ.begin(), sortedQ.end(),
+                p,
+                [](const IoPtr &p0, const IoPtr &p1) {
+                    return p0->sequenceId() < p1->sequenceId();
+                });
+            sortedQ.insert(it, p);
+        }
+#ifdef DEBUG
+        u64 prev = 0;
+        for (auto p : sortedQ) {
+            assert(prev <= p->sequenceId());
+            prev = p->sequenceId();
+        }
+#endif
+        while (!sortedQ.empty()) {
+            IoPtr p = sortedQ.back();
+#if 0
+            ::printf("READY\t\t%" PRIu64 "\t%zu\n",
+                     static_cast<u64>(p->offset()) >> 9,
+                     p->size() >> 9);
+#endif
+            submitIoQ_.push_front(p);
+            sortedQ.pop_back();
+        }
+
+        /* debug */
+#if 0
+        ::printf("COMPLETE\t\t%" PRIu64 "\t%zu\t%zu\n",
+                 (u64)iop->offset() >> 9, iop->size() >> 9,
+                 nPendingBlocks_);
+#endif
 
         /* all IOs added to the submitIoQ_ must satisfy
            their nOverlapped == 0. */
@@ -605,34 +693,31 @@ private:
 
     /**
      * Submit IOs.
-     * This will wait for previously submitted IOs
-     * in order to control the number of IOs <= queueSize_
-     * that are submitted and not completed.
      */
     void submitIos() {
+        assert(nPendingBlocks_ <= queueSize_);
         while (!submitIoQ_.empty()) {
             IoPtr iop = submitIoQ_.front();
-            submitIoQ_.pop();
-            size_t nb = bytesToPb(iop->size());
-
-            /* If there are too much pending IOs, wait for their completion. */
-            while (!ioQ_.empty() && nPendingBlocks_ + nb > queueSize_) {
-                waitForAnIoCompletion();
-            }
+            submitIoQ_.pop_front();
 
             /* Prepare aio. */
             assert(iop->nOverlapped() == 0);
             iop->aioKey() = aio_.prepareWrite(
                 iop->offset(), iop->size(), iop->rawPtr<char>());
             assert(iop->aioKey() > 0);
-            nPendingBlocks_ += nb;
             iop->submit();
+            assert(nPendingBlocks_ <= queueSize_);
+
+            /* debug */
+#if 0
+            ::printf("SUBMIT\t\t%" PRIu64 "\t%zu\t%zu\n",
+                     (u64)iop->offset() >> 9, iop->size() >> 9, nPendingBlocks_);
+#endif
 
             /* Really submit. */
             aio_.submit();
         }
         assert(submitIoQ_.empty());
-        assert(nPendingBlocks_ <= queueSize_);
     }
 
     /**
@@ -655,7 +740,7 @@ private:
         /* Create IOs. */
         IoQueue tmpIoQ;
         size_t remaining = logd.ioSizeLb() * LOGICAL_BLOCK_SIZE;
-        off_t off = static_cast<off_t>(logd.offset());
+        off_t off = static_cast<off_t>(logd.offset()) * LOGICAL_BLOCK_SIZE;
         size_t nBlocks = 0;
         for (size_t i = 0; i < logd.ioSizePb(); i++) {
             Block block = logd.getBlock(i);
@@ -673,10 +758,20 @@ private:
             }
         }
         assert(remaining == 0);
+        assert(!tmpIoQ.empty());
         assert(nBlocks > 0);
         nPendingBlocks_ += nBlocks;
-        assert(nPendingBlocks_ <= queueSize_);
-        assert(!tmpIoQ.empty());
+
+        /* Wait for IOs if there are too much pending IOs. */
+        while (!ioQ_.empty() && nPendingBlocks_ + nBlocks > queueSize_) {
+            waitForAnIoCompletion();
+        }
+
+        /* debug */
+#if 0
+        ::printf("CREATE\t\t%" PRIu64 "\t%u\n",
+                 logd.offset(), logd.ioSizeLb());
+#endif
 
         /* Enqueue IOs. */
         while (!tmpIoQ.empty()) {
@@ -688,7 +783,14 @@ private:
             insertToOverlappedData(iop);
             if (iop->nOverlapped() == 0) {
                 /* Ready to submit. */
-                submitIoQ_.push(iop);
+                submitIoQ_.push_back(iop);
+            } else {
+                /* debug */
+#if 0
+                ::printf("OVERLAP\t\t%" PRIu64 "\t%zu\t%u\n",
+                         static_cast<u64>(iop->offset()) >> 9,
+                         iop->offset() >> 9, iop->nOverlapped());
+#endif
             }
             ioQ_.push(iop);
         }

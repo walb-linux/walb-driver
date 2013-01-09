@@ -369,6 +369,21 @@ public:
     }
 
     /**
+     * Check a given IO has been completed or not.
+     *
+     * RETURN:
+     *   true if the IO has been completed.
+     */
+    bool isCompleted(unsigned int key) const {
+        const auto &m = pendingIOs_;
+        if (m.find(key) == m.end()) {
+            throw RT_ERR("Aio with key %u is not found.\n");
+        }
+        AioDataPtr p0 = m.at(key);
+        return p0->done;
+    }
+
+    /**
      * Wait several IO(s) completed.
      *
      * @nr number of waiting IO(s). nr >= 0.

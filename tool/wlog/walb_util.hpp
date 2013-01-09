@@ -298,6 +298,27 @@ public:
     }
 
     /**
+     * Print each IO oneline.
+     * logpack_lsid, mode(W, D, or P), offset[lb], io_size[lb].
+     */
+    void printShort() const {
+        for (size_t i = 0; i < nRecords(); i++) {
+            const struct walb_log_record &rec = record(i);
+            assert(::test_bit_u32(LOG_RECORD_EXIST, &rec.flags));
+            char mode = 'W';
+            if (::test_bit_u32(LOG_RECORD_DISCARD, &rec.flags)) {
+                mode = 'D';
+            }
+            if (::test_bit_u32(LOG_RECORD_PADDING, &rec.flags)) {
+                mode = 'P';
+            }
+            ::printf("%" PRIu64 "\t%c\t%" PRIu64 "\t%u\n",
+                     header().logpack_lsid,
+                     mode, rec.offset, rec.io_size);
+        }
+    }
+
+    /**
      * Shrink.
      */
     void shrink(size_t invalidIdx) {
