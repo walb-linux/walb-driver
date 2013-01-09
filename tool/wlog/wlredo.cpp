@@ -11,8 +11,9 @@
 #include <queue>
 #include <memory>
 #include <deque>
-#include <map>
 #include <algorithm>
+#include <utility>
+#include <set>
 
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -307,15 +308,12 @@ private:
 class OverlappedData
 {
 private:
-    /*
-     * Key: IO offset, Value: Io pointer.
-     */
-    std::multimap<off_t, IoPtr> mmap_;
+    std::set<std::pair<off_t, IoPtr> > set_;
     size_t maxSize_;
 
 public:
     OverlappedData()
-        : mmap_(), maxSize_(0) {}
+        : set_(), maxSize_(0) {}
 
     ~OverlappedData() = default;
     OverlappedData(const OverlappedData& rhs) = delete;
@@ -337,11 +335,13 @@ public:
         }
         off_t key1 = iop->offset() + iop->size();
 
+        std::pair<off_t, IoPtr> k0 = std::make_pair(key0, IoPtr());
+
         /* Count overlapped IOs. */
         iop->nOverlapped() = 0;
-        auto it = mmap_.lower_bound(key0);
+        auto it = set_.lower_bound(k0);
         int c = 0;
-        while (it != mmap_.end() && it->first < key1) {
+        while (it != set_.end() && it->first < key1) {
             IoPtr p = it->second;
             if (p->isOverlapped(iop)) {
                 iop->nOverlapped()++;
@@ -355,7 +355,7 @@ public:
         //::printf("mmap.size %zu c %d\n", mmap_.size(), c); //debug
 
         /* Insert iop. */
-        mmap_.insert(std::make_pair(iop->offset(), iop));
+        set_.insert(std::make_pair(iop->offset(), iop));
 
         /* Update maxSize_. */
         if (maxSize_ < iop->size()) {
@@ -375,10 +375,10 @@ public:
         assert(iop->nOverlapped() == 0);
 
         /* Delete iop. */
-        deleteFromMap(iop);
+        deleteFromSet(iop);
 
         /* Reset maxSize_ if empty. */
-        if (mmap_.empty()) {
+        if (set_.empty()) {
             maxSize_ = 0;
         }
 
@@ -388,10 +388,11 @@ public:
             key0 = iop->offset() - static_cast<off_t>(maxSize_);
         }
         off_t key1 = iop->offset() + iop->size();
+        auto k0 = std::make_pair(key0, IoPtr());
 
         /* Decrement nOverlapped of overlapped IOs. */
-        auto it = mmap_.lower_bound(key0);
-        while (it != mmap_.end() && it->first < key1) {
+        auto it = set_.lower_bound(k0);
+        while (it != set_.end() && it->first < key1) {
             IoPtr p = it->second;
             if (p->isOverlapped(iop)) {
                 p->nOverlapped()--;
@@ -409,29 +410,16 @@ public:
     }
 
     bool empty() const {
-        return mmap_.empty();
+        return set_.empty();
     }
 
 private:
     /**
      * Delete an IoPtr from the map.
      */
-    void deleteFromMap(IoPtr iop) {
-        auto pair = mmap_.equal_range(iop->offset());
-        auto it = pair.first;
-        auto it1 = pair.second;
-        bool isDeleted = false;
-        while (it != mmap_.end() && it != it1) {
-            assert(it->first == iop->offset());
-            IoPtr p = it->second;
-            if (p == iop) {
-                mmap_.erase(it);
-                isDeleted = true;
-                break;
-            }
-            it++;
-        }
-        assert(isDeleted);
+    void deleteFromSet(IoPtr iop) {
+        size_t n = set_.erase(std::make_pair(iop->offset(), iop));
+        assert(n == 1);
     }
 };
 
