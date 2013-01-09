@@ -72,6 +72,7 @@ private:
     unsigned int aioKey_;
     bool isSubmitted_;
     bool isCompleted_;
+    bool isOverwritten_;
     std::deque<Block> blocks_;
     unsigned int nOverlapped_; // To serialize overlapped IOs.
     u64 sequenceId_;
@@ -82,6 +83,7 @@ public:
     Io(off_t offset, size_t size)
         : offset_(offset), size_(size), aioKey_(0)
         , isSubmitted_(false), isCompleted_(false)
+        , isOverwritten_(false)
         , blocks_(), nOverlapped_(0)
         , sequenceId_(DefaultSequenceIdGenerator()) {}
 
@@ -110,6 +112,7 @@ public:
     size_t size() const { return size_; }
     bool isSubmitted() const { return isSubmitted_; }
     bool isCompleted() const { return isCompleted_; }
+    bool isOverwritten() const { return isOverwritten_; }
     const std::deque<std::shared_ptr<u8> >& blocks() const { return blocks_; }
     unsigned int& nOverlapped() { return nOverlapped_; }
     unsigned int& aioKey() { return aioKey_; }
@@ -125,6 +128,13 @@ public:
     void setBlock(Block b) {
         assert(blocks_.empty());
         blocks_.push_back(b);
+    }
+
+    void overwritten() {
+        if (!isOverwritten_) {
+            isOverwritten_ = true;
+            blocks_.clear(); /* No more required. */
+        }
     }
 
     void submit() {
@@ -195,8 +205,24 @@ public:
      */
     bool isOverlapped(const IoPtr rhs) const {
         assert(rhs.get() != nullptr);
-        return offset_ + static_cast<off_t>(size_) > rhs->offset_ &&
-            rhs->offset_ + static_cast<off_t>(rhs->size_) > offset_;
+        const off_t off0 = offset_;
+        const off_t off1 = rhs->offset_;
+        const off_t size0 = static_cast<const off_t>(size_);
+        const off_t size1 = static_cast<const off_t>(rhs->size_);
+        return off0 + size0 > off1 && off1 + size1 > off0;
+    }
+
+    /**
+     * RETURN:
+     *   true if the IO is fully overwritten by rhs.
+     */
+    bool isOverwrittenBy(const IoPtr rhs) const {
+        assert(rhs.get() != nullptr);
+        const off_t off0 = offset_;
+        const off_t off1 = rhs->offset_;
+        const off_t size0 = static_cast<off_t>(size_);
+        const off_t size1 = static_cast<off_t>(rhs->size_);
+        return off1 <= off0 && off0 + size0 <= off1 + size1;
     }
 };
 
@@ -319,6 +345,9 @@ public:
             IoPtr p = it->second;
             if (p->isOverlapped(iop)) {
                 iop->nOverlapped()++;
+                if (p->isOverwrittenBy(iop)) {
+                    p->overwritten();
+                }
             }
             it++;
             c++;
@@ -625,25 +654,15 @@ private:
         IoPtr iop = ioQ_.front();
         ioQ_.pop();
 
-        /* debug */
-        if (!iop->isSubmitted()) {
-            ::printf("NOT_SUBMITTED\t%" PRIu64 "\t%zu\n",
-                     static_cast<u64>(iop->offset()) >> 9,
-                     iop->size() >> 9);
-            ::printf("submit queue size: %zu\n", submitIoQ_.size());
-            for (auto p : submitIoQ_) {
-                ::printf("SUBMIT_Q\t%" PRIu64 "\t%zu\n",
-                         static_cast<u64>(p->offset()) >> 9,
-                         p->size() >> 9);
-            }
+        if (iop->isSubmitted()) {
+            assert(!iop->isCompleted());
+            assert(iop->aioKey() > 0);
+            aio_.waitFor(iop->aioKey());
+            iop->complete();
+        } else {
+            assert(iop->isOverwritten());
         }
-
-        assert(iop->isSubmitted());
-        assert(!iop->isCompleted());
-        assert(iop->aioKey() > 0);
-        aio_.waitFor(iop->aioKey());
         nPendingBlocks_ -= bytesToPb(iop->size());
-        iop->complete();
         std::queue<IoPtr> tmpIoQ;
         deleteFromOverlappedData(iop, tmpIoQ);
 
@@ -652,6 +671,10 @@ private:
         while (!tmpIoQ.empty()) {
             IoPtr p = tmpIoQ.front();
             tmpIoQ.pop();
+            if (p->isOverwritten()) {
+                /* No need to execute the IO. */
+                continue;
+            }
             auto it = std::lower_bound(
                 sortedQ.begin(), sortedQ.end(),
                 p,
@@ -695,10 +718,13 @@ private:
      * Submit IOs.
      */
     void submitIos() {
-        assert(nPendingBlocks_ <= queueSize_);
         while (!submitIoQ_.empty()) {
             IoPtr iop = submitIoQ_.front();
             submitIoQ_.pop_front();
+            if (iop->isOverwritten()) {
+                /* No need to execute the IO. */
+                continue;
+            }
 
             /* Prepare aio. */
             assert(iop->nOverlapped() == 0);
@@ -706,7 +732,6 @@ private:
                 iop->offset(), iop->size(), iop->rawPtr<char>());
             assert(iop->aioKey() > 0);
             iop->submit();
-            assert(nPendingBlocks_ <= queueSize_);
 
             /* debug */
 #if 0
