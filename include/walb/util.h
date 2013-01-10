@@ -86,36 +86,6 @@ static inline u32 fnv1a_hash(const u8 *x, unsigned int n)
 	return v;
 }
 
-/**
- * set_bit for u32.
- * This is not atomic operation.
- */
-static inline void set_bit_u32(int nr, u32 *addr)
-{
-	u32 mask = 1U << nr;
-	*addr |= mask;
-}
-
-/**
- * clear_bit for u32.
- * This is not atomic operation.
- */
-static inline void clear_bit_u32(int nr, u32 *addr)
-{
-	u32 mask = 1U << nr;
-	*addr &= ~mask;
-}
-
-/**
- * test_bit for u32.
- * This is not atomic operation.
- */
-static inline int test_bit_u32(int nr, const u32 *addr)
-{
-	u32 mask = 1U << nr;
-	return (*addr & mask) != 0;
-}
-
 #ifdef __cplusplus
 }
 #endif

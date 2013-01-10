@@ -58,8 +58,8 @@ struct walb_ctl {
 
 	/* Used for integer value transfer. */
 	int val_int;
-	u32 val_u32;
 	u64 val_u64;
+	u32 val_u32;
 
 	int error; /* error no. */
 

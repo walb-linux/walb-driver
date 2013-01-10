@@ -17,11 +17,16 @@
  *
  * This is a thin wrapper of generic tree implementation
  * defined in <linux/rbtree.h>.
+ *
+ * Key type is u64.
+ * Value type is unsigned long, which can store value of
+ * pointer type, unsigned int, unsigned long, or u32.
  */
 
 /**
  * Invalid key and value.
- * Causion: this is not NULL.
+ *
+ * 0 or NULL can be normal key/value.
  */
 #define TREEMAP_INVALID_KEY ((u64)(-1))
 #define TREEMAP_INVALID_VAL ((unsigned long)(-1))

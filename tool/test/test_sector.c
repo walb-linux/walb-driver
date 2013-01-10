@@ -122,7 +122,7 @@ void test_single_sector(int sect_size)
 
 	memset_sector_random(sect0);
 	sector_copy(sect1, sect0);
-	ASSERT(sector_compare(sect0, sect1) == 0);
+	ASSERT(is_same_sector(sect0, sect1));
 
 	sector_zeroclear(sect0);
 	ASSERT(is_sector_zero(sect0));
@@ -164,7 +164,7 @@ void test_sector_array(unsigned int sect_size, unsigned int n_sectors)
 		sect1 = get_sector_data_in_array(sect_ary1, i);
 		ASSERT(memcmp(sect1->data, raw + i * sect_size, sect_size) == 0);
 		sector_copy(sect0, sect1);
-		ASSERT(sector_compare(sect0, sect1) == 0);
+		ASSERT(is_same_sector(sect0, sect1));
 	}
 
 	/* Realloc with the same size. */
@@ -184,7 +184,7 @@ void test_sector_array(unsigned int sect_size, unsigned int n_sectors)
 			memcpy(sect0->data, raw + i * sect_size, sect_size);
 			ASSERT(memcmp(sect0->data, raw + i * sect_size, sect_size) == 0);
 		}
-		ASSERT(sector_compare(sect0, sect1) == 0);
+		ASSERT(is_same_sector(sect0, sect1));
 	}
 
 	/* Shrink the array. */
@@ -194,7 +194,7 @@ void test_sector_array(unsigned int sect_size, unsigned int n_sectors)
 	for (i = 0; i < n_sectors - 3; i++) {
 		sect0 = get_sector_data_in_array(sect_ary0, i);
 		sect1 = get_sector_data_in_array(sect_ary1, i);
-		ASSERT(sector_compare(sect1, sect0) == 0);
+		ASSERT(is_same_sector(sect1, sect0));
 	}
 
 	sector_array_free(sect_ary0);
@@ -274,7 +274,7 @@ void test_sector_io(unsigned int sect_size, unsigned int n_sectors)
 		sect0 = get_sector_data_in_array(sect_ary0, i);
 		sect1 = get_sector_data_in_array(sect_ary1, i);
 
-		ASSERT(sector_compare(sect0, sect1) == 0);
+		ASSERT(is_same_sector(sect0, sect1));
 	}
 
 	/* free */

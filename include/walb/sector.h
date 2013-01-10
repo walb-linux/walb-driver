@@ -62,8 +62,8 @@ static inline void sector_copy(
 	struct sector_data *dst, const struct sector_data *src);
 static inline int is_same_size_sector(const struct sector_data *sect0,
 				const struct sector_data *sect1);
-static inline int sector_compare(const struct sector_data *sect0,
-				const struct sector_data *sect1);
+static inline int is_same_sector(
+	const struct sector_data *sect0, const struct sector_data *sect1);
 
 static inline int is_valid_sector_data_array(
 	const struct sector_data_array *sect_ary);
@@ -124,12 +124,12 @@ static inline int is_valid_sector_data(const struct sector_data *sect)
  *
  * @return pointer to allocated sector data in success, or NULL.
  */
-#ifdef __KERNEL__
 static inline struct sector_data* sector_alloc(
-	unsigned int sector_size, gfp_t gfp_mask)
+	unsigned int sector_size
+#ifdef __KERNEL__
+	, gfp_t gfp_mask)
 #else
-	static inline struct sector_data* sector_alloc(
-		unsigned int sector_size)
+	)
 #endif
 {
 	struct sector_data *sect;
@@ -190,13 +190,13 @@ static inline void sector_zeroclear(struct sector_data *sect)
  *
  * @dst destination sector.
  * @src source sector.
- *	dst->size >= src->size must be satisfied.
+ *	dst->size == src->size must be satisfied.
  */
 static inline void sector_copy(struct sector_data *dst, const struct sector_data *src)
 {
 	ASSERT_SECTOR_DATA(dst);
 	ASSERT_SECTOR_DATA(src);
-	ASSERT(dst->size >= src->size);
+	ASSERT(dst->size == src->size);
 
 	memcpy(dst->data, src->data, src->size);
 }
@@ -221,19 +221,18 @@ static inline int is_same_size_sector(const struct sector_data *sect0,
  * @sect0 1st sector.
  * @sect1 2nd sector.
  *
- * @return 0 when their size and their image is completely same.
+ * RETURN:
+ *   1 if their size and their image is completely the same,
+ *   or 0.
  */
-static inline int sector_compare(const struct sector_data *sect0,
-				const struct sector_data *sect1)
+static inline int is_same_sector(
+	const struct sector_data *sect0, const struct sector_data *sect1)
 {
 	ASSERT_SECTOR_DATA(sect0);
 	ASSERT_SECTOR_DATA(sect1);
 
-	if (is_same_size_sector(sect0, sect1)) {
-		return memcmp(sect0->data, sect1->data, sect1->size);
-	} else {
-		return sect0->size - sect1->size;
-	}
+	return is_same_size_sector(sect0, sect1) &&
+		memcmp(sect0->data, sect1->data, sect1->size) == 0;
 }
 
 /*******************************************************************************
@@ -271,12 +270,12 @@ static inline int is_valid_sector_data_array(const struct sector_data_array *sec
  *
  * @return pointer to allocated sector data array in success, or NULL.
  */
-#ifdef __KERNEL__
 static inline struct sector_data_array* sector_array_alloc(
-	unsigned int sector_size, unsigned int n_sectors, gfp_t mask)
+	unsigned int sector_size, unsigned int n_sectors
+#ifdef __KERNEL__
+	, gfp_t mask)
 #else
-	static inline struct sector_data_array* sector_array_alloc(
-		unsigned int sector_size, unsigned int n_sectors)
+	)
 #endif
 {
 	unsigned int i;
@@ -324,14 +323,13 @@ nomem0:
  *
  * @return Non-zero in success, or 0.
  */
-#ifdef __KERNEL__
 static inline int sector_array_realloc(
 	struct sector_data_array *sect_ary,
-	unsigned int n_sectors, gfp_t mask)
+	unsigned int n_sectors
+#ifdef __KERNEL__
+	, gfp_t mask)
 #else
-	static inline int sector_array_realloc(
-		struct sector_data_array *sect_ary,
-		unsigned int n_sectors)
+	)
 #endif
 {
 	unsigned int i;
@@ -356,6 +354,9 @@ static inline int sector_array_realloc(
 		new_ary = REALLOC(sect_ary->array,
 				sizeof(struct sector_data *) * n_sectors, mask);
 		if (!new_ary) { goto error0; }
+		for (i = sect_ary->size; i < n_sectors; i++) {
+			new_ary[i] = NULL;
+		}
 		sect_ary->array = new_ary;
 		for (i = sect_ary->size; i < n_sectors; i++) {
 #ifdef __KERNEL__
@@ -444,7 +445,7 @@ static inline void sector_array_copy_detail(
 	struct sector_data_array *sect_ary,
 	unsigned int offset, void *data, unsigned int size, int is_from)
 {
-	unsigned int sect_size, sect_idx, sect_off, copied, tmp_size;
+	unsigned int sect_size, copied;
 
 	if (!data) { return; }
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
@@ -454,9 +455,9 @@ static inline void sector_array_copy_detail(
 
 	copied = 0;
 	while (copied < size) {
-		sect_idx = (offset + copied) / sect_size;
-		sect_off = (offset + copied) % sect_size;
-		tmp_size = min(sect_size - sect_off, size - copied);
+		unsigned int sect_idx = (offset + copied) / sect_size;
+		unsigned int sect_off = (offset + copied) % sect_size;
+		unsigned int tmp_size = min(sect_size - sect_off, size - copied);
 
 		if (is_from) {
 			memcpy((u8 *)sect_ary->array[sect_idx]->data + sect_off,
@@ -516,7 +517,6 @@ static inline int sector_array_compare(
 	const struct sector_data_array *sect_ary1)
 {
 	unsigned int i, sect_size;
-	int cmp;
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary1);
 
@@ -527,7 +527,7 @@ static inline int sector_array_compare(
 	}
 
 	for (i = 0; i < sect_ary0->size; i++) {
-		cmp = memcmp(sect_ary0->array[i]->data, sect_ary1->array[i]->data, sect_size);
+		int cmp = memcmp(sect_ary0->array[i]->data, sect_ary1->array[i]->data, sect_size);
 		if (cmp) { return cmp; }
 	}
 	return 0; /* the same. */
@@ -619,20 +619,20 @@ static inline void sector_array_memset(
 	unsigned int offset, unsigned int size, int val)
 {
 	unsigned int remaining = size;
-	unsigned int sect_size;
+	unsigned int ssize;
 	unsigned int idx, off;
 	unsigned int tsize;
 
 	ASSERT(size > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(sect_ary->size > 0);
-	sect_size = sect_ary->array[0]->size;
+	ssize = sect_ary->sector_size;
 
-	idx = offset / sect_size;
-	off = offset % sect_size;
+	idx = offset / ssize;
+	off = offset % ssize;
 	while (remaining > 0) {
 		ASSERT(idx < sect_ary->size);
-		tsize = min(sect_size - off, remaining);
+		tsize = min(ssize - off, remaining);
 		memset(&((u8 *)sect_ary->array[idx]->data)[off], val, tsize);
 		remaining -= tsize;
 		idx++;
