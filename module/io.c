@@ -1369,7 +1369,7 @@ static void run_gc_logpack_list(void *data)
  *
  * @wdev walb device.
  * @biow_list list of bio_wrapper.
- *   When all bio wrappers are uccessfuly processed,
+ *   When all bio wrappers are successfuly processed,
  *   biow_list will be empty.
  *   When memory allocation errors occur,
  *   biow_list will not be empty.
