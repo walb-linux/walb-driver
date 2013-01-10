@@ -420,7 +420,7 @@ static bool writepack_add_bio_wrapper(
 	struct list_head *wpack_list, struct pack **wpackp,
 	struct bio_wrapper *biow,
 	u64 ring_buffer_size, unsigned int max_logpack_pb,
-	u64 *latest_lsidp, u64 *flush_lsidp,
+	u64 *latest_lsidp, u64 *flush_lsidp, unsigned long *log_flush_jiffiesp,
 	struct walb_dev *wdev, gfp_t gfp_mask);
 #ifdef WALB_FAST_ALGORITHM
 static void insert_to_sorted_bio_wrapper_list_by_lsid(
@@ -1413,7 +1413,8 @@ static void create_logpack_list(
 		ret = writepack_add_bio_wrapper(
 			wpack_list, &wpack, biow,
 			wdev->ring_buffer_size, wdev->max_logpack_pb,
-			&latest_lsid, &flush_lsid, wdev, GFP_NOIO);
+			&latest_lsid, &flush_lsid, &log_flush_jiffies,
+			wdev, GFP_NOIO);
 		if (!ret) {
 			LOGn("writepack_add_bio_wrapper failed.\n");
 			schedule();
@@ -3184,6 +3185,8 @@ retry_insert_ol:
  *   *latest_lsidp must be always (*wpackp)->logpack_lsid.
  * @flush_lsidp pointer to the flush_lsid value.
  *   *flush_lsidp will be updated if the bio is flush request.
+ * @log_flush_jiffiesp pointer to the log_flush_jiffies value.
+ *   *log_flush_jiffiesp will be updated if the bio is flush request.
  * @wdev wrapper block device.
  * @gfp_mask memory allocation mask.
  *
@@ -3196,7 +3199,7 @@ static bool writepack_add_bio_wrapper(
 	struct list_head *wpack_list, struct pack **wpackp,
 	struct bio_wrapper *biow,
 	u64 ring_buffer_size, unsigned int max_logpack_pb,
-	u64 *latest_lsidp, u64 *flush_lsidp,
+	u64 *latest_lsidp, u64 *flush_lsidp, unsigned long *log_flush_jiffiesp,
 	struct walb_dev *wdev, gfp_t gfp_mask)
 {
 	struct pack *pack;
@@ -3268,6 +3271,7 @@ fin:
 		} else {
 			*flush_lsidp = *latest_lsidp;
 		}
+		*log_flush_jiffiesp = jiffies + wdev->log_flush_interval_jiffies;
 
 		/* debug */
 		if (bio_wrapper_state_is_discard(biow)) {
