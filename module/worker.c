@@ -50,6 +50,12 @@ static int generic_worker(void *data)
  * Global functions implementation.
  *******************************************************************************/
 
+/*
+	紆余曲折でこうなったのでしょうけど
+	ここはシンプルに
+	return kmalloc(sizeof(struct worker_data), gfp_mask);
+	がわかりやすいかと。
+*/
 /**
  * Allocate a worker.
  */
