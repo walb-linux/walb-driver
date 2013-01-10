@@ -713,6 +713,9 @@ static void bio_entry_cursor_print(
 /**
  * Check a cursor indicates the end.
  */
+/*
+	constつける
+*/
 static bool bio_entry_cursor_is_end(struct bio_entry_cursor *cur)
 {
 	ASSERT(bio_entry_cursor_is_valid(cur));
