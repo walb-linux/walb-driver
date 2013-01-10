@@ -3228,6 +3228,9 @@ static bool writepack_add_bio_wrapper(
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ASSERT(*latest_lsidp == lhead->logpack_lsid);
 
+	if (is_zero_flush_only(pack)) {
+		goto newpack;
+	}
 	if (lhead->n_records > 0 &&
 		(biow->bio->bi_rw & REQ_FLUSH
 			|| is_pack_size_too_large(lhead, pbs, max_logpack_pb, biow))) {
