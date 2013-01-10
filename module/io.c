@@ -1503,7 +1503,7 @@ static void submit_logpack_list(
 
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
-			LOGd("is_zero_flush_only\n"); /* debug */
+			LOGd_("is_zero_flush_only\n");
 			logpack_submit_flush(wdev->ldev, &wpack->bioe_list);
 		} else {
 			ASSERT(logh->n_records > 0);
@@ -3232,7 +3232,7 @@ static bool writepack_add_bio_wrapper(
 		goto newpack;
 	}
 	if (lhead->n_records > 0 &&
-		(biow->bio->bi_rw & REQ_FLUSH
+		((biow->bio->bi_rw & REQ_FLUSH)
 			|| is_pack_size_too_large(lhead, pbs, max_logpack_pb, biow))) {
 		/* Flush request must be the first of the pack. */
 		goto newpack;
