@@ -52,19 +52,13 @@ static int generic_worker(void *data)
 
 /**
  * Allocate a worker.
+ *
+ * RETURN:
+ *   NULL when allocation failed.
  */
 struct worker_data* alloc_worker(gfp_t gfp_mask)
 {
-	struct worker_data *worker;
-
-	worker = kmalloc(sizeof(struct worker_data), gfp_mask);
-	if (!worker) {
-		goto error0;
-	}
-
-	return worker;
-error0:
-	return NULL;
+	return kmalloc(sizeof(struct worker_data), gfp_mask);
 }
 
 /**
