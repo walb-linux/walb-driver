@@ -1901,7 +1901,6 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	struct bio_wrapper *biow, *biow_next;
-	struct walb_logpack_header *logh;
 	u64 written_lsid = INVALID_LSID;
 
 	ASSERT(!list_empty(wpack_list));
@@ -1938,9 +1937,8 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 		ASSERT(list_empty(&wpack->biow_list));
 		ASSERT(list_empty(&wpack->bioe_list));
 
-		logh = get_logpack_header(wpack->logpack_header_sector);
-		ASSERT(logh);
-		written_lsid = logh->logpack_lsid + 1 + logh->total_io_size;
+		written_lsid = get_next_lsid_unsafe(
+			get_logpack_header(wpack->logpack_header_sector));
 
 		destroy_pack(wpack);
 	}
