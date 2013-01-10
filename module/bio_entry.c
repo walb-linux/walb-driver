@@ -1228,6 +1228,9 @@ error:
  * RETURN:
  *   true if valid, or false.
  */
+/*
+	add const
+*/
 bool bio_entry_cursor_is_valid(struct bio_entry_cursor *cur)
 {
 	unsigned int off_bytes;
