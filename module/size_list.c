@@ -58,7 +58,9 @@ u64 sizlist_nth_size(const char* sizlist_str, unsigned int n)
 
 	/* Skip ',' for n times. */
 	for (i = 0; i < n; i++) {
-		p = strchr(p, ',') + 1;
+		char *q = strchr(p, ',');
+		ASSERT(q);
+		p = q + 1;
 	}
 
 	/* Get length of the entry string. */
