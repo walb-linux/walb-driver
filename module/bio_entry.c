@@ -82,11 +82,11 @@ static inline void free_page_dec(struct page *page);
 /* For bio_cursor */
 #ifdef WALB_FAST_ALGORITHM
 UNUSED static void bio_cursor_print(const char* level, struct bio_cursor *cur);
-UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur);
+UNUSED static bool bio_cursor_is_valid(const struct bio_cursor *cur);
 static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe);
 static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len);
-static bool bio_cursor_is_end(struct bio_cursor *cur);
-UNUSED static bool bio_cursor_is_boundary(struct bio_cursor *cur);
+static bool bio_cursor_is_end(const struct bio_cursor *cur);
+UNUSED static bool bio_cursor_is_boundary(const struct bio_cursor *cur);
 static unsigned int bio_cursor_size_to_boundary(struct bio_cursor *cur);
 static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur);
 static char* bio_cursor_map(struct bio_cursor *cur);
@@ -110,8 +110,8 @@ static struct bio_entry* bio_entry_next(
 
 UNUSED static void bio_entry_cursor_print(
 	const char *level, struct bio_entry_cursor *cur);
-static bool bio_entry_cursor_is_end(struct bio_entry_cursor *cur);
-static bool bio_entry_cursor_is_boundary(struct bio_entry_cursor *cur);
+static bool bio_entry_cursor_is_end(const struct bio_entry_cursor *cur);
+static bool bio_entry_cursor_is_boundary(const struct bio_entry_cursor *cur);
 static unsigned int bio_entry_cursor_size_to_boundary(
 	struct bio_entry_cursor *cur);
 static void bio_entry_cursor_proceed_to_boundary(
@@ -196,7 +196,7 @@ UNUSED static void bio_cursor_print(
  *   true if valid, or false.
  */
 #ifdef WALB_FAST_ALGORITHM
-UNUSED static bool bio_cursor_is_valid(struct bio_cursor *cur)
+UNUSED static bool bio_cursor_is_valid(const struct bio_cursor *cur)
 {
 	struct bio_vec *bvec;
 	int i;
@@ -299,7 +299,7 @@ static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len)
  * Check a bio_cursor indicates the end.
  */
 #ifdef WALB_FAST_ALGORITHM
-static bool bio_cursor_is_end(struct bio_cursor *cur)
+static bool bio_cursor_is_end(const struct bio_cursor *cur)
 {
 	ASSERT(bio_cursor_is_valid(cur));
 
@@ -316,7 +316,7 @@ static bool bio_cursor_is_end(struct bio_cursor *cur)
  * Check a cursor is now io_vec boundary.
  */
 #ifdef WALB_FAST_ALGORITHM
-UNUSED static bool bio_cursor_is_boundary(struct bio_cursor *cur)
+UNUSED static bool bio_cursor_is_boundary(const struct bio_cursor *cur)
 {
 	ASSERT(bio_cursor_is_valid(cur));
 	return cur->off_in == 0;
@@ -369,17 +369,17 @@ static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
 static char* bio_cursor_map(struct bio_cursor *cur)
 {
 	struct bio_vec *bvec;
-	unsigned long addr;
+	char *addr;
 	ASSERT(bio_cursor_is_valid(cur));
 	ASSERT(!bio_cursor_is_end(cur));
 
 	ASSERT(cur->bioe->bio);
 	bvec = bio_iovec_idx(cur->bioe->bio, cur->idx);
-	addr = (unsigned long)kmap_atomic(bvec->bv_page);
+	addr = kmap_atomic(bvec->bv_page);
 	ASSERT(addr != 0);
 	addr += bvec->bv_offset + cur->off_in;
 	ASSERT(addr != 0);
-	return (char *)addr;
+	return addr;
 }
 #endif
 
@@ -708,7 +708,7 @@ static void bio_entry_cursor_print(
 /**
  * Check a cursor indicates the end.
  */
-static bool bio_entry_cursor_is_end(struct bio_entry_cursor *cur)
+static bool bio_entry_cursor_is_end(const struct bio_entry_cursor *cur)
 {
 	ASSERT(bio_entry_cursor_is_valid(cur));
 
@@ -723,7 +723,7 @@ static bool bio_entry_cursor_is_end(struct bio_entry_cursor *cur)
 /**
  * Check a cursor is now bio boundary.
  */
-static bool bio_entry_cursor_is_boundary(struct bio_entry_cursor *cur)
+static bool bio_entry_cursor_is_boundary(const struct bio_entry_cursor *cur)
 {
 	ASSERT(bio_entry_cursor_is_valid(cur));
 	return cur->off_in == 0;
@@ -1220,7 +1220,7 @@ error:
  * RETURN:
  *   true if valid, or false.
  */
-bool bio_entry_cursor_is_valid(struct bio_entry_cursor *cur)
+bool bio_entry_cursor_is_valid(const struct bio_entry_cursor *cur)
 {
 	unsigned int off_bytes;
 	struct bio_entry *bioe;

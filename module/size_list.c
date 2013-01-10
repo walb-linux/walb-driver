@@ -52,17 +52,16 @@ u64 sizlist_nth_size(const char* sizlist_str, unsigned int n)
 {
 	unsigned int i;
 	const char *p = sizlist_str;
-	char *p_next;
+	const char *p_next;
 	int len;
 	u64 capacity;
 
-	ASSERT(n >= 0);
-
 	/* Skip ',' for n times. */
 	for (i = 0; i < n; i++) {
-		p = strchr(p, ',') + 1;
+		const char *q = strchr(p, ',');
+		ASSERT(q);
+		p = q + 1;
 	}
-	ASSERT(p != NULL);
 
 	/* Get length of the entry string. */
 	p_next = strchr(p, ',');
@@ -91,7 +90,7 @@ u64 sizlist_nth_size(const char* sizlist_str, unsigned int n)
 				capacity *= 1024;
 				break;
 			default:
-				ASSERT(0);
+				BUG();
 			}
 		}
 	}
