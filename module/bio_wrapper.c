@@ -96,8 +96,67 @@ static void bio_wrapper_get_overlapped_pos_and_len(
 UNUSED
 void print_bio_wrapper(const char *level, struct bio_wrapper *biow)
 {
+	struct bio_entry *bioe;
+	int i;
+
 	ASSERT(biow);
-	/* not yet implemented */
+	printk("%s"
+		"biow %p\n"
+		"  bio %p\n"
+		"  pos %" PRIu64 "\n"
+		"  len %u\n"
+		"  csum %08x\n"
+		"  error %d\n"
+		"  is_started %d\n"
+		"  lsid %" PRIu64 "\n"
+		"  private_data %p\n"
+#ifdef WALB_OVERLAPPED_SERIALIZE
+		"  n_overlapped %d\n"
+#ifdef WALB_DEBUG
+		"  ol_id %" PRIu64 "\n"
+#endif
+#endif
+		"  is_prepared %d\n"
+		"  is_submitted %d\n"
+		"  is_completed %d\n"
+		"  is_discard %d\n"
+#ifdef WALB_FAST_ALGORITHM
+		"  is_overwritten %d\n"
+#endif
+#ifdef WALB_OVERLAPPED_SERIALIZE
+		"  is_delayed %d\n"
+#endif
+		, level, biow, biow->bio,
+		(u64)biow->pos, biow->len, biow->csum, biow->error,
+		(int)biow->is_started, biow->lsid,
+		biow->private_data
+#ifdef WALB_OVERLAPPED_SERIALIZE
+		, biow->n_overlapped
+#ifdef WALB_DEBUG
+		, biow->ol_id
+#endif
+#endif
+		, bio_wrapper_state_is_prepared(biow) ? 1 : 0
+		, bio_wrapper_state_is_submitted(biow) ? 1 : 0
+		, bio_wrapper_state_is_completed(biow) ? 1 : 0
+		, bio_wrapper_state_is_discard(biow) ? 1 : 0
+#ifdef WALB_FAST_ALGORITHM
+		, bio_wrapper_state_is_overwritten(biow) ? 1 : 0
+#endif
+#ifdef WALB_OVERLAPPED_SERIALIZE
+		, bio_wrapper_state_is_delayed(biow) ? 1 : 0
+#endif
+		);
+	i = 0;
+	list_for_each_entry(bioe, &biow->bioe_list, list) {
+		printk("%s"
+			"  [%d] bioe %p pos %" PRIu64 " len %u\n"
+			, level,
+			i, bioe, (u64)bioe->pos, bioe->len);
+		i++;
+	}
+	printk("%s"
+		"  number of bioe %d\n", level, i);
 }
 
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
