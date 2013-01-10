@@ -58,7 +58,8 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
 	int i;
 	sector_t sector;
 	u64 block_id;
-	UNUSED struct bio_vec *bvec;
+	UNUSED struct bio_vec *bvec; /* なんでunusedついてるのでしょう */
+	/* localにおけるならlocalに */
 	u8 *buf;
 	unsigned int is_write;
 	unsigned int n_blk;
