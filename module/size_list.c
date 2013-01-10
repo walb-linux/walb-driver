@@ -52,13 +52,13 @@ u64 sizlist_nth_size(const char* sizlist_str, unsigned int n)
 {
 	unsigned int i;
 	const char *p = sizlist_str;
-	char *p_next;
+	const char *p_next;
 	int len;
 	u64 capacity;
 
 	/* Skip ',' for n times. */
 	for (i = 0; i < n; i++) {
-		char *q = strchr(p, ',');
+		const char *q = strchr(p, ',');
 		ASSERT(q);
 		p = q + 1;
 	}
