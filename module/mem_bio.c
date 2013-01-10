@@ -58,11 +58,8 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
 	int i;
 	sector_t sector;
 	u64 block_id;
-	UNUSED struct bio_vec *bvec;
-	u8 *buf;
+	struct bio_vec *bvec;
 	unsigned int is_write;
-	unsigned int n_blk;
-	unsigned long flags;
 
 	ASSERT(bio);
 
@@ -79,6 +76,10 @@ static void mdata_exec_bio(struct memblk_data *mdata, struct bio *bio)
 	is_write = bio->bi_rw & REQ_WRITE;
 
 	bio_for_each_segment(bvec, bio, i) {
+		u8 *buf;
+		unsigned int n_blk;
+		unsigned long flags;
+
 		ASSERT(bvec->bv_len % mdata->block_size == 0);
 		n_blk = bvec->bv_len / mdata->block_size;
 
