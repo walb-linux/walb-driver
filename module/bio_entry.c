@@ -369,17 +369,17 @@ static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
 static char* bio_cursor_map(struct bio_cursor *cur)
 {
 	struct bio_vec *bvec;
-	unsigned long addr;
+	char *addr;
 	ASSERT(bio_cursor_is_valid(cur));
 	ASSERT(!bio_cursor_is_end(cur));
 
 	ASSERT(cur->bioe->bio);
 	bvec = bio_iovec_idx(cur->bioe->bio, cur->idx);
-	addr = (unsigned long)kmap_atomic(bvec->bv_page);
+	addr = kmap_atomic(bvec->bv_page);
 	ASSERT(addr != 0);
 	addr += bvec->bv_offset + cur->off_in;
 	ASSERT(addr != 0);
-	return (char *)addr;
+	return addr;
 }
 #endif
 
