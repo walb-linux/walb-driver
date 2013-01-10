@@ -304,7 +304,7 @@ static void clear_flush_bit_of_bio_entry_list(struct list_head *bioe_list);
 static struct pack* create_pack(gfp_t gfp_mask);
 static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
 static void destroy_pack(struct pack *pack);
-UNUSED static bool is_zero_flush_only(struct pack *pack);
+static bool is_zero_flush_only(const struct pack *pack);
 static bool is_pack_size_too_large(
 	struct walb_logpack_header *lhead,
 	unsigned int pbs, unsigned int max_logpack_pb,
@@ -894,28 +894,31 @@ static void destroy_pack(struct pack *pack)
  * RETURN:
  *   true if pack contains only one request and it is zero-size flush, or false.
  */
-UNUSED
-static bool is_zero_flush_only(struct pack *pack)
+static bool is_zero_flush_only(const struct pack *pack)
 {
 	struct walb_logpack_header *logh;
-	struct bio_wrapper *biow;
-	unsigned int i;
+	bool ret;
+
 	ASSERT(pack);
 	ASSERT(pack->logpack_header_sector);
-
 	logh = get_logpack_header(pack->logpack_header_sector);
 	ASSERT(logh);
 
-	i = 0;
-	list_for_each_entry(biow, &pack->biow_list, list) {
-
-		ASSERT(biow->bio);
-		if (!((biow->bio->bi_rw & REQ_FLUSH) && biow->len == 0)) {
-			return false;
+	ret = logh->n_records == 0 && !list_empty(&pack->biow_list);
+#ifdef WALB_DEBUG
+	if (ret) {
+		struct bio_wrapper *biow;
+		int i = 0;
+		list_for_each_entry(biow, &pack->biow_list, list) {
+			ASSERT(biow->bio);
+			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
+			ASSERT(biow->len == 0);
+			i++;
 		}
-		i++;
+		ASSERT(i == 1);
 	}
-	return i == 1;
+#endif
+	return ret;
 }
 
 /**
