@@ -220,8 +220,10 @@ bool walb_logpack_header_add_bio(
 	bio_lsid = logpack_lsid + 1 + lhead->total_io_size;
 	bio_lb = bio_sectors(bio);
 	if (bio_lb == 0) {
-		/* Currently only the flush request can have size 0. */
+		/* Only flush requests can have zero-size. */
 		ASSERT(bio->bi_rw & REQ_FLUSH);
+		/* Currently a zero-flush must be alone. */
+		ASSERT(idx == 0);
 		return true;
 	}
 	ASSERT(0 < bio_lb);

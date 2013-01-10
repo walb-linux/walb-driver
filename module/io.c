@@ -1404,6 +1404,7 @@ static void create_logpack_list(
 	log_flush_jiffies = iocored->log_flush_jiffies;
 	spin_unlock(&wdev->lsid_lock);
 	latest_lsid_old = latest_lsid;
+	ASSERT(latest_lsid >= written_lsid);
 
 	/* Create logpack(s). */
 	list_for_each_entry_safe(biow, biow_next, biow_list, list) {
@@ -1424,6 +1425,7 @@ static void create_logpack_list(
 		struct walb_logpack_header *logh
 			= get_logpack_header(wpack->logpack_header_sector);
 		writepack_check_and_set_flush(wpack);
+		ASSERT(is_prepared_pack_valid(wpack));
 		list_add_tail(&wpack->list, wpack_list);
 		latest_lsid = get_next_lsid_unsafe(logh);
 
@@ -1998,7 +2000,6 @@ static bool is_prepared_pack_valid(struct pack *pack)
 {
 	struct walb_logpack_header *lhead;
 	unsigned int pbs;
-	struct walb_log_record *lrec;
 	unsigned int i;
 	struct bio_wrapper *biow;
 	u64 total_pb; /* total io size in physical block. */
@@ -2020,10 +2021,13 @@ static bool is_prepared_pack_valid(struct pack *pack)
 	i = 0;
 	total_pb = 0;
 	list_for_each_entry(biow, &pack->biow_list, list) {
+		struct walb_log_record *lrec;
 
 		CHECK(biow->bio);
 		if (biow->len == 0) {
 			CHECK(biow->bio->bi_rw & REQ_FLUSH);
+			CHECK(i == 0);
+			CHECK(lhead->n_records == 0);
 			continue;
 		}
 
@@ -3463,6 +3467,8 @@ static void wait_for_logpack_and_submit_datapack(
 		if (is_failed || bio_error) { goto error_io; }
 
 		if (biow->len == 0) {
+			/* Zero-flush. */
+			ASSERT(wpack->is_zero_flush_only);
 			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
 			list_del(&biow->list);
 			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
