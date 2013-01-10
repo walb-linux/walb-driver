@@ -160,6 +160,12 @@ struct iocore_data
 #endif
 	/* To check that we should flush log device. */
 	unsigned long log_flush_jiffies;
+
+#ifdef WALB_DEBUG
+	atomic_t n_flush_io;
+	atomic_t n_flush_logpack;
+	atomic_t n_flush_force;
+#endif
 };
 
 /* All treemap(s) in this module will share a treemap memory manager. */
@@ -1427,6 +1433,9 @@ static void create_logpack_list(
 		if (is_flush_size || is_flush_period) {
 			wpack->is_flush_header = true;
 			flush_lsid = logh->logpack_lsid;
+#ifdef WALB_DEBUG
+			atomic_inc(&iocored->n_flush_logpack);
+#endif
 		}
 	}
 
@@ -2146,6 +2155,12 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	iocored->queue_restart_jiffies = jiffies;
 	iocored->is_under_throttling = false;
 	iocored->max_sectors_in_pending = 0;
+#endif
+
+#ifdef WALB_DEBUG
+	atomic_set(&iocored->n_flush_io, 0);
+	atomic_set(&iocored->n_flush_logpack, 0);
+	atomic_set(&iocored->n_flush_force, 0);
 #endif
 	return iocored;
 
@@ -3251,6 +3266,9 @@ fin:
 		if (bio_wrapper_state_is_discard(biow)) {
 			LOGw("The bio has both REQ_FLUSH and REQ_DISCARD.\n");
 		}
+#ifdef WALB_DEBUG
+		atomic_inc(&get_iocored_from_wdev(wdev)->n_flush_io);
+#endif
 	}
 	LOGd_("normal end\n");
 	return true;
@@ -4570,6 +4588,10 @@ retry:
 		set_read_only_mode(iocored);
 	}
 
+#ifdef WALB_DEBUG
+	atomic_inc(&get_iocored_from_wdev(wdev)->n_flush_force);
+#endif
+
 	/* Update permanent_lsid. */
 	spin_lock(&wdev->lsid_lock);
 	if (wdev->permanent_lsid < latest_lsid) {
@@ -4770,7 +4792,14 @@ void iocore_finalize(struct walb_dev *wdev)
 	treemap_memory_manager_put();
 
 #ifdef WALB_DEBUG
-	LOGn("n_allocated_pages: %u\n", bio_entry_get_n_allocated_pages());
+	LOGn("n_allocated_pages: %u\n"
+		"n_flush_io: %d\n"
+		"n_flush_logpack: %d\n"
+		"n_flush_force: %d\n",
+		bio_entry_get_n_allocated_pages(),
+		atomic_read(&iocored->n_flush_io),
+		atomic_read(&iocored->n_flush_logpack),
+		atomic_read(&iocored->n_flush_force));
 #endif
 }
 
