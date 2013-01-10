@@ -59,12 +59,16 @@ struct bio_wrapper
  */
 enum
 {
-	/* State bits. */
+	/*
+	 * State bits.
+	 */
 	BIO_WRAPPER_PREPARED = 0,
 	BIO_WRAPPER_SUBMITTED,
 	BIO_WRAPPER_COMPLETED,
 
-	/* Information bit. */
+	/*
+	 * Information bit.
+	 */
 	BIO_WRAPPER_DISCARD,
 #ifdef WALB_FAST_ALGORITHM
 	/* Set if the biow data will be fully overwritten by newer IO(s). */
