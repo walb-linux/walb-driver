@@ -56,12 +56,18 @@ u64 sizlist_nth_size(const char* sizlist_str, unsigned int n)
 	int len;
 	u64 capacity;
 
+/*
+	unsigned int なので常にn >= 0だからassert不要
+*/
 	ASSERT(n >= 0);
 
 	/* Skip ',' for n times. */
 	for (i = 0; i < n; i++) {
 		p = strchr(p, ',') + 1;
 	}
+/*
+	+1してるので絶対NULLにはならない
+*/
 	ASSERT(p != NULL);
 
 	/* Get length of the entry string. */
