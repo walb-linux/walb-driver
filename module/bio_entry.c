@@ -365,6 +365,11 @@ static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
  *
  * You must call bio_cursor_put_buf() after operations done.
  */
+/*
+	char *addr;
+	としていない意図がわからない。kmap_atomiの戻り値のキャスト、
+	returnでのキャストは不要
+*/
 #ifdef WALB_FAST_ALGORITHM
 static char* bio_cursor_map(struct bio_cursor *cur)
 {
