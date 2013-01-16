@@ -35,7 +35,7 @@ ifneq ($(KERNELRELEASE),)
 
 walb-mod-objs := \
 walb.o control.o alldevs.o snapshot.o checkpoint.o \
-super.o logpack.o io.o \
+super.o logpack.o io.o redo.o \
 sector_io.o bio_entry.o bio_wrapper.o worker.o pack_work.o \
 hashtbl.o treemap.o
 

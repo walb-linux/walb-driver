@@ -34,6 +34,7 @@
 #include "checkpoint.h"
 #include "super.h"
 #include "io.h"
+#include "redo.h"
 
 #include "walb/ioctl.h"
 #include "walb/log_device.h"
@@ -2528,7 +2529,7 @@ struct walb_dev* prepare_wdev(
 	 * 4. Update written_lsid, latest_lsid, (and completed_lsid).
 	 * 5. Sync superblock.
 	 */
-	retb = iocore_redo(wdev);
+	retb = execute_redo(wdev);
 	if (!retb) {
 		LOGe("Redo failed.\n");
 		goto out_iocore_init;
