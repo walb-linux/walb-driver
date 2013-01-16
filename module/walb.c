@@ -40,7 +40,6 @@
 #include "walb/log_device.h"
 #include "walb/sector.h"
 #include "walb/snapshot.h"
-#include "walb/bitmap.h"
 
 /*******************************************************************************
  * Module parameters definition.
