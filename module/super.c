@@ -98,16 +98,11 @@ bool walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
 
 	if (is_superblock_sync) {
 		LOGn("is_superblock_sync is on\n");
-		if (!walb_sync_super_block(wdev)) {
-			goto error0;
-		}
+		return walb_sync_super_block(wdev);
 	} else {
 		LOGn("is_superblock_sync is off\n");
+		return true;
 	}
-	return true;
-
-error0:
-	return false;
 }
 
 MODULE_LICENSE("Dual BSD/GPL");
