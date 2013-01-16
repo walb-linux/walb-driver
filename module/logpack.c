@@ -14,8 +14,8 @@
  * Debug print of logpack header.
  *
  */
-void walb_logpack_header_print(const char *level,
-			struct walb_logpack_header *lhead)
+void walb_logpack_header_print(
+	const char *level, const struct walb_logpack_header *lhead)
 {
 	int i;
 	printk("%s*****logpack header*****\n"
@@ -74,7 +74,7 @@ void walb_logpack_header_print(const char *level,
  */
 bool walb_logpack_header_add_req(
 	struct walb_logpack_header *lhead,
-	struct request *req,
+	const struct request *req,
 	unsigned int pbs, u64 ring_buffer_size)
 {
 	u64 logpack_lsid;
@@ -97,7 +97,7 @@ bool walb_logpack_header_add_req(
 	ASSERT(lhead->n_records <= max_n_rec);
 	if (lhead->n_records == max_n_rec) {
 		LOGd("no more request can not be added.\n");
-		goto error0;
+		return false;
 	}
 
 	req_lsid = logpack_lsid + 1 + lhead->total_io_size;
@@ -116,10 +116,10 @@ bool walb_logpack_header_add_req(
 		   So padding is required. */
 		padding_pb = ring_buffer_size - (req_lsid % ring_buffer_size);
 
-		if ((unsigned int)lhead->total_io_size + padding_pb
+		if (lhead->total_io_size + padding_pb
 			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
 			LOGd("no more request can not be added.\n");
-			goto error0;
+			return false;
 		}
 
 		/* Fill the padding record contents. */
@@ -138,14 +138,14 @@ bool walb_logpack_header_add_req(
 
 		if (lhead->n_records == max_n_rec) {
 			LOGd("no more request can not be added.\n");
-			goto error0;
+			return false;
 		}
 	}
 
-	if ((unsigned int)lhead->total_io_size + req_pb
+	if (lhead->total_io_size + req_pb
 		> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
 		LOGd("no more request can not be added.\n");
-		goto error0;
+		return false;
 	}
 
 	/* Fill the log record contents. */
@@ -160,10 +160,7 @@ bool walb_logpack_header_add_req(
 
 	req_lsid += req_pb;
 	idx++;
-
 	return true;
-error0:
-	return false;
 }
 
 /**
@@ -187,7 +184,7 @@ error0:
  */
 bool walb_logpack_header_add_bio(
 	struct walb_logpack_header *lhead,
-	struct bio *bio,
+	const struct bio *bio,
 	unsigned int pbs, u64 ring_buffer_size)
 {
 	u64 logpack_lsid;
@@ -214,7 +211,7 @@ bool walb_logpack_header_add_bio(
 	ASSERT(lhead->n_records <= max_n_rec);
 	if (lhead->n_records == max_n_rec) {
 		LOGd_(no_more_bio_msg);
-		goto error0;
+		return false;
 	}
 
 	bio_lsid = logpack_lsid + 1 + lhead->total_io_size;
@@ -238,10 +235,10 @@ bool walb_logpack_header_add_bio(
 		   So padding is required. */
 		padding_pb = ring_buffer_size - offset_in_ring_buffer;
 
-		if ((unsigned int)lhead->total_io_size + padding_pb
+		if (lhead->total_io_size + padding_pb
 			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
 			LOGd_(no_more_bio_msg);
-			goto error0;
+			return false;
 		}
 
 		/* Fill the padding record contents. */
@@ -260,15 +257,15 @@ bool walb_logpack_header_add_bio(
 
 		if (lhead->n_records == max_n_rec) {
 			LOGd_(no_more_bio_msg);
-			goto error0;
+			return false;
 		}
 	}
 
 	if (!is_discard &&
-		(unsigned int)lhead->total_io_size + bio_pb
+		lhead->total_io_size + bio_pb
 		> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
 		LOGd_(no_more_bio_msg);
-		goto error0;
+		return false;
 	}
 
 	/* Fill the log record contents. */
@@ -281,19 +278,12 @@ bool walb_logpack_header_add_bio(
 	lhead->n_records++;
 	if (is_discard) {
 		set_bit_u32(LOG_RECORD_DISCARD, &lhead->record[idx].flags);
-		/* lhead->total_io_size and bio_lsid
-		   will not be added. */
+		/* lhead->total_io_size will not be added. */
 	} else {
 		clear_bit_u32(LOG_RECORD_DISCARD, &lhead->record[idx].flags);
 		lhead->total_io_size += bio_pb;
-		bio_lsid += bio_pb;
 	}
-
-	idx++;
-
 	return true;
-error0:
-	return false;
 }
 
 MODULE_LICENSE("Dual BSD/GPL");
