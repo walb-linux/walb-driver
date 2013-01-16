@@ -8,7 +8,7 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 
-#include "memblk_data.h"
+#include "../proto/memblk_data.h"
 
 #include <linux/mm.h>
 #include <linux/scatterlist.h>

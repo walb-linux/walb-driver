@@ -10,7 +10,7 @@
 
 #include "walb/util.h"
 #include "build_date.h"
-#include "size_list.h"
+#include "../proto/size_list.h"
 
 static int __init test_init(void)
 {
