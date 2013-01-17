@@ -39,14 +39,9 @@ struct pack_work* create_pack_work(void *data, gfp_t gfp_mask)
 	ASSERT(pack_work_cache_);
 
 	pwork = kmem_cache_alloc(pack_work_cache_, gfp_mask);
-	if (!pwork) {
-		goto error0;
-	}
+	if (!pwork) { return NULL; }
 	pwork->data = data;
-
 	return pwork;
-error0:
-	return NULL;
 }
 
 /**

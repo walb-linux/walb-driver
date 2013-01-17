@@ -181,7 +181,7 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 	wminor = ctl->u2k.wminor;
 	if (wmajor != walb_major_) {
 		LOGe("Device major id is invalid.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	wdevt = MKDEV(wmajor, wminor);
 
@@ -189,11 +189,11 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 	wdev = search_wdev_with_minor(wminor);
 	alldevs_read_unlock();
 
-	if (wdev == NULL) {
+	if (!wdev) {
 		LOGe("Walb dev with minor %u not found.\n",
 			wminor);
 		ctl->error = -1;
-		goto error0;
+		return -EFAULT;
 	}
 
 	unregister_wdev(wdev);
@@ -206,13 +206,7 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 
 	/* Set result */
 	ctl->error = 0;
-
 	return 0;
-
-	/* not tested */
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -252,13 +246,13 @@ static int ioctl_list_dev(struct walb_ctl *ctl)
 
 	if (ctl->u2k.buf_size < sizeof(unsigned int) * 2) {
 		LOGe("Buffer size is too small.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	minor = (unsigned int *)ctl->u2k.__buf;
 	ASSERT(minor);
 	if (minor[0] >= minor[1]) {
 		LOGe("minor[0] must be < minor[1].\n");
-		goto error0;
+		return -EFAULT;
 	}
 	ddata = (struct walb_disk_data *)ctl->k2u.__buf;
 	if (ddata) {
@@ -268,9 +262,6 @@ static int ioctl_list_dev(struct walb_ctl *ctl)
 	}
 	ctl->val_int = get_wdev_list_range(ddata, NULL, n, minor[0], minor[1]);
 	return 0;
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -303,7 +294,7 @@ static int ioctl_num_of_dev(struct walb_ctl *ctl)
 static int dispatch_ioctl(struct walb_ctl *ctl)
 {
 	int ret = 0;
-	ASSERT(ctl != NULL);
+	ASSERT(ctl);
 
 	switch(ctl->command) {
 	case WALB_IOCTL_START_DEV:
@@ -351,18 +342,17 @@ static int ctl_ioctl(unsigned int command, struct walb_ctl __user *user)
 	}
 
 	ctl = walb_get_ctl(user, GFP_KERNEL);
-	if (ctl == NULL) { goto error0; }
+	if (!ctl) {
+		return -EFAULT;
+	}
 
 	ret = dispatch_ioctl(ctl);
 
 	if (walb_put_ctl(user, ctl) != 0) {
 		LOGe("walb_put_ctl failed.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	return ret;
-
-error0:
-	return -EFAULT;
 }
 
 static long walb_ctl_ioctl(
@@ -420,7 +410,7 @@ void* walb_alloc_and_copy_from_user(
 {
 	void *buf;
 
-	if (buf_size == 0 || userbuf == NULL) {
+	if (buf_size == 0 || !userbuf) {
 		goto error0;
 	}
 
@@ -430,7 +420,7 @@ void* walb_alloc_and_copy_from_user(
 		BUG_ON(gfp_mask != GFP_KERNEL);
 		buf = vmalloc(buf_size);
 	}
-	if (buf == NULL) {
+	if (!buf) {
 		LOGe("memory allocation for walb_ctl.u2k.buf failed.\n");
 		goto error0;
 	}
@@ -460,7 +450,7 @@ int walb_copy_to_user_and_free(
 {
 	int ret = 0;
 
-	if (buf_size == 0 || userbuf == NULL || buf == NULL) {
+	if (buf_size == 0 || !userbuf || !buf) {
 		ret = -1;
 		goto fin;
 	}
@@ -489,7 +479,7 @@ struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
 
 	/* Allocate walb_ctl memory. */
 	ctl = kzalloc(sizeof(struct walb_ctl), gfp_mask);
-	if (ctl == NULL) {
+	if (!ctl) {
 		LOGe("memory allocation for walb_ctl failed.\n");
 		goto error0;
 	}
@@ -505,14 +495,14 @@ struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
 		ctl->u2k.__buf = walb_alloc_and_copy_from_user
 			((void __user *)ctl->u2k.buf,
 				ctl->u2k.buf_size, gfp_mask);
-		if (ctl->u2k.__buf == NULL) {
+		if (!ctl->u2k.__buf) {
 			goto error1;
 		}
 	}
 	/* Allocate ctl->k2u.__buf. */
 	if (ctl->k2u.buf_size > 0) {
 		ctl->k2u.__buf = kzalloc(ctl->k2u.buf_size, gfp_mask);
-		if (ctl->k2u.__buf == NULL) {
+		if (!ctl->k2u.__buf) {
 			goto error2;
 		}
 	}
@@ -550,11 +540,9 @@ int walb_put_ctl(void __user *userctl, struct walb_ctl *ctl)
 	}
 
 	/* Copy and free ctl->k2u.__buf. */
-	if (ctl->k2u.buf_size > 0) {
-		if (walb_copy_to_user_and_free
-			(ctl->k2u.buf, ctl->k2u.__buf, ctl->k2u.buf_size) != 0) {
-			goto error0;
-		}
+	if (ctl->k2u.buf_size > 0 && walb_copy_to_user_and_free(
+			ctl->k2u.buf, ctl->k2u.__buf, ctl->k2u.buf_size) != 0) {
+		goto error0;
 	}
 
 	/* Copy ctl. */
@@ -581,13 +569,12 @@ int __init walb_control_init(void)
 	int ret;
 
 	ret = misc_register(&walb_misc_);
-	if (ret < 0) { goto error0; }
+	if (ret < 0) {
+		return -1;
+	}
 
 	LOGi("walb control device minor %u\n", walb_misc_.minor);
 	return 0;
-
-error0:
-	return -1;
 }
 
 /**
@@ -595,7 +582,6 @@ error0:
  */
 void walb_control_exit(void)
 {
-
 	misc_deregister(&walb_misc_);
 }
 

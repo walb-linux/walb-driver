@@ -2995,12 +2995,9 @@ static bool pending_insert_and_delete_fully_overwritten(
 	ASSERT(biow);
 
 	ret = pending_insert(pending_data, max_sectors_p, biow, gfp_mask);
-	if (!ret) { goto error0; }
+	if (!ret) { return false; }
 	pending_delete_fully_overwritten(pending_data, biow);
 	return true;
-
-error0:
-	return false;
 }
 #endif
 
@@ -3760,15 +3757,11 @@ struct bio_wrapper* alloc_bio_wrapper_inc(
 	ASSERT(iocored);
 
 	biow = alloc_bio_wrapper(gfp_mask);
-	if (!biow) {
-		goto error0;
-	}
+	if (!biow) { return NULL; }
 
 	atomic_inc(&iocored->n_pending_bio);
 	biow->is_started = false;
 	return biow;
-error0:
-	return NULL;
 }
 
 /**
