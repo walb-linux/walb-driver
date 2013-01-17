@@ -212,9 +212,8 @@ static u8* get_hash_cell_key(const struct hash_cell *cell)
 	if (cell) {
 		ASSERT_HASHCELL(cell);
 		return cell->key;
-	} else {
-		return NULL;
 	}
+	return NULL;
 }
 
 /**
@@ -227,9 +226,8 @@ static int get_hash_cell_key_size(const struct hash_cell *cell)
 	if (cell) {
 		ASSERT_HASHCELL(cell);
 		return cell->key_size;
-	} else {
-		return 0;
 	}
+	return 0;
 }
 
 /**
@@ -241,9 +239,8 @@ static unsigned long get_hash_cell_val(const struct hash_cell *cell)
 {
 	if (cell) {
 		return cell->val;
-	} else {
-		return HASHTBL_INVALID_VAL;
 	}
+	return HASHTBL_INVALID_VAL;
 }
 
 /**
@@ -283,7 +280,7 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 	struct hlist_head *chead, *nhead;
 	struct hlist_node *cnode, *nnode;
 
-	if (!cursor) { return 0; }
+	CHECK(cursor);
 	st = cursor->state;
 	idx = cursor->bucket_idx;
 	chead = cursor->curr_head;
@@ -291,35 +288,33 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 	nhead = cursor->next_head;
 	nnode = cursor->next;
 
-#define PERR { LOGd("error\n"); return 0; }
-
-	if (! is_hashtbl_struct_valid(cursor->htbl)) { PERR; }
+	CHECK(is_hashtbl_struct_valid(cursor->htbl));
 	max_idx = cursor->htbl->bucket_size;
 
-	if (! (0 <= idx)) { PERR; }
-	if (! (idx <= max_idx)) { PERR; }
+	CHECK(0 <= idx);
+	CHECK(idx <= max_idx);
 
 	switch (st) {
 	case HASHTBL_CURSOR_BEGIN:
-		if (!(!chead && !cnode)) { PERR; }
+		CHECK(!chead && !cnode);
 		break;
 	case HASHTBL_CURSOR_END:
-		if (!(!chead && !cnode && !nhead && !nnode)) { PERR; }
+		CHECK(!chead && !cnode && !nhead && !nnode);
 		break;
 	case HASHTBL_CURSOR_DATA:
-		if (!(chead && cnode)) { PERR; }
+		CHECK(chead && cnode);
 		break;
 	case HASHTBL_CURSOR_DELETED:
-		if (!(!chead && !cnode)) { PERR; }
+		CHECK(!chead && !cnode);
 		break;
 	case HASHTBL_CURSOR_INVALID:
 		break;
 	default:
-		PERR;
+		CHECK(false);
 	}
-#undef PERR
-
 	return 1;
+error:
+	return 0;
 }
 
 /**
@@ -402,16 +397,14 @@ void hashtbl_destroy(struct hash_tbl *htbl)
 void hashtbl_empty(struct hash_tbl *htbl)
 {
 	int i;
-	struct hlist_node *node, *next;
-	struct hash_cell *cell;
 
 	LOGd("hashtbl_empty begin\n");
 	ASSERT_HASHTBL(htbl);
 
 	for (i = 0; i < htbl->bucket_size; i++) {
-
+		struct hlist_node *node, *next;
+		struct hash_cell *cell;
 		hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
-
 			ASSERT_HASHCELL(cell);
 			free_hash_cell(cell);
 		}
@@ -444,17 +437,17 @@ int hashtbl_add(struct hash_tbl *htbl,
 
 	/* Validation */
 	if (!key || key_size <= 0 || val == HASHTBL_INVALID_VAL) {
-		goto parameters_invalid;
+		return -EINVAL;
 	}
 
 	/* Duplication check */
 	if (hashtbl_lookup_cell(htbl, key, key_size)) {
-		goto key_exists;
+		return -EPERM;
 	}
 
 	/* Allocate cell. */
 	cell = alloc_hash_cell(key_size, gfp_mask);
-	if (!cell) { goto nomem; }
+	if (!cell) { return -ENOMEM; }
 
 	/* Fill cell. */
 	set_hash_cell_key(cell, key);
@@ -464,15 +457,7 @@ int hashtbl_add(struct hash_tbl *htbl,
 	idx = hashtbl_get_index(htbl, key, key_size);
 	hlist_add_head(&cell->list, &htbl->bucket[idx]);
 
-	/* LOGd("hashtbl_add end\n"); */
 	return 0;
-
-nomem:
-	return -ENOMEM;
-key_exists:
-	return -EPERM;
-parameters_invalid:
-	return -EINVAL;
 }
 
 /**
@@ -527,7 +512,7 @@ int hashtbl_is_empty(const struct hash_tbl *htbl)
 	ASSERT_HASHTBL(htbl);
 
 	for (i = 0; i < htbl->bucket_size; i++) {
-		if (! hlist_empty(&htbl->bucket[i])) {
+		if (!hlist_empty(&htbl->bucket[i])) {
 			return 0;
 		}
 	}
@@ -545,8 +530,6 @@ int hashtbl_is_empty(const struct hash_tbl *htbl)
 int hashtbl_n_items(const struct hash_tbl *htbl)
 {
 	int i;
-	struct hlist_node *node, *next;
-	struct hash_cell *cell;
 	int n = 0;
 	int n_min = INT_MAX;
 	int n_max = 0;
@@ -555,6 +538,8 @@ int hashtbl_n_items(const struct hash_tbl *htbl)
 
 	for (i = 0; i < htbl->bucket_size; i++) {
 		int n_local = 0;
+		struct hlist_node *node, *next;
+		struct hash_cell *cell;
 		hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
 			ASSERT_HASHCELL(cell);
 			n_local++;
@@ -608,7 +593,7 @@ int hashtbl_test(void)
 	}
 	n = hashtbl_n_items(htbl);
 	WALB_CHECK(n == 100000);
-	WALB_CHECK(! hashtbl_is_empty(htbl));
+	WALB_CHECK(!hashtbl_is_empty(htbl));
 
 	/* Lookup */
 	for (i = 0; i < 100000; i++) {
@@ -618,7 +603,7 @@ int hashtbl_test(void)
 	}
 	n = hashtbl_n_items(htbl);
 	WALB_CHECK(n == 100000);
-	WALB_CHECK(! hashtbl_is_empty(htbl));
+	WALB_CHECK(!hashtbl_is_empty(htbl));
 
 	/* Delete */
 	for (i = 0; i < 100000; i++) {
@@ -636,7 +621,7 @@ int hashtbl_test(void)
 	}
 	n = hashtbl_n_items(htbl);
 	WALB_CHECK(n == 50000);
-	WALB_CHECK(! hashtbl_is_empty(htbl));
+	WALB_CHECK(!hashtbl_is_empty(htbl));
 
 	/* Empty */
 	hashtbl_empty(htbl);
@@ -657,7 +642,7 @@ int hashtbl_test(void)
 	}
 	n = hashtbl_n_items(htbl);
 	WALB_CHECK(n == 100);
-	WALB_CHECK(! hashtbl_is_empty(htbl));
+	WALB_CHECK(!hashtbl_is_empty(htbl));
 
 	/* Empty and destroy. */
 	hashtbl_destroy(htbl);
@@ -723,13 +708,13 @@ static int search_next_head_index(const struct hash_tbl *htbl, int start_idx)
 	ASSERT(0 <= start_idx && start_idx <= htbl->bucket_size);
 
 	for (i = start_idx; i < htbl->bucket_size; i++) {
-
-		if (! hlist_empty(&htbl->bucket[i])) {
+		if (!hlist_empty(&htbl->bucket[i])) {
 			break;
 		}
 	}
 
-	ASSERT(0 <= i && i <= htbl->bucket_size);
+	ASSERT(0 <= i);
+	ASSERT(i <= htbl->bucket_size);
 	return i;
 }
 
@@ -798,7 +783,7 @@ int hashtbl_cursor_next(hashtbl_cursor_t *cursor)
 			cursor->next_head = NULL;
 		} else {
 			cursor->next_head = &cursor->htbl->bucket[idx];
-			ASSERT(! hlist_empty(cursor->next_head));
+			ASSERT(!hlist_empty(cursor->next_head));
 			cursor->next = cursor->next_head->first;
 			ASSERT(cursor->next);
 		}
@@ -900,17 +885,16 @@ unsigned long hashtbl_cursor_val(const hashtbl_cursor_t *cursor)
 {
 	struct hash_cell *cell;
 
-	if (!cursor) { goto error; }
+	if (!cursor) { return HASHTBL_INVALID_VAL; }
 
 	ASSERT_HASHTBL_CURSOR(cursor);
-	if (cursor->state != HASHTBL_CURSOR_DATA) { goto error; }
+	if (cursor->state != HASHTBL_CURSOR_DATA) {
+		return HASHTBL_INVALID_VAL;
+	}
 
 	cell = hlist_entry(cursor->curr, struct hash_cell, list);
 	ASSERT(cell);
-
 	return get_hash_cell_val(cell);
-error:
-	return HASHTBL_INVALID_VAL;
 }
 
 /**
@@ -922,17 +906,14 @@ int hashtbl_cursor_key_size(const hashtbl_cursor_t *cursor)
 {
 	struct hash_cell *cell;
 
-	if (!cursor) { goto error; }
+	if (!cursor) { return 0; }
 
 	ASSERT_HASHTBL_CURSOR(cursor);
-	if (cursor->state != HASHTBL_CURSOR_DATA) { goto error; }
+	if (cursor->state != HASHTBL_CURSOR_DATA) { return 0; }
 
 	cell = hlist_entry(cursor->curr, struct hash_cell, list);
 	ASSERT(cell);
-
 	return get_hash_cell_key_size(cell);
-error:
-	return 0;
 }
 
 /**
@@ -947,17 +928,14 @@ u8* hashtbl_cursor_key(const hashtbl_cursor_t *cursor)
 {
 	struct hash_cell *cell;
 
-	if (!cursor) { goto error; }
+	if (!cursor) { return NULL; }
 
 	ASSERT_HASHTBL_CURSOR(cursor);
-	if (cursor->state != HASHTBL_CURSOR_DATA) { goto error; }
+	if (cursor->state != HASHTBL_CURSOR_DATA) { return NULL; }
 
 	cell = hlist_entry(cursor->curr, struct hash_cell, list);
 	ASSERT(cell);
-
 	return get_hash_cell_key(cell);
-error:
-	return NULL;
 }
 
 /**
@@ -994,7 +972,7 @@ int hashtbl_cursor_test(void)
 	hashtbl_cursor_begin(&curt);
 	WALB_CHECK(hashtbl_cursor_is_valid(&curt));
 	WALB_CHECK(hashtbl_cursor_is_begin(&curt));
-	WALB_CHECK(! hashtbl_cursor_next(&curt));
+	WALB_CHECK(!hashtbl_cursor_next(&curt));
 	WALB_CHECK(hashtbl_cursor_is_end(&curt));
 	WALB_CHECK(hashtbl_cursor_is_valid(&curt));
 

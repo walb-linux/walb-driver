@@ -21,13 +21,15 @@
 	ASSERT(is_valid_treemap_memory_manager(mmgr))
 
 #define ASSERT_TREEMAP(tmap)						\
-	ASSERT(tmap && is_valid_treemap_memory_manager(tmap->mmgr))
+	ASSERT((tmap) && is_valid_treemap_memory_manager((tmap)->mmgr))
 
-#define ASSERT_TREENODE(tnode) ASSERT((tnode) != NULL &&		\
-					(tnode)->val != TREEMAP_INVALID_VAL)
+#define ASSERT_TREENODE(tnode)				\
+	ASSERT((tnode) &&				\
+		(tnode)->val != TREEMAP_INVALID_VAL)
 
-#define ASSERT_TREECELL(tcell) ASSERT((tcell) != NULL &&		\
-					(tcell)->val != TREEMAP_INVALID_VAL)
+#define ASSERT_TREECELL(tcell)				\
+	ASSERT((tcell) &&				\
+		(tcell)->val != TREEMAP_INVALID_VAL)
 
 #define ASSERT_MAP_CURSOR(cursor) ASSERT(is_valid_map_cursor(cursor))
 #define ASSERT_MULTIMAP_CURSOR(cursor) ASSERT(is_valid_multimap_cursor(cursor))
@@ -132,7 +134,7 @@ static struct tree_node* map_lookup_node_detail(const struct map *tmap, u64 key,
 			}
 		}
 	}
-	if (t == NULL) { /* Empty tree. */
+	if (!t) { /* Empty tree. */
 		return NULL;
 	}
 
@@ -146,15 +148,15 @@ static struct tree_node* map_lookup_node_detail(const struct map *tmap, u64 key,
 		if (t->key == key) {
 			ASSERT(search_flag == MAP_SEARCH_LT);
 			t = map_prev(t);
-			ASSERT(t == NULL || t->key < key);
+			ASSERT(!t || t->key < key);
 			return t;
 
 		} else if (t->key < key) {
-			ASSERT(map_next(t) == NULL || (map_next(t))->key > key);
+			ASSERT(!map_next(t) || (map_next(t))->key > key);
 			return t;
 		} else {
 			t = map_prev(t);
-			ASSERT(t == NULL || t->key < key);
+			ASSERT(!t || t->key < key);
 			return t;
 		}
 		break;
@@ -165,15 +167,15 @@ static struct tree_node* map_lookup_node_detail(const struct map *tmap, u64 key,
 		if (t->key == key) {
 			ASSERT(search_flag == MAP_SEARCH_GT);
 			t = map_next(t);
-			ASSERT(t == NULL || t->key > key);
+			ASSERT(!t || t->key > key);
 			return t;
 
 		} else if (t->key < key) {
 			t = map_next(t);
-			ASSERT(t == NULL || t->key > key);
+			ASSERT(!t || t->key > key);
 			return t;
 		} else {
-			ASSERT(map_prev(t) == NULL || (map_prev(t))->key < key);
+			ASSERT(!map_prev(t) || (map_prev(t))->key < key);
 			return t;
 		}
 		break;
@@ -190,9 +192,9 @@ static struct tree_node* map_first(const struct map *tmap)
 {
 	struct rb_node *node;
 
-	if (tmap == NULL) { return NULL; }
+	if (!tmap) { return NULL; }
 	node = rb_first(&tmap->root);
-	if (node == NULL) { return NULL; }
+	if (!node) { return NULL; }
 	return container_of(node, struct tree_node, node);
 }
 
@@ -203,9 +205,9 @@ static struct tree_node* map_last(const struct map *tmap)
 {
 	struct rb_node *node;
 
-	if (tmap == NULL) { return NULL; }
+	if (!tmap) { return NULL; }
 	node = rb_last(&tmap->root);
-	if (node == NULL) { return NULL; }
+	if (!node) { return NULL; }
 	return container_of(node, struct tree_node, node);
 }
 
@@ -216,9 +218,9 @@ static struct tree_node* map_next(const struct tree_node *t)
 {
 	struct rb_node *node;
 
-	if (t == NULL) { return NULL; }
+	if (!t) { return NULL; }
 	node = rb_next(&t->node);
-	if (node == NULL) { return NULL; }
+	if (!node) { return NULL; }
 	return container_of(node, struct tree_node, node);
 }
 
@@ -229,9 +231,9 @@ static struct tree_node* map_prev(const struct tree_node *t)
 {
 	struct rb_node *node;
 
-	if (t == NULL) { return NULL; }
+	if (!t) { return NULL; }
 	node = rb_prev(&t->node);
-	if (node == NULL) { return NULL; }
+	if (!node) { return NULL; }
 	return container_of(node, struct tree_node, node);
 }
 
@@ -255,17 +257,14 @@ static void make_map_cursor_invalid(struct map_cursor *cursor)
  */
 static int is_valid_map_cursor(const struct map_cursor *cursor)
 {
-	return ((cursor) != NULL &&
-		(cursor)->map != NULL &&
-		(((cursor)->state == MAP_CURSOR_BEGIN &&
-			(cursor)->prev == NULL &&
-			(cursor)->curr == NULL) ||
-			((cursor)->state == MAP_CURSOR_END &&
-				(cursor)->curr == NULL &&
-				(cursor)->next == NULL) ||
-			((cursor)->state == MAP_CURSOR_DATA &&
-				(cursor)->curr != NULL) ||
-			((cursor)->state == MAP_CURSOR_INVALID)));
+	return cursor && cursor->map && (
+		(cursor->state == MAP_CURSOR_BEGIN &&
+			!cursor->prev && !cursor->curr) ||
+		(cursor->state == MAP_CURSOR_END &&
+			!cursor->curr && !cursor->next) ||
+		(cursor->state == MAP_CURSOR_DATA &&
+			cursor->curr) ||
+		(cursor->state == MAP_CURSOR_INVALID));
 }
 
 /**
@@ -277,20 +276,17 @@ static int is_valid_multimap_cursor(const struct multimap_cursor *cursor)
 {
 	const struct map_cursor *cur;
 
-	if (cursor == NULL) { return 0; }
+	if (!cursor) { return 0; }
 	cur = &cursor->curt;
 
-	return (is_valid_map_cursor(cur) &&
-		((cur->state == MAP_CURSOR_BEGIN &&
-			cursor->head == NULL &&
-			cursor->cell == NULL) ||
-			(cur->state == MAP_CURSOR_END &&
-				cursor->head == NULL &&
-				cursor->cell == NULL) ||
-			(cur->state == MAP_CURSOR_DATA &&
-				cursor->head != NULL &&
-				cursor->cell != NULL) ||
-			(cur->state == MAP_CURSOR_INVALID)));
+	return is_valid_map_cursor(cur) && (
+		(cur->state == MAP_CURSOR_BEGIN &&
+			!cursor->head && !cursor->cell) ||
+		(cur->state == MAP_CURSOR_END &&
+			!cursor->head && !cursor->cell) ||
+		(cur->state == MAP_CURSOR_DATA &&
+			cursor->head && cursor->cell) ||
+		(cur->state == MAP_CURSOR_INVALID));
 }
 
 /**
@@ -325,7 +321,7 @@ static int hlist_len(const struct hlist_head *head)
 	struct hlist_node *node;
 	int count = 0;
 
-	if (head == NULL) { return -1; }
+	if (!head) { return -1; }
 
 	hlist_for_each(node, head) {
 		count++;
@@ -343,7 +339,7 @@ static struct hlist_node* hlist_prev(const struct hlist_head *head,
 {
 	struct hlist_head *tmp_head;
 
-	if (head == NULL || node == NULL) { return NULL; }
+	if (!head || !node) { return NULL; }
 
 	/* First node check. */
 	tmp_head = container_of(node->pprev, struct hlist_head, first);
@@ -364,23 +360,23 @@ static struct hlist_node* hlist_prev(const struct hlist_head *head,
  *	   -ENOMEM if no memory.
  *	   -EEXIST if key already exists.
  */
-static int
-multimap_add_newkey(struct multimap *tmap, u64 key,
-		struct tree_cell *newcell, gfp_t gfp_mask)
+static int multimap_add_newkey(
+	struct multimap *tmap, u64 key,
+	struct tree_cell *newcell, gfp_t gfp_mask)
 {
 	int ret;
 	struct tree_cell_head *newhead;
 
 	/* Allocate and initialize new tree cell head. */
 	newhead = alloc_cell_head(tmap->mmgr, gfp_mask);
-	if (newhead == NULL) {
+	if (!newhead) {
 		LOGe("memory allocation failed.\n");
-		goto nomem;
+		return -ENOMEM;
 	}
 	newhead->key = key;
 	INIT_HLIST_HEAD(&newhead->head);
 	hlist_add_head(&newcell->list, &newhead->head);
-	ASSERT(! hlist_empty(&newhead->head));
+	ASSERT(!hlist_empty(&newhead->head));
 
 	/* Add to the map. */
 	ret = map_add((struct map *)tmap, key, (unsigned long)newhead, gfp_mask);
@@ -390,8 +386,6 @@ multimap_add_newkey(struct multimap *tmap, u64 key,
 		ASSERT(ret != -EINVAL);
 	}
 	return ret;
-nomem:
-	return -ENOMEM;
 }
 
 /**
@@ -409,11 +403,11 @@ static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *n
 	struct hlist_node *hlnode, *hlnext;
 	int found;
 
-	ASSERT(chead != NULL);
-	ASSERT(newcell != NULL);
+	ASSERT(chead);
+	ASSERT(newcell);
 
 	hlhead = &chead->head;
-	ASSERT(! hlist_empty(hlhead));
+	ASSERT(!hlist_empty(hlhead));
 
 	found = 0;
 	hlist_for_each_entry_safe(cell, hlnode, hlnext, hlhead, list) {
@@ -423,9 +417,8 @@ static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *n
 	if (found == 0) {
 		hlist_add_head(&newcell->list, hlhead);
 		return 0;
-	} else {
-		return -EEXIST;
 	}
+	return -EEXIST;
 }
 
 /**
@@ -436,7 +429,7 @@ static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *n
  */
 static struct tree_cell* get_tree_cell_begin(struct tree_cell_head *head)
 {
-	if (head == NULL || head->head.first == NULL) { return NULL; }
+	if (!head || !head->head.first) { return NULL; }
 	return hlist_entry(head->head.first, struct tree_cell, list);
 }
 
@@ -449,13 +442,13 @@ static struct tree_cell* get_tree_cell_end(struct tree_cell_head *head)
 {
 	struct hlist_node *node;
 
-	if (head == NULL) { return NULL; }
+	if (!head) { return NULL; }
 
 	node = head->head.first;
-	if (node == NULL) { return NULL; }
+	if (!node) { return NULL; }
 
-	while (node->next != NULL) { node = node->next; }
-	ASSERT(node != NULL);
+	while (node->next) { node = node->next; }
+	ASSERT(node);
 
 	return hlist_entry(node, struct tree_cell, list);
 }
@@ -467,9 +460,7 @@ static struct tree_cell* get_tree_cell_end(struct tree_cell_head *head)
  */
 static struct tree_cell* get_tree_cell_next(struct tree_cell *cell)
 {
-	if (cell == NULL || cell->list.next == NULL) {
-		return NULL;
-	}
+	if (!cell || !cell->list.next) { return NULL; }
 	return hlist_entry(cell->list.next, struct tree_cell, list);
 }
 
@@ -482,15 +473,10 @@ static struct tree_cell* get_tree_cell_prev(struct tree_cell_head *head, struct 
 {
 	struct hlist_node *prev;
 
-	if (head == NULL || cell == NULL) { goto not_found; }
-
+	if (!head || !cell) { return NULL; }
 	prev = hlist_prev(&head->head, &cell->list);
-	if (prev != NULL) {
-		return hlist_entry(prev, struct tree_cell, list);
-	}
-
-not_found:
-	return NULL;
+	if (!prev) { return NULL; }
+	return hlist_entry(prev, struct tree_cell, list);
 }
 
 /**
@@ -648,19 +634,12 @@ struct map* map_create(gfp_t gfp_mask, struct treemap_memory_manager *mmgr)
 	ASSERT(mmgr);
 
 	tmap = kmalloc(sizeof(struct map), gfp_mask);
-	if (tmap == NULL) {
+	if (!tmap) {
 		LOGe("map_create: memory allocation failed.\n");
-		goto error0;
+		return NULL;
 	}
 	map_init(tmap, mmgr);
 	return tmap;
-
-#if 0
-error1:
-	kfree(tmap);
-#endif
-error0:
-	return NULL;
 }
 
 /**
@@ -705,7 +684,7 @@ int map_add(struct map *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 
 	if (val == TREEMAP_INVALID_VAL) {
 		LOGe("Val must not be TREEMAP_INVALID_VAL.\n");
-		goto inval;
+		return -EINVAL;
 	}
 
 	/* Figure out where to put new node. */
@@ -720,15 +699,15 @@ int map_add(struct map *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 			childp = &(parent->rb_right);
 		} else {
 			ASSERT(key == t->key);
-			goto exist;
+			return -EEXIST;
 		}
 	}
 
 	/* Generate new node. */
 	newnode = alloc_node(tmap->mmgr, gfp_mask);
-	if (newnode == NULL) {
+	if (!newnode) {
 		LOGe("allocation failed.\n");
-		goto nomem;
+		return -ENOMEM;
 	}
 	newnode->key = key;
 	newnode->val = val;
@@ -738,13 +717,6 @@ int map_add(struct map *tmap, u64 key, unsigned long val, gfp_t gfp_mask)
 	rb_insert_color(&newnode->node, &tmap->root);
 
 	return 0;
-
-nomem:
-	return -ENOMEM;
-exist:
-	return -EEXIST;
-inval:
-	return -EINVAL;
 }
 
 /**
@@ -762,9 +734,8 @@ unsigned long map_lookup(const struct map *tmap, u64 key)
 	if (t) {
 		ASSERT_TREENODE(t);
 		return t->val;
-	} else {
-		return TREEMAP_INVALID_VAL;
 	}
+	return TREEMAP_INVALID_VAL;
 }
 
 /**
@@ -775,19 +746,20 @@ unsigned long map_lookup(const struct map *tmap, u64 key)
 unsigned long map_del(struct map *tmap, u64 key)
 {
 	struct tree_node *t;
-	unsigned long val = TREEMAP_INVALID_VAL;
+	unsigned long val;
 
 	ASSERT_TREEMAP(tmap);
 
 	t = map_lookup_node(tmap, key);
-	if (t) {
-		ASSERT_TREENODE(t);
-		ASSERT(key == t->key);
-		val = t->val;
-		rb_erase(&t->node, &tmap->root);
-		free_node(tmap->mmgr, t);
+	if (!t) {
+		return TREEMAP_INVALID_VAL;
 	}
 
+	ASSERT_TREENODE(t);
+	ASSERT(key == t->key);
+	val = t->val;
+	rb_erase(&t->node, &tmap->root);
+	free_node(tmap->mmgr, t);
 	return val;
 }
 
@@ -802,7 +774,7 @@ void map_empty(struct map *tmap)
 	ASSERT_TREEMAP(tmap);
 
 	node = rb_first(&tmap->root);
-	if (node != NULL) { next = rb_next(node); }
+	if (node) { next = rb_next(node); }
 
 	while (node) {
 		rb_erase(node, &tmap->root);
@@ -810,7 +782,7 @@ void map_empty(struct map *tmap)
 		free_node(tmap->mmgr, t);
 
 		node = next;
-		if (node != NULL) { next = rb_next(node); }
+		if (node) { next = rb_next(node); }
 	}
 
 	ASSERT(map_is_empty(tmap));
@@ -824,11 +796,7 @@ void map_empty(struct map *tmap)
 int map_is_empty(const struct map *tmap)
 {
 	ASSERT_TREEMAP(tmap);
-
-	if (rb_first(&tmap->root) == NULL)
-		return 1;
-	else
-		return 0;
+	return rb_first(&tmap->root) == NULL;
 }
 
 /**
@@ -899,7 +867,7 @@ int map_test(void)
 	}
 	n = map_n_items(tmap);
 	WALB_CHECK(n == 10000);
-	WALB_CHECK(! map_is_empty(tmap));
+	WALB_CHECK(!map_is_empty(tmap));
 
 	/* Delete records. */
 	for (i = 0; i < 10000; i++) {
@@ -966,13 +934,10 @@ struct map_cursor* map_cursor_create(struct map *map, gfp_t gfp_mask)
 	struct map_cursor *cursor;
 
 	cursor = kmalloc(sizeof(struct map_cursor), gfp_mask);
-	if (cursor == NULL) { goto error0; }
+	if (!cursor) { return NULL; }
 
 	map_cursor_init(map, cursor);
 	return cursor;
-
-error0:
-	return NULL;
 }
 
 /**
@@ -980,7 +945,7 @@ error0:
  */
 void map_cursor_init(struct map *map, struct map_cursor *cursor)
 {
-	ASSERT(cursor != NULL);
+	ASSERT(cursor);
 
 	cursor->map = map;
 
@@ -995,11 +960,11 @@ void map_cursor_init(struct map *map, struct map_cursor *cursor)
 /**
  * Search key and set cursor.
  *
- * @return 1 if found, or 0.
+ * @return Non-zero if found, or 0.
  */
 int map_cursor_search(struct map_cursor* cursor, u64 key, int search_flag)
 {
-	if (cursor == NULL) { return 0; }
+	if (!cursor) { return 0; }
 
 	ASSERT_MAP_CURSOR(cursor);
 
@@ -1019,7 +984,7 @@ int map_cursor_search(struct map_cursor* cursor, u64 key, int search_flag)
 	case MAP_SEARCH_GT:
 	case MAP_SEARCH_GE:
 		cursor->curr = map_lookup_node_detail(cursor->map, key, search_flag);
-		if (cursor->curr == NULL) {
+		if (!cursor->curr) {
 			make_map_cursor_invalid(cursor);
 		} else {
 			cursor->state = MAP_CURSOR_DATA;
@@ -1033,11 +998,7 @@ int map_cursor_search(struct map_cursor* cursor, u64 key, int search_flag)
 	}
 
 	ASSERT_MAP_CURSOR(cursor);
-	if (cursor->state != MAP_CURSOR_INVALID) {
-		return 1;
-	} else {
-		return 0;
-	}
+	return cursor->state != MAP_CURSOR_INVALID;
 }
 
 /**
@@ -1047,7 +1008,7 @@ int map_cursor_search(struct map_cursor* cursor, u64 key, int search_flag)
  */
 int map_cursor_next(struct map_cursor *cursor)
 {
-	if (cursor == NULL) { return 0; }
+	if (!cursor) { return 0; }
 	ASSERT_MAP_CURSOR(cursor);
 
 	switch (cursor->state) {
@@ -1057,7 +1018,7 @@ int map_cursor_next(struct map_cursor *cursor)
 		cursor->prev = cursor->curr;
 		cursor->curr = cursor->next;
 		cursor->next = map_next(cursor->curr);
-		if (cursor->curr != NULL) {
+		if (cursor->curr) {
 			cursor->state = MAP_CURSOR_DATA;
 		} else {
 			cursor->state = MAP_CURSOR_END;
@@ -1074,7 +1035,7 @@ int map_cursor_next(struct map_cursor *cursor)
 	}
 	ASSERT_MAP_CURSOR(cursor);
 
-	return (cursor->state == MAP_CURSOR_DATA);
+	return cursor->state == MAP_CURSOR_DATA;
 }
 
 /**
@@ -1084,7 +1045,7 @@ int map_cursor_next(struct map_cursor *cursor)
  */
 int map_cursor_prev(struct map_cursor *cursor)
 {
-	if (cursor == NULL) { return 0; }
+	if (!cursor) { return 0; }
 	ASSERT_MAP_CURSOR(cursor);
 
 	switch (cursor->state) {
@@ -1094,7 +1055,7 @@ int map_cursor_prev(struct map_cursor *cursor)
 		cursor->next = cursor->curr;
 		cursor->curr = cursor->prev;
 		cursor->prev = map_prev(cursor->curr);
-		if (cursor->curr != NULL) {
+		if (cursor->curr) {
 			cursor->state = MAP_CURSOR_DATA;
 		} else {
 			cursor->state = MAP_CURSOR_BEGIN;
@@ -1111,7 +1072,7 @@ int map_cursor_prev(struct map_cursor *cursor)
 	}
 	ASSERT_MAP_CURSOR(cursor);
 
-	return (cursor->state == MAP_CURSOR_DATA);
+	return cursor->state == MAP_CURSOR_DATA;
 }
 
 /**
@@ -1121,7 +1082,7 @@ int map_cursor_prev(struct map_cursor *cursor)
  */
 int map_cursor_begin(struct map_cursor *cursor)
 {
-	if (cursor == NULL) { return 0; }
+	if (!cursor) { return 0; }
 
 	ASSERT_MAP_CURSOR(cursor);
 
@@ -1141,7 +1102,7 @@ int map_cursor_begin(struct map_cursor *cursor)
  */
 int map_cursor_end(struct map_cursor *cursor)
 {
-	if (cursor == NULL) { return 0; }
+	if (!cursor) { return 0; }
 
 	ASSERT_MAP_CURSOR(cursor);
 
@@ -1159,7 +1120,7 @@ int map_cursor_end(struct map_cursor *cursor)
  */
 int map_cursor_is_begin(struct map_cursor *cursor)
 {
-	return (cursor != NULL && cursor->state == MAP_CURSOR_BEGIN);
+	return cursor && cursor->state == MAP_CURSOR_BEGIN;
 }
 
 /**
@@ -1167,7 +1128,7 @@ int map_cursor_is_begin(struct map_cursor *cursor)
  */
 int map_cursor_is_end(struct map_cursor *cursor)
 {
-	return (cursor != NULL && cursor->state == MAP_CURSOR_END);
+	return cursor && cursor->state == MAP_CURSOR_END;
 }
 
 /**
@@ -1175,7 +1136,7 @@ int map_cursor_is_end(struct map_cursor *cursor)
  */
 int map_cursor_is_data(struct map_cursor *cursor)
 {
-	return (cursor && cursor->state == MAP_CURSOR_DATA);
+	return cursor && cursor->state == MAP_CURSOR_DATA;
 }
 
 /**
@@ -1209,16 +1170,14 @@ void map_cursor_copy(struct map_cursor *dst, struct map_cursor *src)
  */
 u64 map_cursor_key(const struct map_cursor *cursor)
 {
-	if (!cursor) { goto invalid; }
+	if (!cursor) { return TREEMAP_INVALID_KEY; }
 
 	ASSERT_MAP_CURSOR(cursor);
-	if (cursor->state == MAP_CURSOR_DATA) {
-		ASSERT(cursor->curr);
-		return cursor->curr->key;
+	if (cursor->state != MAP_CURSOR_DATA) {
+		return TREEMAP_INVALID_KEY;
 	}
-
-invalid:
-	return TREEMAP_INVALID_KEY;
+	ASSERT(cursor->curr);
+	return cursor->curr->key;
 }
 
 /**
@@ -1228,15 +1187,14 @@ invalid:
  */
 unsigned long map_cursor_val(const struct map_cursor *cursor)
 {
-	if (cursor == NULL) { goto invalid; }
+	if (!cursor) { return TREEMAP_INVALID_VAL; }
 
 	ASSERT_MAP_CURSOR(cursor);
-	if (cursor->state == MAP_CURSOR_DATA) {
-		return cursor->curr->val;
+	if (cursor->state != MAP_CURSOR_DATA) {
+		return TREEMAP_INVALID_VAL;
 	}
-
-invalid:
-	return TREEMAP_INVALID_VAL;
+	ASSERT(cursor->curr);
+	return cursor->curr->val;
 }
 
 /**
@@ -1264,7 +1222,7 @@ int map_cursor_del(struct map_cursor *cursor)
 	ASSERT_MAP_CURSOR(cursor);
 
 	if (cursor->state != MAP_CURSOR_DATA) {
-		goto error0;
+		return 0;
 	}
 
 	/* Backup */
@@ -1284,9 +1242,6 @@ int map_cursor_del(struct map_cursor *cursor)
 	free_node(cursor->map->mmgr, t);
 
 	return 1;
-
-error0:
-	return 0;
 }
 
 /**
@@ -1311,7 +1266,7 @@ int map_cursor_test(void)
 	/* Create map. */
 	LOGd("Create map.\n");
 	map = map_create(GFP_KERNEL, &mmgr);
-	WALB_CHECK(map != NULL);
+	WALB_CHECK(map);
 
 	/* Create and init cursor. */
 	LOGd("Create and init cursor.\n");
@@ -1322,7 +1277,7 @@ int map_cursor_test(void)
 	LOGd("Begin -> end.\n");
 	map_cursor_begin(&curt);
 	WALB_CHECK(map_cursor_is_valid(&curt));
-	WALB_CHECK(! map_cursor_next(&curt));
+	WALB_CHECK(!map_cursor_next(&curt));
 	WALB_CHECK(map_cursor_is_end(&curt));
 	WALB_CHECK(map_cursor_is_valid(&curt));
 
@@ -1330,7 +1285,7 @@ int map_cursor_test(void)
 	LOGd("End -> begin.\n");
 	map_cursor_end(&curt);
 	WALB_CHECK(map_cursor_is_valid(&curt));
-	WALB_CHECK(! map_cursor_prev(&curt));
+	WALB_CHECK(!map_cursor_prev(&curt));
 	WALB_CHECK(map_cursor_is_begin(&curt));
 	WALB_CHECK(map_cursor_is_valid(&curt));
 
@@ -1354,7 +1309,7 @@ int map_cursor_test(void)
 	WALB_CHECK(map_cursor_val(cur) == 30);
 	WALB_CHECK(map_cursor_next(cur));
 	WALB_CHECK(map_cursor_val(cur) == 40);
-	WALB_CHECK(! map_cursor_next(cur));
+	WALB_CHECK(!map_cursor_next(cur));
 	WALB_CHECK(map_cursor_is_end(cur));
 
 	/* End to begin. */
@@ -1370,7 +1325,7 @@ int map_cursor_test(void)
 	WALB_CHECK(map_cursor_val(cur) == 20);
 	WALB_CHECK(map_cursor_prev(cur));
 	WALB_CHECK(map_cursor_val(cur) == 10);
-	WALB_CHECK(! map_cursor_prev(cur));
+	WALB_CHECK(!map_cursor_prev(cur));
 	WALB_CHECK(map_cursor_is_begin(cur));
 
 	/* EQ */
@@ -1378,7 +1333,7 @@ int map_cursor_test(void)
 	map_cursor_search(cur, 20, MAP_SEARCH_EQ);
 	WALB_CHECK(map_cursor_val(cur) == 20);
 	map_cursor_search(cur, 25, MAP_SEARCH_EQ);
-	WALB_CHECK(! map_cursor_is_valid(cur));
+	WALB_CHECK(!map_cursor_is_valid(cur));
 	WALB_CHECK(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
 
 	/* LE */
@@ -1432,7 +1387,7 @@ int map_cursor_test(void)
 	/* Create map. */
 	LOGd("Create map.\n");
 	map = map_create(GFP_KERNEL, &mmgr);
-	WALB_CHECK(map != NULL);
+	WALB_CHECK(map);
 
 	/* Prepare map data. */
 	map_add(map, 10, 10, GFP_KERNEL);
@@ -1511,19 +1466,12 @@ struct multimap* multimap_create(gfp_t gfp_mask, struct treemap_memory_manager *
 	ASSERT(mmgr);
 
 	tmap = kmalloc(sizeof(struct multimap), gfp_mask);
-	if (tmap == NULL) {
+	if (!tmap) {
 		LOGe("multimap_create: memory allocation failed.\n");
-		goto error0;
+		return NULL;
 	}
 	multimap_init(tmap, mmgr);
 	return tmap;
-
-#if 0
-error1:
-	kfree(tmap);
-#endif
-error0:
-	return NULL;
 }
 
 /**
@@ -1544,11 +1492,10 @@ void multimap_init(struct multimap *tmap, struct treemap_memory_manager *mmgr)
  */
 void multimap_destroy(struct multimap *tmap)
 {
-	if (tmap) {
-		ASSERT_TREEMAP(tmap);
-		multimap_empty(tmap);
-		kfree(tmap);
-	}
+	if (!tmap) { return; }
+	ASSERT_TREEMAP(tmap);
+	multimap_empty(tmap);
+	kfree(tmap);
 }
 
 /**
@@ -1571,25 +1518,21 @@ int multimap_add(struct multimap *tmap, u64 key, unsigned long val, gfp_t gfp_ma
 
 	if (val == TREEMAP_INVALID_VAL) {
 		LOGe("Val must not be TREEMAP_INVALID_VAL.\n");
-		goto inval;
+		return -EINVAL;
 	}
 
 	/* Prepare new cell. */
 	newcell = alloc_cell(tmap->mmgr, gfp_mask);
-	if (newcell == NULL) {
+	if (!newcell) {
 		LOGe("memory allocation failed.\n");
-		goto nomem;
+		return -ENOMEM;
 	}
 	newcell->val = val;
 	ASSERT_TREECELL(newcell);
 
 	t = map_lookup_node((struct map *)tmap, key);
 
-	if (t == NULL) {
-		/* There is no record with that key. */
-		ret = multimap_add_newkey(tmap, key, newcell, gfp_mask);
-		if (ret) { LOGd("multimap_add_newkey() failed.\n"); }
-	} else {
+	if (t) {
 		/* There is already record(s) with that key. */
 		ASSERT(t->key == key);
 		/* tree_node's val is pointer to tree_cell_head. */
@@ -1598,15 +1541,14 @@ int multimap_add(struct multimap *tmap, u64 key, unsigned long val, gfp_t gfp_ma
 
 		ret = multimap_add_oldkey(chead, newcell);
 		if (ret) { LOGd("multimap_add_oldkey() failed.\n"); }
+	} else {
+		/* There is no record with that key. */
+		ret = multimap_add_newkey(tmap, key, newcell, gfp_mask);
+		if (ret) { LOGd("multimap_add_newkey() failed.\n"); }
 	}
 
 	if (ret) { free_cell(tmap->mmgr, newcell); }
 	return ret;
-
-inval:
-	return -EINVAL;
-nomem:
-	return -ENOMEM;
 }
 
 /**
@@ -1622,11 +1564,8 @@ struct tree_cell_head* multimap_lookup(const struct multimap *tmap, u64 key)
 	struct tree_node *t;
 
 	t = map_lookup_node((struct map *)tmap, key);
-	if (t == NULL) {
-		return NULL;
-	} else {
-		return (struct tree_cell_head *)(t->val);
-	}
+	if (!t) { return NULL; }
+	return (struct tree_cell_head *)(t->val);
 }
 
 /**
@@ -1641,14 +1580,14 @@ unsigned long multimap_lookup_any(const struct multimap *tmap, u64 key)
 
 	chead = multimap_lookup(tmap, key);
 
-	if (chead == NULL) {
+	if (!chead) {
 		return TREEMAP_INVALID_VAL;
-	} else {
-		ASSERT(! hlist_empty(&chead->head));
-		cell = hlist_entry(chead->head.first, struct tree_cell, list);
-		ASSERT_TREECELL(cell);
-		return cell->val;
 	}
+
+	ASSERT(!hlist_empty(&chead->head));
+	cell = hlist_entry(chead->head.first, struct tree_cell, list);
+	ASSERT_TREECELL(cell);
+	return cell->val;
 }
 
 /**
@@ -1661,13 +1600,13 @@ int multimap_lookup_n(const struct multimap *tmap, u64 key)
 	int count;
 	struct tree_cell_head *chead;
 
-	count = 0;
 	chead = multimap_lookup(tmap, key);
-	if (chead != NULL) {
-		ASSERT(! hlist_empty(&chead->head));
-		count = hlist_len(&chead->head);
-		ASSERT(count >= 0);
+	if (!chead) {
+		return 0;
 	}
+	ASSERT(!hlist_empty(&chead->head));
+	count = hlist_len(&chead->head);
+	ASSERT(count >= 0);
 	return count;
 }
 
@@ -1687,12 +1626,12 @@ unsigned long multimap_del(struct multimap *tmap, u64 key, unsigned long val)
 	UNUSED unsigned long ret;
 
 	t = map_lookup_node((struct map *)tmap, key);
-	if (t == NULL) { return TREEMAP_INVALID_VAL; }
+	if (!t) { return TREEMAP_INVALID_VAL; }
 
 	ASSERT(t->key == key);
 	chead = (struct tree_cell_head *)(t->val);
 	ASSERT(chead->key == key);
-	ASSERT(! hlist_empty(&chead->head));
+	ASSERT(!hlist_empty(&chead->head));
 
 	found = 0;
 	hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
@@ -1732,8 +1671,8 @@ int multimap_del_key(struct multimap *tmap, u64 key)
 	if (p == TREEMAP_INVALID_VAL) { return 0; }
 
 	chead = (struct tree_cell_head *)p;
-	ASSERT(chead != NULL);
-	ASSERT(! hlist_empty(&chead->head));
+	ASSERT(chead);
+	ASSERT(!hlist_empty(&chead->head));
 
 	hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
 		ASSERT_TREECELL(cell);
@@ -1760,16 +1699,15 @@ void multimap_empty(struct multimap *tmap)
 	struct tree_cell *cell;
 
 	node = rb_first(&tmap->root);
-	if (node != NULL) { next = rb_next(node); }
+	if (node) { next = rb_next(node); }
 
 	while (node) {
 		rb_erase(node, &tmap->root);
 		t = container_of(node, struct tree_node, node);
 		chead = (struct tree_cell_head *)(t->val);
-		ASSERT(chead != NULL);
+		ASSERT(chead);
 
 		hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
-
 			ASSERT_TREECELL(cell);
 			hlist_del(&cell->list);
 			free_cell(tmap->mmgr, cell);
@@ -1778,7 +1716,7 @@ void multimap_empty(struct multimap *tmap)
 		free_node(tmap->mmgr, t);
 
 		node = next;
-		if (node != NULL) { next = rb_next(node); }
+		if (node) { next = rb_next(node); }
 	}
 
 	ASSERT(map_is_empty((struct map *)tmap));
@@ -1803,12 +1741,13 @@ int multimap_n_items(const struct multimap *tmap)
 {
 	struct tree_node *t;
 	struct rb_node *node;
-	int count, c;
+	int count;
 	struct tree_cell_head *chead;
 
 	count = 0;
 	node = rb_first(&tmap->root);
 	while (node) {
+		int c;
 		t = container_of(node, struct tree_node, node);
 		chead = (struct tree_cell_head *)(t->val);
 		c = hlist_len(&chead->head);
@@ -1861,7 +1800,7 @@ int multimap_test(void)
 
 	/* Search in empty tree. */
 	LOGd("Search in empty tree.\n");
-	WALB_CHECK(multimap_lookup(tm, 0) == NULL);
+	WALB_CHECK(!multimap_lookup(tm, 0));
 
 	/* Returns error if val is TREEMAP_INVALID_VAL. */
 	LOGd("Invalid value insert..\n");
@@ -1880,7 +1819,7 @@ int multimap_test(void)
 	}
 	n = multimap_n_items(tm);
 	WALB_CHECK(n == 20000);
-	WALB_CHECK(! multimap_is_empty(tm));
+	WALB_CHECK(!multimap_is_empty(tm));
 
 	/* Delete records. */
 	LOGd("Delete records.\n");
@@ -1896,7 +1835,7 @@ int multimap_test(void)
 			WALB_CHECK(val == key + i);
 		} else {
 			chead = multimap_lookup(tm, key);
-			ASSERT(chead != NULL);
+			ASSERT(chead);
 			ASSERT(chead->key == key);
 			hlist_for_each_entry(cell, node, &chead->head, list) {
 				ASSERT_TREECELL(cell);
@@ -1909,7 +1848,7 @@ int multimap_test(void)
 			WALB_CHECK(val == key + i + 1);
 
 			chead = multimap_lookup(tm, key);
-			ASSERT(chead != NULL);
+			ASSERT(chead);
 			ASSERT(chead->key == key);
 			hlist_for_each_entry(cell, node, &chead->head, list) {
 				ASSERT_TREECELL(cell);
@@ -1991,7 +1930,7 @@ error:
  */
 void multimap_cursor_init(struct multimap *map, struct multimap_cursor *cursor)
 {
-	ASSERT(cursor != NULL);
+	ASSERT(cursor);
 
 	map_cursor_init((struct map *)map, &cursor->curt);
 
@@ -2012,13 +1951,13 @@ int multimap_cursor_search(struct multimap_cursor *cursor, u64 key, int search_f
 	struct map_cursor *cur = NULL;
 	unsigned long val;
 
-	if (cursor == NULL) { goto notfound_or_invalid; }
+	if (!cursor) { goto error0; }
 	cur = &cursor->curt;
 
 	ASSERT_MULTIMAP_CURSOR(cursor);
 
-	if (! map_cursor_search(cur, key, search_flag)) {
-		goto notfound_or_invalid;
+	if (!map_cursor_search(cur, key, search_flag)) {
+		goto error0;
 	}
 
 	switch (search_flag) {
@@ -2061,7 +2000,7 @@ int multimap_cursor_search(struct multimap_cursor *cursor, u64 key, int search_f
 
 	return 1;
 
-notfound_or_invalid:
+error0:
 	ASSERT(cur->state == MAP_CURSOR_INVALID);
 	return 0;
 }
@@ -2096,7 +2035,7 @@ int multimap_cursor_next(struct multimap_cursor *cursor)
 	case MAP_CURSOR_DATA:
 
 		cell = get_tree_cell_next(cursor->cell);
-		if (cell != NULL) {
+		if (cell) {
 			cursor->cell = cell;
 
 		} else if (map_cursor_next(cur)) {
@@ -2155,7 +2094,7 @@ int multimap_cursor_prev(struct multimap_cursor *cursor)
 	case MAP_CURSOR_DATA:
 
 		cell = get_tree_cell_prev(cursor->head, cursor->cell);
-		if (cell != NULL) {
+		if (cell) {
 			cursor->cell = cell;
 
 		} else if (map_cursor_prev(cur)) {
@@ -2179,7 +2118,7 @@ int multimap_cursor_prev(struct multimap_cursor *cursor)
 	}
 	ASSERT_MULTIMAP_CURSOR(cursor);
 
-	return (cur->state == MAP_CURSOR_DATA);
+	return cur->state == MAP_CURSOR_DATA;
 }
 
 /**
@@ -2189,7 +2128,7 @@ int multimap_cursor_prev(struct multimap_cursor *cursor)
  */
 int multimap_cursor_begin(struct multimap_cursor *cursor)
 {
-	if (cursor == NULL) { return 0; }
+	if (!cursor) { return 0; }
 
 	ASSERT_MULTIMAP_CURSOR(cursor);
 
@@ -2208,7 +2147,7 @@ int multimap_cursor_begin(struct multimap_cursor *cursor)
  */
 int multimap_cursor_end(struct multimap_cursor *cursor)
 {
-	if (cursor == NULL) { return 0; }
+	if (!cursor) { return 0; }
 
 	ASSERT_MULTIMAP_CURSOR(cursor);
 
@@ -2227,7 +2166,7 @@ int multimap_cursor_end(struct multimap_cursor *cursor)
  */
 int multimap_cursor_is_begin(struct multimap_cursor *cursor)
 {
-	return (cursor && map_cursor_is_begin(&cursor->curt));
+	return cursor && map_cursor_is_begin(&cursor->curt);
 }
 
 /**
@@ -2237,7 +2176,7 @@ int multimap_cursor_is_begin(struct multimap_cursor *cursor)
  */
 int multimap_cursor_is_end(struct multimap_cursor *cursor)
 {
-	return (cursor && map_cursor_is_end(&cursor->curt));
+	return cursor && map_cursor_is_end(&cursor->curt);
 }
 
 /**
@@ -2248,7 +2187,7 @@ int multimap_cursor_is_end(struct multimap_cursor *cursor)
  */
 int multimap_cursor_is_data(struct multimap_cursor *cursor)
 {
-	return (cursor && map_cursor_is_data(&cursor->curt));
+	return cursor && map_cursor_is_data(&cursor->curt);
 }
 
 /**
@@ -2282,16 +2221,17 @@ void multimap_cursor_copy(
  */
 unsigned long multimap_cursor_val(const struct multimap_cursor *cursor)
 {
-	if (cursor == NULL) { goto invalid; }
+	if (!cursor) {
+		return TREEMAP_INVALID_VAL;
+	}
 
 	ASSERT_MULTIMAP_CURSOR(cursor);
 
-	if (cursor->curt.state == MAP_CURSOR_DATA) {
-		return cursor->cell->val;
+	if (cursor->curt.state != MAP_CURSOR_DATA) {
+		return TREEMAP_INVALID_VAL;
 	}
-
-invalid:
-	return TREEMAP_INVALID_VAL;
+	ASSERT(cursor->cell);
+	return cursor->cell->val;
 }
 
 /**
@@ -2301,16 +2241,17 @@ invalid:
  */
 u64 multimap_cursor_key(const struct multimap_cursor *cursor)
 {
-	if (cursor == NULL) { goto invalid; }
+	if (!cursor) {
+		return TREEMAP_INVALID_KEY;
+	}
 
 	ASSERT_MULTIMAP_CURSOR(cursor);
 
-	if (cursor->curt.state == MAP_CURSOR_DATA) {
-		return cursor->head->key;
+	if (cursor->curt.state != MAP_CURSOR_DATA) {
+		return TREEMAP_INVALID_KEY;
 	}
-
-invalid:
-	return TREEMAP_INVALID_KEY;
+	ASSERT(cursor->head);
+	return cursor->head->key;
 }
 
 /**
@@ -2329,7 +2270,7 @@ int multimap_cursor_del(struct multimap_cursor *cursor)
 	ASSERT_MULTIMAP_CURSOR(cursor);
 
 	if (cursor->curt.state != MAP_CURSOR_DATA) {
-		goto error0;
+		return 0;
 	}
 
 	mmap = (struct multimap *)cursor->curt.map;
@@ -2359,9 +2300,6 @@ int multimap_cursor_del(struct multimap_cursor *cursor)
 #endif
 	ASSERT(is_valid_multimap_cursor(cursor));
 	return 1;
-
-error0:
-	return 0;
 }
 
 /**
@@ -2388,7 +2326,7 @@ int __init multimap_cursor_test(void)
 	/* Create multimap. */
 	LOGd("Create multimap.\n");
 	map = multimap_create(GFP_KERNEL, &mmgr);
-	WALB_CHECK(map != NULL);
+	WALB_CHECK(map);
 
 	/* Initialize multimap cursor. */
 	multimap_cursor_init(map, &curt);
@@ -2398,7 +2336,7 @@ int __init multimap_cursor_test(void)
 	multimap_cursor_begin(&curt);
 	WALB_CHECK(multimap_cursor_is_valid(&curt));
 	WALB_CHECK(multimap_cursor_is_begin(&curt));
-	WALB_CHECK(! multimap_cursor_next(&curt));
+	WALB_CHECK(!multimap_cursor_next(&curt));
 	WALB_CHECK(multimap_cursor_is_end(&curt));
 	WALB_CHECK(multimap_cursor_is_valid(&curt));
 
@@ -2407,7 +2345,7 @@ int __init multimap_cursor_test(void)
 	multimap_cursor_end(&curt);
 	WALB_CHECK(multimap_cursor_is_valid(&curt));
 	WALB_CHECK(multimap_cursor_is_end(&curt));
-	WALB_CHECK(! multimap_cursor_prev(&curt));
+	WALB_CHECK(!multimap_cursor_prev(&curt));
 	WALB_CHECK(multimap_cursor_is_begin(&curt));
 	WALB_CHECK(multimap_cursor_is_valid(&curt));
 
@@ -2440,7 +2378,7 @@ int __init multimap_cursor_test(void)
 		WALB_CHECK(key != (u64)(-1));
 		WALB_CHECK(val != TREEMAP_INVALID_VAL);
 	}
-	WALB_CHECK(! multimap_cursor_next(&curt));
+	WALB_CHECK(!multimap_cursor_next(&curt));
 	WALB_CHECK(multimap_cursor_is_end(&curt));
 	WALB_CHECK(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
 
@@ -2460,7 +2398,7 @@ int __init multimap_cursor_test(void)
 		WALB_CHECK(val != TREEMAP_INVALID_VAL);
 		WALB_CHECK(val == vals[i]);
 	}
-	WALB_CHECK(! multimap_cursor_prev(&curt));
+	WALB_CHECK(!multimap_cursor_prev(&curt));
 	WALB_CHECK(multimap_cursor_is_begin(&curt));
 	WALB_CHECK(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
 
@@ -2481,7 +2419,7 @@ int __init multimap_cursor_test(void)
 	/* Create multimap. */
 	LOGd("Create multimap.\n");
 	map = multimap_create(GFP_KERNEL, &mmgr);
-	WALB_CHECK(map != NULL);
+	WALB_CHECK(map);
 
 	/*
 	 * Cursor deletion test.
