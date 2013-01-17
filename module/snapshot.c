@@ -131,21 +131,22 @@ UNUSED static bool is_sector_loaded(const struct snapshot_sector_control *ctl);
 static bool treemap_memory_manager_inc(void)
 {
 	bool ret;
+	int cnt = atomic_inc_return(&n_users_of_memory_manager_);
 
-	if (atomic_inc_return(&n_users_of_memory_manager_) == 1) {
-		ret = initialize_treemap_memory_manager(
-			&mmgr_, N_SNAPSHOT_POOL,
-			TREE_NODE_CACHE_NAME,
-			TREE_CELL_HEAD_CACHE_NAME,
-			TREE_CELL_CACHE_NAME);
-		if (!ret) {
-			atomic_dec(&n_users_of_memory_manager_);
-			goto error;
-		}
+	if (cnt > 1) {
+		return true;
+	}
+	ASSERT(cnt == 0);
+	ret = initialize_treemap_memory_manager(
+		&mmgr_, N_SNAPSHOT_POOL,
+		TREE_NODE_CACHE_NAME,
+		TREE_CELL_HEAD_CACHE_NAME,
+		TREE_CELL_CACHE_NAME);
+	if (!ret) {
+		atomic_dec(&n_users_of_memory_manager_);
+		return false;
 	}
 	return true;
-error:
-	return false;
 }
 
 /**
@@ -187,7 +188,7 @@ static bool sector_load(struct snapshot_data *snapd, u64 off)
 	if (ctl->state == SNAPSHOT_SECTOR_CONTROL_FREE) {
 		ASSERT(!ctl->sector);
 		sect = sector_alloc(snapd->sector_size, GFP_KERNEL);
-		if (!sect) { goto error0; }
+		if (!sect) { return false; }
 		ctl->state = SNAPSHOT_SECTOR_CONTROL_ALLOC;
 		ctl->sector = sect;
 	}
@@ -197,7 +198,7 @@ static bool sector_load(struct snapshot_data *snapd, u64 off)
 		retb = sector_read(snapd, off, ctl->sector);
 		if (!retb) {
 			LOGe("Read snapshot sector %"PRIu64" failed.\n", off);
-			goto error0;
+			return false;
 		}
 		ctl->state = SNAPSHOT_SECTOR_CONTROL_CLEAN;
 	}
@@ -205,13 +206,10 @@ static bool sector_load(struct snapshot_data *snapd, u64 off)
 	/* Validate. */
 	if (!is_valid_snapshot_sector(ctl->sector)) {
 		LOGe("Snapshot sector %"PRIu64" not valid.\n", off);
-		goto error0;
+		return false;
 	}
 
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -237,17 +235,13 @@ static bool sector_sync(struct snapshot_data *snapd, u64 off)
 	ASSERT(ctl);
 
 	if (ctl->state == SNAPSHOT_SECTOR_CONTROL_DIRTY) {
-
 		ASSERT_SNAPSHOT_SECTOR(ctl->sector);
 		if (!sector_write(snapd, off, ctl->sector)) {
-			goto error;
+			return false;
 		}
 		ctl->state = SNAPSHOT_SECTOR_CONTROL_CLEAN;
 	}
 	return true;
-
-error:
-	return false;
 }
 
 
@@ -440,10 +434,10 @@ static bool record_free(struct snapshot_data *snapd, u32 snapshot_id)
 
 	/* Get sector control. */
 	ctl = get_control_by_id(snapd, snapshot_id);
-	if (!ctl) { goto error; }
+	if (!ctl) { return false; }
 
 	/* Load sector. */
-	if (!sector_load(snapd, ctl->offset)) { goto error; }
+	if (!sector_load(snapd, ctl->offset)) { return false; }
 	ASSERT(is_sector_loaded(ctl));
 	ASSERT_SNAPSHOT_SECTOR(ctl->sector);
 
@@ -467,9 +461,6 @@ static bool record_free(struct snapshot_data *snapd, u32 snapshot_id)
 	ctl->n_free_records++;
 
 	return true;
-
-error:
-	return false;
 }
 
 /**
@@ -494,22 +485,19 @@ static bool sector_read(struct snapshot_data *snapd,
 	/* Issue read IO. */
 	if (!sector_io(READ, snapd->bdev, offset, sect)) {
 		LOGe("Read snapshot sector %"PRIu64" failed.\n", offset);
-		goto error0;
+		return false;
 	}
 	/* Check checksum. */
 	if (checksum((u8 *)sect->data, sect->size, 0) != 0) {
 		LOGe("Bad checksum.\n");
-		goto error0;
+		return false;
 	}
 	/* Check validness of record array. */
 	if (!is_valid_snapshot_sector(sect)) {
 		LOGe("Snapshot sector is not valid.\n");
-		goto error0;
+		return false;
 	}
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -540,12 +528,9 @@ static bool sector_write(
 	/* Issue write IO. */
 	if (!sector_io(WRITE, snapd->bdev, offset, sect)) {
 		LOGe("Write snapshot sector %"PRIu64" failed.\n", offset);
-		goto error0;
+		return false;
 	}
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -672,12 +657,12 @@ static struct walb_snapshot_record* get_record_by_id(
 	ctl = get_control_by_id(snapd, snapshot_id);
 	if (!ctl) {
 		LOGe("snapshot id %"PRIu32" not found.\n", snapshot_id);
-		goto error0;
+		return NULL;
 	}
 
 	if (!sector_load(snapd, ctl->offset)) {
 		LOGe("snapshot sector %"PRIu64" load failed.\n", ctl->offset);
-		goto error0;
+		return NULL;
 	}
 	ASSERT(is_sector_loaded(ctl));
 	ASSERT(ctl->sector);
@@ -686,12 +671,9 @@ static struct walb_snapshot_record* get_record_by_id(
 	if (!rec) {
 		LOGe("snapshot record %"PRIu32" not found in the sector %"PRIu64".\n",
 			snapshot_id, ctl->offset);
-		goto error0;
+		return NULL;
 	}
 	return rec;
-
-error0:
-	return NULL;
 }
 
 /**
@@ -713,13 +695,10 @@ static struct walb_snapshot_record* get_record_by_name(
 	ASSERT(is_valid_snapshot_name(name));
 
 	sid = get_id_by_name(snapd, name);
-	if (sid == INVALID_SNAPSHOT_ID) { goto error0; }
+	if (sid == INVALID_SNAPSHOT_ID) { return NULL; }
 	rec = get_record_by_id(snapd, sid);
-	if (!rec) { goto error0; }
+	if (!rec) { return NULL; }
 	return rec;
-
-error0:
-	return NULL;
 }
 
 /**
@@ -746,13 +725,7 @@ static bool insert_snapshot_id(
 	key = snapshot_id;
 	val = (unsigned long)ctl;
 
-	if (map_add(snapd->id_idx, key, val, GFP_KERNEL)) {
-		goto error;
-	}
-	return true;
-
-error:
-	return false;
+	return map_add(snapd->id_idx, key, val, GFP_KERNEL) == 0;
 }
 
 /**
@@ -775,13 +748,7 @@ static bool delete_snapshot_id(
 
 	key = snapshot_id;
 	ret = map_del(snapd->id_idx, key);
-	if (ret == TREEMAP_INVALID_VAL) {
-		goto error;
-	}
-	return true;
-
-error:
-	return false;
+	return ret != TREEMAP_INVALID_VAL;
 }
 
 /**
@@ -816,12 +783,9 @@ static bool insert_to_name_idx(
 	ret = hashtbl_add(snapd->name_idx, key, key_size, val, GFP_KERNEL);
 	if (ret) {
 		LOGe("insert to name_idx failed.\n");
-		goto error0;
+		return false;
 	}
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -854,12 +818,9 @@ static bool insert_to_lsid_idx(
 	ret = multimap_add(snapd->lsid_idx, key, val, GFP_KERNEL);
 	if (ret) {
 		LOGe("insert to lsid_idx failed.\n");
-		goto error0;
+		return false;
 	}
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -883,14 +844,12 @@ static bool insert_snapshot_record_to_index(
 	ASSERT(is_valid_snapshot_record(rec));
 
 	ret = insert_to_name_idx(snapd, rec);
-	if (!ret) { goto error0; }
+	if (!ret) { return NULL; }
 
 	ret = insert_to_lsid_idx(snapd, rec);
-	if (!ret) { goto error0; }
+	if (!ret) { return NULL; }
 
 	return true;
-error0:
-	return false;
 }
 
 /**
@@ -917,12 +876,9 @@ static bool delete_from_name_idx(
 	sid = hashtbl_del(snapd->name_idx, key, key_size);
 	if (sid != (unsigned long)rec->snapshot_id) {
 		LOGe("delete from name_idx failed.\n");
-		goto error0;
+		return false;
 	}
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -948,12 +904,9 @@ static bool delete_from_lsid_idx(
 	val2 = multimap_del(snapd->lsid_idx, key, val);
 	if (val != val2) {
 		LOGe("delete from lsid_Idx failed.\n");
-		goto error0;
+		return false;
 	}
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -977,15 +930,12 @@ static bool delete_snapshot_record_from_index(
 	ASSERT(is_valid_snapshot_record(rec));
 
 	ret = delete_from_name_idx(snapd, rec);
-	if (!ret) { goto error0; }
+	if (!ret) { return false; }
 
 	ret = delete_from_lsid_idx(snapd, rec);
-	if (!ret) { goto error0; }
+	if (!ret) { return false; }
 
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -1039,7 +989,7 @@ static bool snapshot_data_load_sector_and_insert(
 		if (!ret) {
 			LOGe("insert to primary index failed.\n");
 			PRINT_E_SNAPSHOT_RECORD(rec);
-			goto error0;
+			return false;
 		}
 
 		/* Insert to name_idx and lsid_idx. */
@@ -1047,13 +997,10 @@ static bool snapshot_data_load_sector_and_insert(
 		if (!ret) {
 			LOGe("insert to secondary index failed.\n");
 			PRINT_E_SNAPSHOT_RECORD(rec);
-			goto error0;
+			return false;
 		}
 	}
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -1491,16 +1438,13 @@ int snapshot_data_finalize(struct snapshot_data *snapd)
 
 	if (!sector_sync_all(snapd)) {
 		LOGe("sector_sync_all() failed.\n");
-		goto error;
+		return 0;
 	}
 	ret = sector_evict_all(snapd);
 	ASSERT(ret);
 	ASSERT(is_all_sectors_free(snapd));
 
 	return 1;
-
-error:
-	return 0;
 }
 
 /*******************************************************************************
@@ -1618,7 +1562,7 @@ int snapshot_del_nolock(struct snapshot_data *snapd, const char *name)
 	ASSERT(is_valid_snapshot_name(name));
 
 	ret = snapshot_get_nolock(snapd, name, &rec);
-	if (!ret) { goto error_not_found; }
+	if (!ret) { return -1; }
 	ASSERT(is_valid_snapshot_record(rec));
 
 	sid = rec->snapshot_id;
@@ -1633,18 +1577,8 @@ int snapshot_del_nolock(struct snapshot_data *snapd, const char *name)
 	retb = record_free(snapd, sid);
 	ASSERT(retb);
 
-	/* Currently sync/evict must be executed by caller. */
-#if 0
-	retb = sector_sync(snapd, ctl->offset);
-	if (!retb) { goto error; }
-	retb = sector_evict(snapd, ctl->offset);
-	ASSERT(retb);
-#endif
-
+	/* Sync/evict must be executed by caller. */
 	return 0;
-
-error_not_found:
-	return -1;
 }
 
 /**
@@ -1714,11 +1648,8 @@ int snapshot_del_range_nolock(struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
 		ret = multimap_cursor_is_data(&cur);
 	}
 	retb = sector_sync_all(snapd);
-	if (!retb) { goto error0; }
+	if (!retb) { return -1; }
 	return n_rec;
-
-error0:
-	return -1;
 }
 
 /**
@@ -1754,12 +1685,9 @@ int snapshot_get_nolock(
 	ASSERT(recp);
 
 	rec = get_record_by_name(snapd, name);
-	if (!rec) { goto error0; }
+	if (!rec) { return 0; }
 	*recp = rec;
 	return 1;
-
-error0:
-	return 0;
 }
 
 /**
@@ -1809,7 +1737,7 @@ int snapshot_n_records_range_nolock(
 		sid = (u32)multimap_cursor_val(&cur);
 		ASSERT(sid != INVALID_SNAPSHOT_ID);
 		rec = get_record_by_id(snapd, sid);
-		if (!rec) { goto error0; }
+		if (!rec) { return -1; }
 		ASSERT(is_valid_snapshot_record(rec));
 
 		/* Iterate. */
@@ -1817,8 +1745,6 @@ int snapshot_n_records_range_nolock(
 		ret = multimap_cursor_next(&cur);
 	}
 	return n_rec;
-error0:
-	return -1;
 }
 
 /**
@@ -1880,9 +1806,7 @@ int snapshot_list_range_nolock(struct snapshot_data *snapd,
 		sid = (u32)multimap_cursor_val(&cur);
 		ASSERT(sid != INVALID_SNAPSHOT_ID);
 		rec = get_record_by_id(snapd, sid);
-		if (!rec) {
-			goto error0;
-		}
+		if (!rec) { return -1; }
 		ASSERT(is_valid_snapshot_record(rec));
 
 		/* Copy. */
@@ -1893,8 +1817,6 @@ int snapshot_list_range_nolock(struct snapshot_data *snapd,
 		ret = multimap_cursor_next(&cur);
 	}
 	return idx;
-error0:
-	return -1;
 }
 
 /**
@@ -1958,7 +1880,7 @@ int snapshot_list_from_nolock(
 		sid = (u32)map_cursor_key(&cur);
 		ASSERT(sid != INVALID_SNAPSHOT_ID);
 		rec = get_record_by_id(snapd, sid);
-		if (!rec) { goto error0; }
+		if (!rec) { return -1; }
 		ASSERT(is_valid_snapshot_record(rec));
 
 		/* Copy */
@@ -1969,9 +1891,6 @@ int snapshot_list_from_nolock(
 		ret = map_cursor_next(&cur);
 	}
 	return idx; /* number of found/copied records. */
-
-error0:
-	return -1;
 }
 
 /**

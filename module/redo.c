@@ -117,7 +117,7 @@ static struct redo_data* create_redo_data(struct walb_dev *wdev, u64 lsid)
 	ASSERT(wdev);
 
 	data = kmalloc(sizeof(*data), GFP_KERNEL);
-	if (!data) { goto error0; }
+	if (!data) { return NULL; }
 
 	data->wdev = wdev;
 	data->lsid = lsid;
@@ -125,11 +125,7 @@ static struct redo_data* create_redo_data(struct walb_dev *wdev, u64 lsid)
 	INIT_LIST_HEAD(&data->queue);
 	data->queue_len = 0;
 	data->error = 0;
-
 	return data;
-
-error0:
-	return NULL;
 }
 
 /**
@@ -390,7 +386,7 @@ static bool prepare_data_bio_for_redo(
 	ASSERT(sectd);
 
 	bio = bio_alloc(GFP_NOIO, 1);
-	if (!bio) { goto error0; }
+	if (!bio) { return false; }
 
 	bio->bi_bdev = wdev->ddev;
 	bio->bi_sector = pos;
@@ -405,9 +401,6 @@ static bool prepare_data_bio_for_redo(
 	biow->private_data = sectd;
 
 	return true;
-
-error0:
-	return false;
 }
 
 /**

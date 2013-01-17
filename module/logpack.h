@@ -22,15 +22,15 @@
  * Functions prototype.
  *******************************************************************************/
 
-void walb_logpack_header_print(const char *level,
-			struct walb_logpack_header *lhead);
+void walb_logpack_header_print(
+	const char *level, const struct walb_logpack_header *lhead);
 bool walb_logpack_header_add_req(
 	struct walb_logpack_header *lhead,
-	struct request *req,
+	const struct request *req,
 	unsigned int pbs, u64 ring_buffer_size);
 bool walb_logpack_header_add_bio(
 	struct walb_logpack_header *lhead,
-	struct bio *bio,
+	const struct bio *bio,
 	unsigned int pbs, u64 ring_buffer_size);
 
 #endif /* WALB_LOGPACK_H_KERNEL */

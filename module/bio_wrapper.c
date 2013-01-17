@@ -195,14 +195,10 @@ struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask)
 
 	biow = kmem_cache_alloc(bio_wrapper_cache_, gfp_mask);
 	if (!biow) {
-		LOGd("kmem_cache_alloc() failed.");
-		goto error0;
+		LOGe("kmem_cache_alloc() failed.");
+		return NULL;
 	}
 	return biow;
-
-error0:
-	LOGe("alloc_bio_wrapper() failed.\n");
-	return NULL;
 }
 
 void destroy_bio_wrapper(struct bio_wrapper *biow)
@@ -276,14 +272,12 @@ bool data_copy_bio_wrapper(
 	if (!bio_entry_list_mark_copied(
 			&dst->bioe_list, dst_off, ol_bio_len,
 			gfp_mask)) {
-		goto error;
+		LOGe("mark_copied failed.\n");
+		return false;
 	}
 
 	LOGd_("end dst %p src %p.\n", dst, src);
 	return true;
-error:
-	LOGe("failed.\n");
-	return false;
 }
 #endif
 
@@ -294,7 +288,6 @@ error:
 bool bio_wrapper_init(void)
 {
 	int cnt;
-	LOGd("begin\n");
 
 	cnt = atomic_inc_return(&shared_cnt_);
 	if (cnt > 1) {
@@ -307,13 +300,9 @@ bool bio_wrapper_init(void)
 		sizeof(struct bio_wrapper), 0, 0, NULL);
 	if (!bio_wrapper_cache_) {
 		LOGe("failed to create a kmem_cache (bio_wrapper).\n");
-		goto error;
+		return false;
 	}
-	LOGd("end\n");
 	return true;
-error:
-	LOGd("failed\n");
-	return false;
 }
 
 /**
@@ -323,22 +312,17 @@ void bio_wrapper_exit(void)
 {
 	int cnt;
 
-	LOGd("begin\n");
-
 	cnt = atomic_dec_return(&shared_cnt_);
 
-	if (cnt > 0) {
-		return;
-	} else if (cnt < 0) {
-		LOGn("bio_wrapper_init() is not called yet.\n");
+	if (cnt < 0) {
+		LOGe("bio_wrapper_init() is not called yet.\n");
 		atomic_inc(&shared_cnt_);
 		return;
-	} else {
-		ASSERT(cnt == 0);
+	}
+	if (cnt == 0) {
 		kmem_cache_destroy(bio_wrapper_cache_);
 		bio_wrapper_cache_ = NULL;
 	}
-	LOGd("end\n");
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

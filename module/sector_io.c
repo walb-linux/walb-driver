@@ -214,7 +214,6 @@ bool walb_read_super_sector(
 
 	LOGd("walb_read_super_sector end\n");
 	return true;
-
 error0:
 	return false;
 }
@@ -237,7 +236,7 @@ bool walb_write_super_sector(
 
 	LOGd("walb_write_super_sector begin\n");
 
-	ASSERT(ldev != NULL);
+	ASSERT(ldev);
 	ASSERT_SECTOR_DATA(lsuper);
 	sect = get_super_sector(lsuper);
 	pbs = lsuper->size;
@@ -255,14 +254,11 @@ bool walb_write_super_sector(
 	off0 = get_super_sector0_offset(pbs);
 	if (!sector_io(WRITE_FLUSH_FUA, ldev, off0, lsuper)) {
 		LOGe("write super sector0 failed\n");
-		goto error0;
+		return false;
 	}
 
 	LOGd("walb_write_super_sector end\n");
 	return true;
-
-error0:
-	return false;
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

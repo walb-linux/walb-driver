@@ -755,7 +755,7 @@ static void bio_entry_cursor_proceed_to_boundary(
 	cur->off_in = 0;
 	do {
 		cur->bioe = bio_entry_next(cur->bioe, cur->bio_ent_list);
-	} while (cur->bioe != NULL && cur->bioe->len == 0);
+	} while (cur->bioe && cur->bioe->len == 0);
 }
 
 /**
@@ -883,10 +883,10 @@ static struct bio_entry* bio_entry_list_get_first_nonzero(struct list_head *bio_
 	}
 
 	bioe = list_first_entry(bio_ent_list, struct bio_entry, list);
-	while (bioe != NULL && bioe->len == 0) {
+	while (bioe && bioe->len == 0) {
 		bioe = bio_entry_next(bioe, bio_ent_list);
 	}
-	ASSERT(bioe == NULL || bioe->len > 0);
+	ASSERT(!bioe || bioe->len > 0);
 	return bioe;
 }
 
@@ -965,16 +965,12 @@ struct bio_entry* alloc_bio_entry(gfp_t gfp_mask)
 	bioe = kmem_cache_alloc(bio_entry_cache_, gfp_mask);
 	if (!bioe) {
 		LOGd("kmem_cache_alloc() failed.");
-		goto error0;
+		return NULL;
 	}
 #ifdef WALB_DEBUG
 	atomic_inc(&n_allocated_);
 #endif
 	return bioe;
-
-error0:
-	LOGe("alloc_bio_entry() end with error.\n");
-	return NULL;
 }
 
 /**
@@ -1494,12 +1490,10 @@ bool split_bio_entry_list_for_chunk(
 		LOGd_("need to split %"PRIu64" %u\n", addr, sectors);
 		if (!ret) {
 			LOGe("bio split failed.\n");
-			goto error0;
+			return false;
 		}
 	}
 	return true;
-error0:
-	return false;
 }
 
 #ifdef WALB_DEBUG
@@ -1522,7 +1516,6 @@ unsigned int bio_entry_get_n_allocated_pages(void)
 bool bio_entry_init(void)
 {
 	int cnt;
-	LOGd("begin\n");
 
 	cnt = atomic_inc_return(&shared_cnt_);
 	if (cnt > 1) {
@@ -1535,13 +1528,9 @@ bool bio_entry_init(void)
 		sizeof(struct bio_entry), 0, 0, NULL);
 	if (!bio_entry_cache_) {
 		LOGe("failed to create a kmem_cache (bio_entry).\n");
-		goto error;
+		return false;
 	}
-	LOGd("end\n");
 	return true;
-error:
-	LOGd("bio_entry_init failed\n");
-	return false;
 }
 
 /**
@@ -1550,18 +1539,15 @@ error:
 void bio_entry_exit(void)
 {
 	int cnt;
-	LOGd("begin\n");
 
 	cnt = atomic_dec_return(&shared_cnt_);
 
-	if (cnt > 0) {
-		return;
-	} else if (cnt < 0) {
-		LOGn("bio_entry_init() is not called yet.\n");
+	if (cnt < 0) {
+		LOGe("bio_entry_init() is not called yet.\n");
 		atomic_inc(&shared_cnt_);
 		return;
-	} else {
-		ASSERT(cnt == 0);
+	}
+	if (cnt == 0) {
 #ifdef WALB_DEBUG
 		LOGw("n_allocated %u n_allocated_pages %u\n",
 			bio_entry_get_n_allocated(),
@@ -1570,7 +1556,6 @@ void bio_entry_exit(void)
 		kmem_cache_destroy(bio_entry_cache_);
 		bio_entry_cache_ = NULL;
 	}
-	LOGd("end\n");
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

@@ -312,7 +312,7 @@ int get_wdev_list_range(
 		if (ddata_u) {
 			if (copy_to_user(ddata_u, &ddata_t, sizeof(struct walb_disk_data))) {
 				LOGe("copy_to_user failed.\n");
-				goto error0;
+				return -1;
 			}
 			ddata_u++;
 		}
@@ -326,8 +326,6 @@ int get_wdev_list_range(
 	}
 	ASSERT(n - remaining <= (size_t)INT_MAX);
 	return (int)(n - remaining);
-error0:
-	return -1;
 }
 
 /**

@@ -342,7 +342,7 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 	ctl = walb_get_ctl(userctl, GFP_KERNEL);
 	if (!ctl) {
 		LOGe("walb_get_ctl failed.\n");
-		goto error0;
+		return -EFAULT;
 	}
 
 	/* Execute each command. */
@@ -427,13 +427,9 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 	/* Put ctl data. */
 	if (walb_put_ctl(userctl, ctl) != 0) {
 		LOGe("walb_put_ctl failed.\n");
-		goto error0;
+		return -EFAULT;
 	}
-
 	return ret;
-
-error0:
-	return -EFAULT;
 }
 
 /*
@@ -537,7 +533,7 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 		LOGe("You shoud specify valid logpack header lsid"
 			" (oldest_lsid (%"PRIu64") <= lsid <= written_lsid (%"PRIu64").\n",
 			oldest_lsid, written_lsid);
-		goto error0;
+		return -EFAULT;
 	}
 
 	spin_lock(&wdev->lsid_lock);
@@ -546,11 +542,9 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 
 	if (!walb_sync_super_block(wdev)) {
 		LOGe("sync super block failed.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	return 0;
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -602,12 +596,12 @@ static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ct
 
 	if (sizeof(struct walb_snapshot_record) > ctl->u2k.buf_size) {
 		LOGe("Buffer is too small for walb_snapshot_record.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	srec = (struct walb_snapshot_record *)ctl->u2k.__buf;
 	if (!srec) {
 		LOGe("Buffer must be walb_snapshot_record data.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	if (srec->lsid == INVALID_LSID) {
 		srec->lsid = get_completed_lsid(wdev);
@@ -616,19 +610,16 @@ static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ct
 
 	if (!is_valid_snapshot_name(srec->name)) {
 		LOGe("Snapshot name is invalid.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	LOGn("Create snapshot name %s lsid %"PRIu64" ts %"PRIu64"\n",
 		srec->name, srec->lsid, srec->timestamp);
 	error = snapshot_add(wdev->snapd, srec->name, srec->lsid, srec->timestamp);
 	if (error) {
 		ctl->error = error;
-		goto error0;
+		return -EFAULT;
 	}
 	return 0;
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -649,27 +640,24 @@ static int ioctl_wdev_delete_snapshot(struct walb_dev *wdev, struct walb_ctl *ct
 
 	if (sizeof(struct walb_snapshot_record) > ctl->u2k.buf_size) {
 		LOGe("Buffer is too small for walb_snapshot_record.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	srec = (struct walb_snapshot_record *)ctl->u2k.__buf;
 	if (!srec) {
 		LOGe("Buffer must be walb_snapshot_record data.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	if (!is_valid_snapshot_name(srec->name)) {
 		LOGe("Invalid snapshot name.\n");
-		goto error0;
+		return -EFAULT;
 	}
 
 	error = snapshot_del(wdev->snapd, srec->name);
 	if (error) {
 		ctl->error = error;
-		goto error0;
+		return -EFAULT;
 	}
 	return 0;
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -690,25 +678,22 @@ static int ioctl_wdev_delete_snapshot_range(struct walb_dev *wdev, struct walb_c
 
 	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
 		LOGe("Buffer is too small for u64 * 2.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
 	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
 	if (!is_lsid_range_valid(lsid0, lsid1)) {
 		LOGe("Specify valid lsid range.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	ret = snapshot_del_range(wdev->snapd, lsid0, lsid1);
 	if (ret >= 0) {
 		ctl->val_int = ret;
 	} else {
 		ctl->error = ret;
-		goto error0;
+		return -EFAULT;
 	}
 	return 0;
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -729,11 +714,11 @@ static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
 
 	if (sizeof(struct walb_snapshot_record) > ctl->u2k.buf_size) {
 		LOGe("buffer size too small.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	if (sizeof(struct walb_snapshot_record) > ctl->k2u.buf_size) {
 		LOGe("buffer size too small.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	srec0 = (struct walb_snapshot_record *)ctl->u2k.__buf;
 	srec1 = (struct walb_snapshot_record *)ctl->k2u.__buf;
@@ -746,12 +731,9 @@ static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
 	} else {
 		snapshot_record_init(srec1);
 		ctl->error = ret;
-		goto error0;
+		return -EFAULT;
 	}
 	return 0;
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -772,26 +754,23 @@ static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_c
 
 	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
 		LOGe("Buffer is too small for u64 * 2.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
 	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
 	if (!is_lsid_range_valid(lsid0, lsid1)) {
 		LOGe("Specify valid lsid range.\n");
-		goto error0;
+		return -EFAULT;
 	}
 
 	ret = snapshot_n_records_range(
 		wdev->snapd, lsid0, lsid1);
 	if (ret < 0) {
 		ctl->error = ret;
-		goto error0;
+		return -EFAULT;
 	}
 	ctl->val_int = ret;
 	return 0;
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -814,25 +793,25 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 
 	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
 		LOGe("Buffer is too small for u64 * 2.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
 	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
 	if (!is_lsid_range_valid(lsid0, lsid1)) {
 		LOGe("Specify valid lsid range.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	srec = (struct walb_snapshot_record *)ctl->k2u.__buf;
 	size = ctl->k2u.buf_size / sizeof(struct walb_snapshot_record);
 	if (size == 0) {
 		LOGe("Buffer is to small for results.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	ret = snapshot_list_range(wdev->snapd, srec, size,
 				lsid0, lsid1);
 	if (ret < 0) {
 		ctl->error = ret;
-		goto error0;
+		return -EFAULT;
 	}
 	n_rec = ret;
 	ctl->val_int = n_rec;
@@ -843,9 +822,6 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 		ctl->val_u64 = INVALID_LSID;
 	}
 	return 0;
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -871,12 +847,12 @@ static int ioctl_wdev_list_snapshot_from(struct walb_dev *wdev, struct walb_ctl 
 	size = ctl->k2u.buf_size / sizeof(struct walb_snapshot_record);
 	if (size == 0) {
 		LOGe("Buffer is to small for results.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	ret = snapshot_list_from(wdev->snapd, srec, size, sid);
 	if (ret < 0) {
 		ctl->error = ret;
-		goto error0;
+		return -EFAULT;
 	}
 	n_rec = ret;
 	ctl->val_int = n_rec;
@@ -888,9 +864,6 @@ static int ioctl_wdev_list_snapshot_from(struct walb_dev *wdev, struct walb_ctl 
 	}
 	ctl->val_u32 = next_sid;
 	return 0;
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -918,13 +891,10 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
 	if (!ret) {
 		atomic_set(&wdev->is_read_only, 1);
 		LOGe("superblock sync failed.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	start_checkpointing(&wdev->cpd);
-
 	return 0;
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -962,13 +932,10 @@ static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb
 	interval = ctl->val_u32;
 	if (interval > WALB_MAX_CHECKPOINT_INTERVAL) {
 		LOGe("Checkpoint interval is too big.\n");
-		goto error0;
+		return -EFAULT;
 	}
 	set_checkpoint_interval(&wdev->cpd, interval);
 	return 0;
-
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -1066,16 +1033,16 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 	if (new_size < old_size) {
 		LOGe("Shrink size from %"PRIu64" to %"PRIu64" is not supported.\n",
 			old_size, new_size);
-		goto error0;
+		return -EFAULT;
 	}
 	if (new_size > ddev_size) {
 		LOGe("new_size %"PRIu64" > data device capacity %"PRIu64".\n",
 			new_size, ddev_size);
-		goto error0;
+		return -EFAULT;
 	}
 	if (new_size == old_size) {
 		LOGn("No need to resize.\n");
-		goto fin;
+		return 0;
 	}
 
 	spin_lock(&wdev->size_lock);
@@ -1084,19 +1051,15 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 	spin_unlock(&wdev->size_lock);
 
 	if (!resize_disk(wdev->gd, new_size)) {
-		goto error0;
+		return -EFAULT;
 	}
 
 	/* Sync super block for super->device_size */
 	if (!walb_sync_super_block(wdev)) {
 		LOGe("superblock sync failed.\n");
-		goto error0;
+		return -EFAULT;
 	}
-
-fin:
 	return 0;
-error0:
-	return -EFAULT;
 }
 
 /**
@@ -1293,12 +1256,9 @@ static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
 	}
 
 	cancel_melt_work(wdev);
-	if (!freeze_if_melted(wdev, timeout_sec)) {
-		goto error0;
+	if (freeze_if_melted(wdev, timeout_sec)) {
+		return 0;
 	}
-
-	return 0;
-error0:
 	return -EFAULT;
 }
 
@@ -1339,12 +1299,9 @@ static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl)
 	LOGn("WALB_IOCTL_MELT\n");
 
 	cancel_melt_work(wdev);
-	if (!melt_if_frozen(wdev, true)) {
-		goto error0;
+	if (melt_if_frozen(wdev, true)) {
+		return 0;
 	}
-
-	return 0;
-error0:
 	return -EFAULT;
 }
 
@@ -1408,8 +1365,9 @@ static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 		if (copy_to_user((void __user *) arg, &geo, sizeof(geo)))
 			return -EFAULT;
 		return 0;
+	default:
+		return -ENOTTY;
 	}
-	return -ENOTTY;
 }
 
 static struct block_device_operations walblog_ops = {
@@ -1522,12 +1480,9 @@ static int walb_set_name(struct walb_dev *wdev,
 	name_len = strnlen(dev_name, DISK_NAME_LEN);
 	if (name_len > WALB_DEV_NAME_MAX_LEN) {
 		LOGe("Device name is too long: %s.\n", name);
-		goto error0;
+		return -1;
 	}
 	return 0;
-
-error0:
-	return -1;
 }
 
 /**
@@ -1594,14 +1549,14 @@ static bool resize_disk(struct gendisk *gd, u64 new_size)
 
 	old_size = get_capacity(gd);
 	if (old_size == new_size) {
-		goto fin;
+		return true;
 	}
 	set_capacity(gd, new_size);
 
 	bdev = bdget_disk(gd, 0);
 	if (!bdev) {
 		LOGe("bdget_disk failed.\n");
-		goto error0;
+		return false;
 	}
 	mutex_lock(&bdev->bd_mutex);
 	if (old_size > new_size) {
@@ -1613,11 +1568,7 @@ static bool resize_disk(struct gendisk *gd, u64 new_size)
 	}
 	mutex_unlock(&bdev->bd_mutex);
 	bdput(bdev);
-
-fin:
 	return true;
-error0:
-	return false;
 }
 
 /**
@@ -1788,7 +1739,7 @@ static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
 	case FRZ_FREEZED_WITH_TIMEOUT:
 		LOGe("Race condition occured.\n");
 		mutex_unlock(&wdev->freeze_lock);
-		goto error0;
+		return false;
 	default:
 		BUG();
 	}
@@ -1805,10 +1756,7 @@ static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
 	}
 	ASSERT(wdev->freeze_state != FRZ_MELTED);
 	mutex_unlock(&wdev->freeze_lock);
-
 	return true;
-error0:
-	return false;
 }
 
 /**
@@ -1847,16 +1795,13 @@ static bool melt_if_frozen(
 		/* Race condition. */
 		LOGe("Race condition occurred.\n");
 		mutex_unlock(&wdev->freeze_lock);
-		goto error0;
+		return false;
 	default:
 		BUG();
 	}
 	ASSERT(wdev->freeze_state == FRZ_MELTED);
 	mutex_unlock(&wdev->freeze_lock);
-
 	return true;
-error0:
-	return false;
 }
 
 /**
@@ -1874,28 +1819,28 @@ static bool initialize_workqueues(void)
 	wq_normal_ = alloc_workqueue(WQ_NORMAL_NAME, WQ_MEM_RECLAIM, 0);
 	if (!wq_normal_) {
 		LOGe(MSG, WQ_NORMAL_NAME);
-		goto error;
+		goto error0;
 	}
 	wq_nrt_ = alloc_workqueue(WQ_NRT_NAME,
 				WQ_MEM_RECLAIM | WQ_NON_REENTRANT, 0);
 	if (!wq_nrt_) {
 		LOGe(MSG, WQ_NRT_NAME);
-		goto error;
+		goto error0;
 	}
 	wq_unbound_ = alloc_workqueue(WQ_UNBOUND_NAME,
 				WQ_MEM_RECLAIM | WQ_UNBOUND, WQ_UNBOUND_MAX_ACTIVE);
 	if (!wq_unbound_) {
 		LOGe(MSG, WQ_UNBOUND_NAME);
-		goto error;
+		goto error0;
 	}
 	wq_misc_ = alloc_workqueue(WQ_MISC_NAME, WQ_MEM_RECLAIM, 0);
 	if (!wq_misc_) {
 		LOGe(MSG, WQ_MISC_NAME);
-		goto error;
+		goto error0;
 	}
 	return true;
 #undef MSG
-error:
+error0:
 	finalize_workqueues();
 	return false;
 }
