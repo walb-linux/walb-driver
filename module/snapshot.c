@@ -136,7 +136,7 @@ static bool treemap_memory_manager_inc(void)
 	if (cnt > 1) {
 		return true;
 	}
-	ASSERT(cnt == 0);
+	ASSERT(cnt == 1);
 	ret = initialize_treemap_memory_manager(
 		&mmgr_, N_SNAPSHOT_POOL,
 		TREE_NODE_CACHE_NAME,
