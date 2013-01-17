@@ -2323,16 +2323,27 @@ static void wait_for_logpack_and_submit_datapack(
 			spin_lock(&iocored->pending_data_lock);
 			LOGd_("pending_sectors %u\n", iocored->pending_sectors);
 			is_stop_queue = should_stop_queue(wdev, biow);
-			iocored->pending_sectors += biow->len;
-			is_pending_insert_succeeded =
-				pending_insert_and_delete_fully_overwritten(
-					iocored->pending_data,
-					&iocored->max_sectors_in_pending,
-					biow, GFP_ATOMIC);
+			if (bio_wrapper_state_is_discard(biow)) {
+				/* Discard IO does not have buffer of biow->len bytes.
+				   We consider its metadata only. */
+				iocored->pending_sectors++;
+				is_pending_insert_succeeded = true;
+			} else {
+				iocored->pending_sectors += biow->len;
+				is_pending_insert_succeeded =
+					pending_insert_and_delete_fully_overwritten(
+						iocored->pending_data,
+						&iocored->max_sectors_in_pending,
+						biow, GFP_ATOMIC);
+			}
 			spin_unlock(&iocored->pending_data_lock);
 			if (!is_pending_insert_succeeded) {
 				spin_lock(&iocored->pending_data_lock);
-				iocored->pending_sectors -= biow->len;
+				if (bio_wrapper_state_is_discard(biow)) {
+					iocored->pending_sectors--;
+				} else {
+					iocored->pending_sectors -= biow->len;
+				}
 				spin_unlock(&iocored->pending_data_lock);
 				schedule();
 				goto retry_insert_pending;
@@ -2475,10 +2486,14 @@ static void wait_for_write_bio_wrapper(
 	/* Delete from pending data. */
 	spin_lock(&iocored->pending_data_lock);
 	is_start_queue = should_start_queue(wdev, biow);
-	iocored->pending_sectors -= biow->len;
-	if (!bio_wrapper_state_is_overwritten(biow)) {
-		pending_delete(iocored->pending_data,
-			&iocored->max_sectors_in_pending, biow);
+	if (bio_wrapper_state_is_discard(biow)) {
+		iocored->pending_sectors--;
+	} else {
+		iocored->pending_sectors -= biow->len;
+		if (!bio_wrapper_state_is_overwritten(biow)) {
+			pending_delete(iocored->pending_data,
+				&iocored->max_sectors_in_pending, biow);
+		}
 	}
 	spin_unlock(&iocored->pending_data_lock);
 	if (is_start_queue) {
@@ -2546,11 +2561,15 @@ static void wait_for_bio_wrapper(
 		i++;
 	}
 #ifdef WALB_DEBUG
-	if (bio_wrapper_state_is_discard(biow)) {
-		ASSERT(remaining == biow->len);
-		ASSERT(list_empty(&biow->bioe_list));
-	} else {
-		ASSERT(remaining == 0);
+	{
+		const struct walb_dev *wdev = biow->private_data;
+		if (bio_wrapper_state_is_discard(biow) &&
+			!blk_queue_discard(bdev_get_queue(wdev->ddev))) {
+			ASSERT(remaining == biow->len);
+			ASSERT(list_empty(&biow->bioe_list));
+		} else {
+			ASSERT(remaining == 0);
+		}
 	}
 #endif
 
@@ -3066,14 +3085,17 @@ static inline bool should_start_queue(
 	iocored = get_iocored_from_wdev(wdev);
 	ASSERT(iocored);
 
-	ASSERT(iocored->pending_sectors >= biow->len);
-
 	if (!iocored->is_under_throttling) {
 		return false;
 	}
 
-	is_size = iocored->pending_sectors - biow->len
-		< wdev->min_pending_sectors;
+	if (iocored->pending_sectors >= biow->len) {
+		is_size = iocored->pending_sectors - biow->len
+			< wdev->min_pending_sectors;
+	} else {
+		is_size = true;
+	}
+
 	is_timeout = time_is_before_jiffies(iocored->queue_restart_jiffies);
 
 	if (is_size || is_timeout) {
