@@ -233,12 +233,11 @@ error1:
  */
 static inline u64 get_next_lsid_unsafe(const struct walb_logpack_header *lhead)
 {
-	if (lhead->total_io_size == 0) {
-		ASSERT(lhead->n_records == 0);
+	if (lhead->total_io_size == 0 && lhead->n_records == 0) {
+		/* Zero-flush only. */
 		return lhead->logpack_lsid;
-	} else {
-		return lhead->logpack_lsid + 1 + lhead->total_io_size;
 	}
+	return lhead->logpack_lsid + 1 + lhead->total_io_size;
 }
 
 /**
