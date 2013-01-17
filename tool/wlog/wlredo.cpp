@@ -520,9 +520,9 @@ public:
                 logh.printShort(); /* debug */
 #endif
                 for (size_t i = 0; i < logh.nRecords(); i++) {
-                    LogDataPtr logd = allocLogData(logh, i);
-                    readLogpackData(*logd, fdr);
-                    createIoAndSubmit(*logd);
+                    walb::util::WalbLogpackData logd(logh, i);
+                    readLogpackData(logd, fdr);
+                    createIoAndSubmit(logd);
                 }
             } // while (true)
             submitIos();
@@ -555,10 +555,6 @@ private:
 
     u32 salt() const {
         return wh_.header().log_checksum_salt;
-    }
-
-    LogDataPtr allocLogData(walb::util::WalbLogpackHeader &logh, size_t i) {
-        return LogDataPtr(new walb::util::WalbLogpackData(logh, i));
     }
 
     /**
