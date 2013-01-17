@@ -2274,7 +2274,6 @@ static void wait_for_logpack_and_submit_datapack(
 	}
 
 	list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
-
 		ASSERT(biow->bio);
 		bio_error = wait_for_bio_entry_list(&biow->bioe_list);
 		if (is_failed || bio_error) { goto error_io; }
@@ -2288,20 +2287,23 @@ static void wait_for_logpack_and_submit_datapack(
 			bio_endio(biow->bio, 0);
 			destroy_bio_wrapper_dec(wdev, biow);
 		} else {
-			/* Create all related bio(s) by copying IO data. */
-		retry_create:
+			if (!bio_wrapper_state_is_discard(biow) ||
+				blk_queue_discard(bdev_get_queue(wdev->ddev))) {
+				/* Create all related bio(s) by copying IO data. */
+			retry_create:
 #ifdef WALB_FAST_ALGORITHM
-			ret = create_bio_entry_list_by_copy(biow, wdev->ddev);
+				ret = create_bio_entry_list_by_copy(biow, wdev->ddev);
 #else
-			ret = create_bio_entry_list(biow, wdev->ddev);
+				ret = create_bio_entry_list(biow, wdev->ddev);
 #endif
-			if (!ret) {
-				schedule();
-				goto retry_create;
+				if (!ret) {
+					schedule();
+					goto retry_create;
+				}
 			}
 
-			/* Split if required due to chunk limitations. */
 			if (!bio_wrapper_state_is_discard(biow)) {
+				/* Split if required due to chunk limitations. */
 			retry_split:
 				if (!split_bio_entry_list_for_chunk(
 						&biow->bioe_list,
@@ -2543,7 +2545,14 @@ static void wait_for_bio_wrapper(
 		remaining -= bioe->len;
 		i++;
 	}
-	ASSERT(remaining == 0);
+#ifdef WALB_DEBUG
+	if (bio_wrapper_state_is_discard(biow)) {
+		ASSERT(remaining == biow->len);
+		ASSERT(list_empty(&biow->bioe_list));
+	} else {
+		ASSERT(remaining == 0);
+	}
+#endif
 
 	if (is_endio) {
 		ASSERT(biow->bio);
@@ -2565,12 +2574,12 @@ static void wait_for_bio_wrapper(
  */
 static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 {
+#ifdef WALB_DEBUG
 	struct walb_dev *wdev = biow->private_data;
-	struct bio_entry *bioe;
+#endif
 	struct blk_plug plug;
 
 	ASSERT(biow);
-	ASSERT(!list_empty(&biow->bioe_list));
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	ASSERT(biow->n_overlapped == 0);
 #endif
@@ -2581,20 +2590,19 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 		BUG();
 	}
 
+#ifdef WALB_DEBUG
 	if (bio_wrapper_state_is_discard(biow) &&
 		!blk_queue_discard(bdev_get_queue(wdev->ddev))) {
-		/* Data device does not support REQ_DISCARD
-		   so just ignore the request. */
-		list_for_each_entry(bioe, &biow->bioe_list, list) {
-			set_bit(BIO_UPTODATE, &bioe->bio->bi_flags);
-			bio_endio(bioe->bio, 0);
-		}
+		/* Data device does not support REQ_DISCARD. */
+		ASSERT(list_empty(&biow->bioe_list));
 	} else {
-		/* Submit all related bio(s). */
-		if (is_plugging) { blk_start_plug(&plug); }
-		submit_bio_entry_list(&biow->bioe_list);
-		if (is_plugging) { blk_finish_plug(&plug); }
+		ASSERT(!list_empty(&biow->bioe_list));
 	}
+#endif
+	/* Submit all related bio(s). */
+	if (is_plugging) { blk_start_plug(&plug); }
+	submit_bio_entry_list(&biow->bioe_list);
+	if (is_plugging) { blk_finish_plug(&plug); }
 }
 
 /**
