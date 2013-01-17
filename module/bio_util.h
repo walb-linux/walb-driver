@@ -34,6 +34,10 @@ static inline u32 bio_calc_checksum(struct bio *bio, u32 salt)
 		return 0;
 	}
 
+	if (bio->bi_rw & REQ_DISCARD) {
+		return 0;
+	}
+
 	bio_for_each_segment(bvec, bio, i) {
 		buf = (u8 *)kmap_atomic(bvec->bv_page) + bvec->bv_offset;
 		sum = checksum_partial(sum, buf, bvec->bv_len);
