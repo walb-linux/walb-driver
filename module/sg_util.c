@@ -59,7 +59,7 @@ static bool __sg_copy_buffer_offset(
 static bool sg_pos_is_end(const struct sg_pos *pos)
 {
 	ASSERT(pos);
-	return (pos->sg == NULL);
+	return pos->sg == NULL;
 }
 
 /**
@@ -69,7 +69,7 @@ static void sg_pos_assert(const struct sg_pos *pos)
 {
 	ASSERT(pos);
 	if (sg_pos_is_end(pos)) {
-		ASSERT(pos->sg == NULL);
+		ASSERT(!pos->sg);
 		ASSERT(pos->offset == 0);
 	} else {
 		ASSERT(pos->offset < pos->sg->length);

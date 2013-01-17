@@ -755,7 +755,7 @@ static void bio_entry_cursor_proceed_to_boundary(
 	cur->off_in = 0;
 	do {
 		cur->bioe = bio_entry_next(cur->bioe, cur->bio_ent_list);
-	} while (cur->bioe != NULL && cur->bioe->len == 0);
+	} while (cur->bioe && cur->bioe->len == 0);
 }
 
 /**
@@ -883,10 +883,10 @@ static struct bio_entry* bio_entry_list_get_first_nonzero(struct list_head *bio_
 	}
 
 	bioe = list_first_entry(bio_ent_list, struct bio_entry, list);
-	while (bioe != NULL && bioe->len == 0) {
+	while (bioe && bioe->len == 0) {
 		bioe = bio_entry_next(bioe, bio_ent_list);
 	}
-	ASSERT(bioe == NULL || bioe->len > 0);
+	ASSERT(!bioe || bioe->len > 0);
 	return bioe;
 }
 
