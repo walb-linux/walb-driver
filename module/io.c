@@ -135,6 +135,7 @@ UNUSED static void print_pack(
 	const char *level, struct pack *pack);
 UNUSED static void print_pack_list(
 	const char *level, struct list_head *wpack_list);
+static bool pack_contains_flush(const struct pack *pack);
 
 /* Workqueue tasks. */
 static void task_submit_logpack_list(struct work_struct *work);
@@ -771,6 +772,17 @@ static void print_pack_list(const char *level, struct list_head *wpack_list)
 }
 
 /**
+ * RETURN:
+ *   true if pack contains one or more flush requests (for log device).
+ */
+static bool pack_contains_flush(const struct pack *pack)
+{
+	return pack->is_zero_flush_only ||
+		pack->is_flush_contained ||
+		pack->is_flush_header;
+}
+
+/**
  * Submit all logpacks generated from bio_wrapper list.
  *
  * (1) Create logpack list.
@@ -1263,6 +1275,10 @@ static void submit_logpack_list(
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		logh = get_logpack_header(wpack->logpack_header_sector);
 
+		if (pack_contains_flush(wpack)) {
+			atomic_inc(&iocored->n_log_flush);
+		}
+
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
 			LOGd_("is_zero_flush_only\n");
@@ -1680,11 +1696,26 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 			rtimeo = wait_for_completion_timeout(&biow->done, timeo);
 			if (rtimeo == 0) {
 				LOGn("timeout(%d): biow %p bio %p pos %"PRIu64" len %u"
-					" state(%d%d%d)\n",
+					" state(%d%d%d%d"
+#ifdef WALB_FAST_ALGORITHM
+					"%d"
+#endif
+#ifdef WALB_OVERLAPPED_SERIALIZE
+					"%d"
+#endif
+					")\n",
 					c, biow, biow->bio, (u64)biow->pos, biow->len,
 					bio_wrapper_state_is_prepared(biow),
 					bio_wrapper_state_is_submitted(biow),
-					bio_wrapper_state_is_completed(biow));
+					bio_wrapper_state_is_completed(biow),
+					bio_wrapper_state_is_discard(biow)
+#ifdef WALB_FAST_ALGORITHM
+					, bio_wrapper_state_is_overwritten(biow)
+#endif
+#ifdef WALB_OVERLAPPED_SERIALIZE
+					, bio_wrapper_state_is_delayed(biow)
+#endif
+					);
 				c++;
 				goto retry;
 			}
@@ -1894,6 +1925,7 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	atomic_set(&iocored->n_started_write_bio, 0);
 	atomic_set(&iocored->n_pending_bio, 0);
 	atomic_set(&iocored->n_pending_gc, 0);
+	atomic_set(&iocored->n_log_flush, 0);
 
 	/* Log flush time. */
 	iocored->log_flush_jiffies = jiffies;
@@ -2377,6 +2409,10 @@ static void wait_for_logpack_and_submit_datapack(
 		destroy_bio_wrapper_dec(wdev, biow);
 	}
 
+	if (pack_contains_flush(wpack)) {
+		atomic_dec(&iocored->n_log_flush);
+	}
+
 	/* Update completed_lsid/permanent_lsid. */
 	if (!is_failed) {
 		struct walb_logpack_header *logh =
@@ -2525,13 +2561,28 @@ static void wait_for_bio_wrapper(
 			rtimeo = wait_for_completion_timeout(&bioe->done, timeo);
 			if (rtimeo == 0) {
 				LOGn("timeout(%d): biow %p ith %u "
-					"bioe %p bio %p pos %"PRIu64" len %u "
-					"state(%d%d%d)\n",
+					"bioe %p bio %p pos %"PRIu64" len %u"
+					" state(%d%d%d%d"
+#ifdef WALB_FAST_ALGORITHM
+					"%d"
+#endif
+#ifdef WALB_OVERLAPPED_SERIALIZE
+					"%d"
+#endif
+					")\n",
 					c, biow, i, bioe, bioe->bio,
 					(u64)bioe->pos, bioe->len,
 					bio_wrapper_state_is_prepared(biow),
 					bio_wrapper_state_is_submitted(biow),
-					bio_wrapper_state_is_completed(biow));
+					bio_wrapper_state_is_completed(biow),
+					bio_wrapper_state_is_discard(biow)
+#ifdef WALB_FAST_ALGORITHM
+					, bio_wrapper_state_is_overwritten(biow)
+#endif
+#ifdef WALB_OVERLAPPED_SERIALIZE
+					, bio_wrapper_state_is_delayed(biow)
+#endif
+					);
 				c++;
 				goto retry;
 			}
@@ -3153,8 +3204,10 @@ retry:
 		/* No need to wait. */
 		return;
 	}
-	if (lsid < flush_lsid + wdev->log_flush_interval_pb &&
-		jiffies < log_flush_jiffies) {
+	if ((lsid < flush_lsid &&
+			atomic_read(&iocored->n_log_flush) > 0) ||
+		(lsid < flush_lsid + wdev->log_flush_interval_pb &&
+			time_is_after_jiffies(log_flush_jiffies))) {
 		/* Too early to force flush log device.
 		   Wait for a while. */
 		schedule();
@@ -3178,11 +3231,13 @@ retry:
 	spin_unlock(&wdev->lsid_lock);
 
 	/* Execute a flush request. */
+	atomic_inc(&iocored->n_log_flush);
 	err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
 	if (err) {
 		LOGe("log device flush failed. to be read-only mode\n");
 		set_read_only_mode(iocored);
 	}
+	atomic_dec(&iocored->n_log_flush);
 
 #ifdef WALB_DEBUG
 	atomic_inc(&get_iocored_from_wdev(wdev)->n_flush_force);
