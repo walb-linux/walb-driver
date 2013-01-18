@@ -187,6 +187,9 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 	biow->ol_id = (u64)(-1);
 #endif
 #endif
+#ifdef WALB_DEBUG
+	atomic_set(&biow->state, 0);
+#endif
 }
 
 struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask)

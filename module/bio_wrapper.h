@@ -52,6 +52,9 @@ struct bio_wrapper
 	u64 ol_id; /* in order to check FIFO property. */
 #endif
 #endif
+#ifdef WALB_DEBUG
+	atomic_t state;
+#endif
 };
 
 /**
