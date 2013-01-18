@@ -59,9 +59,11 @@ static int is_sync_superblock_ = 1;
 module_param_named(is_sync_superblock, is_sync_superblock_, int, S_IRUGO|S_IWUSR);
 
 /**
- * See parameters.
+ * Set Non-zero if you want to sort data IOs
+ * before submitting to the data device.
+ * The parameter n_io_bulk will work as sort buffer size.
  */
-unsigned int is_sort_data_io_;
+unsigned int is_sort_data_io_ = 1;
 module_param_named(is_sort_data_io, is_sort_data_io_, uint, S_IRUGO|S_IWUSR);
 
 /*******************************************************************************
