@@ -63,16 +63,6 @@ static struct treemap_memory_manager mmgr_;
 
 #define WORKER_NAME_GC "walb_gc"
 
-/* If you prefer small response to large throughput, set N_PACK_BULK smaller. */
-#define N_PACK_BULK 128
-
-/* If you use IO-scheduling-sensitive storage for the data device,
- * you should set larger N_IO_BULK value.
- * For example, HDD with little cache.
- * This must not be so large because we use insertion sort.
- */
-#define N_IO_BULK 1024
-
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
@@ -837,7 +827,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 			list_move_tail(&biow->list, &biow_list);
 			start_write_bio_wrapper(wdev, biow);
 			n_io++;
-			if (n_io >= N_IO_BULK) { break; }
+			if (n_io >= wdev->n_io_bulk) { break; }
 		}
 		spin_unlock(&iocored->logpack_submit_queue_lock);
 		if (is_empty) { break; }
@@ -915,7 +905,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 					&iocored->logpack_wait_queue, list) {
 			list_move_tail(&wpack->list, &wpack_list);
 			n_pack++;
-			if (n_pack >= N_PACK_BULK) { break; }
+			if (n_pack >= wdev->n_pack_bulk) { break; }
 		}
 		spin_unlock(&iocored->logpack_wait_queue_lock);
 		if (is_empty) { break; }
@@ -1001,11 +991,10 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			list_move_tail(&biow->list2, &biow_list);
 			n_io++;
 			lsid = biow->lsid;
-			if (n_io >= N_IO_BULK) { break; }
+			if (n_io >= wdev->n_io_bulk) { break; }
 		}
 		spin_unlock(&iocored->datapack_submit_queue_lock);
 		if (is_empty) { break; }
-		ASSERT(n_io <= N_IO_BULK);
 
 		/* Wait for all previous log must be permanent
 		   before submitting data IO. */
@@ -1113,11 +1102,11 @@ static void task_wait_for_bio_wrapper_list(struct work_struct *work)
 					&iocored->datapack_wait_queue, list2) {
 			list_move_tail(&biow->list2, &biow_list);
 			n_io++;
-			if (n_io >= N_IO_BULK) { break; }
+			if (n_io >= wdev->n_io_bulk) { break; }
 		}
 		spin_unlock(&iocored->datapack_wait_queue_lock);
 		if (is_empty) { break; }
-		ASSERT(n_io <= N_IO_BULK);
+		ASSERT(n_io <= wdev->n_io_bulk);
 
 		/* Wait for write bio wrapper and notify to gc task. */
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
@@ -1754,7 +1743,7 @@ static void dequeue_and_gc_logpack_list(struct walb_dev *wdev)
 					&iocored->logpack_gc_queue, list) {
 			list_move_tail(&wpack->list, &wpack_list);
 			n_pack++;
-			if (n_pack >= N_PACK_BULK) { break; }
+			if (n_pack >= wdev->n_pack_bulk) { break; }
 		}
 		spin_unlock(&iocored->logpack_gc_queue_lock);
 		if (is_empty) { break; }

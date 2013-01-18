@@ -208,6 +208,16 @@ struct walb_dev
 	unsigned int queue_stop_timeout_jiffies;
 #endif
 
+	/* If you prefer small response to large throughput,
+	   set n_pack_bulk smaller. */
+	unsigned int n_pack_bulk;
+
+	/* If you use IO-scheduling-sensitive storage for the data device,
+	 * you should set larger n_io_bulk value.
+	 * For example, HDD with little cache.
+	 * This must not be so large because we use insertion sort. */
+	unsigned int n_io_bulk;
+
 	/*
 	 * For freeze/melt.
 	 */
