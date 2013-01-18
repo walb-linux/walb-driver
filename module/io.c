@@ -70,8 +70,6 @@ static struct treemap_memory_manager mmgr_;
  * you should set larger N_IO_BULK value.
  * For example, HDD with little cache.
  * This must not be so large because we use insertion sort.
- * In addition, the value must not exceed 256 due to
- * limitation of concurrent tasks with an unbound workqueue.
  */
 #define N_IO_BULK 1024
 
