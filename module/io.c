@@ -2350,7 +2350,7 @@ static void wait_for_logpack_and_submit_datapack(
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
 				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-					LOGd_("iocore freezed.\n");
+					LOGd_("iocore frozen.\n");
 				}
 #if 0
 			retry_pack_work:
