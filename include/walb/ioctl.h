@@ -557,6 +557,12 @@ struct walb_start_param
 	unsigned int log_flush_interval_ms; /* period [ms]. */
 	unsigned int log_flush_interval_mb; /* size [MB]. */
 
+	/* Max number of logpacks to be processed at once. */
+	unsigned int n_pack_bulk;
+
+	/* Max number of data IOs to be processed at once. */
+	unsigned int n_io_bulk;
+
 } __attribute__((packed));
 
 /**
@@ -575,6 +581,8 @@ static inline bool is_walb_start_param_valid(
 	/* CHECK(0 <= param->log_flush_interval_ms); */
 	/* CHECK(0 <= param->log_flush_interval_mb); */
 	CHECK(param->log_flush_interval_mb * 2 <= param->max_pending_mb);
+	CHECK(0 < param->n_pack_bulk);
+	CHECK(0 < param->n_io_bulk);
 	return true;
 error:
 	return false;
