@@ -2434,6 +2434,9 @@ struct walb_dev* prepare_wdev(
 	} else {
 		wdev->n_io_bulk = 1024; /* default value. */
 	}
+	LOGn("n_pack_bulk: %u\n"
+		"n_io_bulk: %u\n",
+		wdev->n_pack_bulk, wdev->n_io_bulk);
 
 	lq = bdev_get_queue(wdev->ldev);
 	dq = bdev_get_queue(wdev->ddev);
