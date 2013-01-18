@@ -126,7 +126,9 @@ static const char *helpstr_options_ =
 	"  MIN_PENDING_MB: --min_pending_mb [size]\n"
 	"  QUEUE_STOP_TIMEOUT_MS: --queue_stop_timeout_ms [timeout]\n"
 	"  FLUSH_INTERVAL_MB: --flush_interval_mb [size]\n"
-	"  FLUSH_INTERVAL_MS: --flush_interval_ms [timeout]\n";
+	"  FLUSH_INTERVAL_MS: --flush_interval_ms [timeout]\n"
+	"  N_PACK_BULK: --n_pack_bulk [size]\n"
+	"  N_IO_BULK: --n_io_bulk [size]\n";
 
 /**
  * Helper data structure for help command.
@@ -146,7 +148,9 @@ static struct cmdhelp cmdhelps_[] = {
 	{ "create_wdev LDEV DDEV (NAME)"
 	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB)\n"
 	  "             "
-	  " (QUEUE_STOP_TIMEOUT_MS) (FLUSH_INTERVAL_MB) (FLUSH_INTERVAL_MB)",
+	  " (QUEUE_STOP_TIMEOUT_MS) (FLUSH_INTERVAL_MB) (FLUSH_INTERVAL_MB)"
+	  "             "
+	  " (N_PACK_BULK) (N_IO_BULK)\n",
 	  "Make walb/walblog device." },
 	{ "delete_wdev WDEV",
 	  "Delete walb/walblog device." },
@@ -229,6 +233,8 @@ enum
 	OPT_QUEUE_STOP_TIMEOUT_MS,
 	OPT_FLUSH_INTERVAL_MB,
 	OPT_FLUSH_INTERVAL_MS,
+	OPT_N_PACK_BULK,
+	OPT_N_IO_BULK,
 	OPT_HELP,
 };
 
@@ -353,6 +359,8 @@ static void init_config(struct config* cfg)
 	cfg->param.queue_stop_timeout_ms = 100;
 	cfg->param.log_flush_interval_mb = 16;
 	cfg->param.log_flush_interval_ms = 100;
+	cfg->param.n_pack_bulk = 128;
+	cfg->param.n_io_bulk = 1024;
 }
 
 /**
@@ -384,6 +392,8 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			{"queue_stop_timeout_ms", 1, 0, OPT_QUEUE_STOP_TIMEOUT_MS},
 			{"flush_interval_mb", 1, 0, OPT_FLUSH_INTERVAL_MB},
 			{"flush_interval_ms", 1, 0, OPT_FLUSH_INTERVAL_MS},
+			{"n_pack_bulk", 1, 0, OPT_N_PACK_BULK},
+			{"n_io_bulk", 1, 0, OPT_N_IO_BULK},
 			{"help", 0, 0, OPT_HELP},
 			{0, 0, 0, 0}
 		};
@@ -451,6 +461,12 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			break;
 		case OPT_FLUSH_INTERVAL_MS:
 			cfg->param.log_flush_interval_ms = atoi(optarg);
+			break;
+		case OPT_N_PACK_BULK:
+			cfg->param.n_pack_bulk = atoi(optarg);
+			break;
+		case OPT_N_IO_BULK:
+			cfg->param.n_io_bulk = atoi(optarg);
 			break;
 		case OPT_HELP:
 			cfg->cmd_str = "help";
