@@ -135,7 +135,7 @@ UNUSED static void print_pack(
 	const char *level, struct pack *pack);
 UNUSED static void print_pack_list(
 	const char *level, struct list_head *wpack_list);
-static bool pack_contains_flush(const struct pack *pack);
+UNUSED static bool pack_contains_flush(const struct pack *pack);
 
 /* Workqueue tasks. */
 static void task_submit_logpack_list(struct work_struct *work);
@@ -1275,10 +1275,6 @@ static void submit_logpack_list(
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		logh = get_logpack_header(wpack->logpack_header_sector);
 
-		if (pack_contains_flush(wpack)) {
-			atomic_inc(&iocored->n_log_flush);
-		}
-
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
 			LOGd_("is_zero_flush_only\n");
@@ -1925,7 +1921,6 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	atomic_set(&iocored->n_started_write_bio, 0);
 	atomic_set(&iocored->n_pending_bio, 0);
 	atomic_set(&iocored->n_pending_gc, 0);
-	atomic_set(&iocored->n_log_flush, 0);
 
 	/* Log flush time. */
 	iocored->log_flush_jiffies = jiffies;
@@ -2407,10 +2402,6 @@ static void wait_for_logpack_and_submit_datapack(
 		bio_endio(biow->bio, -EIO);
 		list_del(&biow->list);
 		destroy_bio_wrapper_dec(wdev, biow);
-	}
-
-	if (pack_contains_flush(wpack)) {
-		atomic_dec(&iocored->n_log_flush);
 	}
 
 	/* Update completed_lsid/permanent_lsid. */
@@ -3187,12 +3178,14 @@ static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	u64 permanent_lsid, flush_lsid, latest_lsid;
-	unsigned long log_flush_jiffies;
+	unsigned long log_flush_jiffies, timeout_jiffies;
 	int err;
 
 	if (wdev->log_flush_interval_jiffies == 0) {
 		return;
 	}
+	/* We will wait for log flush at most the given interval period. */
+	timeout_jiffies = jiffies + wdev->log_flush_interval_jiffies;
 retry:
 	spin_lock(&wdev->lsid_lock);
 	permanent_lsid = wdev->permanent_lsid;
@@ -3204,13 +3197,12 @@ retry:
 		/* No need to wait. */
 		return;
 	}
-	if ((lsid < flush_lsid &&
-			atomic_read(&iocored->n_log_flush) > 0) ||
-		(lsid < flush_lsid + wdev->log_flush_interval_pb &&
-			time_is_after_jiffies(log_flush_jiffies))) {
+	if (time_is_after_jiffies(timeout_jiffies) &&
+		lsid < flush_lsid + wdev->log_flush_interval_pb &&
+		time_is_after_jiffies(log_flush_jiffies)) {
 		/* Too early to force flush log device.
 		   Wait for a while. */
-		schedule();
+		msleep(1);
 		goto retry;
 	}
 
@@ -3231,13 +3223,11 @@ retry:
 	spin_unlock(&wdev->lsid_lock);
 
 	/* Execute a flush request. */
-	atomic_inc(&iocored->n_log_flush);
 	err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
 	if (err) {
 		LOGe("log device flush failed. to be read-only mode\n");
 		set_read_only_mode(iocored);
 	}
-	atomic_dec(&iocored->n_log_flush);
 
 #ifdef WALB_DEBUG
 	atomic_inc(&get_iocored_from_wdev(wdev)->n_flush_force);

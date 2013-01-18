@@ -76,9 +76,6 @@ struct iocore_data
 	/* Number of pending packs to be garbage-collected. */
 	atomic_t n_pending_gc;
 
-	/* Number of pending flush IOs over the log device. */
-	atomic_t n_log_flush;
-
 	/* for gc worker. */
 	struct worker_data gc_worker_data;
 
