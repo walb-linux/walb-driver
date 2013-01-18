@@ -19,11 +19,6 @@
 #include "logpack.h"
 #include "super.h"
 
-/**
- * If defined, data IOs will be sorted for better performance.
- */
-#define WALB_SORT_DATA_IO
-
 /*******************************************************************************
  * Static data definition.
  *******************************************************************************/
@@ -1025,24 +1020,24 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 #ifdef WALB_OVERLAPPED_SERIALIZE
 			if (!bio_wrapper_state_is_delayed(biow)) {
 				ASSERT(biow->n_overlapped == 0);
-#ifdef WALB_SORT_DATA_IO
-				/* Sort. */
-				insert_to_sorted_bio_wrapper_list_by_pos(
-					biow, &biow_list_sorted);
-#else /* WALB_SORT_DATA_IO */
-				list_add_tail(&biow->list4, &biow_list_sorted);
-#endif /* WALB_SORT_DATA_IO */
+				if (is_sort_data_io_) {
+					/* Sort. */
+					insert_to_sorted_bio_wrapper_list_by_pos(
+						biow, &biow_list_sorted);
+				} else {
+					list_add_tail(&biow->list4, &biow_list_sorted);
+				}
 			} else {
 				/* Delayed. */
 			}
 #else /* WALB_OVERLAPPED_SERIALIZE */
-#ifdef WALB_SORT_DATA_IO
-			/* Sort. */
-			insert_to_sorted_bio_wrapper_list_by_pos(
-				biow, &biow_list_sorted);
-#else /* WALB_SORT_DATA_IO */
-			list_add_tail(&biow->list4, &biow_list_sorted);
-#endif /* WALB_SORT_DATA_IO */
+			if (is_sort_data_io_) {
+				/* Sort. */
+				insert_to_sorted_bio_wrapper_list_by_pos(
+					biow, &biow_list_sorted);
+			} else {
+				list_add_tail(&biow->list4, &biow_list_sorted);
+			}
 #endif /* WALB_OVERLAPPED_SERIALIZE */
 		}
 

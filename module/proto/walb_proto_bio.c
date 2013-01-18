@@ -55,6 +55,13 @@ int queue_stop_timeout_ms_ = 100;
    (practically limited by physical block size for logpack header). */
 int max_logpack_size_kb_ = 256;
 
+/* Bulk parameters. */
+unsigned int n_pack_bulk_ = 128;
+unsigned int n_io_bulk_ = 1024;
+
+/* If non-zero, iocore will sort data IOs. */
+unsigned int is_sort_data_io_ = 1;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
@@ -67,6 +74,9 @@ module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
 module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
 module_param_named(queue_stop_timeout_ms, queue_stop_timeout_ms_, int, S_IRUGO);
 module_param_named(max_logpack_size_kb, max_logpack_size_kb_, int, S_IRUGO);
+module_param_named(n_pack_bulk, n_pack_bulk_, uint, S_IRUGO);
+module_param_named(n_io_bulk, n_io_bulk_, uint, S_IRUGO);
+module_param_named(is_sort_data_io, is_sort_data_io_, uint, S_IRUGO);
 
 /*******************************************************************************
  * Static data definition.
@@ -254,6 +264,8 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 		msecs_to_jiffies(queue_stop_timeout_ms_);
 	LOGn("qeue_stop_timeout_ms: %u\n", queue_stop_timeout_ms_);
 #endif
+	wdev->n_pack_bulk = n_pack_bulk_;
+	wdev->n_io_bulk = n_io_bulk_;
 
 	/* Set underlying devices. */
 	wdev->ldev = ldev;

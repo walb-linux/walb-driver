@@ -34,6 +34,11 @@ extern struct workqueue_struct *wq_nrt_;
 extern struct workqueue_struct *wq_unbound_;
 extern struct workqueue_struct *wq_misc_;
 
+/**
+ * If non-zero, data IOs will be sorted for better performance.
+ */
+extern unsigned int is_sort_data_io_;
+
 /*
  * Minor number and partition management.
  */

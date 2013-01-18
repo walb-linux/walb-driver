@@ -58,6 +58,12 @@ module_param_named(walb_major, walb_major_, int, S_IRUGO);
 static int is_sync_superblock_ = 1;
 module_param_named(is_sync_superblock, is_sync_superblock_, int, S_IRUGO|S_IWUSR);
 
+/**
+ * See parameters.
+ */
+unsigned int is_sort_data_io_;
+module_param_named(is_sort_data_io, is_sort_data_io_, uint, S_IRUGO|S_IWUSR);
+
 /*******************************************************************************
  * Shared data definition.
  *******************************************************************************/
