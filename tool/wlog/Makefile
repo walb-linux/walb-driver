@@ -18,16 +18,21 @@ CFLAGS += -pg
 else
 endif
 
-#LDFLAGS = -laio -lpthread
+ifeq ($(STATIC),1)
 LDFLAGS = -static -laio -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
+else
+LDFLAGS = -laio -lpthread
+endif
 
-BINARIES = wlcat wlredo
+BINARIES = wlcat wlredo wlgen
 
 all: $(BINARIES)
 
 wlcat: wlcat.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 wlredo: wlredo.o
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
+wlgen: wlgen.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 .cpp.o:
@@ -37,6 +42,7 @@ wlredo: wlredo.o
 
 wlcat.o: wlcat.cpp aio_util.hpp util.hpp walb_util.hpp
 wlredo.o: wlredo.cpp aio_util.hpp util.hpp walb_util.hpp
+wlgen.o: wlgen.cpp util.hpp walb_util.hpp
 
 clean:
 	rm -f $(BINARIES) *.o

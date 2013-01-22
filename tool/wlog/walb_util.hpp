@@ -363,6 +363,160 @@ public:
         }
     }
 
+    /**
+     * Write the logpack header block.
+     */
+    void write(int fd) {
+        header().checksum = 0;
+        header().checksum = ::checksum(
+            reinterpret_cast<const u8*>(&header()), pbs(), salt());
+
+        if (isValid(true)) {
+            util::FdWriter fdw(fd);
+            fdw.write(reinterpret_cast<const char*>(block_.get()), pbs());
+        } else {
+            throw RT_ERR("logpack header invalid.");
+        }
+    }
+
+    /**
+     * Initialize logpack header block.
+     */
+    void init(u64 lsid) {
+        ::memset(&header(), pbs(), 0);
+        header().logpack_lsid = lsid;
+        header().sector_type = SECTOR_TYPE_LOGPACK;
+        /*
+          header().total_io_size = 0;
+          header().n_records = 0;
+          header().n_padding = 0;
+          header().checksum = 0;
+        */
+    }
+
+    /**
+     * Add a normal IO.
+     *
+     * @offset [logical block]
+     * @size [logical block]
+     * RETURN:
+     *   true in success, or false (you must create a new header).
+     */
+    bool addNormalIo(u64 offset, u16 size) {
+        if (header().n_records >= ::max_n_log_record_in_sector(pbs())) {
+            return false;
+        }
+        if (capacity_pb(pbs(), size) > 65535U - header().total_io_size) {
+            return false;
+        }
+        if (size == 0) {
+            throw RT_ERR("Normal IO can not be zero-sized.");
+        }
+        size_t pos = header().n_records;
+        struct walb_log_record &rec = record(pos);
+        rec.flags = 0;
+        ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
+        rec.offset = offset;
+        rec.io_size = size;
+        rec.lsid = header().logpack_lsid + 1 + header().total_io_size;
+        rec.lsid_local = rec.lsid - header().logpack_lsid;
+        rec.checksum = 0; /* You must set this lator. */
+
+        header().n_records++;
+        header().total_io_size += capacity_pb(pbs(), size);
+        return true;
+    }
+
+    /**
+     * Add a discard IO.
+     *
+     * @offset [logical block]
+     * @size [logical block]
+     * RETURN:
+     *   true in success, or false (you must create a new header).
+     */
+    bool addDiscardIo(u64 offset, u16 size) {
+        if (header().n_records >= ::max_n_log_record_in_sector(pbs())) {
+            return false;
+        }
+        if (size == 0) {
+            throw RT_ERR("Discard IO can not be zero-sized.");
+        }
+        size_t pos = header().n_records;
+        struct walb_log_record &rec = record(pos);
+        rec.flags = 0;
+        ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
+        ::set_bit_u32(LOG_RECORD_DISCARD, &rec.flags);
+        rec.offset = offset;
+        rec.io_size = size;
+        rec.lsid = header().logpack_lsid + 1 + header().total_io_size;
+        rec.lsid_local = rec.lsid - header().logpack_lsid;
+        rec.checksum = 0; /* Not be used. */
+
+        header().n_records++;
+        /* You must not update total_io_size. */
+        return true;
+    }
+
+    /**
+     * Add a padding.
+     *
+     * @size [logical block]
+     * RETURN:
+     *   true in success, or false (you must create a new header).
+     */
+    bool addPadding(u16 size) {
+        if (header().n_records >= ::max_n_log_record_in_sector(pbs())) {
+            return false;
+        }
+        if (header().n_padding > 0) {
+            return false;
+        }
+        if (size % n_lb_in_pb(pbs()) != 0) {
+            throw RT_ERR("Padding size must be pbs-aligned.");
+        }
+
+        size_t pos = header().n_records;
+        struct walb_log_record &rec = record(pos);
+        rec.flags = 0;
+        ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
+        ::set_bit_u32(LOG_RECORD_PADDING, &rec.flags);
+        rec.offset = 0; /* not be used. */
+        rec.io_size = size;
+        rec.lsid = header().logpack_lsid + 1 + header().total_io_size;
+        rec.lsid_local = rec.lsid - header().logpack_lsid;
+        rec.checksum = 0;  /* not be used. */
+
+        header().n_records++;
+        header().total_io_size += capacity_pb(pbs(), size);
+        header().n_padding++;
+        /* You must check that the padding record
+           must not be the last record in the header. */
+        return true;
+    }
+
+    /**
+     * Delete the last padding record, which is invalid.
+     */
+    void deleteLastPadding() {
+        if (header().n_padding == 0) {
+            return;
+        }
+        if (header().n_records == 0) {
+            throw RT_ERR("n_records must not be 0.");
+        }
+        size_t pos = header().n_records - 1;
+        struct walb_log_record &rec = record(pos);
+        if (!::test_bit_u32(LOG_RECORD_PADDING, &rec.flags)) {
+            return;
+        }
+        ::log_record_init(&rec);
+        header().n_padding--;
+        assert(header().n_padding == 0);
+        header().n_records--;
+        assert(header().n_records > 0);
+    }
+
 private:
     void checkBlock() const {
         if (block_.get() == nullptr) {

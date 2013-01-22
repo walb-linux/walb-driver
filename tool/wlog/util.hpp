@@ -169,7 +169,7 @@ public:
 
 class FdWriter
 {
-private:
+protected:
     int fd_;
 public:
     FdWriter(int fd)
@@ -178,7 +178,7 @@ public:
     /**
      * write.
      */
-    void write(char *buf, size_t size) {
+    void write(const char *buf, size_t size) {
         size_t s = 0;
         while (s < size) {
             ssize_t ret = ::write(fd_, &buf[s], size - s);
@@ -189,6 +189,16 @@ public:
                 throw EofError();
             }
             s += ret;
+        }
+    }
+
+    /**
+     * lseek.
+     */
+    void lseek(off_t oft, int whence) {
+        off_t ret = ::lseek(fd_, oft, whence);
+        if (ret == -1) {
+            throw RT_ERR("lseek failed: %s.", ::strerror(errno));
         }
     }
 
@@ -210,6 +220,52 @@ public:
         if (ret) {
             throw RT_ERR("fsync failed: %s.", ::strerror(errno));
         }
+    }
+};
+
+/**
+ * A simple file writer.
+ */
+class FileOpener
+{
+private:
+    int fd_;
+    std::once_flag closeFlag_;
+public:
+    FileOpener(const std::string& filePath, int flags)
+        : fd_(staticOpen(filePath, flags))
+        , closeFlag_() {}
+
+    ~FileOpener() {
+        try {
+            close();
+        } catch (...) {
+            ::fprintf(::stderr, "close() failed.\n");
+        }
+    }
+
+    int fd() const {
+        if (fd_ < 0) {
+            throw RT_ERR("fd < 0.");
+        }
+        return fd_;
+    }
+
+    void close() {
+        std::call_once(closeFlag_, [&]() {
+                if (::close(fd_)) {
+                    throw RT_ERR("close failed: %s.", ::strerror(errno));
+                }
+                fd_ = -1;
+            });
+    }
+private:
+    static int staticOpen(const std::string& filePath, int flags) {
+        int fd = ::open(filePath.c_str(), flags);
+        if (fd < 0) {
+            throw RT_ERR("open failed: %s.", ::strerror(errno));
+        }
+        return fd;
     }
 };
 
