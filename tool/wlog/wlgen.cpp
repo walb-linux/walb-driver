@@ -62,7 +62,7 @@ public:
         , isDiscard_(true)
         , isVerbose_(false)
         , isHelp_(false)
-        , outPath_("-")
+        , outPath_()
         , helpString_(generateHelpString(argv[0]))
         , args_() {
         parse(argc, argv);
@@ -240,7 +240,12 @@ private:
         while(optind < argc) {
             args_.push_back(std::string(argv[optind++]));
         }
-        check();
+        try {
+            check();
+        } catch (std::runtime_error& e) {
+            printHelp();
+            throw;
+        }
     }
 
     static std::string generateHelpString(const char *argv0) {
@@ -283,6 +288,9 @@ private:
         }
         if (lsid() + outLogPb() < lsid()) {
             throw RT_ERR("lsid will overflow.");
+        }
+        if (outPath().size() == 0) {
+            throw RT_ERR("specify outPath.");
         }
     }
 };
