@@ -118,40 +118,44 @@ public:
         return (lsid % s) + getRingBufferOffset();
     }
 
-    void print() const {
+    void print(FILE *fp) const {
+        ::fprintf(fp,
+                  "sectorType: %u\n"
+                  "version: %u\n"
+                  "checksum: %u\n"
+                  "lbs: %u\n"
+                  "pbs: %u\n"
+                  "metadataSize: %u\n"
+                  "logChecksumSalt: %u\n"
+                  "name: %s\n"
+                  "ringBufferSize: %" PRIu64 "\n"
+                  "oldestLsid: %" PRIu64 "\n"
+                  "writtenLsid: %" PRIu64 "\n"
+                  "deviceSize: %" PRIu64 "\n"
+                  "ringBufferOffset: %" PRIu64 "\n",
+                  getSectorType(),
+                  getVersion(),
+                  getChecksum(),
+                  getLogicalBlockSize(),
+                  getPhysicalBlockSize(),
+                  getMetadataSize(),
+                  getLogChecksumSalt(),
+                  getName(),
+                  getRingBufferSize(),
+                  getOldestLsid(),
+                  getWrittenLsid(),
+                  getDeviceSize(),
+                  getRingBufferOffset());
 
-        ::printf("sectorType: %u\n"
-                 "version: %u\n"
-                 "checksum: %u\n"
-                 "lbs: %u\n"
-                 "pbs: %u\n"
-                 "metadataSize: %u\n"
-                 "logChecksumSalt: %u\n"
-                 "name: %s\n"
-                 "ringBufferSize: %" PRIu64 "\n"
-                 "oldestLsid: %" PRIu64 "\n"
-                 "writtenLsid: %" PRIu64 "\n"
-                 "deviceSize: %" PRIu64 "\n"
-                 "ringBufferOffset: %" PRIu64 "\n",
-                 getSectorType(),
-                 getVersion(),
-                 getChecksum(),
-                 getLogicalBlockSize(),
-                 getPhysicalBlockSize(),
-                 getMetadataSize(),
-                 getLogChecksumSalt(),
-                 getName(),
-                 getRingBufferSize(),
-                 getOldestLsid(),
-                 getWrittenLsid(),
-                 getDeviceSize(),
-                 getRingBufferOffset());
-
-        ::printf("uuid: ");
+        ::fprintf(fp, "uuid: ");
         for (int i = 0; i < 16; i++) {
-            ::printf("%02x", getUuid()[i]);
+            ::fprintf(fp, "%02x", getUuid()[i]);
         }
-        ::printf("\n");
+        ::fprintf(fp, "\n");
+    }
+
+    void print() const {
+        print(::stdout);
     }
 
 private:
@@ -263,53 +267,59 @@ public:
         }
     }
 
-    void printRecord(size_t pos) const {
+    void printRecord(FILE *fp, size_t pos) const {
         const struct walb_log_record &rec = record(pos);
-        ::printf("record %zu\n"
-                 "  checksum: %08x(%u)\n"
-                 "  lsid: %" PRIu64"\n"
-                 "  lsid_local: %u\n"
-                 "  is_exist: %u\n"
-                 "  is_padding: %u\n"
-                 "  is_discard: %u\n"
-                 "  offset: %" PRIu64"\n"
-                 "  io_size: %u\n",
-                 pos,
-                 rec.checksum, rec.checksum,
-                 rec.lsid, rec.lsid_local,
-                 ::test_bit_u32(LOG_RECORD_EXIST, &rec.flags),
-                 ::test_bit_u32(LOG_RECORD_PADDING, &rec.flags),
-                 ::test_bit_u32(LOG_RECORD_DISCARD, &rec.flags),
-                 rec.offset, rec.io_size);
+        ::fprintf(fp,
+                  "record %zu\n"
+                  "  checksum: %08x(%u)\n"
+                  "  lsid: %" PRIu64"\n"
+                  "  lsid_local: %u\n"
+                  "  is_exist: %u\n"
+                  "  is_padding: %u\n"
+                  "  is_discard: %u\n"
+                  "  offset: %" PRIu64"\n"
+                  "  io_size: %u\n",
+                  pos,
+                  rec.checksum, rec.checksum,
+                  rec.lsid, rec.lsid_local,
+                  ::test_bit_u32(LOG_RECORD_EXIST, &rec.flags),
+                  ::test_bit_u32(LOG_RECORD_PADDING, &rec.flags),
+                  ::test_bit_u32(LOG_RECORD_DISCARD, &rec.flags),
+                  rec.offset, rec.io_size);
     }
 
-    void printHeader() const {
+    void printHeader(FILE *fp) const {
         const struct walb_logpack_header &logh = header();
-        ::printf("*****logpack header*****\n"
-                 "checksum: %08x(%u)\n"
-                 "n_records: %u\n"
-                 "n_padding: %u\n"
-                 "total_io_size: %u\n"
-                 "logpack_lsid: %" PRIu64"\n",
-                 logh.checksum, logh.checksum,
-                 logh.n_records,
-                 logh.n_padding,
-                 logh.total_io_size,
-                 logh.logpack_lsid);
+        ::fprintf(fp,
+                  "*****logpack header*****\n"
+                  "checksum: %08x(%u)\n"
+                  "n_records: %u\n"
+                  "n_padding: %u\n"
+                  "total_io_size: %u\n"
+                  "logpack_lsid: %" PRIu64"\n",
+                  logh.checksum, logh.checksum,
+                  logh.n_records,
+                  logh.n_padding,
+                  logh.total_io_size,
+                  logh.logpack_lsid);
     }
 
-    void print() const {
-        printHeader();
+    void print(FILE *fp) const {
+        printHeader(fp);
         for (size_t i = 0; i < nRecords(); i++) {
-            printRecord(i);
+            printRecord(fp, i);
         }
     }
+
+    void printRecord(size_t pos) const { printRecord(::stdout, pos); }
+    void printHeader() const { printHeader(::stdout); }
+    void print() const { print(::stdout); }
 
     /**
      * Print each IO oneline.
      * logpack_lsid, mode(W, D, or P), offset[lb], io_size[lb].
      */
-    void printShort() const {
+    void printShort(FILE *fp) const {
         for (size_t i = 0; i < nRecords(); i++) {
             const struct walb_log_record &rec = record(i);
             assert(::test_bit_u32(LOG_RECORD_EXIST, &rec.flags));
@@ -320,11 +330,14 @@ public:
             if (::test_bit_u32(LOG_RECORD_PADDING, &rec.flags)) {
                 mode = 'P';
             }
-            ::printf("%" PRIu64 "\t%c\t%" PRIu64 "\t%u\n",
-                     header().logpack_lsid,
-                     mode, rec.offset, rec.io_size);
+            ::fprintf(fp,
+                      "%" PRIu64 "\t%c\t%" PRIu64 "\t%u\n",
+                      header().logpack_lsid,
+                      mode, rec.offset, rec.io_size);
         }
     }
+
+    void printShort() const { printShort(::stdout); }
 
     /**
      * Shrink.
@@ -735,36 +748,41 @@ public:
         return false;
     }
 
-    void print() const {
-        ::printf("sector_type %d\n"
-                 "version %u\n"
-                 "header_size %u\n"
-                 "log_checksum_salt %" PRIu32 " (%08x)\n"
-                 "logical_bs %u\n"
-                 "physical_bs %u\n"
-                 "uuid %02x%02x%02x%02x"
-                 "%02x%02x%02x%02x"
-                 "%02x%02x%02x%02x"
-                 "%02x%02x%02x%02x\n"
-                 "begin_lsid %" PRIu64 "\n"
-                 "end_lsid %" PRIu64 "\n",
-                 header().sector_type,
-                 header().version,
-                 header().header_size,
-                 header().log_checksum_salt,
-                 header().log_checksum_salt,
-                 header().logical_bs,
-                 header().physical_bs,
-                 header().uuid[0], header().uuid[1],
-                 header().uuid[2], header().uuid[3],
-                 header().uuid[4], header().uuid[5],
-                 header().uuid[6], header().uuid[7],
-                 header().uuid[8], header().uuid[9],
-                 header().uuid[10], header().uuid[11],
-                 header().uuid[12], header().uuid[13],
-                 header().uuid[14], header().uuid[15],
-                 header().begin_lsid,
-                 header().end_lsid);
+    void print(FILE *fp) const {
+        ::fprintf(fp,
+            "sector_type %d\n"
+            "version %u\n"
+            "header_size %u\n"
+            "log_checksum_salt %" PRIu32 " (%08x)\n"
+            "logical_bs %u\n"
+            "physical_bs %u\n"
+            "uuid %02x%02x%02x%02x"
+            "%02x%02x%02x%02x"
+            "%02x%02x%02x%02x"
+            "%02x%02x%02x%02x\n"
+            "begin_lsid %" PRIu64 "\n"
+            "end_lsid %" PRIu64 "\n",
+            header().sector_type,
+            header().version,
+            header().header_size,
+            header().log_checksum_salt,
+            header().log_checksum_salt,
+            header().logical_bs,
+            header().physical_bs,
+            header().uuid[0], header().uuid[1],
+            header().uuid[2], header().uuid[3],
+            header().uuid[4], header().uuid[5],
+            header().uuid[6], header().uuid[7],
+            header().uuid[8], header().uuid[9],
+            header().uuid[10], header().uuid[11],
+            header().uuid[12], header().uuid[13],
+            header().uuid[14], header().uuid[15],
+            header().begin_lsid,
+            header().end_lsid);
+    }
+
+    void print() {
+        print(::stdout);
     }
 };
 

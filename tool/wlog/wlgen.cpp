@@ -42,6 +42,7 @@ private:
     uint64_t outLogSize_; /* Approximately output log size [byte]. */
     uint64_t lsid_; /* start lsid [physical block]. */
     bool isPadding_;
+    bool isVerbose_;
     bool isHelp_;
     std::string outPath_;
     const std::string helpString_;
@@ -57,6 +58,7 @@ public:
         , outLogSize_(1024 * 1024) /* default 1MB. */
         , lsid_(0)
         , isPadding_(true)
+        , isVerbose_(false)
         , isHelp_(false)
         , outPath_("-")
         , helpString_(generateHelpString(argv[0]))
@@ -72,6 +74,7 @@ public:
     uint64_t outLogPb() const { return outLogSize_ / pbs(); }
     uint64_t lsid() const { return lsid_; }
     bool isPadding() const { return isPadding_; }
+    bool isVerbose() const { return isVerbose_; }
     bool isHelp() const { return isHelp_; }
     const std::string& outPath() const { return outPath_; }
 
@@ -85,11 +88,12 @@ public:
                  "lsid: %" PRIu64 "\n"
                  "outPath: %s\n"
                  "isPadding: %d\n"
+                 "verbose: %d\n"
                  "isHelp: %d\n",
                  devLb(), minIoLb(), maxIoLb(),
                  pbs(), maxPackPb(), outLogPb(),
                  lsid(), outPath().c_str(),
-                 isPadding(), isHelp());
+                 isPadding(), isVerbose(), isHelp());
         int i = 0;
         for (const auto& s : args_) {
             ::printf("arg%d: %s\n", i++, s.c_str());
@@ -112,6 +116,7 @@ private:
         LSID,
         NOPADDING,
         OUTPATH,
+        VERBOSE,
         HELP,
     };
 
@@ -177,6 +182,7 @@ private:
                 {"lsid", 1, 0, Opt::LSID},
                 {"nopadding", 0, 0, Opt::NOPADDING},
                 {"outPath", 1, 0, Opt::OUTPATH},
+                {"verbose", 0, 0, Opt::VERBOSE},
                 {"help", 0, 0, Opt::HELP},
                 {0, 0, 0, 0}
             };
@@ -211,6 +217,9 @@ private:
             case Opt::OUTPATH:
                 outPath_ = std::string(optarg);
                 break;
+            case Opt::VERBOSE:
+                isVerbose_ = true;
+                break;
             case Opt::HELP:
                 isHelp_ = true;
                 break;
@@ -238,6 +247,7 @@ private:
             "  --lsid [lsid]:       lsid of the first log.\n"
             "  --nopadding:         no padding. (default: randomly inserted)\n"
             "  --outPath [path]:    output file path or '-' for stdout. (default: stdout)\n"
+            "  --verbose:           verbose messages to stderr.\n"
             "  --help:              show this message.\n"
             , argv0);
     }
@@ -344,8 +354,10 @@ private:
         if (!wlHead.isValid(false)) {
             throw RT_ERR("WalbLogHeader invalid.");
         }
-        wlHead.print(); /* debug */
         wlHead.write(fd);
+        if (config_.isVerbose()) {
+            wlHead.print(::stderr);
+        }
 
         uint64_t nPack = 0;
         while (written < config_.outLogPb()) {
@@ -370,17 +382,11 @@ private:
                     bool ret = logd.setChecksum();
                     assert(ret);
                 }
-                ::printf("csum1 %08x iosize %u\n",
-                         logd.record().checksum, logd.ioSizeLb()); /* debug */
             }
             assert(blocks.size() == logh.totalIoSize());
 
             /* Calculate header checksum and write. */
             logh.write(fd);
-            for (size_t i = 0; i < logh.nRecords(); i++) {
-                ::printf("csum2 %08x\n", logh.record(i).checksum); /* debug */
-            }
-            ::printf("\n");
 
             /* Write each IO data. */
             walb::util::FdWriter fdw(fd);
@@ -393,9 +399,22 @@ private:
             written += w;
             lsid += w;
             nPack++;
-        }
 
-        ::printf("nPack: %" PRIu64 "\n", nPack); /* debug */
+            if (config_.isVerbose()) {
+                ::fprintf(::stderr, ".");
+                if (nPack % 80 == 79) {
+                    ::fprintf(::stderr, "\n");
+                }
+                ::fflush(::stderr);
+            }
+        }
+        if (config_.isVerbose()) {
+            ::fprintf(::stderr,
+                      "\n"
+                      "nPack: %" PRIu64 "\n"
+                      "written %" PRIu64 " physical blocks\n",
+                      nPack, written);
+        }
     }
 
     /**
@@ -425,12 +444,12 @@ private:
                 logh.totalIoSize() + capacity_pb(pbs, ioSize) > config_.maxPackPb()) {
                 break;
             }
-            if (i == paddingPos && i != nRecords - 1) {
+            if (config_.isPadding() && i == paddingPos && i != nRecords - 1) {
                 uint16_t psize = capacity_lb(pbs, capacity_pb(pbs, ioSize));
                 if (!logh.addPadding(psize)) { break; }
                 continue;
             }
-            bool isDiscard = rand.get32() & 0x00000003 == 0;
+            bool isDiscard = (rand.get32() & 0x00000007) == 0;
             if (isDiscard) {
                 if (!logh.addDiscardIo(offset, ioSize)) { break; }
             } else {
