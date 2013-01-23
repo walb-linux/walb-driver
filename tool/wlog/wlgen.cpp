@@ -42,6 +42,7 @@ private:
     uint64_t outLogSize_; /* Approximately output log size [byte]. */
     uint64_t lsid_; /* start lsid [physical block]. */
     bool isPadding_;
+    bool isDiscard_;
     bool isVerbose_;
     bool isHelp_;
     std::string outPath_;
@@ -58,6 +59,7 @@ public:
         , outLogSize_(1024 * 1024) /* default 1MB. */
         , lsid_(0)
         , isPadding_(true)
+        , isDiscard_(true)
         , isVerbose_(false)
         , isHelp_(false)
         , outPath_("-")
@@ -74,6 +76,7 @@ public:
     uint64_t outLogPb() const { return outLogSize_ / pbs(); }
     uint64_t lsid() const { return lsid_; }
     bool isPadding() const { return isPadding_; }
+    bool isDiscard() const { return isDiscard_; }
     bool isVerbose() const { return isVerbose_; }
     bool isHelp() const { return isHelp_; }
     const std::string& outPath() const { return outPath_; }
@@ -88,12 +91,13 @@ public:
                  "lsid: %" PRIu64 "\n"
                  "outPath: %s\n"
                  "isPadding: %d\n"
+                 "isDiscard: %d\n"
                  "verbose: %d\n"
                  "isHelp: %d\n",
                  devLb(), minIoLb(), maxIoLb(),
                  pbs(), maxPackPb(), outLogPb(),
                  lsid(), outPath().c_str(),
-                 isPadding(), isVerbose(), isHelp());
+                 isPadding(), isDiscard(), isVerbose(), isHelp());
         int i = 0;
         for (const auto& s : args_) {
             ::printf("arg%d: %s\n", i++, s.c_str());
@@ -115,6 +119,7 @@ private:
         OUTLOGSIZE,
         LSID,
         NOPADDING,
+        NODISCARD,
         OUTPATH,
         VERBOSE,
         HELP,
@@ -181,6 +186,7 @@ private:
                 {"outLogSize", 1, 0, Opt::OUTLOGSIZE},
                 {"lsid", 1, 0, Opt::LSID},
                 {"nopadding", 0, 0, Opt::NOPADDING},
+                {"nodiscard", 0, 0, Opt::NODISCARD},
                 {"outPath", 1, 0, Opt::OUTPATH},
                 {"verbose", 0, 0, Opt::VERBOSE},
                 {"help", 0, 0, Opt::HELP},
@@ -214,6 +220,9 @@ private:
             case Opt::NOPADDING:
                 isPadding_ = false;
                 break;
+            case Opt::NODISCARD:
+                isDiscard_ = false;
+                break;
             case Opt::OUTPATH:
                 outPath_ = std::string(optarg);
                 break;
@@ -246,6 +255,7 @@ private:
             "  --maxPackSize [size]: maximum logpack size [byte].\n"
             "  --lsid [lsid]:       lsid of the first log.\n"
             "  --nopadding:         no padding. (default: randomly inserted)\n"
+            "  --nodiscard:         no discard. (default: randomly inserted)\n"
             "  --outPath [path]:    output file path or '-' for stdout. (default: stdout)\n"
             "  --verbose:           verbose messages to stderr.\n"
             "  --help:              show this message.\n"
@@ -449,7 +459,8 @@ private:
                 if (!logh.addPadding(psize)) { break; }
                 continue;
             }
-            bool isDiscard = (rand.get32() & 0x00000007) == 0;
+            bool isDiscard = config_.isDiscard() &&
+                (rand.get32() & 0x00000007) == 0;
             if (isDiscard) {
                 if (!logh.addDiscardIo(offset, ioSize)) { break; }
             } else {
