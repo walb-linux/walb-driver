@@ -45,7 +45,6 @@ private:
     bool isHelp_;
     std::string outPath_;
     const std::string helpString_;
-    const std::string argv0_;
     std::vector<std::string> args_;
 
 public:
@@ -60,8 +59,7 @@ public:
         , isPadding_(true)
         , isHelp_(false)
         , outPath_("-")
-        , helpString_(generateHelpString())
-        , argv0_(argv[0])
+        , helpString_(generateHelpString(argv[0]))
         , args_() {
         parse(argc, argv);
     }
@@ -227,7 +225,7 @@ private:
         check();
     }
 
-    std::string generateHelpString() const {
+    static std::string generateHelpString(const char *argv0) {
         return walb::util::formatString(
             "Usage: %s [options]\n"
             "Options:\n"
@@ -241,7 +239,7 @@ private:
             "  --nopadding:         no padding. (default: randomly inserted)\n"
             "  --outPath [path]:    output file path or '-' for stdout. (default: stdout)\n"
             "  --help:              show this message.\n"
-            , argv0_.c_str());
+            , argv0);
     }
 
     void check() const {
@@ -285,12 +283,14 @@ private:
         std::mt19937 gen_;
         std::uniform_int_distribution<uint32_t> dist32_;
         std::uniform_int_distribution<uint64_t> dist64_;
+        std::poisson_distribution<uint16_t> distp_;
     public:
         Rand()
             : rd_()
             , gen_(rd_())
             , dist32_(0, UINT32_MAX)
-            , dist64_(0, UINT64_MAX) {}
+            , dist64_(0, UINT64_MAX)
+            , distp_(4) {}
 
         uint32_t get32() {
             return dist32_(gen_);
@@ -299,6 +299,11 @@ private:
         uint64_t get64() {
             return dist64_(gen_);
         }
+
+        uint16_t getp() {
+            return distp_(gen_);
+        }
+
     };
 public:
     WalbLogGenerator(const Config& config)
@@ -309,7 +314,9 @@ public:
         if (config_.outPath() == "-") {
             generateAndWrite(1);
         } else {
-            walb::util::FileOpener f(config_.outPath(), O_WRONLY | O_CREAT);
+            walb::util::FileOpener f(
+                config_.outPath(),
+                O_WRONLY | O_CREAT | O_TRUNC, S_IREAD | S_IWRITE);
             generateAndWrite(f.fd());
             f.close();
         }
@@ -322,33 +329,73 @@ private:
         uint64_t written = 0;
         walb::util::WalbLogFileHeader wlHead;
         std::vector<u8> uuid(16);
+        for (int i = 0; i < 4; i ++) {
+            *reinterpret_cast<uint32_t *>(&uuid[i * 4]) = rand.get32();
+        }
 
         const uint32_t salt = rand.get32();
         const unsigned int pbs = config_.pbs();
         uint64_t lsid = config_.lsid();
         Block hBlock = walb::util::allocateBlock<u8>(pbs, pbs);
-        walb::util::BlockBuffer<u8> bb(config_.maxPackPb(), pbs, pbs);
+        walb::util::BlockAllocator<u8> ba(config_.maxPackPb(), pbs, pbs);
 
         /* Generate and write walb log header. */
-        wlHead.init(pbs, salt, &uuid[0], lsid, lsid + config_.outLogPb());
+        wlHead.init(pbs, salt, &uuid[0], lsid, uint64_t(-1));
         if (!wlHead.isValid(false)) {
             throw RT_ERR("WalbLogHeader invalid.");
         }
+        wlHead.print(); /* debug */
         wlHead.write(fd);
 
+        uint64_t nPack = 0;
         while (written < config_.outLogPb()) {
             walb::util::WalbLogpackHeader logh(hBlock, pbs, salt);
             generateLogpackHeader(rand, logh, lsid);
+            uint64_t tmpLsid = lsid + 1;
 
-            /* Prepare blocks. */
-            /* Calculate checksum of each IOs and set. */
+            /* Prepare blocks and calc checksum if necessary. */
+            std::vector<Block> blocks;
+            for (unsigned int i = 0; i < logh.nRecords(); i++) {
+                walb::util::WalbLogpackData logd(logh, i);
+                if (logd.hasData()) {
+                    for (unsigned int j = 0; j < logd.ioSizePb(); j++) {
+                        Block b = ba.alloc();
+                        memset(b.get(), 0, pbs);
+                        *reinterpret_cast<uint64_t *>(b.get()) = tmpLsid++;
+                        logd.addBlock(b);
+                        blocks.push_back(b);
+                    }
+                }
+                if (logd.hasDataForChecksum()) {
+                    bool ret = logd.setChecksum();
+                    assert(ret);
+                }
+                ::printf("csum1 %08x iosize %u\n",
+                         logd.record().checksum, logd.ioSizeLb()); /* debug */
+            }
+            assert(blocks.size() == logh.totalIoSize());
+
             /* Calculate header checksum and write. */
-            /* Write each IOs. */
+            logh.write(fd);
+            for (size_t i = 0; i < logh.nRecords(); i++) {
+                ::printf("csum2 %08x\n", logh.record(i).checksum); /* debug */
+            }
+            ::printf("\n");
 
-            /* now editing */
+            /* Write each IO data. */
+            walb::util::FdWriter fdw(fd);
+            for (Block b : blocks) {
+                fdw.write(reinterpret_cast<const char *>(b.get()), pbs);
+            }
 
-            lsid += 1 + logh.totalIoSize();
+            uint64_t w = 1 + logh.totalIoSize();
+            assert(tmpLsid == lsid + w);
+            written += w;
+            lsid += w;
+            nPack++;
         }
+
+        ::printf("nPack: %" PRIu64 "\n", nPack); /* debug */
     }
 
     /**
@@ -366,16 +413,26 @@ private:
         for (size_t i = 0; i < nRecords; i++) {
             uint64_t offset = rand.get64() % devLb;
             uint32_t r32 = rand.get32();
-            uint16_t ioSize = r32 & 0x0000ffff;
-            if (ioSize == 0) { ioSize++; }
+
+            uint16_t range = config_.maxIoLb() - config_.minIoLb();
+            uint16_t ioSize = config_.minIoLb();
+            if (range > 0) {
+                ioSize += rand.get32() % range;
+            }
+            assert(ioSize > 0);
             if (offset + ioSize > devLb) {
                 ioSize = devLb - offset; /* clipping. */
             }
+            if (logh.totalIoSize() > 0 &&
+                logh.totalIoSize() + capacity_pb(pbs, ioSize) > config_.maxPackPb()) {
+                break;
+            }
             if (i == paddingPos && i != nRecords - 1) {
-                if (!logh.addPadding(ioSize)) { break; }
+                uint16_t psize = capacity_lb(pbs, capacity_pb(pbs, ioSize));
+                if (!logh.addPadding(psize)) { break; }
                 continue;
             }
-            bool isDiscard = (r32 & 0x00010000) != 0;
+            bool isDiscard = rand.get32() & 0x00000003 == 0;
             if (isDiscard) {
                 if (!logh.addDiscardIo(offset, ioSize)) { break; }
             } else {

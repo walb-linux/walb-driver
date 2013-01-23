@@ -236,14 +236,22 @@ public:
     struct walb_log_record& operator[](size_t pos) { return record(pos); }
     const struct walb_log_record& operator[](size_t pos) const { return record(pos); }
 
+    struct walb_log_record& recordUnsafe(size_t pos) {
+        return header().record[pos];
+    }
+
+    const struct walb_log_record& recordUnsafe(size_t pos) const {
+        return header().record[pos];
+    }
+
     struct walb_log_record& record(size_t pos) {
         checkIndexRange(pos);
-        return header().record[pos];
+        return recordUnsafe(pos);
     }
 
     const struct walb_log_record& record(size_t pos) const {
         checkIndexRange(pos);
-        return header().record[pos];
+        return recordUnsafe(pos);
     }
 
     bool isValid(bool isChecksum = true) const {
@@ -383,7 +391,7 @@ public:
      * Initialize logpack header block.
      */
     void init(u64 lsid) {
-        ::memset(&header(), pbs(), 0);
+        ::memset(&header(), 0, pbs());
         header().logpack_lsid = lsid;
         header().sector_type = SECTOR_TYPE_LOGPACK;
         /*
@@ -406,14 +414,14 @@ public:
         if (header().n_records >= ::max_n_log_record_in_sector(pbs())) {
             return false;
         }
-        if (capacity_pb(pbs(), size) > 65535U - header().total_io_size) {
+        if (header().total_io_size + capacity_pb(pbs(), size) > 65535) {
             return false;
         }
         if (size == 0) {
             throw RT_ERR("Normal IO can not be zero-sized.");
         }
         size_t pos = header().n_records;
-        struct walb_log_record &rec = record(pos);
+        struct walb_log_record &rec = recordUnsafe(pos);
         rec.flags = 0;
         ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
         rec.offset = offset;
@@ -443,7 +451,7 @@ public:
             throw RT_ERR("Discard IO can not be zero-sized.");
         }
         size_t pos = header().n_records;
-        struct walb_log_record &rec = record(pos);
+        struct walb_log_record &rec = recordUnsafe(pos);
         rec.flags = 0;
         ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
         ::set_bit_u32(LOG_RECORD_DISCARD, &rec.flags);
@@ -469,15 +477,21 @@ public:
         if (header().n_records >= ::max_n_log_record_in_sector(pbs())) {
             return false;
         }
+        if (header().total_io_size + capacity_pb(pbs(), size) > 65535) {
+            return false;
+        }
         if (header().n_padding > 0) {
             return false;
+        }
+        if (size == 0) {
+            throw RT_ERR("Padding IO can not be zero-sized.");
         }
         if (size % n_lb_in_pb(pbs()) != 0) {
             throw RT_ERR("Padding size must be pbs-aligned.");
         }
 
         size_t pos = header().n_records;
-        struct walb_log_record &rec = record(pos);
+        struct walb_log_record &rec = recordUnsafe(pos);
         rec.flags = 0;
         ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
         ::set_bit_u32(LOG_RECORD_PADDING, &rec.flags);
@@ -562,6 +576,19 @@ public:
         return data_[idx];
     }
 
+    /**
+     * Causion!!!
+     * You can access the range of
+     * [ret, ret + LOGICAL_BLOCK_SIZE).
+     */
+    u8* getLogicalBlock(size_t idx) const {
+        assert(hasData());
+        assert(idx < ioSizeLb());
+
+        Block b = getBlock(::addr_pb(pbs(), idx));
+        return b.get() + off_in_pb(pbs(), idx) * LOGICAL_BLOCK_SIZE;
+    }
+
     struct walb_log_record& record() {
         return logh_.record(pos_);
     }
@@ -605,6 +632,18 @@ public:
             calcIoChecksum() != rec.checksum) {
             return false;
         }
+        return true;
+    }
+
+    bool setChecksum() {
+        if (!hasDataForChecksum()) {
+            return false;
+        }
+        if (ioSizePb() != data_.size()) {
+            return false;
+        }
+        record().checksum = 0;
+        record().checksum = calcIoChecksum();
         return true;
     }
 
@@ -694,6 +733,38 @@ public:
         return true;
       error:
         return false;
+    }
+
+    void print() const {
+        ::printf("sector_type %d\n"
+                 "version %u\n"
+                 "header_size %u\n"
+                 "log_checksum_salt %" PRIu32 " (%08x)\n"
+                 "logical_bs %u\n"
+                 "physical_bs %u\n"
+                 "uuid %02x%02x%02x%02x"
+                 "%02x%02x%02x%02x"
+                 "%02x%02x%02x%02x"
+                 "%02x%02x%02x%02x\n"
+                 "begin_lsid %" PRIu64 "\n"
+                 "end_lsid %" PRIu64 "\n",
+                 header().sector_type,
+                 header().version,
+                 header().header_size,
+                 header().log_checksum_salt,
+                 header().log_checksum_salt,
+                 header().logical_bs,
+                 header().physical_bs,
+                 header().uuid[0], header().uuid[1],
+                 header().uuid[2], header().uuid[3],
+                 header().uuid[4], header().uuid[5],
+                 header().uuid[6], header().uuid[7],
+                 header().uuid[8], header().uuid[9],
+                 header().uuid[10], header().uuid[11],
+                 header().uuid[12], header().uuid[13],
+                 header().uuid[14], header().uuid[15],
+                 header().begin_lsid,
+                 header().end_lsid);
     }
 };
 

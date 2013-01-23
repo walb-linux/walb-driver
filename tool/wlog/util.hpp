@@ -236,6 +236,10 @@ public:
         : fd_(staticOpen(filePath, flags))
         , closeFlag_() {}
 
+    FileOpener(const std::string& filePath, int flags, int mode)
+        : fd_(staticOpen(filePath, flags, mode))
+        , closeFlag_() {}
+
     ~FileOpener() {
         try {
             close();
@@ -262,6 +266,13 @@ public:
 private:
     static int staticOpen(const std::string& filePath, int flags) {
         int fd = ::open(filePath.c_str(), flags);
+        if (fd < 0) {
+            throw RT_ERR("open failed: %s.", ::strerror(errno));
+        }
+        return fd;
+    }
+    static int staticOpen(const std::string& filePath, int flags, int mode) {
+        int fd = ::open(filePath.c_str(), flags, mode);
         if (fd < 0) {
             throw RT_ERR("open failed: %s.", ::strerror(errno));
         }
