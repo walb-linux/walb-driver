@@ -412,10 +412,8 @@ private:
 
         for (size_t i = 0; i < nRecords; i++) {
             uint64_t offset = rand.get64() % devLb;
-            uint32_t r32 = rand.get32();
-
-            uint16_t range = config_.maxIoLb() - config_.minIoLb();
             uint16_t ioSize = config_.minIoLb();
+            uint16_t range = config_.maxIoLb() - config_.minIoLb();
             if (range > 0) {
                 ioSize += rand.get32() % range;
             }
