@@ -125,6 +125,12 @@ static inline void log_record_init(struct walb_log_record *rec);
 static inline int is_valid_log_record(struct walb_log_record *rec);
 static inline int is_valid_log_record_const(const struct walb_log_record *rec);
 static inline int is_valid_logpack_header(const struct walb_logpack_header *lhead);
+static inline int is_valid_logpack_header_with_checksum(
+	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt);
+static inline int is_valid_logpack_header_and_records(
+	const struct walb_logpack_header *lhead);
+static inline int is_valid_logpack_header_and_records_with_checksum(
+	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt);
 static inline u64 get_next_lsid(const struct walb_logpack_header *lhead);
 
 /*******************************************************************************
@@ -175,7 +181,7 @@ error:
 static inline int is_valid_log_record_const(
 	const struct walb_log_record *rec)
 {
-  return is_valid_log_record((struct walb_log_record *)rec);
+	return is_valid_log_record((struct walb_log_record *)rec);
 }
 
 /**
@@ -238,6 +244,45 @@ error1:
 	LOGe("logpack header checksum is invalid (lsid %" PRIu64").\n",
 		lhead->logpack_lsid);
 	return 0;
+}
+
+/**
+ * Check validness of a logpack header and records.
+ */
+static inline int is_valid_logpack_header_and_records(
+	const struct walb_logpack_header *lhead)
+{
+	unsigned int i;
+
+	if (!is_valid_logpack_header(lhead)) {
+		LOGe("header invalid.\n");
+		return 0;
+	}
+	for (i = 0; i < lhead->n_records; i++) {
+		const struct walb_log_record *rec = &lhead->record[i];
+		if (!is_valid_log_record_const(rec)) {
+			LOGe("record %u invalid.\n", i);
+			return 0;
+		}
+		if (rec->lsid - rec->lsid_local != lhead->logpack_lsid) {
+			LOGe("lsid(%" PRIu64 ") - lsid_local(%u)"
+				" != logpack_lsid(%" PRIu64 ")\n",
+				rec->lsid, rec->lsid_local, lhead->logpack_lsid);
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static inline int is_valid_logpack_header_and_records_with_checksum(
+	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt)
+{
+	if (lhead->n_records > 0) {
+		if (checksum((const u8 *)lhead, pbs, salt) != 0) {
+			return 0;
+		}
+	}
+	return is_valid_logpack_header_and_records(lhead);
 }
 
 /**
