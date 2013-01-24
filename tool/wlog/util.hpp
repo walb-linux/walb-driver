@@ -998,6 +998,17 @@ void testUnitIntString()
     }
 }
 
+template <typename ByteType>
+void printByteArray(ByteType *data, size_t size)
+{
+    for (size_t i = 0; i < size; i++) {
+        ::printf("%02x", data[i]);
+
+        if (i % 64 == 63) { ::printf("\n"); }
+    }
+    if (size % 64 != 0) { ::printf("\n"); }
+}
+
 } //namespace util
 } //namespace walb
 
