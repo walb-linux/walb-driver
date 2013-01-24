@@ -6,11 +6,11 @@ CXXFLAGS = -Wall -Wextra -std=c++11 -pthread -I../../include
 CFLAGS = -Wall -Wextra -I../../include
 
 ifeq ($(DEBUG),1)
-CXXFLAGS += -g
-CFLAGS += -g
+CXXFLAGS += -g -DDEBUG
+CFLAGS += -g -DDEBUG
 else
-CXXFLAGS += -O2
-CFLAGS += -O2
+CXXFLAGS += -O2 -DNDEBUG
+CFLAGS += -O2 -DNDEBUG
 endif
 ifeq ($(PROF),1)
 CXXFLAGS += -pg
