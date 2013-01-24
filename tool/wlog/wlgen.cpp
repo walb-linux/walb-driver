@@ -46,7 +46,6 @@ private:
     bool isVerbose_;
     bool isHelp_;
     std::string outPath_;
-    const std::string helpString_;
     std::vector<std::string> args_;
 
 public:
@@ -63,7 +62,6 @@ public:
         , isVerbose_(false)
         , isHelp_(false)
         , outPath_()
-        , helpString_(generateHelpString(argv[0]))
         , args_() {
         parse(argc, argv);
     }
@@ -104,9 +102,15 @@ public:
         }
     }
 
-    void printHelp() const {
-        ::printf("%s", helpString_.c_str());
+    static void printHelp() {
+        ::printf("%s", generateHelpString().c_str());
     }
+
+    class Error : public std::runtime_error {
+    public:
+        explicit Error(const std::string &msg)
+            : std::runtime_error(msg) {}
+    };
 
 private:
     /* Option ids. */
@@ -124,6 +128,17 @@ private:
         VERBOSE,
         HELP,
     };
+
+    void throwError(const char *format, ...) const {
+        va_list args;
+        std::string msg;
+        va_start(args, format);
+        try {
+            msg = walb::util::formatStringV(format, args);
+        } catch (...) {}
+        va_end(args);
+        throw Error(msg);
+    }
 
     void parse(int argc, char* argv[]) {
         while (1) {
@@ -189,25 +204,20 @@ private:
                 isHelp_ = true;
                 break;
             default:
-                RT_ERR("Unknown option.");
+                throwError("Unknown option.");
             }
         }
 
         while(optind < argc) {
             args_.push_back(std::string(argv[optind++]));
         }
-        try {
-            check();
-        } catch (std::runtime_error& e) {
-            printHelp();
-            throw;
-        }
+        check();
     }
 
-    static std::string generateHelpString(const char *argv0) {
+    static std::string generateHelpString() {
         return walb::util::formatString(
             "Wlgen: generate walb log randomly.\n"
-            "Usage: %s [options]\n"
+            "Usage: wlgen [options]\n"
             "Options:\n"
             "  -o, --outPath PATH:    output file path or '-' for stdout.\n"
             "  -b, --pbs(-b) SIZE:    physical block size [byte]. (default: 512)\n"
@@ -220,34 +230,33 @@ private:
             "  --nopadding:           no padding. (default: randomly inserted)\n"
             "  --nodiscard:           no discard. (default: randomly inserted)\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
-            "  -h, --help:            show this message.\n"
-            , argv0);
+            "  -h, --help:            show this message.\n");
     }
 
     void check() const {
         if (pbs() < 512) {
-            throw RT_ERR("pbs must be 512 or more.");
+            throwError("pbs must be 512 or more.");
         }
         if (pbs() % 512 != 0) {
-            throw RT_ERR("pbs must be multiple of 512.");
+            throwError("pbs must be multiple of 512.");
         }
         if (minIoLb() > 65535) {
-            throw RT_ERR("minSize must be < 512 * 65536 bytes.");
+            throwError("minSize must be < 512 * 65536 bytes.");
         }
         if (maxIoLb() > 65535) {
-            throw RT_ERR("maxSize must be < 512 * 65536 bytes.");
+            throwError("maxSize must be < 512 * 65536 bytes.");
         }
         if (minIoLb() > maxIoLb()) {
-            throw RT_ERR("minIoSize must be <= maxIoSize.");
+            throwError("minIoSize must be <= maxIoSize.");
         }
         if (maxPackPb() < 1 + capacity_pb(pbs(), maxIoLb())) {
-            throw RT_ERR("maxPackSize must be >= pbs + maxIoSize.");
+            throwError("maxPackSize must be >= pbs + maxIoSize.");
         }
         if (lsid() + outLogPb() < lsid()) {
-            throw RT_ERR("lsid will overflow.");
+            throwError("lsid will overflow.");
         }
         if (outPath().size() == 0) {
-            throw RT_ERR("specify outPath.");
+            throwError("specify outPath.");
         }
     }
 };
@@ -444,12 +453,16 @@ int main(int argc, char* argv[])
         /* config.print(); */
 
         if (config.isHelp()) {
-            config.printHelp();
+            Config::printHelp();
             return 1;
         }
         WalbLogGenerator wlGen(config);
         wlGen.generate();
 
+    } catch (Config::Error& e) {
+        ::printf("Command line error: %s\n\n", e.what());
+        Config::printHelp();
+        ret = 1;
     } catch (std::runtime_error& e) {
         LOGe("Error: %s\n", e.what());
         ret = 1;
