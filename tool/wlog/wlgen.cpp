@@ -158,7 +158,7 @@ private:
                 {0, 0, 0, 0}
             };
             int option_index = 0;
-            int c = ::getopt_long(argc, argv, "s:b:o:vh", long_options, &option_index);
+            int c = ::getopt_long(argc, argv, "s:b:o:z:vh", long_options, &option_index);
             if (c == -1) { break; }
 
             switch (c) {
@@ -180,6 +180,7 @@ private:
                 maxPackSize_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
                 break;
             case Opt::OUTLOGSIZE:
+            case 'z':
                 outLogSize_ = walb::util::fromUnitIntString(optarg);
                 break;
             case Opt::LSID:
