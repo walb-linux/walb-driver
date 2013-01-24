@@ -420,7 +420,7 @@ private:
      * Delete an IoPtr from the map.
      */
     void deleteFromSet(IoPtr iop) {
-        size_t n = set_.erase(std::make_pair(iop->offset(), iop));
+        UNUSED size_t n = set_.erase(std::make_pair(iop->offset(), iop));
         assert(n == 1);
     }
 };
@@ -592,7 +592,7 @@ private:
         return IoPtr(new Io(offset, size, block));
     }
 
-    void executeDiscard(walb::util::WalbLogpackData &logd) {
+    void executeDiscard(UNUSED walb::util::WalbLogpackData &logd) {
 
         /* Wait for all IO done. */
         waitForAllPendingIos();
@@ -600,6 +600,7 @@ private:
         /* Issue the corresponding discard IOs. */
 
         /* now editing */
+
         ::printf("discard is not supported now.\n");
     }
 

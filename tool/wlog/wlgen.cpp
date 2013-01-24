@@ -364,8 +364,9 @@ private:
                     }
                 }
                 if (logd.hasDataForChecksum()) {
-                    bool ret = logd.setChecksum();
+                    UNUSED bool ret = logd.setChecksum();
                     assert(ret);
+                    assert(logd.isValid(true));
                 }
             }
             assert(blocks.size() == logh.totalIoSize());
@@ -376,6 +377,9 @@ private:
             /* Write each IO data. */
             walb::util::FdWriter fdw(fd);
             for (Block b : blocks) {
+#if 0
+                ::printf("block data %" PRIu64 "\n", *reinterpret_cast<uint64_t *>(b.get())); /* debug */
+#endif
                 fdw.write(reinterpret_cast<const char *>(b.get()), pbs);
             }
 

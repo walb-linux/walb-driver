@@ -89,7 +89,7 @@ public:
     }
 
     u64 get2ndSuperBlockOffset() const {
-        u64 oft = ::get_super_sector1_offset_2(super());
+        UNUSED u64 oft = ::get_super_sector1_offset_2(super());
         assert(oft == getMetadataOffset() + getMetadataSize());
         return ::get_super_sector1_offset_2(super());
     }
@@ -660,7 +660,6 @@ public:
         if (ioSizePb() != data_.size()) {
             return false;
         }
-        record().checksum = 0;
         record().checksum = calcIoChecksum();
         return true;
     }
@@ -668,9 +667,8 @@ public:
 private:
     u32 calcIoChecksum() const {
         unsigned int pbs = logh_.pbs();
-        const auto &rec = record();
         assert(hasDataForChecksum());
-        assert(rec.io_size > 0);
+        assert(ioSizeLb() > 0);
         unsigned int nPb = ioSizePb();
         unsigned int remaining = ioSizeLb() * LOGICAL_BLOCK_SIZE;
 
