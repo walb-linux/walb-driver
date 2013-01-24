@@ -151,14 +151,11 @@ bool pack_work_init(void)
 			KMEM_CACHE_PACK_WORK_NAME,
 			sizeof(struct pack_work), 0, 0, NULL);
 		if (!pack_work_cache_) {
-			goto error0;
+			atomic_dec(&n_users_);
+			return false;
 		}
 	}
 	return true;
-
-error0:
-	atomic_dec(&n_users_);
-	return false;
 }
 
 void pack_work_exit(void)
