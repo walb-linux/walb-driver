@@ -53,7 +53,7 @@ public:
         : pbs_(512)
         , devSize_(16 * 1024 * 1024) /* default 16MB. */
         , minIoSize_(pbs_)
-        , maxIoSize_(1024 * 1024) /* default 1MB. */
+        , maxIoSize_(32 * 1024) /* default 32KB. */
         , maxPackSize_(16 * 1024 * 1024) /* default 16MB. */
         , outLogSize_(1024 * 1024) /* default 1MB. */
         , lsid_(0)
@@ -225,7 +225,7 @@ private:
             "  -s, --devSize SIZE:    device size [byte]. (default: 16M)\n"
             "  -z, --outLogSize SIZE: total log size to generate [byte]. (default: 1M)\n"
             "  --minIoSize SIZE:      minimum IO size [byte]. (default: pbs)\n"
-            "  --maxIoSize SIZE:      maximum IO size [byte]. (default: 1M)\n"
+            "  --maxIoSize SIZE:      maximum IO size [byte]. (default: 32K)\n"
             "  --maxPackSize SIZE:    maximum logpack size [byte]. (default: 16M)\n"
             "  --lsid LSID:           lsid of the first log. (default: 0)\n"
             "  --nopadding:           no padding. (default: randomly inserted)\n"
