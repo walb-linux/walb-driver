@@ -177,18 +177,14 @@ bool read_logpack_data_from_wldev(
 			lhead->record[i].lsid,
 			log_off);
 
-		if (test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
-			/* memset zero instead of read due to padding area. */
-			sector_array_memset(
-				sect_ary, total_pb * pbs, log_pb * pbs, 0);
-		} else {
-			/* Read data for the log record. */
-			if (!sector_array_pread(
-					fd, log_off, sect_ary,
-					total_pb, log_pb)) {
-				LOGe("read sectors failed.\n");
-				goto error0;
-			}
+		/* Read data for the log record. */
+		if (!sector_array_pread(
+				fd, log_off, sect_ary,
+				total_pb, log_pb)) {
+			LOGe("read sectors failed.\n");
+			return false;
+		}
+		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
 			/* Confirm checksum */
 			u32 csum = sector_array_checksum(
 				sect_ary, total_pb * pbs,
@@ -196,15 +192,12 @@ bool read_logpack_data_from_wldev(
 			if (csum != lhead->record[i].checksum) {
 				LOGe("log header checksum is invalid. %08x %08x\n",
 					csum, lhead->record[i].checksum);
-				goto error0;
+				return false;
 			}
 		}
 		total_pb += log_pb;
 	}
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -321,7 +314,7 @@ bool read_logpack_data(
 
 	if (lhead->total_io_size > sect_ary->size) {
 		LOGe("sect_ary size is not enough.\n");
-		goto error0;
+		return false;
 	}
 
 	int i;
@@ -337,34 +330,27 @@ bool read_logpack_data(
 		idx_pb = lhead->record[i].lsid_local - 1;
 		log_lb = lhead->record[i].io_size;
 		log_pb = capacity_pb(pbs, log_lb);
+		/* Read data of the log record. */
+		if (!sector_array_read(fd, sect_ary, idx_pb, log_pb)) {
+			LOGe("read log data failed.\n");
+			return false;
+		}
 		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
-			/* Read data of the log record. */
-			if (!sector_array_read(fd, sect_ary, idx_pb, log_pb)) {
-				LOGe("read log data failed.\n");
-				goto error0;
-			}
-
 			/* Confirm checksum. */
 			u32 csum = sector_array_checksum(
 				sect_ary,
 				idx_pb * pbs,
 				log_lb * LOGICAL_BLOCK_SIZE, salt);
 			if (csum != lhead->record[i].checksum) {
-				LOGe("log header checksum in invalid. %08x %08x\n",
-					csum, lhead->record[i].checksum);
-				goto error0;
+				LOGe("log record[%d] checksum is invalid. %08x %08x\n",
+					i, csum, lhead->record[i].checksum);
+				return false;
 			}
-		} else {
-			sector_array_memset(
-				sect_ary, idx_pb * pbs, log_pb * pbs, 0);
 		}
 		total_pb += log_pb;
 	}
 	ASSERT(total_pb == lhead->total_io_size);
 	return true;
-
-error0:
-	return false;
 }
 
 /**
