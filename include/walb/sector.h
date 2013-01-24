@@ -520,8 +520,7 @@ static inline int sector_array_compare(
 	unsigned int i, sect_size;
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary1);
-
-	sect_size = sect_ary0->array[0]->size;
+	sect_size = sect_ary0->sector_size;
 
 	if (sect_ary0->size != sect_ary1->size) {
 		return sect_ary0->size - sect_ary1->size;
@@ -550,8 +549,7 @@ static inline int sector_array_sprint(
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(str);
 	ASSERT(str_size > 0);
-
-	sect_size = sect_ary->array[0]->size;
+	sect_size = sect_ary->sector_size;
 
 	str[0] = '\0';
 	for (i = 0; i < sect_ary->size; i++) {
@@ -590,7 +588,7 @@ static inline u32 sector_array_checksum(
 	ASSERT(size > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(sect_ary->size > 0);
-	sect_size = sect_ary->array[0]->size;
+	sect_size = sect_ary->sector_size;
 
 	idx = offset / sect_size;
 	off = offset % sect_size;
