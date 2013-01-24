@@ -16,6 +16,7 @@
 #include "util.hpp"
 #include "walb/super.h"
 #include "walb/log_device.h"
+#include "walb/log_record.h"
 #include "../walblog_format.h"
 
 namespace walb {
@@ -260,10 +261,10 @@ public:
 
     bool isValid(bool isChecksum = true) const {
         if (isChecksum) {
-            return ::is_valid_logpack_header_with_checksum(
+            return ::is_valid_logpack_header_and_records_with_checksum(
                 &header(), pbs(), salt()) != 0;
         } else {
-            return ::is_valid_logpack_header(&header()) != 0;
+            return ::is_valid_logpack_header_and_records(&header()) != 0;
         }
     }
 
@@ -439,12 +440,13 @@ public:
         ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
         rec.offset = offset;
         rec.io_size = size;
-        rec.lsid = header().logpack_lsid + 1 + header().total_io_size;
-        rec.lsid_local = rec.lsid - header().logpack_lsid;
+        rec.lsid_local = header().total_io_size + 1;
+        rec.lsid = header().logpack_lsid + rec.lsid_local;
         rec.checksum = 0; /* You must set this lator. */
 
         header().n_records++;
         header().total_io_size += capacity_pb(pbs(), size);
+        assert(::is_valid_logpack_header_and_records(&header()));
         return true;
     }
 
@@ -470,12 +472,13 @@ public:
         ::set_bit_u32(LOG_RECORD_DISCARD, &rec.flags);
         rec.offset = offset;
         rec.io_size = size;
-        rec.lsid = header().logpack_lsid + 1 + header().total_io_size;
-        rec.lsid_local = rec.lsid - header().logpack_lsid;
+        rec.lsid_local = header().total_io_size + 1;
+        rec.lsid = header().logpack_lsid + rec.lsid_local;
         rec.checksum = 0; /* Not be used. */
 
         header().n_records++;
         /* You must not update total_io_size. */
+        assert(::is_valid_logpack_header_and_records(&header()));
         return true;
     }
 
@@ -510,8 +513,8 @@ public:
         ::set_bit_u32(LOG_RECORD_PADDING, &rec.flags);
         rec.offset = 0; /* not be used. */
         rec.io_size = size;
-        rec.lsid = header().logpack_lsid + 1 + header().total_io_size;
-        rec.lsid_local = rec.lsid - header().logpack_lsid;
+        rec.lsid_local = header().total_io_size + 1;
+        rec.lsid = header().logpack_lsid + rec.lsid_local;
         rec.checksum = 0;  /* not be used. */
 
         header().n_records++;
@@ -537,11 +540,13 @@ public:
         if (!::test_bit_u32(LOG_RECORD_PADDING, &rec.flags)) {
             return;
         }
-        ::log_record_init(&rec);
         header().n_padding--;
         assert(header().n_padding == 0);
         header().n_records--;
         assert(header().n_records > 0);
+        header().total_io_size -= capacity_pb(pbs(), rec.io_size);
+        ::log_record_init(&rec);
+        assert(::is_valid_logpack_header_and_records(&header()));
     }
 
 private:

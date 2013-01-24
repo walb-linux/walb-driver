@@ -347,6 +347,7 @@ private:
         while (written < config_.outLogPb()) {
             walb::util::WalbLogpackHeader logh(hBlock, pbs, salt);
             generateLogpackHeader(rand, logh, lsid);
+            assert(::is_valid_logpack_header_and_records(&logh.header()));
             uint64_t tmpLsid = lsid + 1;
 
             /* Prepare blocks and calc checksum if necessary. */
@@ -424,7 +425,7 @@ private:
             if (offset + ioSize > devLb) {
                 ioSize = devLb - offset; /* clipping. */
             }
-            if (logh.totalIoSize() > 0 &&
+            if (logh.totalIoSize() > 0 && nRecords > 1 &&
                 logh.totalIoSize() + capacity_pb(pbs, ioSize) > config_.maxPackPb()) {
                 break;
             }
