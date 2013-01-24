@@ -34,10 +34,10 @@
 class Config
 {
 private:
+    unsigned int pbs_; /* physical block size [byte] */
     uint64_t devSize_; /* [byte]. */
     unsigned int minIoSize_; /* [byte]. */
     unsigned int maxIoSize_; /* [byte]. */
-    unsigned int pbs_; /* physical block size [byte] */
     unsigned int maxPackSize_; /* [byte]. */
     uint64_t outLogSize_; /* Approximately output log size [byte]. */
     uint64_t lsid_; /* start lsid [physical block]. */
@@ -51,10 +51,10 @@ private:
 
 public:
     Config(int argc, char* argv[])
-        : devSize_(16 * 1024 * 1024) /* default 16MB. */
-        , minIoSize_(1)
+        : pbs_(512)
+        , devSize_(16 * 1024 * 1024) /* default 16MB. */
+        , minIoSize_(pbs_)
         , maxIoSize_(1024 * 1024) /* default 1MB. */
-        , pbs_(512)
         , maxPackSize_(16 * 1024 * 1024) /* default 16MB. */
         , outLogSize_(1024 * 1024) /* default 1MB. */
         , lsid_(0)
@@ -143,11 +143,12 @@ private:
                 {0, 0, 0, 0}
             };
             int option_index = 0;
-            int c = ::getopt_long(argc, argv, "", long_options, &option_index);
+            int c = ::getopt_long(argc, argv, "s:b:o:vh", long_options, &option_index);
             if (c == -1) { break; }
 
             switch (c) {
             case Opt::DEVSIZE:
+            case 's':
                 devSize_ = walb::util::fromUnitIntString(optarg);
                 break;
             case Opt::MINIOSIZE:
@@ -157,6 +158,7 @@ private:
                 maxIoSize_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
                 break;
             case Opt::PBS:
+            case 'b':
                 pbs_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
                 break;
             case Opt::MAXPACKSIZE:
@@ -175,12 +177,15 @@ private:
                 isDiscard_ = false;
                 break;
             case Opt::OUTPATH:
+            case 'o':
                 outPath_ = std::string(optarg);
                 break;
             case Opt::VERBOSE:
+            case 'v':
                 isVerbose_ = true;
                 break;
             case Opt::HELP:
+            case 'h':
                 isHelp_ = true;
                 break;
             default:
@@ -201,20 +206,21 @@ private:
 
     static std::string generateHelpString(const char *argv0) {
         return walb::util::formatString(
+            "Wlgen: generate walb log randomly.\n"
             "Usage: %s [options]\n"
             "Options:\n"
-            "  --pbs [size]:        physical block size [byte].\n"
-            "  --devSize [size]:    device size [byte].\n"
-            "  --outLogSize [size]: total log size to generate [byte].\n"
-            "  --minIoSize [size]:  minimum IO size [byte].\n"
-            "  --maxIoSize [size]:  maximum IO size [byte].\n"
-            "  --maxPackSize [size]: maximum logpack size [byte].\n"
-            "  --lsid [lsid]:       lsid of the first log.\n"
-            "  --nopadding:         no padding. (default: randomly inserted)\n"
-            "  --nodiscard:         no discard. (default: randomly inserted)\n"
-            "  --outPath [path]:    output file path or '-' for stdout. (default: stdout)\n"
-            "  --verbose:           verbose messages to stderr.\n"
-            "  --help:              show this message.\n"
+            "  -o, --outPath PATH:    output file path or '-' for stdout.\n"
+            "  -b, --pbs(-b) SIZE:    physical block size [byte]. (default: 512)\n"
+            "  -s, --devSize SIZE:    device size [byte]. (default: 16M)\n"
+            "  -z, --outLogSize SIZE: total log size to generate [byte]. (default: 1M)\n"
+            "  --minIoSize SIZE:      minimum IO size [byte]. (default: pbs)\n"
+            "  --maxIoSize SIZE:      maximum IO size [byte]. (default: 1M)\n"
+            "  --maxPackSize SIZE:    maximum logpack size [byte]. (default: 16M)\n"
+            "  --lsid LSID:           lsid of the first log. (default: 0)\n"
+            "  --nopadding:           no padding. (default: randomly inserted)\n"
+            "  --nodiscard:           no discard. (default: randomly inserted)\n"
+            "  -v, --verbose:         verbose messages to stderr.\n"
+            "  -h, --help:            show this message.\n"
             , argv0);
     }
 
