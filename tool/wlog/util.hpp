@@ -19,6 +19,8 @@
 #include <cstring>
 #include <memory>
 #include <unordered_map>
+#include <cstdint>
+#include <cinttypes>
 
 #include <sys/time.h>
 #include <sys/types.h>
@@ -31,6 +33,13 @@
 
 #define RT_ERR(fmt, args...)                                    \
     std::runtime_error(walb::util::formatString(fmt, ##args))
+
+#define CHECKx(cond)                                                \
+    do {                                                            \
+        if (!(cond)) {                                              \
+            throw RT_ERR("check error: %s:%d", __func__, __LINE__); \
+        }                                                           \
+    } while (0)
 
 namespace walb {
 namespace util {
@@ -839,6 +848,142 @@ public:
     }
 };
 #endif
+
+/**
+ * Convert size string with unit suffix to unsigned integer.
+ */
+uint64_t fromUnitIntString(const std::string &valStr)
+{
+    int shift = 0;
+    std::string s(valStr);
+    const size_t sz = s.size();
+
+    if (sz == 0) { RT_ERR("Invalid argument."); }
+    switch (s[sz - 1]) {
+    case 'e':
+    case 'E':
+        shift += 10;
+    case 'p':
+    case 'P':
+        shift += 10;
+    case 't':
+    case 'T':
+        shift += 10;
+    case 'g':
+    case 'G':
+        shift += 10;
+    case 'm':
+    case 'M':
+        shift += 10;
+    case 'k':
+    case 'K':
+        shift += 10;
+        s.resize(sz - 1);
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9':
+        break;
+    default:
+        RT_ERR("Invalid suffix charactor.");
+    }
+    assert(shift < 64);
+
+    for (size_t i = 0; i < sz - 1; i++) {
+        if (!('0' <= valStr[i] && valStr[i] <= '9')) {
+            RT_ERR("Not numeric charactor.");
+        }
+    }
+    uint64_t val = atoll(s.c_str());
+    uint64_t mask = (1ULL << (64 - shift)) - 1;
+    if ((val & mask) != val) {
+        RT_ERR("fromUnitIntString: overflow.");
+    }
+    return val << shift;
+}
+
+template<typename UIntType>
+class Rand
+{
+private:
+    std::random_device rd_;
+    std::mt19937 gen_;
+    std::uniform_int_distribution<UIntType> dist_;
+public:
+    Rand()
+        : rd_()
+        , gen_(rd_())
+        , dist_(0, UIntType(-1)) {}
+
+    UIntType get() {
+        return dist_(gen_);
+    }
+};
+
+/**
+ * Unit suffixes:
+ *   k: 2^10
+ *   m: 2^20
+ *   g: 2^30
+ *   t: 2^40
+ *   p: 2^50
+ *   e: 2^60
+ */
+std::string toUnitIntString(uint64_t val)
+{
+    uint64_t mask = (1ULL << 10) - 1;
+    char units[] = " kmgtpe";
+
+    size_t i = 0;
+    while (i < sizeof(units)) {
+        if ((val & mask) != val) { break; }
+        i++;
+        val >>= 10;
+    }
+
+    if (i > 0) {
+        return formatString("%" PRIu64 "%c", val, units[i]);
+    } else {
+        return formatString("%" PRIu64 "", val);
+    }
+}
+
+void testUnitIntString()
+{
+    auto check = [](const std::string &s, uint64_t v) {
+        CHECKx(fromUnitIntString(s) == v);
+        CHECKx(toUnitIntString(v) == s);
+    };
+    check("12345", 12345);
+    check("1k", 1ULL << 10);
+    check("2m", 2ULL << 20);
+    check("3g", 3ULL << 30);
+    check("4t", 4ULL << 40);
+    check("5p", 5ULL << 50);
+    check("6e", 6ULL << 60);
+
+    /* Overflow check. */
+    try {
+        fromUnitIntString("7e");
+        CHECKx(true);
+        fromUnitIntString("8e");
+        CHECKx(false);
+    } catch (std::runtime_error &e) {
+    }
+    try {
+        fromUnitIntString("16383p");
+        CHECKx(true);
+        fromUnitIntString("16384p");
+        CHECKx(false);
+    } catch (std::runtime_error &e) {
+    }
+}
 
 } //namespace util
 } //namespace walb

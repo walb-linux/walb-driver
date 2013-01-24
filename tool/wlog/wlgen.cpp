@@ -125,56 +125,6 @@ private:
         HELP,
     };
 
-    uint64_t parseSize(const char* arg) const {
-        int shift = 0;
-        std::string s(arg);
-        const size_t sz = s.size();
-
-        if (sz == 0) { RT_ERR("Invalid argument."); }
-        switch (s[sz - 1]) {
-        case 'p':
-        case 'P':
-            shift += 10;
-        case 't':
-        case 'T':
-            shift += 10;
-        case 'g':
-        case 'G':
-            shift += 10;
-        case 'm':
-        case 'M':
-            shift += 10;
-        case 'k':
-        case 'K':
-            shift += 10;
-            s.resize(sz - 1);
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-        case '9':
-            break;
-        default:
-            RT_ERR("Invalid suffix charactor.");
-        }
-
-        for (size_t i = 0; i < sz - 1; i++) {
-            if (!('0' <= arg[i] && arg[i] <= '9')) {
-                RT_ERR("Not numeric charactor.");
-            }
-        }
-        uint64_t val = atoll(s.c_str());
-        if ((val << shift) >> shift != val) {
-            RT_ERR("Size overflow.");
-        }
-        return val << shift;
-    }
-
     void parse(int argc, char* argv[]) {
         while (1) {
             const struct option long_options[] = {
@@ -195,27 +145,28 @@ private:
             int option_index = 0;
             int c = ::getopt_long(argc, argv, "", long_options, &option_index);
             if (c == -1) { break; }
+
             switch (c) {
             case Opt::DEVSIZE:
-                devSize_ = parseSize(optarg);
+                devSize_ = walb::util::fromUnitIntString(optarg);
                 break;
             case Opt::MINIOSIZE:
-                minIoSize_ = static_cast<unsigned int>(parseSize(optarg));
+                minIoSize_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
                 break;
             case Opt::MAXIOSIZE:
-                maxIoSize_ = static_cast<unsigned int>(parseSize(optarg));
+                maxIoSize_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
                 break;
             case Opt::PBS:
-                pbs_ = static_cast<unsigned int>(parseSize(optarg));
+                pbs_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
                 break;
             case Opt::MAXPACKSIZE:
-                maxPackSize_ = static_cast<unsigned int>(parseSize(optarg));
+                maxPackSize_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
                 break;
             case Opt::OUTLOGSIZE:
-                outLogSize_ = parseSize(optarg);
+                outLogSize_ = walb::util::fromUnitIntString(optarg);
                 break;
             case Opt::LSID:
-                lsid_ = parseSize(optarg);
+                lsid_ = walb::util::fromUnitIntString(optarg);
                 break;
             case Opt::NOPADDING:
                 isPadding_ = false;
@@ -331,7 +282,6 @@ private:
         uint16_t getp() {
             return distp_(gen_);
         }
-
     };
 public:
     WalbLogGenerator(const Config& config)
