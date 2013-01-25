@@ -232,68 +232,6 @@ bool read_logpack_header(
  * Read logpack data from ds.
  *
  * @fd file descriptor (opened, seeked)
- * @pbs physical block size.
- * @salt checksum salt.
- * @logpack corresponding logpack header.
- * @buf buffer to be filled.
- * @bufsize buffser size.
- *
- * @return true in success, or false.
- */
-bool read_logpack_data_raw(
-	int fd, unsigned int pbs, u32 salt,
-	const struct walb_logpack_header* lhead,
-	u8* buf, size_t bufsize)
-{
-	ASSERT(fd >= 0);
-	ASSERT_PBS(pbs);
-
-	if (lhead->total_io_size * pbs > bufsize) {
-		LOGe("buffer size is not enough.\n");
-		goto error0;
-	}
-
-	int i;
-	const int n_req = lhead->n_records;
-	u32 total_pb;
-
-	total_pb = 0;
-	for (i = 0; i < n_req; i++) {
-		u32 log_lb = lhead->record[i].io_size;
-		u32 log_pb = capacity_pb(pbs, log_lb);
-		u8 *buf_off = buf + (total_pb * pbs);
-		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
-
-			/* Read data of the log record. */
-			if (!read_data(fd, buf_off, log_pb * pbs)) {
-				LOGe("read log data failed.\n");
-				goto error0;
-			}
-
-			/* Confirm checksum. */
-			u32 csum = checksum((const u8 *)buf_off,
-					log_lb * LOGICAL_BLOCK_SIZE, salt);
-			if (csum != lhead->record[i].checksum) {
-				LOGe("log header checksum in invalid. %08x %08x\n",
-					csum, lhead->record[i].checksum);
-				goto error0;
-			}
-		} else {
-			memset(buf_off, 0, log_pb * pbs);
-		}
-		total_pb += log_pb;
-	}
-	ASSERT(total_pb == lhead->total_io_size);
-	return true;
-
-error0:
-	return false;
-}
-
-/**
- * Read logpack data from ds.
- *
- * @fd file descriptor (opened, seeked)
  * @lhead corresponding logpack header.
  * @salt checksum salt.
  * @sect_ary sector data array to be store data.

@@ -30,10 +30,6 @@ void print_logpack_header(const struct walb_logpack_header* lhead);
 
 bool read_logpack_header(
 	int fd, unsigned int pbs, u32 salt, struct walb_logpack_header* lhead);
-bool read_logpack_data_raw(
-	int fd, unsigned int pbs, u32 salt,
-	const struct walb_logpack_header* lhead,
-	u8* buf, size_t bufsize);
 bool read_logpack_data(
 	int fd,
 	const struct walb_logpack_header* lhead, u32 salt,
