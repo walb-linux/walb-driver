@@ -1486,7 +1486,7 @@ retry_bio:
 	ASSERT(len == pbs);
 
 	init_bio_entry(bioe, bio);
-	ASSERT(bioe->len << 9 == pbs);
+	ASSERT(bioe->len * LOGICAL_BLOCK_SIZE == pbs);
 
 	ASSERT(bioe_list);
 	ASSERT(list_empty(bioe_list));

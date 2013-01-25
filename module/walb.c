@@ -1572,7 +1572,8 @@ static bool resize_disk(struct gendisk *gd, u64 new_size)
 		check_disk_size_change(gd, bdev);
 		bdev->bd_invalidated = 0; /* This is bugfix. */
 	} else {
-		i_size_write(bdev->bd_inode, (loff_t)new_size << 9);
+		i_size_write(bdev->bd_inode,
+			(loff_t)new_size * LOGICAL_BLOCK_SIZE);
 	}
 	mutex_unlock(&bdev->bd_mutex);
 	bdput(bdev);

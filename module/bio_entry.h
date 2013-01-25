@@ -26,7 +26,7 @@ struct bio_entry
 	struct list_head list; /* list entry */
 	struct bio *bio; /* must be NULL if bio->bi_cnt is 0 (and deallocated). */
 	sector_t pos; /* [logical block] */
-	unsigned int len; /* keep (bi_size << 9) at initialization,
+	unsigned int len; /* keep (bi_size * LOGICAL_BLOCK_SIZE) at initialization,
 			     because bio->bi_size will be 0 after endio. */
 	int error; /* bio error status. */
 	struct completion done; /* If is_splitted is true and bio_orig is NULL,

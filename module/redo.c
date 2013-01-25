@@ -394,8 +394,8 @@ static bool prepare_data_bio_for_redo(
 	bio->bi_end_io = bio_end_io_for_redo;
 	bio->bi_private = biow;
 	bio_add_page(bio, virt_to_page(sectd->data),
-		len << 9, offset_in_page(sectd->data));
-	ASSERT(bio->bi_size == len << 9);
+		len * LOGICAL_BLOCK_SIZE, offset_in_page(sectd->data));
+	ASSERT(bio->bi_size == len * LOGICAL_BLOCK_SIZE);
 
 	init_bio_wrapper(biow, bio);
 	biow->private_data = sectd;
@@ -937,7 +937,8 @@ static u32 calc_checksum_for_redo(
 		} else {
 			len = n_lb;
 		}
-		csum = checksum_partial(csum, sectd->data, len << 9);
+		csum = checksum_partial(
+			csum, sectd->data, len * LOGICAL_BLOCK_SIZE);
 		n_lb -= len;
 	}
 	ASSERT(n_lb == 0);
