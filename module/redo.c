@@ -821,7 +821,9 @@ retry1:
 	spin_unlock(&gc_rd->queue_lock);
 	ASSERT(list_empty(&biow_list_ready));
 
-	/* Case (1): valid. */
+	/*
+	 * Case (1): valid.
+	 */
 	if (is_valid) {
 		ASSERT(list_empty(&biow_list_pack));
 		*written_lsid_p = logh->logpack_lsid + 1 + logh->total_io_size;
@@ -830,7 +832,9 @@ retry1:
 		goto fin;
 	}
 
-	/* Case (2): fully invalid. */
+	/*
+	 * Case (2): fully invalid.
+	 */
 	if (invalid_idx == 0) {
 		/* The whole logpack will be discarded. */
 		*written_lsid_p = logh->logpack_lsid;
@@ -839,19 +843,15 @@ retry1:
 		goto fin;
 	}
 
-	/* Case (3): paritally invalid. */
-
+	/*
+	 * Case (3): paritally invalid.
+	 */
 	/* Update logpack header. */
-	if (test_bit_u32(LOG_RECORD_PADDING, &logh->record[invalid_idx - 1].flags)) {
-		invalid_idx--;
-		ASSERT(logh->n_padding == 1);
-		logh->n_padding--;
-	}
 	for (i = invalid_idx; i < logh->n_records; i++) {
 		log_record_init(&logh->record[i]);
 	}
-
 	logh->n_records = invalid_idx;
+	/* Re-calculate total_io_size. */
 	logh->total_io_size = 0;
 	for (i = 0; i < logh->n_records; i++) {
 		if (!test_bit_u32(LOG_RECORD_DISCARD, &logh->record[i].flags)) {
@@ -862,10 +862,10 @@ retry1:
 	logh->checksum = 0;
 	logh->checksum = checksum(
 		(const u8 *)logh, pbs, wdev->log_checksum_salt);
-
 	/* Execute updated logpack header IO. */
 	logh_biow->private_data = NULL;
 	destroy_bio_wrapper_for_redo(wdev, logh_biow);
+	/* Try to write */
 retry2:
 	logh_biow = create_log_bio_wrapper_for_redo(
 		wdev, logh->logpack_lsid, sectd);
@@ -881,7 +881,6 @@ retry2:
 		retb = false;
 		goto fin;
 	}
-
 	*written_lsid_p = logh->logpack_lsid + 1 + logh->total_io_size;
 	*should_terminate = true;
 	retb = true;

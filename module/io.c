@@ -1328,11 +1328,11 @@ static void logpack_calc_checksum(
 	n_padding = 0;
 	i = 0;
 	list_for_each_entry(biow, biow_list, list) {
-
 		if (test_bit_u32(LOG_RECORD_PADDING, &logh->record[i].flags)) {
 			n_padding++;
 			i++;
-			/* A padding record is not the last in the logpack header. */
+			/* The corresponding record of the biow must be the next. */
+			ASSERT(i < logh->n_records);
 		}
 
 		ASSERT(biow);
@@ -1399,7 +1399,8 @@ static void submit_logpack(
 	list_for_each_entry(biow, biow_list, list) {
 		if (test_bit_u32(LOG_RECORD_PADDING, &logh->record[i].flags)) {
 			i++;
-			/* padding record never come at last. */
+			/* Do nothing. */
+			continue;
 		}
 		if (test_bit_u32(LOG_RECORD_DISCARD, &logh->record[i].flags)) {
 			/* No need to execute IO to the log device. */
@@ -1841,12 +1842,12 @@ static bool is_prepared_pack_valid(struct pack *pack)
 			CHECK(biow->bio->bi_rw & REQ_FLUSH);
 			CHECK(i == 0);
 			CHECK(lhead->n_records == 0);
+			CHECK(lhead->total_io_size == 0);
 			continue;
 		}
 
 		CHECK(i < lhead->n_records);
 		lrec = &lhead->record[i];
-		CHECK(lrec);
 		CHECK(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 
 		if (test_bit_u32(LOG_RECORD_PADDING, &lrec->flags)) {
@@ -1854,12 +1855,8 @@ static bool is_prepared_pack_valid(struct pack *pack)
 			total_pb += capacity_pb(pbs, lrec->io_size);
 			n_padding++;
 			i++;
-
-			/* The padding record is not the last. */
+			/* The corresponding record of the biow must be the next. */
 			CHECK(i < lhead->n_records);
-			lrec = &lhead->record[i];
-			CHECK(lrec);
-			CHECK(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 		}
 
 		/* Normal record. */

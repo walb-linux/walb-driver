@@ -180,7 +180,7 @@ bool walb_logpack_header_add_req(
  * @ring_buffer_size ring buffer size [physical block]
  *
  * RETURN:
- *   true in success, or false.
+ *   true in success, or false (you must create new logpack for the bio).
  */
 bool walb_logpack_header_add_bio(
 	struct walb_logpack_header *lhead,
