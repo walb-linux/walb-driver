@@ -22,8 +22,6 @@ char *device_size_list_str_ = "1m";
 /* Minor id start. */
 int start_minor_ = 0;
 
-/* Logical block size is 512. */
-#define LOGICAL_BLOCK_SIZE 512
 /* Physical block size. */
 int physical_block_size_ = 4096;
 
