@@ -165,12 +165,8 @@ bool read_logpack_data_from_wldev(
 		if (test_bit_u32(LOG_RECORD_DISCARD, &lhead->record[i].flags)) {
 			continue;
 		}
-
 		log_lb = lhead->record[i].io_size;
-
-		/* Calculate num of physical blocks. */
 		log_pb = capacity_pb(pbs, log_lb);
-
 		log_off = get_offset_of_lsid_2
 			(super, lhead->record[i].lsid);
 		LOGd("lsid: %"PRIu64" log_off: %"PRIu64"\n",
@@ -184,16 +180,19 @@ bool read_logpack_data_from_wldev(
 			LOGe("read sectors failed.\n");
 			return false;
 		}
-		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
-			/* Confirm checksum */
-			u32 csum = sector_array_checksum(
-				sect_ary, total_pb * pbs,
-				log_lb * lbs, salt);
-			if (csum != lhead->record[i].checksum) {
-				LOGe("log header checksum is invalid. %08x %08x\n",
-					csum, lhead->record[i].checksum);
-				return false;
-			}
+
+		if (test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
+			total_pb += log_pb;
+			continue;
+		}
+		/* Confirm checksum */
+		u32 csum = sector_array_checksum(
+			sect_ary, total_pb * pbs,
+			log_lb * lbs, salt);
+		if (csum != lhead->record[i].checksum) {
+			LOGe("log header checksum is invalid. %08x %08x\n",
+				csum, lhead->record[i].checksum);
+			return false;
 		}
 		total_pb += log_pb;
 	}
@@ -273,17 +272,20 @@ bool read_logpack_data(
 			LOGe("read log data failed.\n");
 			return false;
 		}
-		if (!test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
-			/* Confirm checksum. */
-			u32 csum = sector_array_checksum(
-				sect_ary,
-				idx_pb * pbs,
-				log_lb * LOGICAL_BLOCK_SIZE, salt);
-			if (csum != lhead->record[i].checksum) {
-				LOGe("log record[%d] checksum is invalid. %08x %08x\n",
-					i, csum, lhead->record[i].checksum);
-				return false;
-			}
+
+		if (test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
+			total_pb += log_pb;
+			continue;
+		}
+		/* Confirm checksum. */
+		u32 csum = sector_array_checksum(
+			sect_ary,
+			idx_pb * pbs,
+			log_lb * LOGICAL_BLOCK_SIZE, salt);
+		if (csum != lhead->record[i].checksum) {
+			LOGe("log record[%d] checksum is invalid. %08x %08x\n",
+				i, csum, lhead->record[i].checksum);
+			return false;
 		}
 		total_pb += log_pb;
 	}
