@@ -520,33 +520,8 @@ public:
         header().n_records++;
         header().total_io_size += capacity_pb(pbs(), size);
         header().n_padding++;
-        /* You must check that the padding record
-           must not be the last record in the header. */
-        return true;
-    }
-
-    /**
-     * Delete the last padding record, which is invalid.
-     */
-    void deleteLastPadding() {
-        if (header().n_padding == 0) {
-            return;
-        }
-        if (header().n_records == 0) {
-            throw RT_ERR("n_records must not be 0.");
-        }
-        size_t pos = header().n_records - 1;
-        struct walb_log_record &rec = record(pos);
-        if (!::test_bit_u32(LOG_RECORD_PADDING, &rec.flags)) {
-            return;
-        }
-        header().n_padding--;
-        assert(header().n_padding == 0);
-        header().n_records--;
-        assert(header().n_records > 0);
-        header().total_io_size -= capacity_pb(pbs(), rec.io_size);
-        ::log_record_init(&rec);
         assert(::is_valid_logpack_header_and_records(&header()));
+        return true;
     }
 
 private:
