@@ -844,7 +844,7 @@ retry1:
 	}
 
 	/*
-	 * Case (3): paritally invalid.
+	 * Case (3): partially invalid.
 	 */
 	/* Update logpack header. */
 	for (i = invalid_idx; i < logh->n_records; i++) {
@@ -859,13 +859,13 @@ retry1:
 				pbs, logh->record[i].io_size);
 		}
 	}
+	ASSERT(logh->total_io_size > 0);
 	logh->checksum = 0;
 	logh->checksum = checksum(
 		(const u8 *)logh, pbs, wdev->log_checksum_salt);
-	/* Execute updated logpack header IO. */
+	/* Try to overwrite the last logpack header block. */
 	logh_biow->private_data = NULL;
 	destroy_bio_wrapper_for_redo(wdev, logh_biow);
-	/* Try to write */
 retry2:
 	logh_biow = create_log_bio_wrapper_for_redo(
 		wdev, logh->logpack_lsid, sectd);
