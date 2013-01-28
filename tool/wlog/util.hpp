@@ -163,12 +163,12 @@ class EofError : public std::exception {
     }
 };
 
-class FdReader
+class FdOperator
 {
 private:
     int fd_;
 public:
-    FdReader(int fd)
+    FdOperator(int fd)
         : fd_(fd) {}
 
     /**
@@ -187,15 +187,6 @@ public:
             s += ret;
         }
     }
-};
-
-class FdWriter
-{
-protected:
-    int fd_;
-public:
-    FdWriter(int fd)
-        : fd_(fd) {}
 
     /**
      * write.
@@ -243,6 +234,22 @@ public:
             throw RT_ERR("fsync failed: %s.", ::strerror(errno));
         }
     }
+};
+
+class FdReader : public FdOperator
+{
+public:
+    FdReader(int fd) : FdOperator(fd) {}
+    void write(const char *buf, size_t size) = delete;
+    void fdatasync() = delete;
+    void fsync() = delete;
+};
+
+class FdWriter : public FdOperator
+{
+public:
+    FdWriter(int fd) : FdOperator(fd) {}
+    virtual void read(char *buf, size_t size) = delete;
 };
 
 /**
