@@ -24,7 +24,7 @@ else
 LDFLAGS = -laio -lpthread
 endif
 
-BINARIES = wlcat wlredo wlgen
+BINARIES = wlcat wlredo wlgen wlrestore
 
 all: $(BINARIES)
 
@@ -33,6 +33,8 @@ wlcat: wlcat.o
 wlredo: wlredo.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 wlgen: wlgen.o
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
+wlrestore: wlrestore.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 .cpp.o:

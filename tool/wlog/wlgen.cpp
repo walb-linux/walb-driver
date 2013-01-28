@@ -24,7 +24,6 @@
 
 #include "util.hpp"
 #include "walb_util.hpp"
-#include "aio_util.hpp"
 
 #include "walb/walb.h"
 

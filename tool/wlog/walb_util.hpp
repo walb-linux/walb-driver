@@ -45,21 +45,14 @@ public:
         , pbs_(bd.getPhysicalBlockSize())
         , offset_(get1stSuperBlockOffsetStatic(pbs_))
         , data_(allocAlignedBufferStatic(pbs_)) {
-
         /* Read the superblock. */
 #if 0
         ::printf("offset %" PRIu64" pbs %u\n", offset_ * pbs_, pbs_);
 #endif
-        bd_.read(offset_ * pbs_, pbs_, (char *)data_.get());
-
+        read();
 #if 0
         print(); //debug
 #endif
-
-        /* Check. */
-        if (!isValid()) {
-            throw RT_ERR("super block is not valid.");
-        }
     }
 
     u16 getSectorType() const { return super()->sector_type; }
@@ -75,6 +68,20 @@ public:
     u64 getOldestLsid() const { return super()->oldest_lsid; }
     u64 getWrittenLsid() const { return super()->written_lsid; }
     u64 getDeviceSize() const { return super()->device_size; }
+
+    void setOldestLsid(u64 oldestLsid) {
+        super()->oldest_lsid = oldestLsid;
+    }
+    void setWrittenLsid(u64 writtenLsid) {
+        super()->written_lsid = writtenLsid;
+    }
+    void setDeviceSize(u64 deviceSize) {
+        super()->device_size = deviceSize;
+    }
+    void updateChecksum() {
+        super()->checksum = 0;
+        super()->checksum = ::checksum(data_.get(), pbs_, 0);
+    }
 
     /*
      * Offset and size.
@@ -117,6 +124,20 @@ public:
             throw RT_ERR("Ring buffer size must not be 0.");
         }
         return (lsid % s) + getRingBufferOffset();
+    }
+
+    void read() {
+        bd_.read(offset_ * pbs_, pbs_, (char *)data_.get());
+        /* Check. */
+        if (!isValid()) {
+            throw RT_ERR("super block is not valid.");
+        }
+    }
+
+    void write() {
+        updateChecksum();
+        bd_.write(offset_ * pbs_, pbs_,
+                  reinterpret_cast<char *>(data_.get()));
     }
 
     void print(FILE *fp) const {
@@ -193,6 +214,13 @@ private:
     }
 };
 
+class InvalidLogpackData : public std::exception {
+public:
+    virtual const char *what() const noexcept {
+        return "invalid logpack data.";
+    }
+};
+
 /**
  * Logpack header.
  */
@@ -215,6 +243,10 @@ public:
 
     Block getBlock() const {
         return block_;
+    }
+
+    const u8* getRawBuffer() const {
+        return block_.get();
     }
 
     struct walb_logpack_header& header() {
@@ -385,20 +417,23 @@ public:
         }
     }
 
+    /* Update checksum field. */
+    void updateChecksum() {
+        header().checksum = 0;
+        header().checksum = ::checksum(
+            reinterpret_cast<const u8*>(&header()), pbs(), salt());
+    }
+
     /**
      * Write the logpack header block.
      */
     void write(int fd) {
-        header().checksum = 0;
-        header().checksum = ::checksum(
-            reinterpret_cast<const u8*>(&header()), pbs(), salt());
-
-        if (isValid(true)) {
-            util::FdWriter fdw(fd);
-            fdw.write(reinterpret_cast<const char*>(block_.get()), pbs());
-        } else {
+        updateChecksum();
+        if (!isValid(true)) {
             throw RT_ERR("logpack header invalid.");
         }
+        util::FdWriter fdw(fd);
+        fdw.write(reinterpret_cast<const char*>(block_.get()), pbs());
     }
 
     /**
@@ -499,9 +534,6 @@ public:
         if (header().n_padding > 0) {
             return false;
         }
-        if (size == 0) {
-            throw RT_ERR("Padding IO can not be zero-sized.");
-        }
         if (size % n_lb_in_pb(pbs()) != 0) {
             throw RT_ERR("Padding size must be pbs-aligned.");
         }
@@ -522,6 +554,27 @@ public:
         header().n_padding++;
         assert(::is_valid_logpack_header_and_records(&header()));
         return true;
+    }
+
+    /**
+     * @newLsid new logpack lsid.
+     *   If -1, nothing will be changed.
+     */
+    void updateLsid(u64 newLsid) {
+        assert(isValid(false));
+        if (newLsid == u64(-1)) {
+            return;
+        }
+        if (header().logpack_lsid == newLsid) {
+            return;
+        }
+
+        header().logpack_lsid = newLsid;
+        for (size_t i = 0; i < header().n_records; i++) {
+            struct walb_log_record &rec = record(i);
+            rec.lsid = newLsid + rec.lsid_local;
+        }
+        assert(isValid(false));
     }
 
 private:
@@ -590,6 +643,7 @@ public:
         return logh_.record(pos_);
     }
 
+    u64 lsid() const { return record().lsid; }
     unsigned int pbs() const { return logh_.pbs(); }
 
     bool isExist() const {
@@ -610,6 +664,25 @@ public:
 
     bool hasDataForChecksum() const {
         return isExist() && !isDiscard() && !isPadding();
+    }
+
+    void setPadding() {
+        set_bit_u32(LOG_RECORD_PADDING, &record().flags);
+    }
+    void setExist() {
+        set_bit_u32(LOG_RECORD_EXIST, &record().flags);
+    }
+    void setDiscard() {
+        set_bit_u32(LOG_RECORD_DISCARD, &record().flags);
+    }
+    void clearPadding() {
+        clear_bit_u32(LOG_RECORD_PADDING, &record().flags);
+    }
+    void clearExist() {
+        clear_bit_u32(LOG_RECORD_EXIST, &record().flags);
+    }
+    void clearDiscard() {
+        clear_bit_u32(LOG_RECORD_DISCARD, &record().flags);
     }
 
     unsigned int ioSizeLb() const { return record().io_size; }
@@ -695,14 +768,22 @@ public:
     }
 
     void read(int fd) {
-        util::FdReader fdr(fd);
+        FdReader fdr(fd);
+        read(fdr);
+    }
+
+    void read(FdReader& fdr) {
         fdr.read(reinterpret_cast<char *>(&data_[0]), WALBLOG_HEADER_SIZE);
     }
 
     void write(int fd) {
+        FdWriter fdw(fd);
+        write(fdw);
+    }
+
+    void write(util::FdWriter& fdw) {
         header().checksum = 0;
         header().checksum = ::checksum(&data_[0], WALBLOG_HEADER_SIZE, 0);
-        util::FdWriter fdw(fd);
         fdw.write(reinterpret_cast<char *>(&data_[0]), WALBLOG_HEADER_SIZE);
     }
 
@@ -713,6 +794,17 @@ public:
     const struct walblog_header& header() const {
         return *reinterpret_cast<const struct walblog_header *>(&data_[0]);
     }
+
+    u32 checksum() const { return header().checksum; }
+    u32 salt() const { return header().log_checksum_salt; }
+    unsigned int lbs() const { return header().logical_bs; }
+    unsigned int pbs() const { return header().physical_bs; }
+    u64 beginLsid() const { return header().begin_lsid; }
+    u64 endLsid() const { return header().end_lsid; }
+    const u8* uuid() const { return &header().uuid[0]; }
+    u16 sectorType() const { return header().sector_type; }
+    u16 headerSize() const { return header().header_size; }
+    u16 version() const { return header().version; }
 
     bool isValid(bool isChecksum = true) const {
         CHECKd(header().sector_type == SECTOR_TYPE_WALBLOG_HEADER);

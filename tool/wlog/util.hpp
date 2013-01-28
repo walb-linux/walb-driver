@@ -364,15 +364,19 @@ public:
         return *this;
     }
 
-    ~BlockDevice() { close(); }
+    ~BlockDevice() {
+        try {
+            close();
+        } catch (...) {
+            ::fprintf(::stderr, "close failed.\n");
+        }
+    }
 
     void close() {
-        //::fprintf(::stderr, "close called.\n");
-
         std::call_once(close_flag_, [&]() {
                 if (fd_ > 0) {
                     if (::close(fd_) < 0) {
-                        ::fprintf(::stderr, "close() failed.\n");
+                        throw RT_ERR("close failed.");
                     }
                     fd_ = -1;
                 }
@@ -405,7 +409,7 @@ public:
     /**
      * Write data of a buffer.
      */
-    void write(off_t oft, size_t size, char* buf) {
+    void write(off_t oft, size_t size, const char* buf) {
 
         if (deviceSize_ < oft + size) { throw EofError(); }
         ::lseek(fd_, oft, SEEK_SET);

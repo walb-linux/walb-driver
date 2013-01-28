@@ -450,13 +450,6 @@ private:
     size_t nPreparedIos_;
     OverlappedData olData_;
 
-    class InvalidLogpackData : public std::exception {
-    public:
-        virtual const char *what() const noexcept {
-            return "invalid logpack data.";
-        }
-    };
-
     using LogDataPtr = std::shared_ptr<walb::util::WalbLogpackData>;
 
 public:
@@ -529,7 +522,7 @@ public:
 
         } catch (walb::util::EofError &e) {
             ::printf("Reach input EOF.\n");
-        } catch (InvalidLogpackData &e) {
+        } catch (walb::util::InvalidLogpackData &e) {
             throw RT_ERR("InalidLogpackData");
         }
 
@@ -568,7 +561,7 @@ private:
             logd.addBlock(block);
         }
         if (!logd.isValid()) {
-            throw InvalidLogpackData();
+            throw walb::util::InvalidLogpackData();
         }
     }
 
