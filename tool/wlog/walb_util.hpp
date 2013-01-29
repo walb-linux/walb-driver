@@ -565,14 +565,18 @@ public:
     /**
      * @newLsid new logpack lsid.
      *   If -1, nothing will be changed.
+     *
+     * RETURN:
+     *   true in success.
+     *   false if lsid overlap ocurred.
      */
-    void updateLsid(u64 newLsid) {
+    bool updateLsid(u64 newLsid) {
         assert(isValid(false));
         if (newLsid == u64(-1)) {
-            return;
+            return true;
         }
         if (header().logpack_lsid == newLsid) {
-            return;
+            return true;
         }
 
         header().logpack_lsid = newLsid;
@@ -580,7 +584,7 @@ public:
             struct walb_log_record &rec = record(i);
             rec.lsid = newLsid + rec.lsid_local;
         }
-        assert(isValid(false));
+        return isValid(false);
     }
 
 private:

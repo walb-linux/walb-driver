@@ -84,6 +84,15 @@ public:
         ::printf("%s", generateHelpString().c_str());
     }
 
+    void check() const {
+        if (beginLsid() >= endLsid()) {
+            throwError("beginLsid must be < endLsid.");
+        }
+        if (ldevPath_.empty()) {
+            throwError("Specify log device path.");
+        }
+    }
+
     class Error : public std::runtime_error {
     public:
         explicit Error(const std::string &msg)
@@ -163,7 +172,6 @@ private:
         if (!args_.empty()) {
             ldevPath_ = args_[0];
         }
-        check();
     }
 
     static std::string generateHelpString() {
@@ -177,15 +185,6 @@ private:
             "  -s, --ddevSize SIZE:   data device size for clipping. (default: no clipping)\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
             "  -h, --help:            show this message.\n");
-    }
-
-    void check() const {
-        if (beginLsid() >= endLsid()) {
-            throwError("beginLsid must be < endLsid.");
-        }
-        if (ldevPath_.empty()) {
-            throwError("Specify log device path.");
-        }
     }
 };
 
@@ -243,10 +242,24 @@ public:
         const unsigned int BUFFER_SIZE = 16 * 1024 * 1024; /* 16MB */
         BlockA ba(BUFFER_SIZE / pbs, pbs, pbs);
 
+        /* Set lsid range. */
+        uint64_t beginLsid = -1;
+        ::printf("Try to restore lsid range [%" PRIu64 ", %" PRIu64 ")\n",
+                 wlHead.beginLsid(), wlHead.endLsid());
+        if (config_.newLsid() == uint64_t(-1)) {
+            beginLsid = wlHead.beginLsid();
+        } else {
+            beginLsid = config_.newLsid();
+            ::printf("Lsid map %" PRIu64 " to %" PRIu64 " (diff %" PRIi64 ")\n",
+                     wlHead.beginLsid(), config_.newLsid(),
+                     static_cast<int64_t>(config_.newLsid() - wlHead.beginLsid()));
+        }
+        uint64_t restoredLsid = beginLsid;
+
         /* Read and write each logpack. */
         try {
-            while (readLogpackAndRestore(fdr, blkdev, super, ba, wlHead)) {}
-
+            while (readLogpackAndRestore(
+                       fdr, blkdev, super, ba, wlHead, restoredLsid)) {}
         } catch (walb::util::EofError &e) {
             ::printf("Reached input EOF.\n");
         } catch (walb::util::InvalidLogpackData &e) {
@@ -254,14 +267,8 @@ public:
         }
 
         /* Create and write superblock finally. */
-        uint64_t lsid = uint64_t(-1);
-        if (config_.newLsid() == uint64_t(-1)) {
-            lsid = wlHead.beginLsid();
-        } else {
-            lsid = config_.newLsid();
-        }
-        super.setOldestLsid(lsid);
-        super.setWrittenLsid(lsid);
+        super.setOldestLsid(beginLsid);
+        super.setWrittenLsid(beginLsid);
         super.setUuid(wlHead.uuid());
         super.setLogChecksumSalt(wlHead.salt());
         super.write();
@@ -269,6 +276,9 @@ public:
         /* Finalize the log device. */
         blkdev.fdatasync();
         blkdev.close();
+
+        ::printf("Restored lsid range [%" PRIu64 ", %" PRIu64 "].\n",
+                 beginLsid, restoredLsid);
     }
 private:
     /**
@@ -301,6 +311,15 @@ private:
     }
 
     /**
+     * Read a logpack and restore it.
+     *
+     * @fdr wlog input.
+     * @blkdev log block device.
+     * @super super block (with the blkdev).
+     * @ba block allocator.
+     * @wlHead wlog header.
+     * @restoresLsid lsid of the next logpack will be set if restored.
+     *
      * RETURN:
      *   true in normal termination, or false.
      */
@@ -309,7 +328,8 @@ private:
         walb::util::BlockDevice &blkdev,
         walb::util::WalbSuperBlock &super,
         walb::util::BlockAllocator<u8> &ba,
-        walb::util::WalbLogFileHeader &wlHead) {
+        walb::util::WalbLogFileHeader &wlHead,
+        uint64_t &restoredLsid) {
 
         u32 salt = wlHead.salt();
         unsigned int pbs = wlHead.pbs();
@@ -324,11 +344,14 @@ private:
 #endif
         const u64 originalLsid = logh.logpackLsid();
         if (config_.endLsid() <= originalLsid) {
-            return true;
+            return false;
         }
         /* Update lsid if necessary. */
         if (lsidDiff_ != 0) {
-            logh.updateLsid(logh.logpackLsid() + lsidDiff_);
+            if (!logh.updateLsid(logh.logpackLsid() + lsidDiff_)) {
+                ::fprintf(::stderr, "lsid overflow ocurred.\n");
+                return false;
+            }
         }
 
         /* Padding check. */
@@ -351,7 +374,10 @@ private:
 
             /* Update logh's lsid information. */
             lsidDiff_ += paddingPb;
-            logh.updateLsid(logh.logpackLsid() + paddingPb);
+            if (!logh.updateLsid(logh.logpackLsid() + paddingPb)) {
+                ::fprintf(::stderr, "lsid overflow ocurred.\n");
+                return false;
+            }
             assert(super.getOffsetFromLsid(logh.logpackLsid())
                    == super.getRingBufferOffset());
             offPb = super.getRingBufferOffset();
@@ -386,6 +412,8 @@ private:
         logh.updateChecksum();
         assert(logh.isValid());
         assert(offPb + 1 + logh.totalIoSize() <= endOffPb);
+        ::printf("header %u records\n", logh.nRecords()); /* debug */
+        ::printf("offPb %" PRIu64 "\n", offPb); /* debug */
         blkdev.write(
             offPb * pbs, pbs,
             reinterpret_cast<const char *>(logh.getRawBuffer()));
@@ -393,6 +421,19 @@ private:
             blkdev.write((offPb + 1 + i) * pbs, pbs,
                          reinterpret_cast<const char *>(blocks[i].get()));
         }
+
+#if 0
+        /* debug */
+        Block b2 = ba.alloc();
+        blkdev.read(
+            offPb * pbs, pbs,
+            reinterpret_cast<char *>(b2.get()));
+        walb::util::WalbLogpackHeader logh2(b2, pbs, salt);
+        ::printf("memcmp %d\n", ::memcmp(logh.getRawBuffer(), logh2.getRawBuffer(), pbs));
+        assert(logh2.isValid());
+#endif
+
+        restoredLsid = logh.logpackLsid() + 1 + logh.totalIoSize();
         return true;
     }
 };
@@ -404,11 +445,12 @@ int main(int argc, char* argv[])
     try {
         Config config(argc, argv);
         /* config.print(); */
-
         if (config.isHelp()) {
             Config::printHelp();
             return 1;
         }
+        config.check();
+
         WalbLogRestorer wlRes(config);
         wlRes.restore(0);
 
