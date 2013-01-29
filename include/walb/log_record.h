@@ -166,7 +166,6 @@ static inline int is_valid_log_record(struct walb_log_record *rec)
 {
 	CHECKd(rec);
 	CHECKd(test_bit_u32(LOG_RECORD_EXIST, &rec->flags));
-
 	if (!test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
 		CHECKd(rec->io_size > 0);
 	}
