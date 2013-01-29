@@ -105,6 +105,33 @@ public:
         ::printf("%s", generateHelpString().c_str());
     }
 
+    void check() const {
+        if (pbs() < 512) {
+            throwError("pbs must be 512 or more.");
+        }
+        if (pbs() % 512 != 0) {
+            throwError("pbs must be multiple of 512.");
+        }
+        if (minIoLb() > 65535) {
+            throwError("minSize must be < 512 * 65536 bytes.");
+        }
+        if (maxIoLb() > 65535) {
+            throwError("maxSize must be < 512 * 65536 bytes.");
+        }
+        if (minIoLb() > maxIoLb()) {
+            throwError("minIoSize must be <= maxIoSize.");
+        }
+        if (maxPackPb() < 1 + capacity_pb(pbs(), maxIoLb())) {
+            throwError("maxPackSize must be >= pbs + maxIoSize.");
+        }
+        if (lsid() + outLogPb() < lsid()) {
+            throwError("lsid will overflow.");
+        }
+        if (outPath().size() == 0) {
+            throwError("specify outPath.");
+        }
+    }
+
     class Error : public std::runtime_error {
     public:
         explicit Error(const std::string &msg)
@@ -211,7 +238,6 @@ private:
         while(optind < argc) {
             args_.push_back(std::string(argv[optind++]));
         }
-        check();
     }
 
     static std::string generateHelpString() {
@@ -231,33 +257,6 @@ private:
             "  --nodiscard:           no discard. (default: randomly inserted)\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
             "  -h, --help:            show this message.\n");
-    }
-
-    void check() const {
-        if (pbs() < 512) {
-            throwError("pbs must be 512 or more.");
-        }
-        if (pbs() % 512 != 0) {
-            throwError("pbs must be multiple of 512.");
-        }
-        if (minIoLb() > 65535) {
-            throwError("minSize must be < 512 * 65536 bytes.");
-        }
-        if (maxIoLb() > 65535) {
-            throwError("maxSize must be < 512 * 65536 bytes.");
-        }
-        if (minIoLb() > maxIoLb()) {
-            throwError("minIoSize must be <= maxIoSize.");
-        }
-        if (maxPackPb() < 1 + capacity_pb(pbs(), maxIoLb())) {
-            throwError("maxPackSize must be >= pbs + maxIoSize.");
-        }
-        if (lsid() + outLogPb() < lsid()) {
-            throwError("lsid will overflow.");
-        }
-        if (outPath().size() == 0) {
-            throwError("specify outPath.");
-        }
     }
 };
 
@@ -456,11 +455,12 @@ int main(int argc, char* argv[])
     try {
         Config config(argc, argv);
         /* config.print(); */
-
         if (config.isHelp()) {
             Config::printHelp();
             return 1;
         }
+        config.check();
+
         WalbLogGenerator wlGen(config);
         wlGen.generate();
 
