@@ -36,7 +36,7 @@ private:
     std::string ldevPath_; /* Log device to restore wlog. */
     uint64_t beginLsid_; /* start lsid to restore. */
     uint64_t endLsid_; /* end lsid to restore. The range is [start, end). */
-    uint64_t newLsid_; /* -1 means default lsid. */
+    int64_t lsidDiff_; /* 0 means no change. */
     uint64_t ddevLb_; /* 0 means no clipping. */
     bool isVerbose_;
     bool isHelp_;
@@ -47,7 +47,7 @@ public:
         : ldevPath_()
         , beginLsid_(0)
         , endLsid_(-1)
-        , newLsid_(-1)
+        , lsidDiff_(0)
         , ddevLb_(0)
         , isVerbose_(false)
         , isHelp_(false)
@@ -58,7 +58,7 @@ public:
     const std::string& ldevPath() const { return ldevPath_; }
     uint64_t beginLsid() const { return beginLsid_; }
     uint64_t endLsid() const { return endLsid_; }
-    uint64_t newLsid() const { return newLsid_; }
+    int64_t lsidDiff() const { return lsidDiff_; }
     uint64_t ddevLb() const { return ddevLb_; }
     bool isVerbose() const { return isVerbose_; }
     bool isHelp() const { return isHelp_; }
@@ -67,12 +67,12 @@ public:
         ::printf("ldevPath: %s\n"
                  "beginLsid: %" PRIu64 "\n"
                  "endLsid: %" PRIu64 "\n"
-                 "newLsid: %" PRIu64 "\n"
+                 "lsidDiff: %" PRIi64 "\n"
                  "ddevLb: %" PRIu64 "\n"
                  "verbose: %d\n"
                  "isHelp: %d\n",
                  ldevPath().c_str(),
-                 beginLsid(), endLsid(), newLsid(), ddevLb(),
+                 beginLsid(), endLsid(), lsidDiff(), ddevLb(),
                  isVerbose(), isHelp());
         int i = 0;
         for (const auto& s : args_) {
@@ -104,7 +104,7 @@ private:
     enum Opt {
         BEGIN_LSID = 1,
         END_LSID,
-        NEW_LSID,
+        LSID_DIFF,
         DDEV_SIZE,
         VERBOSE,
         HELP,
@@ -126,14 +126,14 @@ private:
             const struct option long_options[] = {
                 {"beginLsid", 1, 0, Opt::BEGIN_LSID},
                 {"endLsid", 1, 0, Opt::END_LSID},
-                {"newLsid", 1, 0, Opt::NEW_LSID},
+                {"lsidDiff", 1, 0, Opt::LSID_DIFF},
                 {"ddevSize", 1, 0, Opt::DDEV_SIZE},
                 {"verbose", 0, 0, Opt::VERBOSE},
                 {"help", 0, 0, Opt::HELP},
                 {0, 0, 0, 0}
             };
             int option_index = 0;
-            int c = ::getopt_long(argc, argv, "b:e:n:s:vh", long_options, &option_index);
+            int c = ::getopt_long(argc, argv, "b:e:d:s:vh", long_options, &option_index);
             if (c == -1) { break; }
 
             switch (c) {
@@ -145,9 +145,9 @@ private:
             case 'e':
                 endLsid_ = ::atoll(optarg);
                 break;
-            case Opt::NEW_LSID:
-            case 'n':
-                newLsid_ = ::atoll(optarg);
+            case Opt::LSID_DIFF:
+            case 'd':
+                lsidDiff_ = ::atoll(optarg);
                 break;
             case Opt::DDEV_SIZE:
             case 's':
@@ -181,7 +181,7 @@ private:
             "Options:\n"
             "  -b, --beginLsid LSID:  begin lsid to restore. (default: 0)\n"
             "  -e, --endLsid LSID:    end lsid to restore. (default: -1)\n"
-            "  -n, --newLsid LSID:    new lsid of the first log. (default: no change)\n"
+            "  -d, --lsidDiff DIFF:   lsid diff. (default: 0)\n"
             "  -s, --ddevSize SIZE:   data device size for clipping. (default: no clipping)\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
             "  -h, --help:            show this message.\n");
@@ -195,7 +195,7 @@ class WalbLogRestorer
 {
 private:
     const Config& config_;
-    uint64_t lsidDiff_;
+    int64_t lsidDiff_;
 
     using Block = std::shared_ptr<u8>;
     using BlockA = walb::util::BlockAllocator<u8>;
@@ -203,7 +203,7 @@ private:
 public:
     WalbLogRestorer(const Config& config)
         : config_(config)
-        , lsidDiff_(0)
+        , lsidDiff_(config.lsidDiff())
         {}
 
     /**
@@ -218,11 +218,6 @@ public:
             throw RT_ERR("Walb log file header is invalid.");
         }
         const unsigned int pbs = wlHead.pbs();
-
-        /* Set lsidDiff_ if necessary. */
-        if (config_.newLsid() != uint64_t(-1)) {
-            lsidDiff_ = config_.newLsid() - wlHead.beginLsid();
-        }
 
         /* Open the log device. */
         walb::util::BlockDevice blkdev(config_.ldevPath(), O_RDWR);
@@ -243,16 +238,12 @@ public:
         BlockA ba(BUFFER_SIZE / pbs, pbs, pbs);
 
         /* Set lsid range. */
-        uint64_t beginLsid = -1;
+        uint64_t beginLsid = wlHead.beginLsid() + lsidDiff_;
         ::printf("Try to restore lsid range [%" PRIu64 ", %" PRIu64 ")\n",
                  wlHead.beginLsid(), wlHead.endLsid());
-        if (config_.newLsid() == uint64_t(-1)) {
-            beginLsid = wlHead.beginLsid();
-        } else {
-            beginLsid = config_.newLsid();
+        if (lsidDiff_ != 0) {
             ::printf("Lsid map %" PRIu64 " to %" PRIu64 " (diff %" PRIi64 ")\n",
-                     wlHead.beginLsid(), config_.newLsid(),
-                     static_cast<int64_t>(config_.newLsid() - wlHead.beginLsid()));
+                     wlHead.beginLsid(), beginLsid, lsidDiff_);
         }
         uint64_t restoredLsid = beginLsid;
 
