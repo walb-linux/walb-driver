@@ -209,7 +209,7 @@ static inline int is_valid_logpack_header(
 	}
 	return 1;
 error:
-	LOGe("log pack header is invalid "
+	LOGd("log pack header is invalid "
 		"(n_records: %u total_io_size %u sector_type %u).\n",
 		lhead->n_records, lhead->total_io_size,
 		lhead->sector_type);
@@ -236,7 +236,7 @@ static inline int is_valid_logpack_header_with_checksum(
 error0:
 	return 0;
 error1:
-	LOGe("logpack header checksum is invalid (lsid %" PRIu64").\n",
+	LOGd("logpack header checksum is invalid (lsid %" PRIu64").\n",
 		lhead->logpack_lsid);
 	return 0;
 }
@@ -250,17 +250,17 @@ static inline int is_valid_logpack_header_and_records(
 	unsigned int i;
 
 	if (!is_valid_logpack_header(lhead)) {
-		LOGe("header invalid.\n");
+		LOGd("header invalid.\n");
 		return 0;
 	}
 	for (i = 0; i < lhead->n_records; i++) {
 		const struct walb_log_record *rec = &lhead->record[i];
 		if (!is_valid_log_record_const(rec)) {
-			LOGe("record %u invalid.\n", i);
+			LOGd("record %u invalid.\n", i);
 			return 0;
 		}
 		if (rec->lsid - rec->lsid_local != lhead->logpack_lsid) {
-			LOGe("lsid(%" PRIu64 ") - lsid_local(%u)"
+			LOGd("lsid(%" PRIu64 ") - lsid_local(%u)"
 				" != logpack_lsid(%" PRIu64 ")\n",
 				rec->lsid, rec->lsid_local, lhead->logpack_lsid);
 			return 0;
