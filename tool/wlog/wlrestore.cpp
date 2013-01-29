@@ -262,6 +262,8 @@ public:
         }
         super.setOldestLsid(lsid);
         super.setWrittenLsid(lsid);
+        super.setUuid(wlHead.uuid());
+        super.setLogChecksumSalt(wlHead.salt());
         super.write();
 
         /* Finalize the log device. */
@@ -388,7 +390,7 @@ private:
             offPb * pbs, pbs,
             reinterpret_cast<const char *>(logh.getRawBuffer()));
         for (size_t i = 0; i < blocks.size(); i++) {
-            blkdev.write((offPb + i) * pbs, pbs,
+            blkdev.write((offPb + 1 + i) * pbs, pbs,
                          reinterpret_cast<const char *>(blocks[i].get()));
         }
         return true;
