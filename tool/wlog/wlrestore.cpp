@@ -259,7 +259,7 @@ public:
 
         /* Create and write superblock finally. */
         super.setOldestLsid(beginLsid);
-        super.setWrittenLsid(beginLsid);
+        super.setWrittenLsid(beginLsid); /* for redo */
         super.setUuid(wlHead.uuid());
         super.setLogChecksumSalt(wlHead.salt());
         super.write();
@@ -409,8 +409,10 @@ private:
         logh.updateChecksum();
         assert(logh.isValid());
         assert(offPb + 1 + logh.totalIoSize() <= endOffPb);
-        ::printf("header %u records\n", logh.nRecords()); /* debug */
-        ::printf("offPb %" PRIu64 "\n", offPb); /* debug */
+#if 0
+        ::printf("header %u records\n", logh.nRecords());
+        ::printf("offPb %" PRIu64 "\n", offPb);
+#endif
         blkdev.write(
             offPb * pbs, pbs,
             reinterpret_cast<const char *>(logh.getRawBuffer()));
