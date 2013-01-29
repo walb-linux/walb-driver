@@ -264,6 +264,12 @@ public:
         super.setLogChecksumSalt(wlHead.salt());
         super.write();
 
+        /* Invalidate the last log block. */
+        uint64_t off = super.getOffsetFromLsid(restoredLsid);
+        Block b = ba.alloc();
+        ::memset(b.get(), 0, pbs);
+        blkdev.write(off * pbs, pbs, reinterpret_cast<const char *>(b.get()));
+
         /* Finalize the log device. */
         blkdev.fdatasync();
         blkdev.close();
