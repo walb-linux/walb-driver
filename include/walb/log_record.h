@@ -201,10 +201,6 @@ static inline int is_valid_logpack_header(
 		CHECKd(lhead->total_io_size == 0);
 		CHECKd(lhead->n_padding == 0);
 	} else {
-#if 0
-		/* If All records are DISCARD, then total_io_size will be 0. */
-		CHECKd(lhead->total_io_size > 0);
-#endif
 		CHECKd(lhead->n_padding <= lhead->n_records);
 
 		/* logpack_lsid overflow check. */
