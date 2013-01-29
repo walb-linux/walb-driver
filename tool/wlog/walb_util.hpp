@@ -78,6 +78,12 @@ public:
     void setDeviceSize(u64 deviceSize) {
         super()->device_size = deviceSize;
     }
+    void setLogChecksumSalt(u32 salt) {
+        super()->log_checksum_salt = salt;
+    }
+    void setUuid(const u8 *uuid) {
+        ::memcpy(super()->uuid, uuid, 16);
+    }
     void updateChecksum() {
         super()->checksum = 0;
         super()->checksum = ::checksum(data_.get(), pbs_, 0);
