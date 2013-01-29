@@ -280,7 +280,7 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 	struct hlist_head *chead, *nhead;
 	struct hlist_node *cnode, *nnode;
 
-	CHECK(cursor);
+	CHECKd(cursor);
 	st = cursor->state;
 	idx = cursor->bucket_idx;
 	chead = cursor->curr_head;
@@ -288,29 +288,29 @@ static int is_hashtbl_cursor_struct_valid(const hashtbl_cursor_t *cursor)
 	nhead = cursor->next_head;
 	nnode = cursor->next;
 
-	CHECK(is_hashtbl_struct_valid(cursor->htbl));
+	CHECKd(is_hashtbl_struct_valid(cursor->htbl));
 	max_idx = cursor->htbl->bucket_size;
 
-	CHECK(0 <= idx);
-	CHECK(idx <= max_idx);
+	CHECKd(0 <= idx);
+	CHECKd(idx <= max_idx);
 
 	switch (st) {
 	case HASHTBL_CURSOR_BEGIN:
-		CHECK(!chead && !cnode);
+		CHECKd(!chead && !cnode);
 		break;
 	case HASHTBL_CURSOR_END:
-		CHECK(!chead && !cnode && !nhead && !nnode);
+		CHECKd(!chead && !cnode && !nhead && !nnode);
 		break;
 	case HASHTBL_CURSOR_DATA:
-		CHECK(chead && cnode);
+		CHECKd(chead && cnode);
 		break;
 	case HASHTBL_CURSOR_DELETED:
-		CHECK(!chead && !cnode);
+		CHECKd(!chead && !cnode);
 		break;
 	case HASHTBL_CURSOR_INVALID:
 		break;
 	default:
-		CHECK(false);
+		CHECKd(false);
 	}
 	return 1;
 error:
