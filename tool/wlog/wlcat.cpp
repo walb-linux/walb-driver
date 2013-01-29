@@ -152,6 +152,10 @@ private:
 
     private:
         IoPtr createIo(const Block& block) {
+#if 0
+            ::fprintf(::stderr, "offPb %" PRIu64 "\n",
+                      super_.getOffsetFromLsid(block.lsid));
+#endif
             off_t offset = super_.getOffsetFromLsid(block.lsid) * blockSize_;
             IoPtr p(new Io(offset, blockSize_));
             p->blocks.push_back(block);
@@ -322,6 +326,9 @@ private:
         auto block = readBlock();
         walb::util::WalbLogpackHeader logh(
             block.ptr, super_.getPhysicalBlockSize(), super_.getLogChecksumSalt());
+#if 0
+        logh.print(::stderr);
+#endif
         if (!logh.isValid()) {
             throw RT_ERR("invalid logpack header.");
         }
