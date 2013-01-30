@@ -362,7 +362,7 @@ public:
         , ba_(queueSize_ * 2, blockSize_, blockSize_)
         , ioQ_()
         , nPendingBlocks_(0)
-        , aheadLsid_(config.beginLsid()) {
+        , aheadLsid_(0) {
 
         //LOGn("blockSize %zu\n", blockSize_); //debug
     }
@@ -386,20 +386,26 @@ public:
             throw RT_ERR("outFd is not valid.");
         }
 
+        u64 beginLsid = config_.beginLsid();
+        if (beginLsid < super_.getOldestLsid()) {
+            beginLsid = super_.getOldestLsid();
+            aheadLsid_ = beginLsid;
+        }
+
         walb::util::FdWriter writer(outFd);
 
         /* Write walblog header. */
         walb::util::WalbLogFileHeader wh;
         wh.init(super_.getPhysicalBlockSize(), super_.getLogChecksumSalt(),
-                super_.getUuid(), config_.beginLsid(), config_.endLsid());
+                super_.getUuid(), beginLsid, config_.endLsid());
 #if 1
         wh.write(outFd);
 #endif
 
         if (config_.isVerbose()) {
-            ::printf("beginLsid: %" PRIu64 "\n", config_.beginLsid());
+            ::printf("beginLsid: %" PRIu64 "\n", beginLsid);
         }
-        u64 lsid = config_.beginLsid();
+        u64 lsid = beginLsid;
         while (lsid < config_.endLsid()) {
             bool isEnd = false;
 
