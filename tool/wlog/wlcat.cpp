@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/fs.h>
+#include <getopt.h>
 
 #include "util.hpp"
 #include "walb_util.hpp"
@@ -23,33 +24,157 @@
 #include "walb/walb.h"
 
 /**
- * Wlcat command configuration.
+ * Wlcat configuration.
  */
 class Config
 {
 private:
-    std::string deviceName_;
-    u64 lsid0_;
-    u64 lsid1_;
+    std::string ldevPath_;
+    std::string outPath_;
+    uint64_t beginLsid_;
+    uint64_t endLsid_;
+    bool isVerbose_;
+    bool isHelp_;
+    std::vector<std::string> args_;
 
 public:
-    Config(int argc, char* argv[]) {
+    Config(int argc, char* argv[])
+        : ldevPath_()
+        , outPath_("-")
+        , beginLsid_(0)
+        , endLsid_(-1)
+        , isVerbose_(false)
+        , isHelp_(false)
+        , args_() {
+        parse(argc, argv);
+    }
 
-        if (argc != 4) {
-            throw RT_ERR("Specify just 3 values.");
-        }
-        deviceName_ = std::string(argv[1]);
-        lsid0_ = static_cast<u64>(::atoll(argv[2]));
-        lsid1_ = static_cast<u64>(::atoll(argv[3]));
+    const std::string& ldevPath() const { return ldevPath_; }
+    uint64_t beginLsid() const { return beginLsid_; }
+    uint64_t endLsid() const { return endLsid_; }
+    const std::string& outPath() const { return outPath_; }
+    bool isOutStdout() const { return outPath_ == "-"; }
+    bool isVerbose() const { return isVerbose_; }
+    bool isHelp() const { return isHelp_; }
 
-        if (lsid0_ > lsid1_) {
-            throw RT_ERR("Invalid lsid range.");
+    void print() const {
+        ::printf("ldevPath: %s\n"
+                 "outPath: %s\n"
+                 "beginLsid: %" PRIu64 "\n"
+                 "endLsid: %" PRIu64 "\n"
+                 "verbose: %d\n"
+                 "isHelp: %d\n",
+                 ldevPath().c_str(), outPath().c_str(),
+                 beginLsid(), endLsid(),
+                 isVerbose(), isHelp());
+        int i = 0;
+        for (const auto& s : args_) {
+            ::printf("arg%d: %s\n", i++, s.c_str());
         }
     }
 
-    const char* deviceName() const { return deviceName_.c_str(); }
-    u64 lsid0() const { return lsid0_; }
-    u64 lsid1() const { return lsid1_; }
+    static void printHelp() {
+        ::printf("%s", generateHelpString().c_str());
+    }
+
+    void check() const {
+        if (beginLsid() >= endLsid()) {
+            throwError("beginLsid must be < endLsid.");
+        }
+        if (ldevPath_.empty()) {
+            throwError("Specify log device path.");
+        }
+        if (outPath_.empty()) {
+            throwError("Specify output wlog path.");
+        }
+    }
+
+    class Error : public std::runtime_error {
+    public:
+        explicit Error(const std::string &msg)
+            : std::runtime_error(msg) {}
+    };
+
+private:
+    /* Option ids. */
+    enum Opt {
+        OUT_PATH = 1,
+        BEGIN_LSID,
+        END_LSID,
+        VERBOSE,
+        HELP,
+    };
+
+    void throwError(const char *format, ...) const {
+        va_list args;
+        std::string msg;
+        va_start(args, format);
+        try {
+            msg = walb::util::formatStringV(format, args);
+        } catch (...) {}
+        va_end(args);
+        throw Error(msg);
+    }
+
+    void parse(int argc, char* argv[]) {
+        while (1) {
+            const struct option long_options[] = {
+                {"outPath", 1, 0, Opt::OUT_PATH},
+                {"beginLsid", 1, 0, Opt::BEGIN_LSID},
+                {"endLsid", 1, 0, Opt::END_LSID},
+                {"verbose", 0, 0, Opt::VERBOSE},
+                {"help", 0, 0, Opt::HELP},
+                {0, 0, 0, 0}
+            };
+            int option_index = 0;
+            int c = ::getopt_long(argc, argv, "b:e:d:s:vh", long_options, &option_index);
+            if (c == -1) { break; }
+
+            switch (c) {
+            case Opt::OUT_PATH:
+            case 'o':
+                outPath_ = std::string(optarg);
+                break;
+            case Opt::BEGIN_LSID:
+            case 'b':
+                beginLsid_ = ::atoll(optarg);
+                break;
+            case Opt::END_LSID:
+            case 'e':
+                endLsid_ = ::atoll(optarg);
+                break;
+            case Opt::VERBOSE:
+            case 'v':
+                isVerbose_ = true;
+                break;
+            case Opt::HELP:
+            case 'h':
+                isHelp_ = true;
+                break;
+            default:
+                throwError("Unknown option.");
+            }
+        }
+
+        while(optind < argc) {
+            args_.push_back(std::string(argv[optind++]));
+        }
+        if (!args_.empty()) {
+            ldevPath_ = args_[0];
+        }
+    }
+
+    static std::string generateHelpString() {
+        return walb::util::formatString(
+            "Wlcat: extract wlog from a log device.\n"
+            "Usage: wlcat [options] LOG_DEVICE_PATH\n"
+            "Options:\n"
+            "  -o, --outPath PATH:   output wlog path. '-' for stdout. (default: '-')\n"
+            "  -b, --beginLsid LSID: begin lsid to restore. (default: 0)\n"
+            "  -e, --endLsid LSID:   end lsid to restore. (default: -1)\n"
+            "  -v, --verbose:        verbose messages to stderr.\n"
+            "  -h, --help:           show this message.\n");
+    }
 };
 
 /**
@@ -216,7 +341,7 @@ private:
 public:
     WalbLogReader(const Config& config, size_t bufferSize)
         : config_(config)
-        , bd_(config.deviceName(), O_RDONLY | O_DIRECT)
+        , bd_(config.ldevPath().c_str(), O_RDONLY | O_DIRECT)
         , super_(bd_)
         , blockSize_(bd_.getPhysicalBlockSize())
         , queueSize_(getQueueSizeStatic(bufferSize, blockSize_))
@@ -224,7 +349,7 @@ public:
         , ba_(queueSize_ * 2, blockSize_, blockSize_)
         , ioQ_()
         , nPendingBlocks_(0)
-        , aheadLsid_(config.lsid0()) {
+        , aheadLsid_(config.beginLsid()) {
 
         //LOGn("blockSize %zu\n", blockSize_); //debug
     }
@@ -253,13 +378,13 @@ public:
         /* Write walblog header. */
         walb::util::WalbLogFileHeader wh;
         wh.init(super_.getPhysicalBlockSize(), super_.getLogChecksumSalt(),
-                super_.getUuid(), config_.lsid0(), config_.lsid1());
+                super_.getUuid(), config_.beginLsid(), config_.endLsid());
 #if 1
         wh.write(outFd);
 #endif
 
-        u64 lsid = config_.lsid0();
-        while (lsid < config_.lsid1()) {
+        u64 lsid = config_.beginLsid();
+        while (lsid < config_.endLsid()) {
             bool isEnd = false;
 
             readAhead();
@@ -418,9 +543,7 @@ private:
     }
 };
 
-const size_t KILO = 1024;
-const size_t MEGA = KILO * 1024;
-const size_t BUFFER_SIZE = 4 * MEGA;
+const size_t BUFFER_SIZE = 4 * 1024 * 1024; /* 4MB */
 
 int main(int argc, char* argv[])
 {
@@ -431,9 +554,27 @@ int main(int argc, char* argv[])
         walb::aio::testAioDataAllocator();
 #endif
         Config config(argc, argv);
-        WalbLogReader wlReader(config, BUFFER_SIZE);
-        wlReader.catLog(1);
+        if (config.isHelp()) {
+            Config::printHelp();
+            return 0;
+        }
+        config.check();
 
+        WalbLogReader wlReader(config, BUFFER_SIZE);
+        if (config.isOutStdout()) {
+            wlReader.catLog(1);
+        } else {
+            walb::util::FileOpener fo(
+                config.outPath(),
+                O_WRONLY | O_CREAT | O_TRUNC,
+                S_IRWXU | S_IRGRP | S_IROTH);
+            wlReader.catLog(fo.fd());
+            fo.close();
+        }
+    } catch (Config::Error& e) {
+        LOGe("Command line error: %s\n\n", e.what());
+        Config::printHelp();
+        ret = 1;
     } catch (std::runtime_error& e) {
         LOGe("Error: %s\n", e.what());
         ret = 1;
