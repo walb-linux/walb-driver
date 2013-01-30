@@ -28,7 +28,7 @@
 #include "walb/walb.h"
 
 /**
- * Wlredo command configuration.
+ * Command line configuration.
  */
 class Config
 {
@@ -448,7 +448,7 @@ int main(int argc, char* argv[])
         /* config.print(); */
         if (config.isHelp()) {
             Config::printHelp();
-            return 1;
+            return 0;
         }
         config.check();
 
