@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/fs.h>
+#include <getopt.h>
 
 #include "util.hpp"
 #include "walb_util.hpp"
@@ -26,22 +27,131 @@
 #include "walb/walb.h"
 
 /**
- * Wlredo command configuration.
+ * Command line configuration.
  */
 class Config
 {
 private:
-    std::string deviceName_;
+    std::string ddevPath_;
+    std::string inPath_;
+    bool isVerbose_;
+    bool isHelp_;
+    std::vector<std::string> args_;
 
 public:
-    Config(int argc, char* argv[]) {
-        if (argc != 2) {
-            throw RT_ERR("Specify just a value.");
-        }
-        deviceName_ = std::string(argv[1]);
+    Config(int argc, char* argv[])
+        : ddevPath_()
+        , inPath_("-")
+        , isVerbose_(false)
+        , isHelp_(false)
+        , args_() {
+        parse(argc, argv);
     }
 
-    const char* deviceName() const { return deviceName_.c_str(); }
+    const std::string& ddevPath() const { return ddevPath_; }
+    const std::string& inPath() const { return inPath_; }
+    bool isFromStdin() const { return inPath_ == "-"; }
+    bool isVerbose() const { return isVerbose_; }
+    bool isHelp() const { return isHelp_; }
+
+    void print() const {
+        ::printf("ddevPath: %s\n"
+                 "inPath: %s\n"
+                 "verbose: %d\n"
+                 "isHelp: %d\n",
+                 ddevPath().c_str(), inPath().c_str(),
+                 isVerbose(), isHelp());
+        int i = 0;
+        for (const auto& s : args_) {
+            ::printf("arg%d: %s\n", i++, s.c_str());
+        }
+    }
+
+    static void printHelp() {
+        ::printf("%s", generateHelpString().c_str());
+    }
+
+    void check() const {
+        if (ddevPath_.empty()) {
+            throwError("Specify device path.");
+        }
+        if (inPath_.empty()) {
+            throwError("Specify input wlog path.");
+        }
+    }
+
+    class Error : public std::runtime_error {
+    public:
+        explicit Error(const std::string &msg)
+            : std::runtime_error(msg) {}
+    };
+
+private:
+    /* Option ids. */
+    enum Opt {
+        IN_PATH = 1,
+        VERBOSE,
+        HELP,
+    };
+
+    void throwError(const char *format, ...) const {
+        va_list args;
+        std::string msg;
+        va_start(args, format);
+        try {
+            msg = walb::util::formatStringV(format, args);
+        } catch (...) {}
+        va_end(args);
+        throw Error(msg);
+    }
+
+    void parse(int argc, char* argv[]) {
+        while (1) {
+            const struct option long_options[] = {
+                {"inPath", 1, 0, Opt::IN_PATH},
+                {"verbose", 0, 0, Opt::VERBOSE},
+                {"help", 0, 0, Opt::HELP},
+                {0, 0, 0, 0}
+            };
+            int option_index = 0;
+            int c = ::getopt_long(argc, argv, "i:vh", long_options, &option_index);
+            if (c == -1) { break; }
+
+            switch (c) {
+            case Opt::IN_PATH:
+            case 'i':
+                inPath_ = std::string(optarg);
+                break;
+            case Opt::VERBOSE:
+            case 'v':
+                isVerbose_ = true;
+                break;
+            case Opt::HELP:
+            case 'h':
+                isHelp_ = true;
+                break;
+            default:
+                throwError("Unknown option.");
+            }
+        }
+
+        while(optind < argc) {
+            args_.push_back(std::string(argv[optind++]));
+        }
+        if (!args_.empty()) {
+            ddevPath_ = args_[0];
+        }
+    }
+
+    static std::string generateHelpString() {
+        return walb::util::formatString(
+            "Wlredo: redo wlog on a block device.\n"
+            "Usage: wlcat [options] DEVICE_PATH\n"
+            "Options:\n"
+            "  -i, --inPath PATH: input wlog path. '-' for stdin. (default: '-')\n"
+            "  -v, --verbose:     verbose messages to stderr.\n"
+            "  -h, --help:        show this message.\n");
+    }
 };
 
 using Block = std::shared_ptr<u8>;
@@ -456,7 +566,7 @@ public:
     WalbLogApplyer(
         const Config& config, size_t bufferSize, bool isDiscardSupport = false)
         : config_(config)
-        , bd_(config.deviceName(), O_RDWR | O_DIRECT)
+        , bd_(config.ddevPath().c_str(), O_RDWR | O_DIRECT)
         , blockSize_(bd_.getPhysicalBlockSize())
         , queueSize_(getQueueSizeStatic(bufferSize, blockSize_))
         , aio_(bd_.getFd(), queueSize_)
@@ -488,7 +598,6 @@ public:
         if (inFd < 0) {
             throw RT_ERR("inFd is not valid.");
         }
-
         walb::util::FdReader fdr(inFd);
 
         /* Read walblog header. */
@@ -496,12 +605,12 @@ public:
         if (!wh_.isValid()) {
             throw RT_ERR("WalbLog header invalid.");
         }
-
         if (!canApply()) {
             throw RT_ERR("This walblog can not be applied to the device.");
         }
 
-        /* now editing */
+        uint64_t beginLsid = wh_.beginLsid();
+        uint64_t redoLsid = beginLsid;
         try {
             while (true) {
                 Block b = readBlock(fdr);
@@ -516,6 +625,7 @@ public:
                     walb::util::WalbLogpackData logd(logh, i);
                     readLogpackData(logd, fdr);
                     createIoAndSubmit(logd);
+                    redoLsid = logd.lsid();
                 }
             } // while (true)
             submitIos();
@@ -532,6 +642,9 @@ public:
 
         /* Sync device. */
         bd_.fdatasync();
+
+        ::printf("Applied lsid range [%" PRIu64 ", %" PRIu64 ")\n",
+                 beginLsid, redoLsid);
     }
 
 private:
@@ -842,9 +955,24 @@ int main(int argc, char* argv[])
 
     try {
         Config config(argc, argv);
-        WalbLogApplyer wlApp(config, BUFFER_SIZE);
-        wlApp.readAndApply(0);
+        if (config.isHelp()) {
+            Config::printHelp();
+            return 0;
+        }
+        config.check();
 
+        WalbLogApplyer wlApp(config, BUFFER_SIZE);
+        if (config.isFromStdin()) {
+            wlApp.readAndApply(0);
+        } else {
+            walb::util::FileOpener fo(config.inPath(), O_RDONLY);
+            wlApp.readAndApply(fo.fd());
+            fo.close();
+        }
+    } catch (Config::Error& e) {
+        ::printf("Command line error: %s\n\n", e.what());
+        Config::printHelp();
+        ret = 1;
     } catch (std::runtime_error& e) {
         LOGe("Error: %s\n", e.what());
         ret = 1;
