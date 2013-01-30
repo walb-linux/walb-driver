@@ -37,6 +37,7 @@ private:
     uint64_t beginLsid_; /* start lsid to restore. */
     uint64_t endLsid_; /* end lsid to restore. The range is [start, end). */
     int64_t lsidDiff_; /* 0 means no change. */
+    uint64_t invalidLsid_; /* -1 means no invalidation. */
     uint64_t ddevLb_; /* 0 means no clipping. */
     bool isVerbose_;
     bool isHelp_;
@@ -48,6 +49,7 @@ public:
         , beginLsid_(0)
         , endLsid_(-1)
         , lsidDiff_(0)
+        , invalidLsid_(-1)
         , ddevLb_(0)
         , isVerbose_(false)
         , isHelp_(false)
@@ -59,6 +61,7 @@ public:
     uint64_t beginLsid() const { return beginLsid_; }
     uint64_t endLsid() const { return endLsid_; }
     int64_t lsidDiff() const { return lsidDiff_; }
+    uint64_t invalidLsid() const { return invalidLsid_; }
     uint64_t ddevLb() const { return ddevLb_; }
     bool isVerbose() const { return isVerbose_; }
     bool isHelp() const { return isHelp_; }
@@ -68,11 +71,13 @@ public:
                  "beginLsid: %" PRIu64 "\n"
                  "endLsid: %" PRIu64 "\n"
                  "lsidDiff: %" PRIi64 "\n"
+                 "invalidLsid: %" PRIu64 "\n"
                  "ddevLb: %" PRIu64 "\n"
                  "verbose: %d\n"
                  "isHelp: %d\n",
                  ldevPath().c_str(),
-                 beginLsid(), endLsid(), lsidDiff(), ddevLb(),
+                 beginLsid(), endLsid(), lsidDiff(),
+                 invalidLsid(), ddevLb(),
                  isVerbose(), isHelp());
         int i = 0;
         for (const auto& s : args_) {
@@ -105,6 +110,7 @@ private:
         BEGIN_LSID = 1,
         END_LSID,
         LSID_DIFF,
+        LSID_INVALID,
         DDEV_SIZE,
         VERBOSE,
         HELP,
@@ -127,13 +133,14 @@ private:
                 {"beginLsid", 1, 0, Opt::BEGIN_LSID},
                 {"endLsid", 1, 0, Opt::END_LSID},
                 {"lsidDiff", 1, 0, Opt::LSID_DIFF},
+                {"invalidLsid", 1, 0, Opt::LSID_INVALID},
                 {"ddevSize", 1, 0, Opt::DDEV_SIZE},
                 {"verbose", 0, 0, Opt::VERBOSE},
                 {"help", 0, 0, Opt::HELP},
                 {0, 0, 0, 0}
             };
             int option_index = 0;
-            int c = ::getopt_long(argc, argv, "b:e:d:s:vh", long_options, &option_index);
+            int c = ::getopt_long(argc, argv, "b:e:d:i:s:vh", long_options, &option_index);
             if (c == -1) { break; }
 
             switch (c) {
@@ -148,6 +155,10 @@ private:
             case Opt::LSID_DIFF:
             case 'd':
                 lsidDiff_ = ::atoll(optarg);
+                break;
+            case Opt::LSID_INVALID:
+            case 'i':
+                invalidLsid_ = ::atoll(optarg);
                 break;
             case Opt::DDEV_SIZE:
             case 's':
@@ -182,6 +193,7 @@ private:
             "  -b, --beginLsid LSID:  begin lsid to restore. (default: 0)\n"
             "  -e, --endLsid LSID:    end lsid to restore. (default: -1)\n"
             "  -d, --lsidDiff DIFF:   lsid diff. (default: 0)\n"
+            "  -i, --invalidLsid LSID:invalidate lsid after restore. (default: no invalidation)\n"
             "  -s, --ddevSize SIZE:   data device size for clipping. (default: no clipping)\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
             "  -h, --help:            show this message.\n");
@@ -266,10 +278,11 @@ public:
 
         /* Invalidate the last log block. */
         if (beginLsid < restoredLsid) {
-            uint64_t off = super.getOffsetFromLsid(restoredLsid);
-            Block b = ba.alloc();
-            ::memset(b.get(), 0, pbs);
-            blkdev.write(off * pbs, pbs, reinterpret_cast<const char *>(b.get()));
+            invalidateLsid(blkdev, super, ba, pbs, restoredLsid);
+        }
+        /* Invalidate the specified block. */
+        if (config_.invalidLsid() != uint64_t(-1)) {
+            invalidateLsid(blkdev, super, ba, pbs, config_.invalidLsid());
         }
 
         /* Finalize the log device. */
@@ -280,6 +293,17 @@ public:
                  beginLsid, restoredLsid);
     }
 private:
+    void invalidateLsid(
+        walb::util::BlockDevice &blkdev,
+        walb::util::WalbSuperBlock &super,
+        walb::util::BlockAllocator<u8> &ba,
+        unsigned int pbs, uint64_t lsid) {
+        uint64_t off = super.getOffsetFromLsid(lsid);
+        Block b = ba.alloc();
+        ::memset(b.get(), 0, pbs);
+        blkdev.write(off * pbs, pbs, reinterpret_cast<const char *>(b.get()));
+    }
+
     /**
      * Read a block data from a fd reader.
      */
