@@ -56,3 +56,46 @@ depend: Makefile
 	mv Makefile.new Makefile
 
 # DO NOT DELETE
+wlcat.o: wlcat.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
+ ../../include/walb/walb.h ../../include/walb/common.h \
+ ../../include/walb/userland.h ../../include/walb/disk_name.h \
+ ../../include/walb/sector.h ../../include/walb/checksum.h \
+ ../../include/walb/block_size.h ../../include/walb/util.h \
+ ../../include/walb/log_device.h ../../include/walb/log_record.h \
+ ../../include/walb/u32bits.h ../../include/walb/super.h \
+ ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
+ ../../include/walb/log_record.h ../walblog_format.h \
+ ../../include/walb/walb.h aio_util.hpp ../random.h ../check_userland.h \
+ ../../include/walb/userland.h
+wlredo.o: wlredo.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
+ ../../include/walb/walb.h ../../include/walb/common.h \
+ ../../include/walb/userland.h ../../include/walb/disk_name.h \
+ ../../include/walb/sector.h ../../include/walb/checksum.h \
+ ../../include/walb/block_size.h ../../include/walb/util.h \
+ ../../include/walb/log_device.h ../../include/walb/log_record.h \
+ ../../include/walb/u32bits.h ../../include/walb/super.h \
+ ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
+ ../../include/walb/log_record.h ../walblog_format.h \
+ ../../include/walb/walb.h aio_util.hpp ../random.h ../check_userland.h \
+ ../../include/walb/userland.h
+wlgen.o: wlgen.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
+ ../../include/walb/walb.h ../../include/walb/common.h \
+ ../../include/walb/userland.h ../../include/walb/disk_name.h \
+ ../../include/walb/sector.h ../../include/walb/checksum.h \
+ ../../include/walb/block_size.h ../../include/walb/util.h \
+ ../../include/walb/log_device.h ../../include/walb/log_record.h \
+ ../../include/walb/u32bits.h ../../include/walb/super.h \
+ ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
+ ../../include/walb/log_record.h ../walblog_format.h \
+ ../../include/walb/walb.h
+wlrestore.o: wlrestore.cpp util.hpp walb_util.hpp \
+ ../../include/walb/super.h ../../include/walb/walb.h \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/disk_name.h ../../include/walb/sector.h \
+ ../../include/walb/checksum.h ../../include/walb/block_size.h \
+ ../../include/walb/util.h ../../include/walb/log_device.h \
+ ../../include/walb/log_record.h ../../include/walb/u32bits.h \
+ ../../include/walb/super.h ../../include/walb/snapshot.h \
+ ../../include/walb/u64bits.h ../../include/walb/log_record.h \
+ ../walblog_format.h ../../include/walb/walb.h
+bdiff.o: bdiff.cpp util.hpp
