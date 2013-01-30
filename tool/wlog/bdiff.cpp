@@ -12,6 +12,9 @@
 #include <getopt.h>
 #include "util.hpp"
 
+/**
+ * Command line configuration.
+ */
 class Config
 {
 private:
@@ -118,6 +121,45 @@ private:
     }
 };
 
+void checkBlockDiff(Config& config)
+{
+    walb::util::FileOpener f1(config.filePath1(), O_RDONLY);
+    walb::util::FileOpener f2(config.filePath2(), O_RDONLY);
+    walb::util::FdReader fdr1(f1.fd());
+    walb::util::FdReader fdr2(f2.fd());
+
+    const unsigned int bs = config.blockSize();
+    std::unique_ptr<char> p1(new char[bs]);
+    std::unique_ptr<char> p2(new char[bs]);
+#if 0
+    ::printf("%d\n%d\n", f1.fd(), f2.fd());
+#endif
+
+    uint64_t nDiffer = 0;
+    uint64_t nChecked = 0;
+    try {
+        while (true) {
+            fdr1.read(p1.get(), bs);
+            fdr2.read(p2.get(), bs);
+            if (::memcmp(p1.get(), p2.get(), bs) != 0) {
+                ::fprintf(::stderr, "block %" PRIu64 " differ\n", nChecked);
+                if (config.isVerbose()) {
+                    nDiffer++;
+                    walb::util::printByteArray(p1.get(), bs);
+                    walb::util::printByteArray(p2.get(), bs);
+                }
+            }
+            nChecked++;
+        }
+    } catch (walb::util::EofError& e) {
+    }
+
+    f1.close();
+    f2.close();
+    ::printf("%" PRIu64 "/%" PRIu64 " differs\n",
+             nDiffer, nChecked);
+}
+
 int main(int argc, char* argv[])
 {
     int ret = 0;
@@ -126,45 +168,11 @@ int main(int argc, char* argv[])
         Config config(argc, argv);
         if (config.isHelp()) {
             Config::printHelp();
-            return 1;
+            return 0;
         }
         config.check();
 
-        walb::util::FileOpener f1(config.filePath1(), O_RDONLY);
-        walb::util::FileOpener f2(config.filePath2(), O_RDONLY);
-        walb::util::FdReader fdr1(f1.fd());
-        walb::util::FdReader fdr2(f2.fd());
-
-        const unsigned int bs = config.blockSize();
-        std::unique_ptr<char> p1(new char[bs]);
-        std::unique_ptr<char> p2(new char[bs]);
-#if 0
-        ::printf("%d\n%d\n", f1.fd(), f2.fd());
-#endif
-
-        uint64_t nDiffer = 0;
-        uint64_t nChecked = 0;
-        try {
-            while (true) {
-                fdr1.read(p1.get(), bs);
-                fdr2.read(p2.get(), bs);
-                if (::memcmp(p1.get(), p2.get(), bs) != 0) {
-                    ::fprintf(::stderr, "block %" PRIu64 " differ\n", nChecked);
-                    if (config.isVerbose()) {
-                        nDiffer++;
-                        walb::util::printByteArray(p1.get(), bs);
-                        walb::util::printByteArray(p2.get(), bs);
-                    }
-                }
-                nChecked++;
-            }
-        } catch (walb::util::EofError& e) {
-        }
-
-        f1.close();
-        f2.close();
-        ::printf("%" PRIu64 "/%" PRIu64 " differs\n",
-                 nDiffer, nChecked);
+        checkBlockDiff(config);
 
     } catch (Config::Error& e) {
         ::fprintf(::stderr, "Command line error: %s\n\n", e.what());
