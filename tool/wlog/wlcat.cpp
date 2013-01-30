@@ -330,8 +330,21 @@ private:
     size_t nPendingBlocks_;
     u64 aheadLsid_;
 
-    class InvalidLogpackData : public std::exception
-    {
+    class InvalidLogpackHeader : public std::exception {
+    private:
+        std::string msg_;
+    public:
+        InvalidLogpackHeader()
+            : msg_("invalid logpack header.") {}
+        explicit InvalidLogpackHeader(const std::string& msg)
+            : msg_(msg) {}
+
+        virtual const char *what() const noexcept {
+            return msg_.c_str();
+        }
+    };
+
+    class InvalidLogpackData : public std::exception {
     public:
         virtual const char *what() const noexcept {
             return "invalid logpack data.";
@@ -383,13 +396,23 @@ public:
         wh.write(outFd);
 #endif
 
+        if (config_.isVerbose()) {
+            ::printf("beginLsid: %" PRIu64 "\n", config_.beginLsid());
+        }
         u64 lsid = config_.beginLsid();
         while (lsid < config_.endLsid()) {
             bool isEnd = false;
 
             readAhead();
-            walb::util::WalbLogpackHeader logh = readLogpackHeader();
-            //logh.print(); //debug
+            std::unique_ptr<walb::util::WalbLogpackHeader> loghP;
+            try {
+                loghP = std::move(readLogpackHeader());
+                //loghP->print(); //debug
+            } catch (InvalidLogpackHeader& e) {
+                isEnd = true;
+                break;
+            }
+            walb::util::WalbLogpackHeader &logh = *loghP;
 
             std::queue<std::shared_ptr<walb::util::WalbLogpackData> > q;
 
@@ -403,6 +426,7 @@ public:
                     q.push(p);
                 } catch (InvalidLogpackData& e) {
                     logh.shrink(i);
+                    lsid = logh.nextLogpackLsid();
                     isEnd = true;
                     break;
                 }
@@ -441,27 +465,34 @@ public:
 #if 1
         writer.fdatasync();
 #endif
+        if (config_.isVerbose()) {
+            ::printf("endLsid: %" PRIu64 "\n", lsid);
+        }
     }
 
 private:
     /**
      * Read a logpack header.
      */
-    walb::util::WalbLogpackHeader readLogpackHeader() {
+    std::unique_ptr<walb::util::WalbLogpackHeader> readLogpackHeader() {
         auto block = readBlock();
-        walb::util::WalbLogpackHeader logh(
-            block.ptr, super_.getPhysicalBlockSize(), super_.getLogChecksumSalt());
+        std::unique_ptr<walb::util::WalbLogpackHeader> logh(
+            new walb::util::WalbLogpackHeader(
+                block.ptr, super_.getPhysicalBlockSize(),
+                super_.getLogChecksumSalt()));
 #if 0
-        logh.print(::stderr);
+        logh->print(::stderr);
 #endif
-        if (!logh.isValid()) {
-            throw RT_ERR("invalid logpack header.");
+        if (!logh->isValid()) {
+            throw InvalidLogpackHeader();
         }
-        if (logh.header().logpack_lsid != block.lsid) {
-            throw RT_ERR("logpack %" PRIu64" is not the expected one %" PRIu64".",
-                         logh.header().logpack_lsid, block.lsid);
+        if (logh->header().logpack_lsid != block.lsid) {
+            throw InvalidLogpackHeader(
+                walb::util::formatString(
+                    "logpack %" PRIu64 " is not the expected one %" PRIu64 ".",
+                    logh->header().logpack_lsid, block.lsid));
         }
-        return logh;
+        return std::move(logh);
     }
 
     /**
