@@ -127,7 +127,7 @@ private:
                 {0, 0, 0, 0}
             };
             int option_index = 0;
-            int c = ::getopt_long(argc, argv, "b:e:d:s:vh", long_options, &option_index);
+            int c = ::getopt_long(argc, argv, "o:b:e:vh", long_options, &option_index);
             if (c == -1) { break; }
 
             switch (c) {
