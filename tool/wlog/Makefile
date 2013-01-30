@@ -25,6 +25,7 @@ LDFLAGS = -laio -lpthread
 endif
 
 BINARIES = wlcat wlredo wlgen wlrestore
+SRCS = wlcat.cpp wlredo.cpp wlgen.cpp wlrestore.cpp
 
 all: $(BINARIES)
 
@@ -42,9 +43,14 @@ wlrestore: wlrestore.o
 .c.o:
 	$(CC) $(CFLAGS) -c $<
 
-wlcat.o: wlcat.cpp aio_util.hpp util.hpp walb_util.hpp
-wlredo.o: wlredo.cpp aio_util.hpp util.hpp walb_util.hpp
-wlgen.o: wlgen.cpp util.hpp walb_util.hpp
-
 clean:
 	rm -f $(BINARIES) *.o
+
+depend: Makefile
+	sed -e '/^# DO NOT DELETE/,$$d' Makefile > Makefile.new
+	echo '# DO NOT DELETE' >> Makefile.new
+	$(CXX) -MM $(SRCS) $(CXXFLAGS) >> Makefile.new
+	mv Makefile Makefile.org
+	mv Makefile.new Makefile
+
+# DO NOT DELETE
