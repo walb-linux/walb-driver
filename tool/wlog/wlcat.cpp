@@ -431,9 +431,14 @@ public:
                     readLogpackData(*p);
                     q.push(p);
                 } catch (InvalidLogpackData& e) {
+                    uint64_t prevLsid = logh.nextLogpackLsid();
                     logh.shrink(i);
                     lsid = logh.nextLogpackLsid();
                     isEnd = true;
+                    if (config_.isVerbose()) {
+                        ::printf("Logpack shrink from %" PRIu64 " to %" PRIu64 "\n",
+                                 prevLsid, lsid);
+                    }
                     break;
                 }
             }
