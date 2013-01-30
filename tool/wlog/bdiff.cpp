@@ -121,7 +121,11 @@ private:
     }
 };
 
-void checkBlockDiff(Config& config)
+/**
+ * RETURN:
+ *   Number of different blocks.
+ */
+uint64_t checkBlockDiff(Config& config)
 {
     walb::util::FileOpener f1(config.filePath1(), O_RDONLY);
     walb::util::FileOpener f2(config.filePath2(), O_RDONLY);
@@ -158,6 +162,8 @@ void checkBlockDiff(Config& config)
     f2.close();
     ::printf("%" PRIu64 "/%" PRIu64 " differs\n",
              nDiffer, nChecked);
+
+    return nDiffer;
 }
 
 int main(int argc, char* argv[])
@@ -172,8 +178,9 @@ int main(int argc, char* argv[])
         }
         config.check();
 
-        checkBlockDiff(config);
-
+        if (checkBlockDiff(config) == 0) {
+            ret = 0;
+        }
     } catch (Config::Error& e) {
         ::fprintf(::stderr, "Command line error: %s\n\n", e.what());
         Config::printHelp();
