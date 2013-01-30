@@ -146,9 +146,9 @@ uint64_t checkBlockDiff(Config& config)
             fdr1.read(p1.get(), bs);
             fdr2.read(p2.get(), bs);
             if (::memcmp(p1.get(), p2.get(), bs) != 0) {
-                ::fprintf(::stderr, "block %" PRIu64 " differ\n", nChecked);
+                nDiffer++;
                 if (config.isVerbose()) {
-                    nDiffer++;
+                    ::printf("block %" PRIu64 " differ\n", nChecked);
                     walb::util::printByteArray(p1.get(), bs);
                     walb::util::printByteArray(p2.get(), bs);
                 }
@@ -168,7 +168,7 @@ uint64_t checkBlockDiff(Config& config)
 
 int main(int argc, char* argv[])
 {
-    int ret = 0;
+    int ret = 1;
 
     try {
         Config config(argc, argv);
