@@ -380,17 +380,10 @@ public:
 
     /**
      * Shrink.
+     * Delete records from rec[invalidIdx] to the last.
      */
     void shrink(size_t invalidIdx) {
         assert(invalidIdx < nRecords());
-
-        /* Check the last valid record is padding or not. */
-        if (invalidIdx > 0 &&
-            ::test_bit_u32(LOG_RECORD_PADDING, &record(invalidIdx - 1).flags)) {
-            invalidIdx--;
-            header().n_padding--;
-            assert(header().n_padding == 0);
-        }
 
         /* Invalidate records. */
         for (size_t i = invalidIdx; i < nRecords(); i++) {
