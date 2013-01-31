@@ -393,10 +393,14 @@ public:
         /* Set n_records and total_io_size. */
         header().n_records = invalidIdx;
         header().total_io_size = 0;
+        header().n_padding = 0;
         for (size_t i = 0; i < nRecords(); i++) {
             auto &rec = record(i);
             if (!::test_bit_u32(LOG_RECORD_DISCARD, &rec.flags)) {
                 header().total_io_size += ::capacity_pb(pbs(), rec.io_size);
+            }
+            if (::test_bit_u32(LOG_RECORD_PADDING, &rec.flags)) {
+                header().n_padding++;
             }
         }
 
