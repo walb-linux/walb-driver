@@ -136,9 +136,10 @@ bool write_logpack_header(int fd,
  * @logpack logpack header.
  * @sect_ary sector array.
  *
- * @return true in success, or false.
+ * @return index of invalid record.
+ *   lhead->n_records if the whole logpack is valid.
  */
-bool read_logpack_data_from_wldev(
+unsigned int read_logpack_data_from_wldev(
 	int fd,
 	const struct walb_super_sector* super,
 	const struct walb_logpack_header* lhead, u32 salt,
@@ -155,13 +156,12 @@ bool read_logpack_data_from_wldev(
 	}
 
 	int i;
-	int n_req = lhead->n_records;
 	int total_pb;
 	u64 log_off;
 	u32 log_lb, log_pb;
 
 	total_pb = 0;
-	for (i = 0; i < n_req; i++) {
+	for (i = 0; i < lhead->n_records; i++) {
 		if (test_bit_u32(LOG_RECORD_DISCARD, &lhead->record[i].flags)) {
 			continue;
 		}
@@ -178,7 +178,7 @@ bool read_logpack_data_from_wldev(
 				fd, log_off, sect_ary,
 				total_pb, log_pb)) {
 			LOGe("read sectors failed.\n");
-			return false;
+			return i;
 		}
 
 		if (test_bit_u32(LOG_RECORD_PADDING, &lhead->record[i].flags)) {
@@ -192,11 +192,11 @@ bool read_logpack_data_from_wldev(
 		if (csum != lhead->record[i].checksum) {
 			LOGe("log header checksum is invalid. %08x %08x\n",
 				csum, lhead->record[i].checksum);
-			return false;
+			return i;
 		}
 		total_pb += log_pb;
 	}
-	return true;
+	return lhead->n_records;
 }
 
 /**
@@ -373,6 +373,46 @@ error1:
 	sector_free(sect);
 error0:
 	return false;
+}
+
+/**
+ * Shrink logpack header.
+ *
+ * @logh logpack header to shrink.
+ * @invalid_idx new logpack header's n_records must be invalid_idx.
+ * @pbs physical block size [byte].
+ * @salt checksum salt.
+ */
+void shrink_logpack_header(
+	struct walb_logpack_header *logh, unsigned int invalid_idx,
+	unsigned int pbs, u32 salt)
+{
+	unsigned int i;
+
+	/* Invalidate records. */
+	ASSERT(invalid_idx < logh->n_records);
+	for (i = invalid_idx; i < logh->n_records; i++) {
+		log_record_init(&logh->record[i]);
+	}
+
+	/* Set n_records, n_padding, and total_io_size. */
+	logh->n_records = invalid_idx;
+	logh->n_padding = 0;
+	logh->total_io_size = 0;
+	for (i = 0; i < invalid_idx; i++) {
+		const struct walb_log_record *rec = &logh->record[i];
+		if (!test_bit_u32(LOG_RECORD_DISCARD, &rec->flags)) {
+			logh->total_io_size += capacity_pb(pbs, rec->io_size);
+		}
+		if (test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
+			logh->n_padding++;
+		}
+	}
+
+	/* Calculate checksum. */
+	logh->checksum = 0;
+	logh->checksum = checksum((const u8 *)logh, pbs, salt);
+	ASSERT(is_valid_logpack_header_with_checksum(logh, pbs, salt));
 }
 
 /**

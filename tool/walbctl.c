@@ -1842,14 +1842,14 @@ static bool do_cat_wldev(const struct config *cfg)
 	/* Write each logpack to stdout. */
 	lsid = begin_lsid;
 	while (lsid < end_lsid) {
+		unsigned int invalid_idx;
+		bool should_break = false;
 
 		/* Logpack header */
 		retb = read_logpack_header_from_wldev(
 			fd, super, lsid, salt, lhead_sect);
 		if (!retb) { break; }
 		LOGd("logpack %"PRIu64"\n", lhead->logpack_lsid);
-		retb = write_data(1, (u8 *)lhead, pbs);
-		ASSERT(retb);
 
 		/* Realloc buffer if buffer size is not enough. */
 		if (sect_ary->size < lhead->total_io_size) {
@@ -1862,17 +1862,28 @@ static bool do_cat_wldev(const struct config *cfg)
 		}
 
 		/* Read and write logpack data. */
-		retb = read_logpack_data_from_wldev(fd, super, lhead, salt, sect_ary);
+		invalid_idx = read_logpack_data_from_wldev(
+			fd, super, lhead, salt, sect_ary);
+		if (invalid_idx == 0) { break; }
+		if (invalid_idx < lhead->n_records) {
+			shrink_logpack_header(lhead, invalid_idx, pbs, salt);
+			should_break = true;
+		}
+
+		/* Write logpack header and data. */
+		retb = write_data(1, (u8 *)lhead, pbs);
 		if (!retb) {
-			LOGe("read logpack data failed.\n");
+			LOGe("write logpack header failed.\n");
 			goto error4;
 		}
+
 		retb = sector_array_write(1, sect_ary, 0, lhead->total_io_size);
 		if (!retb) {
 			LOGe("write logpack data failed.\n");
 			goto error4;
 		}
 
+		if (should_break) { break; }
 		lsid += lhead->total_io_size + 1;
 	}
 
@@ -2108,6 +2119,8 @@ static bool do_redo(const struct config *cfg)
 	u64 begin_lsid = lsid;
 	/* Read logpack header */
 	while (read_logpack_header_from_wldev(lfd, super, lsid, salt, lhead_sectd)) {
+		unsigned int invalid_idx;
+		bool should_break = false;
 
 		LOGd("logpack %"PRIu64"\n", lhead->logpack_lsid);
 
@@ -2122,9 +2135,14 @@ static bool do_redo(const struct config *cfg)
 		}
 
 		/* Read logpack data from log device. */
-		if (!read_logpack_data_from_wldev(lfd, super, lhead, salt, sect_ary)) {
-			LOGe("read logpack data failed.\n");
-			goto error5;
+		invalid_idx = read_logpack_data_from_wldev(
+			lfd, super, lhead, salt, sect_ary);
+
+		if (invalid_idx == 0) { break; }
+
+		if (invalid_idx < lhead->n_records) {
+			shrink_logpack_header(lhead, invalid_idx, pbs, salt);
+			should_break = true;
 		}
 
 		/* Write logpack to data device. */
@@ -2133,6 +2151,7 @@ static bool do_redo(const struct config *cfg)
 			goto error5;
 		}
 
+		if (should_break) { break; }
 		lsid += lhead->total_io_size + 1;
 	}
 

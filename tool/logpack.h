@@ -20,7 +20,7 @@ bool read_logpack_header_from_wldev(
 	int fd,
 	const struct walb_super_sector* super_sectp,
 	u64 lsid, u32 salt, struct sector_data *lhead_sect);
-bool read_logpack_data_from_wldev(
+unsigned int read_logpack_data_from_wldev(
 	int fd,
 	const struct walb_super_sector* super,
 	const struct walb_logpack_header* lhead, u32 salt,
@@ -44,6 +44,10 @@ bool redo_logpack(
 
 bool write_invalid_logpack_header(
 	int fd, const struct sector_data *super_sect, u64 lsid);
+
+void shrink_logpack_header(
+	struct walb_logpack_header *logh, unsigned int invalid_idx,
+	unsigned int pbs, u32 salt);
 
 /*******************************************************************************
  * New logpack interface.
