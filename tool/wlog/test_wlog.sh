@@ -38,9 +38,7 @@ format_ldev
 ./wlrestore $LDEV < ${WLOG}.0
 ./wlcat $LDEV -v -o ${WLOG}.1
 ./bdiff -b 512 ${WLOG}.0 ${WLOG}.1
-if [ $? -eq 0 ]; then
-  echo "TEST1_SUCCESS"
-else
+if [ $? -ne 0 ]; then
   echo "TEST1_FAILURE"
   exit 1
 fi
