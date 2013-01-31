@@ -413,11 +413,11 @@ private:
         const unsigned int pbs = config_.pbs();
         const unsigned int maxNumRecords = ::max_n_log_record_in_sector(pbs);
         const size_t nRecords = (rand.get32() % maxNumRecords) + 1;
-        const size_t paddingPos = rand.get32() % nRecords;
         const uint64_t devLb = config_.devLb();
 
         for (size_t i = 0; i < nRecords; i++) {
             uint64_t offset = rand.get64() % devLb;
+            /* Decide io_size. */
             uint16_t ioSize = config_.minIoLb();
             uint16_t range = config_.maxIoLb() - config_.minIoLb();
             if (range > 0) {
@@ -427,22 +427,24 @@ private:
             if (offset + ioSize > devLb) {
                 ioSize = devLb - offset; /* clipping. */
             }
+            /* Check total_io_size limitation. */
             if (logh.totalIoSize() > 0 && nRecords > 1 &&
                 logh.totalIoSize() + capacity_pb(pbs, ioSize) > config_.maxPackPb()) {
                 break;
             }
-            if (config_.isPadding() && i == paddingPos && i != nRecords - 1) {
+            /* Decide IO type. */
+            unsigned int v = rand.get32() % 100;
+            if (config_.isPadding() && v < 10) {
                 uint16_t psize = capacity_lb(pbs, capacity_pb(pbs, ioSize));
+                if (v < 5) { psize = 0; } /* padding size can be 0. */
                 if (!logh.addPadding(psize)) { break; }
                 continue;
             }
-            bool isDiscard = config_.isDiscard() &&
-                (rand.get32() & 0x00000007) == 0;
-            if (isDiscard) {
+            if (config_.isDiscard() && v < 30) {
                 if (!logh.addDiscardIo(offset, ioSize)) { break; }
-            } else {
-                if (!logh.addNormalIo(offset, ioSize)) { break; }
+                continue;
             }
+            if (!logh.addNormalIo(offset, ioSize)) { break; }
         }
         logh.isValid(false);
     }
