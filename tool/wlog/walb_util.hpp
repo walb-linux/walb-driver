@@ -459,6 +459,7 @@ public:
      *
      * @offset [logical block]
      * @size [logical block]
+     *   can not be 0.
      * RETURN:
      *   true in success, or false (you must create a new header).
      */
@@ -493,6 +494,7 @@ public:
      *
      * @offset [logical block]
      * @size [logical block]
+     *   can not be 0.
      * RETURN:
      *   true in success, or false (you must create a new header).
      */
@@ -524,6 +526,7 @@ public:
      * Add a padding.
      *
      * @size [logical block]
+     *   can be 0.
      * RETURN:
      *   true in success, or false (you must create a new header).
      */
