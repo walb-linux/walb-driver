@@ -19,7 +19,7 @@ extern "C" {
 /**
  * Logical block size is fixed.
  */
-#define LOGICAL_BLOCK_SIZE 512
+#define LOGICAL_BLOCK_SIZE (1U << 9)
 
 /**
  * Assertion of logical/physical block size.

@@ -51,7 +51,7 @@ struct bio_cursor
 {
 	struct bio_entry *bioe; /* Target bio entry.
 				   You must use bioe->len
-				   instead of (bioe->bio->bi_size >> 9),
+				   instead of (bioe->bio->bi_size / LOGICAL_BLOCK_SIZE),
 				   because it will be 0 in the end_request(). */
 	unsigned int idx; /* bio io_vec index. */
 	unsigned int off; /* offset inside bio [bytes]. */
@@ -219,7 +219,7 @@ UNUSED static bool bio_cursor_is_valid(const struct bio_cursor *cur)
 
 	if (cur->idx == cur->bioe->bio->bi_vcnt) {
 		/* cursur indicates the end. */
-		CHECK(cur->off == cur->bioe->len << 9);
+		CHECK(cur->off == cur->bioe->len * LOGICAL_BLOCK_SIZE);
 		CHECK(cur->off_in == 0);
 		goto fin;
 	}
@@ -307,7 +307,7 @@ static bool bio_cursor_is_end(const struct bio_cursor *cur)
 		/* zero bio always indicates the end. */
 		return true;
 	} else {
-		return cur->off == cur->bioe->len << 9;
+		return cur->off == cur->bioe->len * LOGICAL_BLOCK_SIZE;
 	}
 }
 #endif
@@ -633,7 +633,7 @@ static struct bio_entry* bio_entry_split(
 	if (!bp) { goto error1; }
 
 	bioe1->bio = bp->bio1;
-	bioe1->len = bp->bio1->bi_size >> 9;
+	bioe1->len = bp->bio1->bi_size / LOGICAL_BLOCK_SIZE;
 	if (!bio_entry_state_is_splitted(bioe1)) {
 		ASSERT(!bioe1->bio_orig);
 		bioe1->bio_orig = bp->bio_orig;
@@ -943,7 +943,7 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 	if (bio) {
 		bioe->bio = bio;
 		bioe->pos = bio->bi_sector;
-		bioe->len = bio->bi_size >> 9;
+		bioe->len = bio->bi_size / LOGICAL_BLOCK_SIZE;
 		if (bio->bi_rw & REQ_DISCARD) {
 			bio_entry_state_set_discard(bioe);
 		}
@@ -1245,7 +1245,7 @@ bool bio_entry_cursor_is_valid(const struct bio_entry_cursor *cur)
 	off_bytes = 0;
 	list_for_each_entry(bioe, cur->bio_ent_list, list) {
 		if (bioe == cur->bioe) { break; }
-		off_bytes += bioe->len << 9;
+		off_bytes += bioe->len * LOGICAL_BLOCK_SIZE;
 	}
 	CHECK(off_bytes % LOGICAL_BLOCK_SIZE == 0);
 	CHECK(off_bytes / LOGICAL_BLOCK_SIZE + cur->off_in == cur->off);
@@ -1359,24 +1359,24 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 	/* Debug */
 	LOGd_("bio_data_copy: dst %u %u %u %u src %u %u %u %u copied_sectors %u\n",
 		dst->bioe->bio->bi_size,
-		dst->bioe->len << 9,
+		dst->bioe->len * LOGICAL_BLOCK_SIZE,
 		dst->off_in,
 		atomic_read(&dst->bioe->bio->bi_cnt),
 		src->bioe->bio->bi_size,
-		src->bioe->len << 9,
+		src->bioe->len * LOGICAL_BLOCK_SIZE,
 		src->off_in,
 		atomic_read(&src->bioe->bio->bi_cnt),
 		copied_sectors);
 
 	ASSERT(dst->bioe->bio);
 	ASSERT(src->bioe->bio);
-	ASSERT(dst->bioe->bio->bi_size == dst->bioe->len << 9);
+	ASSERT(dst->bioe->bio->bi_size == dst->bioe->len * LOGICAL_BLOCK_SIZE);
 #if 0
 	/* Debug */
-	if (src->bioe->bio->bi_size != src->bioe->len << 9) {
+	if (src->bioe->bio->bi_size != src->bioe->len * LOGICAL_BLOCK_SIZE) {
 		LOGn("src bio invalid: bio %u bioe %u vcnt %u\n",
 			src->bioe->bio->bi_size,
-			src->bioe->len << 9,
+			src->bioe->len * LOGICAL_BLOCK_SIZE,
 			atomic_read(&src->bioe->bio->bi_cnt));
 
 		LOGn("bi_idx %u bi_vcnt %u bi_io_vec %p\n",
