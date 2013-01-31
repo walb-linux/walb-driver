@@ -1018,7 +1018,11 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			ret = overlapped_check_and_insert(
 				iocored->overlapped_data,
 				&iocored->max_sectors_in_overlapped,
-				biow, GFP_ATOMIC);
+				biow, GFP_ATOMIC
+#ifdef WALB_DEBUG
+				, &iocored->overlapped_in_id
+#endif
+				);
 			spin_unlock(&iocored->overlapped_data_lock);
 			if (!ret) {
 				schedule();
@@ -2490,7 +2494,11 @@ static void wait_for_write_bio_wrapper(
 	n_should_submit = overlapped_delete_and_notify(
 		iocored->overlapped_data,
 		&iocored->max_sectors_in_overlapped,
-		&should_submit_list, biow);
+		&should_submit_list, biow
+#ifdef WALB_DEBUG
+		, &iocored->overlapped_out_id
+#endif
+		);
 	spin_unlock(&iocored->overlapped_data_lock);
 
 	/* Submit bio wrapper(s) which n_overlapped became 0. */
@@ -3649,7 +3657,11 @@ bool iocore_is_log_overflow(struct walb_dev *wdev)
 bool overlapped_check_and_insert(
 	struct multimap *overlapped_data,
 	unsigned int *max_sectors_p,
-	struct bio_wrapper *biow, gfp_t gfp_mask)
+	struct bio_wrapper *biow, gfp_t gfp_mask
+#ifdef WALB_DEBUG
+	, u64 *overlapped_in_id
+#endif
+	)
 {
 	struct multimap_cursor cur;
 	u64 max_io_size, start_pos;
@@ -3713,10 +3725,8 @@ fin:
 	*max_sectors_p = max(*max_sectors_p, biow->len);
 #ifdef WALB_DEBUG
 	{
-		u64 *p;
-		p = &get_iocored_from_wdev(biow->private_data)->overlapped_in_id;
-		biow->ol_id = *p;
-		(*p)++;
+		biow->ol_id = *overlapped_in_id;
+		(*overlapped_in_id)++;
 	}
 #endif
 	return true;
@@ -3742,7 +3752,11 @@ unsigned int overlapped_delete_and_notify(
 	struct multimap *overlapped_data,
 	unsigned int *max_sectors_p,
 	struct list_head *should_submit_list,
-	struct bio_wrapper *biow)
+	struct bio_wrapper *biow
+#ifdef WALB_DEBUG
+	, u64 *overlapped_out_id
+#endif
+	)
 {
 	struct multimap_cursor cur;
 	u64 max_io_size, start_pos;
@@ -3769,10 +3783,8 @@ unsigned int overlapped_delete_and_notify(
 
 #ifdef WALB_DEBUG
 	{
-		u64 *p;
-		p = &get_iocored_from_wdev(biow->private_data)->overlapped_out_id;
-		ASSERT(biow->ol_id == *p);
-		(*p)++;
+		ASSERT(biow->ol_id == *overlapped_out_id);
+		(*overlapped_out_id)++;
 	}
 #endif
 	/* Initialize max_sectors. */

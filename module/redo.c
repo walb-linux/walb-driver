@@ -279,7 +279,11 @@ static void run_gc_log_in_redo(void *data)
 			overlapped_delete_and_notify(
 				iocored->overlapped_data,
 				&iocored->max_sectors_in_overlapped,
-				&should_submit_list, biow);
+				&should_submit_list, biow
+#ifdef WALB_DEBUG
+				, &iocored->overlapped_out_id
+#endif
+				);
 			spin_unlock(&iocored->overlapped_data_lock);
 
 			/* Submit overlapped. */
@@ -1060,7 +1064,11 @@ retry_insert_ol:
 		overlapped_check_and_insert(
 			iocored->overlapped_data,
 			&iocored->max_sectors_in_overlapped,
-			biow, GFP_ATOMIC);
+			biow, GFP_ATOMIC
+#ifdef WALB_DEBUG
+			, &iocored->overlapped_in_id
+#endif
+			);
 	spin_unlock(&iocored->overlapped_data_lock);
 	if (!is_overlapped_insert_succeeded) {
 		schedule();

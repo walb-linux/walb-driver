@@ -169,10 +169,18 @@ bool iocore_is_log_overflow(struct walb_dev *wdev);
 #ifdef WALB_OVERLAPPED_SERIALIZE
 bool overlapped_check_and_insert(
 	struct multimap *overlapped_data, unsigned int *max_sectors_p,
-	struct bio_wrapper *biow, gfp_t gfp_mask);
+	struct bio_wrapper *biow, gfp_t gfp_mask
+#ifdef WALB_DEBUG
+	, u64 *overlapped_in_id
+#endif
+	);
 unsigned int overlapped_delete_and_notify(
 	struct multimap *overlapped_data, unsigned int *max_sectors_p,
-	struct list_head *should_submit_list, struct bio_wrapper *biow);
+	struct list_head *should_submit_list, struct bio_wrapper *biow
+#ifdef WALB_DEBUG
+	, u64 *overlapped_out_id
+#endif
+	);
 #endif
 
 /* Iocore utilities. */
