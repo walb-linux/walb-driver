@@ -851,12 +851,17 @@ retry1:
 		log_record_init(&logh->record[i]);
 	}
 	logh->n_records = invalid_idx;
-	/* Re-calculate total_io_size. */
+	/* Re-calculate total_io_size and n_padding. */
 	logh->total_io_size = 0;
+	logh->n_padding = 0;
 	for (i = 0; i < logh->n_records; i++) {
-		if (!test_bit_u32(LOG_RECORD_DISCARD, &logh->record[i].flags)) {
+		struct walb_log_record *rec = &logh->record[i];
+		if (!test_bit_u32(LOG_RECORD_DISCARD, &rec->flags)) {
 			logh->total_io_size += capacity_pb(
-				pbs, logh->record[i].io_size);
+				pbs, rec->io_size);
+		}
+		if (test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
+			logh->n_padding++;
 		}
 	}
 	ASSERT(logh->total_io_size > 0);
