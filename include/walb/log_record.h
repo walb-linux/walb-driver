@@ -160,7 +160,9 @@ static inline int is_valid_log_record(struct walb_log_record *rec)
 	CHECK(rec);
 	CHECK(test_bit_u32(LOG_RECORD_EXIST, &rec->flags));
 
-	CHECK(rec->io_size > 0);
+	if (!test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
+		CHECK(rec->io_size > 0);
+	}
 	CHECK(rec->lsid_local > 0);
 	CHECK(rec->lsid <= MAX_LSID);
 
@@ -192,6 +194,10 @@ static inline int is_valid_logpack_header(
 		CHECK(lhead->total_io_size > 0);
 #endif
 		CHECK(lhead->n_padding <= lhead->n_records);
+
+		/* logpack_lsid overflow check. */
+		CHECK(lhead->logpack_lsid <
+			lhead->logpack_lsid + 1 + lhead->total_io_size);
 	}
 	return 1;
 error:
