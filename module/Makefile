@@ -28,7 +28,7 @@ ifeq ($(FAST_ALG),1)
 endif
 
 EXTRA_CFLAGS += $(DEBFLAGS)
-EXTRA_CFLAGS += -I$(obj)/../include
+EXTRA_CFLAGS += -I$(obj)/../include -I$(obj)
 
 ifneq ($(KERNELRELEASE),)
 # call from kernel build system
