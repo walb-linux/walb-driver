@@ -21,12 +21,11 @@
  * RETURN:
  *   checksum if bio->bi_size > 0, else 0.
  */
-static inline u32 bio_calc_checksum(struct bio *bio, u32 salt)
+static inline u32 bio_calc_checksum(const struct bio *bio, u32 salt)
 {
-	struct bio_vec *bvec;
+	const struct bio_vec *bvec;
 	u32 sum = salt;
 	int i;
-	u8 *buf;
 
 	ASSERT(bio);
 
@@ -39,7 +38,7 @@ static inline u32 bio_calc_checksum(struct bio *bio, u32 salt)
 	}
 
 	bio_for_each_segment(bvec, bio, i) {
-		buf = (u8 *)kmap_atomic(bvec->bv_page) + bvec->bv_offset;
+		u8 *buf = (u8 *)kmap_atomic(bvec->bv_page) + bvec->bv_offset;
 		sum = checksum_partial(sum, buf, bvec->bv_len);
 		kunmap_atomic(buf);
 	}
@@ -50,7 +49,7 @@ static inline u32 bio_calc_checksum(struct bio *bio, u32 salt)
 /**
  * Print request flags for debug.
  */
-static inline void print_bio_flags(const char *flag, struct bio *bio)
+static inline void print_bio_flags(const char *flag, const struct bio *bio)
 {
 	ASSERT(bio);
 	printk("%s""REQ_FLAGS: "
