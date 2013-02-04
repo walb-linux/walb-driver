@@ -792,9 +792,13 @@ public:
     }
 
     void write(util::FdWriter& fdw) {
+        calcChecksum();
+        fdw.write(reinterpret_cast<char *>(&data_[0]), WALBLOG_HEADER_SIZE);
+    }
+
+    void calcChecksum() {
         header().checksum = 0;
         header().checksum = ::checksum(&data_[0], WALBLOG_HEADER_SIZE, 0);
-        fdw.write(reinterpret_cast<char *>(&data_[0]), WALBLOG_HEADER_SIZE);
     }
 
     struct walblog_header& header() {
