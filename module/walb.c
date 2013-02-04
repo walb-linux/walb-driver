@@ -158,6 +158,7 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
 static int ioctl_wdev_get_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
+static int ioctl_wdev_get_permanent_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *ctl);
@@ -176,6 +177,7 @@ static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 
 /* Utility functions for walb_dev. */
 static u64 get_written_lsid(struct walb_dev *wdev);
+static u64 get_permanent_lsid(struct walb_dev *wdev);
 static u64 get_completed_lsid(struct walb_dev *wdev);
 static u64 get_log_usage(struct walb_dev *wdev);
 static u64 get_log_capacity(struct walb_dev *wdev);
@@ -372,6 +374,9 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		break;
 	case WALB_IOCTL_GET_WRITTEN_LSID:
 		ret = ioctl_wdev_get_written_lsid(wdev, ctl);
+		break;
+	case WALB_IOCTL_GET_PERMANENT_LSID:
+		ret = ioctl_wdev_get_permanent_lsid(wdev, ctl);
 		break;
 	case WALB_IOCTL_GET_COMPLETED_LSID:
 		ret = ioctl_wdev_get_completed_lsid(wdev, ctl);
@@ -964,6 +969,23 @@ static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *c
 }
 
 /**
+ * Get permanent_lsid.
+ *
+ * @wdev walb dev.
+ * @ctl ioctl data.
+ * RETURN:
+ *   0 in success, or -EFAULT.
+ */
+static int ioctl_wdev_get_permanent_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
+{
+	LOGn("WALB_IOCTL_GET_PERMANENT_LSID\n");
+	ASSERT(ctl->command == WALB_IOCTL_GET_PERMANENT_LSID);
+
+	ctl->val_u64 = get_permanent_lsid(wdev);
+	return 0;
+}
+
+/**
  * Get completed_lsid.
  *
  * @wdev walb dev.
@@ -1398,6 +1420,24 @@ static u64 get_written_lsid(struct walb_dev *wdev)
 
 	spin_lock(&wdev->lsid_lock);
 	ret = wdev->written_lsid;
+	spin_unlock(&wdev->lsid_lock);
+
+	return ret;
+}
+
+/**
+ * Get permanent_lsid of the walb device.
+ *
+ * @return permanent_lsid of the walb device.
+ */
+static u64 get_permanent_lsid(struct walb_dev *wdev)
+{
+	u64 ret;
+
+	ASSERT(wdev);
+
+	spin_lock(&wdev->lsid_lock);
+	ret = wdev->permanent_lsid;
 	spin_unlock(&wdev->lsid_lock);
 
 	return ret;

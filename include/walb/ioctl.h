@@ -413,6 +413,17 @@ enum {
 	WALB_IOCTL_GET_WRITTEN_LSID,
 
 	/*
+	 * Get permanent_lsid where all IO(s) which lsid < permanent_lsid
+	 * have been permanent in the log device.
+	 *
+	 * INPUT:
+	 *   None
+	 * OUTPUT:
+	 *   ctl->val_u64 as permanent_lsid.
+	 */
+	WALB_IOCTL_GET_PERMANENT_LSID,
+
+	/*
 	 * Get completed_lsid where all IO(s) which lsid < completed_lsid
 	 * have been completed.
 	 * For easy algorithm, this is the same as written_lsid.
