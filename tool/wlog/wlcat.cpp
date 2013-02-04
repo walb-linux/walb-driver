@@ -389,8 +389,8 @@ public:
         u64 beginLsid = config_.beginLsid();
         if (beginLsid < super_.getOldestLsid()) {
             beginLsid = super_.getOldestLsid();
-            aheadLsid_ = beginLsid;
         }
+        aheadLsid_ = beginLsid;
 
         walb::util::FdWriter writer(outFd);
 
