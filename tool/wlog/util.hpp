@@ -843,6 +843,7 @@ public:
     std::shared_ptr<T> alloc() {
         return allocateBlock<T>(alignment_, size_);
     }
+    size_t blockSize() const { return size_; }
 };
 #else
 template<typename T>
@@ -871,6 +872,8 @@ public:
             return allocateBlock<T>(alignment_, size_);
         }
     }
+
+    size_t blockSize() const { return size_; }
 };
 #endif
 
