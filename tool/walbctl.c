@@ -188,6 +188,10 @@ static struct cmdhelp cmdhelps_[] = {
 	  "Get oldest_lsid in the device." },
 	{ "get_written_lsid WDEV",
 	  "Get written_lsid in the device." },
+	{ "get_permanent_lsid WDEV",
+	  "Get permanent_lsid in the device." },
+	{ "get_completed_lsid WDEV",
+	  "Get completed_lsid in the device." },
 	{ "get_log_usage WDEV",
 	  "Get log usage in the log device." },
 	{ "get_log_capacity WDEV",
@@ -258,6 +262,7 @@ static bool invoke_ioctl(
 	const char *wdev_name, struct walb_ctl *ctl, int open_flag);
 static u64 get_oldest_lsid(const char* wdev_name);
 static u64 get_written_lsid(const char* wdev_name);
+static u64 get_permanent_lsid(const char* wdev_name);
 static u64 get_completed_lsid(const char* wdev_name);
 static u64 get_log_usage(const char* wdev_name);
 static u64 get_log_capacity(const char* wdev_name);
@@ -290,6 +295,7 @@ static bool do_show_wldev(const struct config *cfg);
 static bool do_set_oldest_lsid(const struct config *cfg);
 static bool do_get_oldest_lsid(const struct config *cfg);
 static bool do_get_written_lsid(const struct config *cfg);
+static bool do_get_permanent_lsid(const struct config *cfg);
 static bool do_get_completed_lsid(const struct config *cfg);
 static bool do_get_log_usage(const struct config *cfg);
 static bool do_get_log_capacity(const struct config *cfg);
@@ -784,9 +790,29 @@ static u64 get_written_lsid(const char* wdev_name)
 }
 
 /**
- * Get written_lsid.
+ * Get permanent_lsid.
  *
- * @return written_lsid in success, or (u64)(-1).
+ * @return permanent_lsid in success, or (u64)(-1).
+ */
+static u64 get_permanent_lsid(const char* wdev_name)
+{
+	struct walb_ctl ctl = {
+		.command = WALB_IOCTL_GET_PERMANENT_LSID,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+
+	if (invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
+		return ctl.val_u64;
+	} else {
+		return (u64)(-1);
+	}
+}
+
+/**
+ * Get compelted_lsid.
+ *
+ * @return completed_lsid in success, or (u64)(-1).
  */
 static u64 get_completed_lsid(const char* wdev_name)
 {
@@ -874,6 +900,7 @@ static bool dispatch(const struct config *cfg)
 		{ "set_oldest_lsid", do_set_oldest_lsid },
 		{ "get_oldest_lsid", do_get_oldest_lsid },
 		{ "get_written_lsid", do_get_written_lsid },
+		{ "get_permanent_lsid", do_get_permanent_lsid },
 		{ "get_completed_lsid", do_get_completed_lsid },
 		{ "get_log_usage", do_get_log_usage },
 		{ "get_log_capacity", do_get_log_capacity },
@@ -2435,6 +2462,23 @@ static bool do_get_written_lsid(const struct config *cfg)
 		goto error0;
 	}
 	printf("%"PRIu64"\n", written_lsid);
+	return true;
+error0:
+	return false;
+}
+
+/**
+ * Get permanent_lsid.
+ */
+static bool do_get_permanent_lsid(const struct config *cfg)
+{
+	ASSERT(strcmp(cfg->cmd_str, "get_permanent_lsid") == 0);
+
+	u64 lsid = get_permanent_lsid(cfg->wdev_name);
+	if (lsid == (u64)(-1)) {
+		goto error0;
+	}
+	printf("%"PRIu64"\n", lsid);
 	return true;
 error0:
 	return false;
