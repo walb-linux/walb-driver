@@ -137,10 +137,8 @@ private:
         while(optind < argc) {
             args_.push_back(std::string(argv[optind++]));
         }
-        if (!args_.empty()) {
-            if (args_[0] == "-") {
-                isFromStdin_ = true;
-            }
+        if (args_.empty() || args_[0] == "-") {
+            isFromStdin_ = true;
         }
     }
 
@@ -179,17 +177,18 @@ public:
 
     void analyze() {
         uint64_t lsid = -1;
+        u8 uuid[16];
         if (config_.isFromStdin()) {
             try {
                 while (true) {
-                    lsid = analyzeWlog(0, lsid);
+                    lsid = analyzeWlog(0, lsid, uuid);
                 }
             } catch (walb::util::EofError &e) {
             }
         } else {
             for (size_t i = 0; i < config_.numWlogs(); i++) {
                 walb::util::FileOpener fo(config_.inWlogPath(i), O_RDONLY);
-                lsid = analyzeWlog(fo.fd(), lsid);
+                lsid = analyzeWlog(fo.fd(), lsid, uuid);
                 fo.close();
             }
         }
@@ -203,11 +202,16 @@ private:
      * @inFd fd for wlog input stream.
      * @beginLsid begin lsid to check continuity of wlog(s).
      *   specify uint64_t(-1) not to check that.
+     * @uuid uuid for equality check.
+     *   This is effective when beginLsid is not uint64_t(-1).
+     *   This will be updated when beginLsid is uint64_t(-1).
      *
      * RETURN:
      *   end lsid of the wlog data.
      */
-    uint64_t analyzeWlog(int inFd, uint64_t beginLsid) {
+    uint64_t analyzeWlog(
+        int inFd, uint64_t beginLsid, u8 *uuid) {
+
         if (inFd < 0) {
             throw RT_ERR("inFd is not valid");
         }
@@ -218,7 +222,19 @@ private:
         if (!wh.isValid(true)) {
             throw RT_ERR("invalid wlog header.");
         }
-        wh.print(::stderr); /* debug */
+        if (config_.isVerbose()) {
+            wh.print(::stderr);
+        }
+
+        if (beginLsid == uint64_t(-1)) {
+            /* First call. */
+            ::memcpy(uuid, wh.uuid(), 16);
+        } else {
+            /* Second and more. */
+            if (::memcmp(uuid, wh.uuid(), 16) != 0) {
+                throw RT_ERR("Not the same uuid.");
+            }
+        }
 
         const unsigned int pbs = wh.pbs();
         const unsigned int bufferSize = 16 * 1024 * 1024;
