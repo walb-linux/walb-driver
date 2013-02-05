@@ -485,28 +485,24 @@ int alldevs_update_uuid(
 		htbl_uuid_, old_uuid, UUID_SIZE);
 	if (!wdev) {
 		LOGe("Specified uuid not found.\n");
-		goto error0;
+		return -1;
 	}
 	ret = hashtbl_add(
 		htbl_uuid_, new_uuid, UUID_SIZE,
 		(unsigned long)wdev, GFP_KERNEL);
-	if (ret != 0) {
-		if (ret == -EPERM) {
-			sprint_uuid(buf, UUID_STR_SIZE, new_uuid);
-			LOGe("alldevs_add: uuid %s is already registered.\n",
-				buf);
-		}
-		goto error1;
-	}
-	return 0;
+	if (ret == 0) { return 0; }
 
-error1:
+	/* error handling. */
+	if (ret == -EPERM) {
+		sprint_uuid(buf, UUID_STR_SIZE, new_uuid);
+		LOGe("alldevs_add: uuid %s is already registered.\n",
+			buf);
+	}
 	ret = hashtbl_add(
 		htbl_uuid_, old_uuid, UUID_SIZE, (unsigned long)wdev, GFP_KERNEL);
 	if (ret != 0) {
 		LOGe("Failed to re-add.\n");
 	}
-error0:
 	return -1;
 }
 
