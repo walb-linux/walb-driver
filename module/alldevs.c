@@ -226,6 +226,9 @@ struct walb_dev* search_wdev_with_name(const char* name)
 
 	CHECK_RUNNING();
 
+	/*
+		ここも-1は必要? strlen()でよい?
+	*/
 	len = strnlen(name, WALB_DEV_NAME_MAX_LEN - 1);
 
 	p = hashtbl_lookup(htbl_name_, (const u8 *)name, len);
