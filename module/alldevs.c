@@ -307,7 +307,9 @@ int get_wdev_list_range(
 
 		/* Make walb_disk_data. */
 		ASSERT(wdev->gd);
-		strncpy(ddata_t.name, wdev->gd->disk_name, DISK_NAME_LEN);
+		memset(ddata_t.name, 0, DISK_NAME_LEN);
+		ASSERT(strnlen(wdev->gd->disk_name, DISK_NAME_LEN) < DISK_NAME_LEN);
+		snprintf(ddata_t.name, DISK_NAME_LEN, "%s", wdev->gd->disk_name);
 		ddata_t.major = walb_major_;
 		ddata_t.minor = minor;
 
