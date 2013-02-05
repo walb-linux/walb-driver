@@ -1485,7 +1485,8 @@ static int walb_set_name(struct walb_dev *wdev,
 	}
 	LOGd("minor %u dev_name: %s\n", minor, dev_name);
 
-	name_len = strnlen(dev_name, DISK_NAME_LEN);
+	name_len = strlen(dev_name);
+	ASSERT(name_len < DISK_NAME_LEN);
 	if (name_len > WALB_DEV_NAME_MAX_LEN) {
 		LOGe("Device name is too long: %s.\n", name);
 		return -1;
