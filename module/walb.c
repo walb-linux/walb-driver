@@ -1484,7 +1484,11 @@ static int walb_set_name(struct walb_dev *wdev,
 		snprintf(dev_name, DISK_NAME_LEN, "%u", minor / 2);
 	}
 	LOGd("minor %u dev_name: %s\n", minor, dev_name);
-
+	/*
+		以前見落としたか。
+		strnlen()は最大でもDISK_NAME_LENを返すので
+		if (name_len >= WALB_DEV_NAME_MAX_LEN) {でないと意味がない
+	*/
 	name_len = strnlen(dev_name, DISK_NAME_LEN);
 	if (name_len > WALB_DEV_NAME_MAX_LEN) {
 		LOGe("Device name is too long: %s.\n", name);
