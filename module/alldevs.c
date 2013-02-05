@@ -78,7 +78,7 @@ static atomic_t is_available_ = ATOMIC_INIT(0);
 /**
  * Get length of walb device.
  *
- * @return 0 to WALB_DEV_NAME_MAX_LEN - 1.
+ * @return length of the device name like "walb/0".
  */
 static size_t get_wdev_name_len(const struct walb_dev *wdev)
 {
@@ -221,7 +221,7 @@ struct walb_dev* search_wdev_with_name(const char* name)
 
 	CHECK_RUNNING();
 
-	len = strnlen(name, WALB_DEV_NAME_MAX_LEN - 1);
+	len = strnlen(name, WALB_DEV_NAME_MAX_LEN);
 
 	p = hashtbl_lookup(htbl_name_, (const u8 *)name, len);
 	ASSERT(p != 0);
