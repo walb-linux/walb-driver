@@ -1081,7 +1081,7 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	u64 new_ldev_size, old_ldev_size;
-	u8 new_uuid[16], old_uuid[16];
+	u8 new_uuid[UUID_SIZE], old_uuid[UUID_SIZE];
 	unsigned int pbs = wdev->physical_bs;
 	bool is_grown = false;
 	int ret;
@@ -1155,8 +1155,8 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	/* Update superblock image. */
 	spin_lock(&wdev->lsuper0_lock);
 	super = get_super_sector(wdev->lsuper0);
-	memcpy(old_uuid, super->uuid, 16);
-	memcpy(super->uuid, new_uuid, 16);
+	memcpy(old_uuid, super->uuid, UUID_SIZE);
+	memcpy(super->uuid, new_uuid, UUID_SIZE);
 	super->ring_buffer_size = wdev->ring_buffer_size;
 	super->log_checksum_salt = new_salt;
 	/* super->snapshot_metadata_size; */

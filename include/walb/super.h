@@ -76,7 +76,7 @@ struct walb_super_sector {
 	u32 log_checksum_salt;
 
 	/* UUID of the wal device. */
-	u8 uuid[16];
+	u8 uuid[UUID_SIZE];
 
 	/* Name of the walb device.
 	 * terminated by '\0'. */

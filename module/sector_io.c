@@ -130,9 +130,8 @@ error0:
 void walb_print_super_sector(struct walb_super_sector *lsuper0)
 {
 #ifdef WALB_DEBUG
-	const int str_size = 16 * 3 + 1;
-	char uuidstr[str_size];
-	sprint_uuid(uuidstr, str_size, lsuper0->uuid);
+	char uuidstr[UUID_STR_SIZE];
+	sprint_uuid(uuidstr, UUID_STR_SIZE, lsuper0->uuid);
 
 	LOGd("-----super block------\n"
 		"checksum %08x\n"

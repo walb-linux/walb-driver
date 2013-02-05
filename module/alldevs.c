@@ -35,7 +35,7 @@ static unsigned int n_devices_;
  *	       value is pointer to struct walb_dev.
  * htbl_name's key size is 64.
  *	       value is pointer to struct walb_dev.
- * htbl_uuid's key size is 16.
+ * htbl_uuid's key size is UUID_SIZE.
  *	       value is pointer to struct walb_dev.
  */
 static struct map *map_minor_;
@@ -248,7 +248,7 @@ struct walb_dev* search_wdev_with_uuid(const u8* uuid)
 
 	CHECK_RUNNING();
 
-	p = hashtbl_lookup(htbl_uuid_, uuid, 16);
+	p = hashtbl_lookup(htbl_uuid_, uuid, UUID_SIZE);
 	ASSERT(p != 0);
 
 	if (p == HASHTBL_INVALID_VAL) {
@@ -357,8 +357,7 @@ int alldevs_add(struct walb_dev* wdev)
 {
 	size_t len;
 	int ret;
-	const int buf_size = 16 * 3 + 1;
-	char buf[buf_size];
+	char buf[UUID_STR_SIZE];
 	unsigned int minor;
 
 	CHECK_RUNNING();
@@ -386,11 +385,11 @@ int alldevs_add(struct walb_dev* wdev)
 	}
 
 	ret = hashtbl_add(htbl_uuid_,
-			get_super_sector(wdev->lsuper0)->uuid, 16,
+			get_super_sector(wdev->lsuper0)->uuid, UUID_SIZE,
 			(unsigned long)wdev, GFP_KERNEL);
 	if (ret != 0) {
 		if (ret == -EPERM) {
-			sprint_uuid(buf, buf_size, get_super_sector(wdev->lsuper0)->uuid);
+			sprint_uuid(buf, UUID_STR_SIZE, get_super_sector(wdev->lsuper0)->uuid);
 			LOGe("alldevs_add: uuid %s is already registered.\n",
 				buf);
 		}
@@ -403,7 +402,7 @@ int alldevs_add(struct walb_dev* wdev)
 
 #if 0
 error3:
-	hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, 16);
+	hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, UUID_SIZE);
 #endif
 error2:
 	hashtbl_del(htbl_name_, get_super_sector(wdev->lsuper0)->name, len);
@@ -432,7 +431,7 @@ void alldevs_del(struct walb_dev* wdev)
 	wminor = MINOR(wdev->devt);
 
 	tmp0 = (struct walb_dev *)
-		hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, 16);
+		hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, UUID_SIZE);
 	tmp1 = (struct walb_dev *)
 		hashtbl_del(htbl_name_, get_super_sector(wdev->lsuper0)->name, len);
 	tmp2 = (struct walb_dev *)map_del(map_minor_, (u64)wminor);
@@ -479,22 +478,21 @@ int alldevs_update_uuid(
 	const u8 *old_uuid, const u8 *new_uuid)
 {
 	struct walb_dev *wdev;
-	const int buf_size = 16 * 3 + 1;
-	char buf[buf_size];
+	char buf[UUID_STR_SIZE];
 	int ret;
 
 	wdev = (struct walb_dev *)hashtbl_del(
-		htbl_uuid_, old_uuid, 16);
+		htbl_uuid_, old_uuid, UUID_SIZE);
 	if (!wdev) {
 		LOGe("Specified uuid not found.\n");
 		goto error0;
 	}
 	ret = hashtbl_add(
-		htbl_uuid_, new_uuid, 16,
+		htbl_uuid_, new_uuid, UUID_SIZE,
 		(unsigned long)wdev, GFP_KERNEL);
 	if (ret != 0) {
 		if (ret == -EPERM) {
-			sprint_uuid(buf, buf_size, new_uuid);
+			sprint_uuid(buf, UUID_STR_SIZE, new_uuid);
 			LOGe("alldevs_add: uuid %s is already registered.\n",
 				buf);
 		}
@@ -504,7 +502,7 @@ int alldevs_update_uuid(
 
 error1:
 	ret = hashtbl_add(
-		htbl_uuid_, old_uuid, 16, (unsigned long)wdev, GFP_KERNEL);
+		htbl_uuid_, old_uuid, UUID_SIZE, (unsigned long)wdev, GFP_KERNEL);
 	if (ret != 0) {
 		LOGe("Failed to re-add.\n");
 	}
