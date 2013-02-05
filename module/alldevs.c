@@ -84,6 +84,10 @@ static size_t get_wdev_name_len(const struct walb_dev *wdev)
 {
 	ASSERT(wdev != NULL);
 	ASSERT(wdev->lsuper0 != NULL);
+/*
+	なぜ-1をしているのか
+	値チェックは外部入力時に行われているのだからstrlen()でよいだろう
+*/
 	return strnlen(get_super_sector(wdev->lsuper0)->name,
 		WALB_DEV_NAME_MAX_LEN - 1);
 }
