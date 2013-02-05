@@ -22,7 +22,10 @@
 #define SIMPLE_BLK_NAME "simple_blk"
 #define SIMPLE_BLK_DIR_NAME "simple_blk"
 #define SIMPLE_BLK_DEV_NAME_MAX_LEN					\
-	(DISK_NAME_LEN - sizeof(SIMPLE_BLK_DIR_NAME) - sizeof("/dev//"))
+	(DISK_NAME_LEN							\
+		- (sizeof(SIMPLE_BLK_DIR_NAME) - 1)			\
+		- (sizeof("/") - 1)					\
+		- 1) /* '\0' */
 
 /*******************************************************************************
  * Data definition.
