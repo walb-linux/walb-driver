@@ -222,6 +222,9 @@ struct walb_dev* search_wdev_with_name(const char* name)
 	CHECK_RUNNING();
 
 	len = strnlen(name, WALB_DEV_NAME_MAX_LEN);
+	if (len == WALB_DEV_NAME_MAX_LEN) {
+		return NULL;
+	}
 
 	p = hashtbl_lookup(htbl_name_, (const u8 *)name, len);
 	ASSERT(p != 0);
