@@ -18,6 +18,7 @@
 
 #include "walb/common.h"
 #include "walb/block_size.h"
+#include "walb/util.h"
 #include "random.h"
 #include "util.h"
 
@@ -402,22 +403,22 @@ error0:
 /**
  * Generate uuid
  *
- * @uuid result uuid is stored. it must be u8[16].
+ * @uuid result uuid is stored. it must be u8[UUID_SIZE].
  */
 void generate_uuid(u8* uuid)
 {
-	memset_random(uuid, 16);
+	memset_random(uuid, UUID_SIZE);
 }
 
 /**
  * Print uuid.
  *
- * @uuid result uuid is stored. it must be u8[16].
+ * @uuid result uuid is stored. it must be u8[UUID_SIZE].
  */
 void print_uuid(const u8* uuid)
 {
 	size_t i;
-	for (i = 0; i < 16; i++) {
+	for (i = 0; i < UUID_SIZE; i++) {
 		printf("%02x", (unsigned char)uuid[i]);
 	}
 }
@@ -430,7 +431,7 @@ void print_uuid(const u8* uuid)
  */
 void copy_uuid(u8* dst, const u8* src)
 {
-	memcpy(dst, src, 16);
+	memcpy(dst, src, UUID_SIZE);
 }
 
 /**

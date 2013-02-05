@@ -76,7 +76,7 @@ struct walblog_header
 	u32 physical_bs;
 
 	/* uuid of walb device. */
-	u8 uuid[16];
+	u8 uuid[UUID_SIZE];
 
 	/* lsid. */
 	u64 begin_lsid;
@@ -98,13 +98,12 @@ struct walblog_header
  */
 inline void print_wlog_header(struct walblog_header* wh)
 {
-	const int str_size = 16 * 3 + 1;
-	char uuidstr[str_size];
+	char uuidstr[UUID_STR_SIZE];
 
 	ASSERT(wh->header_size == WALBLOG_HEADER_SIZE);
 	ASSERT(wh->sector_type == SECTOR_TYPE_WALBLOG_HEADER);
 
-	sprint_uuid(uuidstr, str_size, wh->uuid);
+	sprint_uuid(uuidstr, UUID_STR_SIZE, wh->uuid);
 
 	printf("*****walblog header*****\n"
 		"checksum: %08x\n"

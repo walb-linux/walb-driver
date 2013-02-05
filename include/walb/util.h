@@ -60,15 +60,21 @@ static inline int sprint_hex(char *str, int str_size, const void* data, int size
 }
 
 /**
+ * Constants for UUID data.
+ */
+#define UUID_SIZE 16
+#define UUID_STR_SIZE (16 * 3 + 1)
+
+/**
  * Sprint uuid.
  *
  * @str string buffer to store result.
- * @str_size Its size must be 16 * 3 + 1.
- * @uuid uuid ary. Its size must be 16.
+ * @str_size Its size must be UUID_STR_SIZE.
+ * @uuid uuid ary. Its size must be UUID_SIZE.
  */
 static inline void sprint_uuid(char *str, int str_size, const u8 *uuid)
 {
-	sprint_hex(str, str_size, uuid, 16);
+	sprint_hex(str, str_size, uuid, UUID_SIZE);
 }
 
 /**

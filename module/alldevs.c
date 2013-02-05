@@ -35,7 +35,7 @@ static unsigned int n_devices_;
  *	       value is pointer to struct walb_dev.
  * htbl_name's key size is 64.
  *	       value is pointer to struct walb_dev.
- * htbl_uuid's key size is 16.
+ * htbl_uuid's key size is UUID_SIZE.
  *	       value is pointer to struct walb_dev.
  */
 static struct map *map_minor_;
@@ -78,14 +78,13 @@ static atomic_t is_available_ = ATOMIC_INIT(0);
 /**
  * Get length of walb device.
  *
- * @return 0 to WALB_DEV_NAME_MAX_LEN - 1.
+ * @return length of the device name like "walb/0".
  */
 static size_t get_wdev_name_len(const struct walb_dev *wdev)
 {
 	ASSERT(wdev != NULL);
 	ASSERT(wdev->lsuper0 != NULL);
-	return strnlen(get_super_sector(wdev->lsuper0)->name,
-		WALB_DEV_NAME_MAX_LEN - 1);
+	return strlen(get_super_sector(wdev->lsuper0)->name);
 }
 
 
@@ -222,7 +221,10 @@ struct walb_dev* search_wdev_with_name(const char* name)
 
 	CHECK_RUNNING();
 
-	len = strnlen(name, WALB_DEV_NAME_MAX_LEN - 1);
+	len = strnlen(name, WALB_DEV_NAME_MAX_LEN);
+	if (len == WALB_DEV_NAME_MAX_LEN) {
+		return NULL;
+	}
 
 	p = hashtbl_lookup(htbl_name_, (const u8 *)name, len);
 	ASSERT(p != 0);
@@ -246,7 +248,7 @@ struct walb_dev* search_wdev_with_uuid(const u8* uuid)
 
 	CHECK_RUNNING();
 
-	p = hashtbl_lookup(htbl_uuid_, uuid, 16);
+	p = hashtbl_lookup(htbl_uuid_, uuid, UUID_SIZE);
 	ASSERT(p != 0);
 
 	if (p == HASHTBL_INVALID_VAL) {
@@ -277,10 +279,7 @@ int get_wdev_list_range(
 	size_t n,
 	unsigned int minor0, unsigned int minor1)
 {
-	struct walb_disk_data ddata_t;
 	int ret;
-	struct walb_dev *wdev;
-	unsigned long val;
 	unsigned int minor;
 	size_t remaining = n;
 	struct map_cursor cur_t;
@@ -296,6 +295,10 @@ int get_wdev_list_range(
 		minor = (-1U);
 	}
 	while (remaining > 0 && ret && minor < (u64)minor1) {
+		struct walb_disk_data ddata_t;
+		struct walb_dev *wdev;
+		unsigned long val;
+
 		/* Get walb_dev. */
 		val = map_cursor_val(&cur_t);
 		ASSERT(val != TREEMAP_INVALID_VAL);
@@ -304,7 +307,9 @@ int get_wdev_list_range(
 
 		/* Make walb_disk_data. */
 		ASSERT(wdev->gd);
-		strncpy(ddata_t.name, wdev->gd->disk_name, DISK_NAME_LEN);
+		memset(ddata_t.name, 0, DISK_NAME_LEN);
+		ASSERT(strnlen(wdev->gd->disk_name, DISK_NAME_LEN) < DISK_NAME_LEN);
+		snprintf(ddata_t.name, DISK_NAME_LEN, "%s", wdev->gd->disk_name);
 		ddata_t.major = walb_major_;
 		ddata_t.minor = minor;
 
@@ -317,7 +322,7 @@ int get_wdev_list_range(
 			ddata_u++;
 		}
 		if (ddata_k) {
-			memcpy(ddata_k, &ddata_t, sizeof(struct walb_disk_data));
+			*ddata_k = ddata_t;
 			ddata_k++;
 		}
 		remaining--;
@@ -354,8 +359,7 @@ int alldevs_add(struct walb_dev* wdev)
 {
 	size_t len;
 	int ret;
-	const int buf_size = 16 * 3 + 1;
-	char buf[buf_size];
+	char buf[UUID_STR_SIZE];
 	unsigned int minor;
 
 	CHECK_RUNNING();
@@ -383,11 +387,11 @@ int alldevs_add(struct walb_dev* wdev)
 	}
 
 	ret = hashtbl_add(htbl_uuid_,
-			get_super_sector(wdev->lsuper0)->uuid, 16,
+			get_super_sector(wdev->lsuper0)->uuid, UUID_SIZE,
 			(unsigned long)wdev, GFP_KERNEL);
 	if (ret != 0) {
 		if (ret == -EPERM) {
-			sprint_uuid(buf, buf_size, get_super_sector(wdev->lsuper0)->uuid);
+			sprint_uuid(buf, UUID_STR_SIZE, get_super_sector(wdev->lsuper0)->uuid);
 			LOGe("alldevs_add: uuid %s is already registered.\n",
 				buf);
 		}
@@ -400,7 +404,7 @@ int alldevs_add(struct walb_dev* wdev)
 
 #if 0
 error3:
-	hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, 16);
+	hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, UUID_SIZE);
 #endif
 error2:
 	hashtbl_del(htbl_name_, get_super_sector(wdev->lsuper0)->name, len);
@@ -429,7 +433,7 @@ void alldevs_del(struct walb_dev* wdev)
 	wminor = MINOR(wdev->devt);
 
 	tmp0 = (struct walb_dev *)
-		hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, 16);
+		hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, UUID_SIZE);
 	tmp1 = (struct walb_dev *)
 		hashtbl_del(htbl_name_, get_super_sector(wdev->lsuper0)->name, len);
 	tmp2 = (struct walb_dev *)map_del(map_minor_, (u64)wminor);
@@ -476,36 +480,31 @@ int alldevs_update_uuid(
 	const u8 *old_uuid, const u8 *new_uuid)
 {
 	struct walb_dev *wdev;
-	const int buf_size = 16 * 3 + 1;
-	char buf[buf_size];
+	char buf[UUID_STR_SIZE];
 	int ret;
 
 	wdev = (struct walb_dev *)hashtbl_del(
-		htbl_uuid_, old_uuid, 16);
+		htbl_uuid_, old_uuid, UUID_SIZE);
 	if (!wdev) {
 		LOGe("Specified uuid not found.\n");
-		goto error0;
+		return -1;
 	}
 	ret = hashtbl_add(
-		htbl_uuid_, new_uuid, 16,
+		htbl_uuid_, new_uuid, UUID_SIZE,
 		(unsigned long)wdev, GFP_KERNEL);
-	if (ret != 0) {
-		if (ret == -EPERM) {
-			sprint_uuid(buf, buf_size, new_uuid);
-			LOGe("alldevs_add: uuid %s is already registered.\n",
-				buf);
-		}
-		goto error1;
-	}
-	return 0;
+	if (ret == 0) { return 0; }
 
-error1:
+	/* error handling. */
+	if (ret == -EPERM) {
+		sprint_uuid(buf, UUID_STR_SIZE, new_uuid);
+		LOGe("alldevs_add: uuid %s is already registered.\n",
+			buf);
+	}
 	ret = hashtbl_add(
-		htbl_uuid_, old_uuid, 16, (unsigned long)wdev, GFP_KERNEL);
+		htbl_uuid_, old_uuid, UUID_SIZE, (unsigned long)wdev, GFP_KERNEL);
 	if (ret != 0) {
 		LOGe("Failed to re-add.\n");
 	}
-error0:
 	return -1;
 }
 

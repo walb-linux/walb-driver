@@ -33,7 +33,7 @@ extern "C" {
 struct walb_disk_data
 {
 	/* Device name */
-	char name[DISK_NAME_LEN_USER];
+	char name[DISK_NAME_LEN];
 
 	/* Device major/minor id. */
 	unsigned int major;

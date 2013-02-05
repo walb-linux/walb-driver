@@ -130,9 +130,8 @@ error0:
 void walb_print_super_sector(struct walb_super_sector *lsuper0)
 {
 #ifdef WALB_DEBUG
-	const int str_size = 16 * 3 + 1;
-	char uuidstr[str_size];
-	sprint_uuid(uuidstr, str_size, lsuper0->uuid);
+	char uuidstr[UUID_STR_SIZE];
+	sprint_uuid(uuidstr, UUID_STR_SIZE, lsuper0->uuid);
 
 	LOGd("-----super block------\n"
 		"checksum %08x\n"
@@ -205,6 +204,12 @@ bool walb_read_super_sector(
 	if (sect->version != WALB_VERSION) {
 		LOGe("walb version mismatch: superblock: %u module %u\n",
 			sect->version, WALB_VERSION);
+		goto error0;
+	}
+
+	/* Validate name structure. */
+	if (strnlen(sect->name, DISK_NAME_LEN) >= DISK_NAME_LEN) {
+		LOGe("superblock device name is not terminated by 0.\n");
 		goto error0;
 	}
 

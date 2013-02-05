@@ -1103,7 +1103,7 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	u64 new_ldev_size, old_ldev_size;
-	u8 new_uuid[16], old_uuid[16];
+	u8 new_uuid[UUID_SIZE], old_uuid[UUID_SIZE];
 	unsigned int pbs = wdev->physical_bs;
 	bool is_grown = false;
 	int ret;
@@ -1177,8 +1177,8 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	/* Update superblock image. */
 	spin_lock(&wdev->lsuper0_lock);
 	super = get_super_sector(wdev->lsuper0);
-	memcpy(old_uuid, super->uuid, 16);
-	memcpy(super->uuid, new_uuid, 16);
+	memcpy(old_uuid, super->uuid, UUID_SIZE);
+	memcpy(super->uuid, new_uuid, UUID_SIZE);
 	super->ring_buffer_size = wdev->ring_buffer_size;
 	super->log_checksum_salt = new_salt;
 	/* super->snapshot_metadata_size; */
@@ -1525,7 +1525,8 @@ static int walb_set_name(struct walb_dev *wdev,
 	}
 	LOGd("minor %u dev_name: %s\n", minor, dev_name);
 
-	name_len = strnlen(dev_name, DISK_NAME_LEN);
+	name_len = strlen(dev_name);
+	ASSERT(name_len < DISK_NAME_LEN);
 	if (name_len > WALB_DEV_NAME_MAX_LEN) {
 		LOGe("Device name is too long: %s.\n", name);
 		return -1;
@@ -1628,6 +1629,7 @@ static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
 	struct sector_data *zero_sector;
 	struct walb_super_sector *super;
 	u64 off;
+	bool ret;
 
 	ASSERT(lsid != INVALID_LSID);
 
@@ -1635,7 +1637,7 @@ static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
 		wdev->physical_bs, GFP_KERNEL | __GFP_ZERO);
 	if (!zero_sector) {
 		LOGe("sector allocation failed.\n");
-		goto error0;
+		return false;
 	}
 
 	spin_lock(&wdev->lsuper0_lock);
@@ -1643,19 +1645,13 @@ static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
 	off = get_offset_of_lsid_2(super, lsid);
 	spin_unlock(&wdev->lsuper0_lock);
 
-	if (!sector_io(WRITE, wdev->ldev, off, zero_sector)) {
+	ret = sector_io(WRITE, wdev->ldev, off, zero_sector);
+	if (!ret) {
 		LOGe("sector write failed.\n");
 		iocore_set_readonly(wdev);
-		goto error1;
 	}
-
 	sector_free(zero_sector);
-	return true;
-
-error1:
-	sector_free(zero_sector);
-error0:
-	return false;
+	return ret;
 }
 
 /**

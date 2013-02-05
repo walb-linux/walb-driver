@@ -21,7 +21,10 @@
 #define WRAPPER_BLK_NAME "wrapper_blk"
 #define WRAPPER_BLK_DIR_NAME "wrapper_blk"
 #define WRAPPER_BLK_DEV_NAME_MAX_LEN					\
-	(DISK_NAME_LEN - sizeof(WRAPPER_BLK_DIR_NAME) - sizeof("/dev//"))
+	(DISK_NAME_LEN							\
+		- (sizeof(WRAPPER_BLK_DIR_NAME) - 1)			\
+		- (sizeof("/") - 1)					\
+		- 1) /* '\0' */
 
 #define WRAPPER_BLK_SINGLE_WQ_NAME "wrapper_blk_s"
 #define WRAPPER_BLK_MULTI_WQ_NAME "wrapper_blk_m"

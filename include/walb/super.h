@@ -76,7 +76,7 @@ struct walb_super_sector {
 	u32 log_checksum_salt;
 
 	/* UUID of the wal device. */
-	u8 uuid[16];
+	u8 uuid[UUID_SIZE];
 
 	/* Name of the walb device.
 	 * terminated by '\0'. */
@@ -138,7 +138,13 @@ static inline int is_valid_super_sector_raw(
 	CHECK(sect->oldest_lsid != INVALID_LSID);
 	CHECK(sect->written_lsid != INVALID_LSID);
 	CHECK(sect->oldest_lsid <= sect->written_lsid);
+#if 0
+	/* Ring buffer overflow is allowed. */
 	CHECK(sect->written_lsid - sect->oldest_lsid <= sect->ring_buffer_size);
+#endif
+
+	/* device name. */
+	CHECK(strnlen(sect->name, DISK_NAME_LEN) < DISK_NAME_LEN);
 
 	return 1;
 error:
