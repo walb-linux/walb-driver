@@ -276,10 +276,7 @@ int get_wdev_list_range(
 	size_t n,
 	unsigned int minor0, unsigned int minor1)
 {
-	struct walb_disk_data ddata_t;
 	int ret;
-	struct walb_dev *wdev;
-	unsigned long val;
 	unsigned int minor;
 	size_t remaining = n;
 	struct map_cursor cur_t;
@@ -295,6 +292,10 @@ int get_wdev_list_range(
 		minor = (-1U);
 	}
 	while (remaining > 0 && ret && minor < (u64)minor1) {
+		struct walb_disk_data ddata_t;
+		struct walb_dev *wdev;
+		unsigned long val;
+
 		/* Get walb_dev. */
 		val = map_cursor_val(&cur_t);
 		ASSERT(val != TREEMAP_INVALID_VAL);
@@ -316,7 +317,7 @@ int get_wdev_list_range(
 			ddata_u++;
 		}
 		if (ddata_k) {
-			memcpy(ddata_k, &ddata_t, sizeof(struct walb_disk_data));
+			*ddata_k = ddata_t;
 			ddata_k++;
 		}
 		remaining--;
