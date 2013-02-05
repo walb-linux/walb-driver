@@ -343,12 +343,19 @@ private:
     void printResult() const {
         unsigned int bs = config_.blockSize();
 
-        ::printf("block size: %u\n"
-                 "number of written blocks:: %" PRIu64 "\n"
-                 "count: %" PRIu64 "\n",
-                 bs, ::capacity_pb(bs, writtenLb_),
-                 count());
+        const uint64_t written = ::capacity_pb(bs, writtenLb_);
+        const uint64_t changed = count();
+        double rate = 0;
+        if (written > 0) {
+            rate = static_cast<double>(written - changed)
+                / static_cast<double>(written);
+        }
 
+        ::printf("block size: %u\n"
+                 "number of written blocks: %" PRIu64 "\n"
+                 "number of changed blocks: %" PRIu64 "\n"
+                 "overwritten rate: %.2f\n",
+                 bs, written, changed, rate);
         /* now editing */
     }
 };
