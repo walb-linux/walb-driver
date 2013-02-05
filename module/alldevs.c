@@ -84,8 +84,7 @@ static size_t get_wdev_name_len(const struct walb_dev *wdev)
 {
 	ASSERT(wdev != NULL);
 	ASSERT(wdev->lsuper0 != NULL);
-	return strnlen(get_super_sector(wdev->lsuper0)->name,
-		WALB_DEV_NAME_MAX_LEN - 1);
+	return strlen(get_super_sector(wdev->lsuper0)->name);
 }
 
 
