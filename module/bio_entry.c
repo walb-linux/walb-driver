@@ -1074,7 +1074,7 @@ void destroy_bio_entry_list(struct list_head *bio_ent_list)
 struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 {
 	struct bio *clone;
-	struct bio_vec *bvec, *bvec_orig;
+	struct bio_vec *bvec, *bvec_orig; /* 内側で宣言 */
 	int i;
 	char *dst_buf, *src_buf;
 
@@ -1084,7 +1084,7 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 	/* We can use bio_alloc and copy all related data instead. */
 	clone = bio_clone(bio, gfp_mask);
 	if (!clone) {
-		goto error0;
+		goto error0; /* すぐreturn */
 	}
 	clone->bi_flags &= ~(1 << BIO_CLONED);
 
