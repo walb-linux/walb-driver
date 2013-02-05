@@ -208,6 +208,12 @@ bool walb_read_super_sector(
 		goto error0;
 	}
 
+	/* Validate name structure. */
+	if (strnlen(sect->name, DISK_NAME_LEN) >= DISK_NAME_LEN) {
+		LOGe("superblock device name is not terminated by 0.\n");
+		goto error0;
+	}
+
 #ifdef WALB_DEBUG
 	walb_print_super_sector(sect);
 #endif
