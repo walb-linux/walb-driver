@@ -151,6 +151,12 @@ struct walb_dev
 	 */
 	spinlock_t lsid_lock;
 
+	/*
+		struct lsid_setの定義をwalb_devの前でして
+		ここで
+		struct lsid_set lsids;
+		とするのは?
+	*/
 	u64 latest_lsid;
 	u64 flush_lsid;
 #ifdef WALB_FAST_ALGORITHM

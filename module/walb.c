@@ -1599,7 +1599,7 @@ static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
 		wdev->physical_bs, GFP_KERNEL | __GFP_ZERO);
 	if (!zero_sector) {
 		LOGe("sector allocation failed.\n");
-		goto error0;
+		goto error0; /* return false; */
 	}
 
 	spin_lock(&wdev->lsuper0_lock);
@@ -1607,6 +1607,18 @@ static bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
 	off = get_offset_of_lsid_2(super, lsid);
 	spin_unlock(&wdev->lsuper0_lock);
 
+#if 1
+	/*
+		好みの問題
+	*/
+	bool ret = sector_io(WRITE, wdev->ldev, off, zero_sector) == 0;
+	if (!ret) {
+		LOGe("sector write failed.\n");
+		iocore_set_readonly(wdev);
+	}
+	sector_free(zero_sector);
+	return ret;
+#else
 	if (!sector_io(WRITE, wdev->ldev, off, zero_sector)) {
 		LOGe("sector write failed.\n");
 		iocore_set_readonly(wdev);
@@ -1620,6 +1632,7 @@ error1:
 	sector_free(zero_sector);
 error0:
 	return false;
+#endif
 }
 
 /**
@@ -1629,6 +1642,11 @@ static void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids)
 {
 	spin_lock(&wdev->lsid_lock);
 
+	/*
+		もしwalb_devにlsid_setメンバをつくれば
+		*lsids = wdev->lsids;
+		と簡単にかける
+	*/
 	lsids->latest_lsid = wdev->latest_lsid;
 	lsids->flush_lsid = wdev->flush_lsid;
 #ifdef WALB_FAST_ALGORITHM
@@ -1649,6 +1667,11 @@ static void restore_lsid_set(struct walb_dev *wdev, const struct lsid_set *lsids
 {
 	spin_lock(&wdev->lsid_lock);
 
+	/*
+		もしwalb_devにlsid_setメンバをつくれば
+		wdev->lsids = *lsids;
+		と簡単にかける
+	*/
 	wdev->latest_lsid = lsids->latest_lsid;
 	wdev->flush_lsid = lsids->flush_lsid;
 #ifdef WALB_FAST_ALGORITHM

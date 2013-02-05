@@ -497,11 +497,15 @@ int alldevs_update_uuid(
 		htbl_uuid_, old_uuid, 16);
 	if (!wdev) {
 		LOGe("Specified uuid not found.\n");
-		goto error0;
+		goto error0; /* return -1; */
 	}
 	ret = hashtbl_add(
 		htbl_uuid_, new_uuid, 16,
 		(unsigned long)wdev, GFP_KERNEL);
+	/*
+		if (ret == 0) return 0;
+		にすればこのあとgoto erro1は不要
+	*/
 	if (ret != 0) {
 		if (ret == -EPERM) {
 			sprint_uuid(buf, buf_size, new_uuid);
