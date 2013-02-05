@@ -1074,7 +1074,7 @@ void destroy_bio_entry_list(struct list_head *bio_ent_list)
 struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 {
 	struct bio *clone;
-	struct bio_vec *bvec, *bvec_orig;
+	struct bio_vec *bvec;
 	int i;
 	char *dst_buf, *src_buf;
 
@@ -1084,7 +1084,7 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 	/* We can use bio_alloc and copy all related data instead. */
 	clone = bio_clone(bio, gfp_mask);
 	if (!clone) {
-		goto error0;
+		return NULL;
 	}
 	clone->bi_flags &= ~(1 << BIO_CLONED);
 
@@ -1101,6 +1101,8 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 
 	/* Allocate pages and copy original data. */
 	bio_for_each_segment(bvec, clone, i) {
+		struct bio_vec *bvec_orig;
+
 		ASSERT(!bvec->bv_page);
 		bvec->bv_page = alloc_page_inc(gfp_mask);
 		if (!bvec->bv_page) {
@@ -1131,7 +1133,6 @@ error1:
 		}
 	}
 	bio_put(clone);
-error0:
 	return NULL;
 }
 
