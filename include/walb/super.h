@@ -138,7 +138,13 @@ static inline int is_valid_super_sector_raw(
 	CHECK(sect->oldest_lsid != INVALID_LSID);
 	CHECK(sect->written_lsid != INVALID_LSID);
 	CHECK(sect->oldest_lsid <= sect->written_lsid);
+#if 0
+	/* Ring buffer overflow is allowed. */
 	CHECK(sect->written_lsid - sect->oldest_lsid <= sect->ring_buffer_size);
+#endif
+
+	/* device name. */
+	CHECK(strnlen(sect->name, DISK_NAME_LEN) < DISK_NAME_LEN);
 
 	return 1;
 error:
