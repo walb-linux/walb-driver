@@ -284,10 +284,10 @@ int get_wdev_list_range(
 	size_t n,
 	unsigned int minor0, unsigned int minor1)
 {
-	struct walb_disk_data ddata_t;
+	struct walb_disk_data ddata_t; /* whileの中で宣言 */
 	int ret;
-	struct walb_dev *wdev;
-	unsigned long val;
+	struct walb_dev *wdev; /* whileの中で宣言 */
+	unsigned long val; /* whileの中で宣言 */
 	unsigned int minor;
 	size_t remaining = n;
 	struct map_cursor cur_t;
@@ -324,6 +324,9 @@ int get_wdev_list_range(
 			ddata_u++;
 		}
 		if (ddata_k) {
+			/*
+				*ddata_k = ddata_t;の方がわかりやすい。
+			*/
 			memcpy(ddata_k, &ddata_t, sizeof(struct walb_disk_data));
 			ddata_k++;
 		}
@@ -361,6 +364,9 @@ int alldevs_add(struct walb_dev* wdev)
 {
 	size_t len;
 	int ret;
+	/*
+		この数値はあちこちに定義されているので #define UUID_SIZEみたいにグローバルに定義すべき
+	*/
 	const int buf_size = 16 * 3 + 1;
 	char buf[buf_size];
 	unsigned int minor;
