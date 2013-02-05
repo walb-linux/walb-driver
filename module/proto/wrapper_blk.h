@@ -20,6 +20,9 @@
 
 #define WRAPPER_BLK_NAME "wrapper_blk"
 #define WRAPPER_BLK_DIR_NAME "wrapper_blk"
+/*
+	sizeof("..")で想定した長さになってる?
+*/
 #define WRAPPER_BLK_DEV_NAME_MAX_LEN					\
 	(DISK_NAME_LEN - sizeof(WRAPPER_BLK_DIR_NAME) - sizeof("/dev//"))
 

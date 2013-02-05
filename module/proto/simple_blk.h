@@ -21,6 +21,9 @@
 
 #define SIMPLE_BLK_NAME "simple_blk"
 #define SIMPLE_BLK_DIR_NAME "simple_blk"
+/*
+	sizeof("..")で想定した長さになってる?
+*/
 #define SIMPLE_BLK_DEV_NAME_MAX_LEN					\
 	(DISK_NAME_LEN - sizeof(SIMPLE_BLK_DIR_NAME) - sizeof("/dev//"))
 
