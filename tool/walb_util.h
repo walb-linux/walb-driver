@@ -60,9 +60,12 @@ void init_super_sector_raw(
 	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
 	const char *name);
 void print_super_sector_raw(const struct walb_super_sector* super_sect);
-bool read_super_sector_raw(int fd, struct walb_super_sector* super_sect,
-			u32 sector_size, u32 n_snapshots);
-bool write_super_sector_raw(int fd, const struct walb_super_sector* super_sect);
+DEPRECATED
+bool read_super_sector_raw(
+	int fd, struct walb_super_sector* super_sect,
+	u32 sector_size, u32 n_snapshots);
+bool write_super_sector_raw(
+	int fd, const struct walb_super_sector* super_sect);
 
 /* Super sector operations. */
 void init_super_sector(

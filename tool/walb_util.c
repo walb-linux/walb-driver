@@ -5,7 +5,6 @@
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  * @license 3-clause BSD, GPL version 2 or later.
  */
-
 #include "walb/walb.h"
 #include "walb/block_size.h"
 #include "util.h"
@@ -19,15 +18,17 @@
  * @offset offset in sectors.
  * @sect sectors data to be filled.
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool sector_read(int fd, u64 offset, struct sector_data *sect)
 {
+	const int sect_size = sect->size;
+	ssize_t r = 0;
+
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA(sect);
-	int sect_size = sect->size;
 
-	ssize_t r = 0;
 	while (r < sect_size) {
 		ssize_t s = pread(fd, sect->data + r,
 				sect_size - r,
@@ -50,15 +51,17 @@ bool sector_read(int fd, u64 offset, struct sector_data *sect)
  * @offset offset in sectors.
  * @sect sectors data to be written.
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool sector_write(int fd, u64 offset, const struct sector_data *sect)
 {
+	const int sect_size = sect->size;
+	ssize_t w = 0;
+
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA(sect);
-	int sect_size = sect->size;
 
-	ssize_t w = 0;
 	while (w < sect_size) {
 		ssize_t s = pwrite(fd, sect->data + w,
 				sect_size - w,
@@ -92,13 +95,13 @@ bool sector_read_lb(
 	int fd,  u64 offset_lb, struct sector_data *sect,
 	unsigned int idx_lb, unsigned int n_lb)
 {
+	const ssize_t read_size = n_lb * LOGICAL_BLOCK_SIZE;
+	const ssize_t off = idx_lb * LOGICAL_BLOCK_SIZE;
+	ssize_t r = 0;
+
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA(sect);
 	ASSERT(capacity_pb(sect->size, idx_lb + n_lb) == 1);
-
-	ssize_t read_size = n_lb * LOGICAL_BLOCK_SIZE;
-	ssize_t off = idx_lb * LOGICAL_BLOCK_SIZE;
-	ssize_t r = 0;
 
 	while (r < read_size) {
 		ssize_t s = pread(
@@ -134,13 +137,13 @@ bool sector_write_lb(
 	u64 offset_lb, const struct sector_data *sect,
 	unsigned int idx_lb, unsigned int n_lb)
 {
+	const ssize_t write_size = n_lb * LOGICAL_BLOCK_SIZE;
+	const ssize_t off = idx_lb * LOGICAL_BLOCK_SIZE;
+	ssize_t w = 0;
+
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA(sect);
 	ASSERT(capacity_pb(sect->size, idx_lb + n_lb) == 1);
-
-	ssize_t write_size = n_lb * LOGICAL_BLOCK_SIZE;
-	ssize_t off = idx_lb * LOGICAL_BLOCK_SIZE;
-	ssize_t w = 0;
 
 	while (w < write_size) {
 		ssize_t s = pwrite(
@@ -160,51 +163,61 @@ bool sector_write_lb(
 
 /**
  * Read multiple sectors data at an offset.
+ *
+ * RETURN:
+ *   true in success, or false.
  */
 bool sector_array_pread(
 	int fd, u64 offset,
 	struct sector_data_array *sect_ary,
 	unsigned int start_idx, unsigned int n_sectors)
 {
+	unsigned int i;
+
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(start_idx + n_sectors <= sect_ary->size);
 
-	unsigned int i, idx;
-	u64 off;
-	bool ret;
 	for (i = 0; i < n_sectors; i++) {
-		idx = start_idx + i;
-		off = offset + i;
-		ret = sector_read(fd, off,
+		unsigned int idx = start_idx + i;
+		u64 off = offset + i;
+		bool ret = sector_read(fd, off,
 				get_sector_data_in_array(sect_ary, idx));
-		if (!ret) { LOGe("read failed.\n"); return false; }
+		if (!ret) {
+			LOGe("read failed.\n");
+			return false;
+		}
 	}
 	return true;
 }
 
 /**
  * Write multiple sectors data at an offset.
+ *
+ * RETURN:
+ *  true in success, or false.
  */
 bool sector_array_pwrite(
 	int fd, u64 offset,
 	const struct sector_data_array *sect_ary,
 	unsigned int start_idx, unsigned int n_sectors)
 {
+	unsigned int i;
+
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(start_idx + n_sectors <= sect_ary->size);
 
-	unsigned int i, idx;
-	u64 off;
-	bool ret;
 	for (i = 0; i < n_sectors; i++) {
-		idx = start_idx + i;
-		off = offset + i;
-		ret = sector_write(
+		unsigned int idx = start_idx + i;
+		u64 off = offset + i;
+		bool ret = sector_write(
 			fd, off,
 			get_sector_data_in_array_const(sect_ary, idx));
-		if (!ret) { LOGe("write failed.\n"); return false; }
+		if (!ret) {
+			LOGe("write failed.\n");
+			return false;
+		}
 	}
 	return true;
 }
@@ -227,31 +240,28 @@ bool sector_array_pread_lb(
 	struct sector_data_array *sect_ary,
 	unsigned int idx_lb, unsigned int n_lb)
 {
+	const unsigned int pbs = sect_ary->sector_size;
+	unsigned int r_lb = 0;
+
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(n_lb > 0);
 
-	const unsigned int pbs = sect_ary->sector_size;
-	unsigned int idx, off_lb, tmp_lb;
-	unsigned int r_lb = 0;
-
 	while (r_lb < n_lb) {
-		idx = addr_pb(pbs, idx_lb + r_lb);
-		off_lb = off_in_pb(pbs, idx_lb + r_lb);
-		tmp_lb = min(n_lb_in_pb(pbs) - off_lb, n_lb - r_lb);
+		unsigned int idx = addr_pb(pbs, idx_lb + r_lb);
+		unsigned int off_lb = off_in_pb(pbs, idx_lb + r_lb);
+		unsigned int tmp_lb =
+			get_min_value(n_lb_in_pb(pbs) - off_lb, n_lb - r_lb);
 		if (!sector_read_lb(
 				fd, offset_lb + r_lb,
 				sect_ary->array[idx],
 				off_lb, tmp_lb)) {
-			goto error0;
+			return false;
 		}
 		r_lb += tmp_lb;
 	}
 	ASSERT(r_lb == n_lb);
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -272,31 +282,28 @@ bool sector_array_pwrite_lb(
 	const struct sector_data_array *sect_ary,
 	unsigned int idx_lb, unsigned int n_lb)
 {
+	const unsigned int pbs = sect_ary->sector_size;
+	unsigned int w_lb = 0;
+
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(n_lb > 0);
 
-	const unsigned int pbs = sect_ary->sector_size;
-	unsigned int idx, off_lb, tmp_lb;
-	unsigned int w_lb = 0;
-
 	while (w_lb < n_lb) {
-		idx = addr_pb(pbs, idx_lb + w_lb);
-		off_lb = off_in_pb(pbs, idx_lb + w_lb);
-		tmp_lb = min(n_lb_in_pb(pbs) - off_lb, n_lb - w_lb);
+		unsigned int idx = addr_pb(pbs, idx_lb + w_lb);
+		unsigned int off_lb = off_in_pb(pbs, idx_lb + w_lb);
+		unsigned int tmp_lb =
+			get_min_value(n_lb_in_pb(pbs) - off_lb, n_lb - w_lb);
 		if (!sector_write_lb(
 				fd, offset_lb + w_lb,
 				sect_ary->array[idx],
 				off_lb, tmp_lb)) {
-			goto error0;
+			return false;
 		}
 		w_lb += tmp_lb;
 	}
 	ASSERT(w_lb == n_lb);
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -315,26 +322,24 @@ bool sector_array_read(
 	struct sector_data_array *sect_ary,
 	unsigned int start_idx, unsigned int n_sectors)
 {
+	unsigned int i;
+
 	ASSERT(fd >= 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(start_idx + n_sectors <= sect_ary->size);
 
-	unsigned int i, idx;
-	bool ret;
 	for (i = 0; i < n_sectors; i++) {
-		idx = start_idx + i;
-		ret = read_data(
+		unsigned int idx = start_idx + i;
+		bool ret = read_data(
 			fd,
 			(u8 *)sect_ary->array[idx]->data,
 			sect_ary->sector_size);
 		if (!ret) {
 			LOGe("read failed.\n");
-			goto error0;
+			return false;
 		}
 	}
 	return true;
-error0:
-	return false;
 }
 
 /**
@@ -353,26 +358,24 @@ bool sector_array_write(
 	const struct sector_data_array *sect_ary,
 	unsigned int start_idx, unsigned int n_sectors)
 {
+	unsigned int i;
+
 	ASSERT(fd >= 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(start_idx + n_sectors <= sect_ary->size);
 
-	unsigned int i, idx;
-	bool ret;
 	for (i = 0; i < n_sectors; i++) {
-		idx = start_idx + i;
-		ret = write_data(
+		unsigned int idx = start_idx + i;
+		bool ret = write_data(
 			fd,
 			(u8 *)sect_ary->array[idx]->data,
 			sect_ary->sector_size);
 		if (!ret) {
 			LOGe("read failed.\n");
-			goto error0;
+			return false;
 		}
 	}
 	return true;
-error0:
-	return false;
 }
 
 /**
@@ -392,6 +395,11 @@ void init_super_sector_raw(
 	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
 	const char *name)
 {
+	int n_sectors;
+	int t;
+	u32 salt;
+	char *rname;
+
 	ASSERT(super_sect);
 	ASSERT(lbs > 0);
 	ASSERT(pbs > 0);
@@ -401,8 +409,7 @@ void init_super_sector_raw(
 	ASSERT(sizeof(struct walb_super_sector) <= (size_t)pbs);
 
 	/* Calculate number of snapshot sectors. */
-	int n_sectors;
-	int t = get_max_n_records_in_snapshot_sector(pbs);
+	t = get_max_n_records_in_snapshot_sector(pbs);
 	n_sectors = (n_snapshots + t - 1) / t;
 
 	LOGd("metadata_size: %d\n", n_sectors);
@@ -417,7 +424,6 @@ void init_super_sector_raw(
 	super_sect->physical_bs = pbs;
 	super_sect->snapshot_metadata_size = n_sectors;
 	generate_uuid(super_sect->uuid);
-	u32 salt;
 	memset_random((u8 *)&salt, sizeof(salt));
 	LOGn("salt: %"PRIu32"\n", salt);
 	super_sect->log_checksum_salt = salt;
@@ -427,7 +433,7 @@ void init_super_sector_raw(
 	super_sect->oldest_lsid = 0;
 	super_sect->written_lsid = 0;
 	super_sect->device_size = ddev_lb;
-	char *rname = set_super_sector_name(super_sect, name);
+	rname = set_super_sector_name(super_sect, name);
 	if (name && strlen(name) != strlen(rname)) {
 		printf("name %s is pruned to %s.\n", name, rname);
 	}
@@ -438,10 +444,11 @@ void init_super_sector_raw(
 /**
  * Initialize super sector image.
  */
-void init_super_sector(struct sector_data *sect,
-		unsigned int lbs, unsigned int pbs,
-		u64 ddev_lb, u64 ldev_lb, int n_snapshots,
-		const char *name)
+void init_super_sector(
+	struct sector_data *sect,
+	unsigned int lbs, unsigned int pbs,
+	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+	const char *name)
 {
 	ASSERT_SECTOR_DATA(sect);
 	ASSERT(pbs == sect->size);
@@ -499,59 +506,63 @@ void print_super_sector(const struct sector_data *sect)
  * @fd file descripter of log device.
  * @super_sect super sector data.
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool write_super_sector_raw(int fd, const struct walb_super_sector* super_sect)
 {
+	u32 sect_sz;
+	u8 *buf;
+	struct walb_super_sector *p;
+	u32 csum;
+	u64 off0, off1;
+	bool ret0, ret1;
+
 	ASSERT(super_sect);
-	u32 sect_sz = super_sect->physical_bs;
+
+	sect_sz = super_sect->physical_bs;
 
 	/* Memory image of sector. */
-	u8 *sector_buf;
-	if (posix_memalign((void **)&sector_buf, PAGE_SIZE, sect_sz) != 0) {
-		goto error0;
+	if (posix_memalign((void **)&buf, PAGE_SIZE, sect_sz) != 0) {
+		return false;
 	}
-	memset(sector_buf, 0, sect_sz);
-	memcpy(sector_buf, super_sect, sizeof(*super_sect));
+	memset(buf, 0, sect_sz);
+	memcpy(buf, super_sect, sizeof(*super_sect));
+	p = (struct walb_super_sector *)buf;
 
 	/* Set sector type. */
-	((struct walb_super_sector *)sector_buf)->sector_type = SECTOR_TYPE_SUPER;
+	p->sector_type = SECTOR_TYPE_SUPER;
 
 	/* Calculate checksum. */
-	struct walb_super_sector *super_sect_tmp = (struct walb_super_sector *)sector_buf;
-	super_sect_tmp->checksum = 0;
-	u32 csum = checksum(sector_buf, sect_sz, 0);
-	print_binary_hex(sector_buf, sect_sz);/* debug */
-	super_sect_tmp->checksum = csum;
-	print_binary_hex(sector_buf, sect_sz);/* debug */
-	ASSERT(checksum(sector_buf, sect_sz, 0) == 0);
+	p->checksum = 0;
+	csum = checksum(buf, sect_sz, 0);
+	print_binary_hex(buf, sect_sz);/* debug */
+	p->checksum = csum;
+	print_binary_hex(buf, sect_sz);/* debug */
+	ASSERT(checksum(buf, sect_sz, 0) == 0);
 
 	/* Really write sector data. */
-	u64 off0 = get_super_sector0_offset_2(super_sect);
-	u64 off1 = get_super_sector1_offset_2(super_sect);
-	if (!write_sector_raw(fd, sector_buf, sect_sz, off0) ||
-		!write_sector_raw(fd, sector_buf, sect_sz, off1)) {
-		goto error1;
-	}
-	free(sector_buf);
-	return true;
+	off0 = get_super_sector0_offset_2(super_sect);
+	off1 = get_super_sector1_offset_2(super_sect);
+	ret0 = write_sector_raw(fd, buf, sect_sz, off0);
+	ret1 = write_sector_raw(fd, buf, sect_sz, off1);
 
-error1:
-	free(sector_buf);
-error0:
-	return false;
+	free(buf);
+	return ret0 && ret1;
 }
 
 /**
  * Write super sector to the log device.
+ *
+ * RETURN:
+ *   true in success, or false.
  */
 bool write_super_sector(int fd, const struct sector_data *sect)
 {
-	if (is_valid_super_sector(sect)) {
-		return write_super_sector_raw(fd, sect->data);
-	} else {
+	if (!is_valid_super_sector(sect)) {
 		return false;
 	}
+	return write_super_sector_raw(fd, sect->data);
 }
 
 /**
@@ -564,101 +575,97 @@ bool write_super_sector(int fd, const struct sector_data *sect)
  * @sector_size sector size in bytes.
  * @n_snapshots number of snapshots to be stored.
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool read_super_sector_raw(
 	int fd, struct walb_super_sector* super_sect,
 	u32 sector_size, u32 n_snapshots)
 {
+	u8 *buf, *buf0, *buf1;
+	u64 off0, off1;
+	bool ret0, ret1, ret;
+	struct walb_super_sector *p0, *p1;
+
 	/* 1. Read two sectors
 	   2. Compare them and choose one having larger written_lsid. */
 	ASSERT(super_sect);
 	ASSERT(sector_size <= PAGE_SIZE);
 
 	/* Memory image of sector. */
-	u8 *buf, *buf0, *buf1;
 	if (posix_memalign((void **)&buf, PAGE_SIZE, sector_size * 2) != 0) {
 		perror("memory allocation failed.");
-		goto error0;
+		return false;
 	}
 	buf0 = buf;
 	buf1 = buf + sector_size;
+	p0 = (struct walb_super_sector *)buf0;
+	p1 = (struct walb_super_sector *)buf1;
+	off0 = get_super_sector0_offset(sector_size);
+	off1 = get_super_sector1_offset(sector_size, n_snapshots);
+	ret0 = read_sector_raw(fd, buf0, sector_size, off0);
+	ret1 = read_sector_raw(fd, buf1, sector_size, off1);
 
-	u64 off0 = get_super_sector0_offset(sector_size);
-	u64 off1 = get_super_sector1_offset(sector_size, n_snapshots);
-
-	bool ret0 = read_sector_raw(fd, buf0, sector_size, off0);
-	bool ret1 = read_sector_raw(fd, buf1, sector_size, off1);
-
-	if (ret0 && checksum(buf0, sector_size, 0) != 0) {
-		ret0 = -1;
-	}
-	if (ret1 && checksum(buf1, sector_size, 0) != 0) {
-		ret1 = -1;
-	}
-	if (ret0 && ((struct walb_super_sector *)buf0)->sector_type != SECTOR_TYPE_SUPER) {
-		ret0 = -1;
-	}
-	if (ret1 && ((struct walb_super_sector *)buf1)->sector_type != SECTOR_TYPE_SUPER) {
-		ret1 = -1;
-	}
-	if (! ret0 && ! ret1) {
+	if (ret0 && checksum(buf0, sector_size, 0) != 0) { ret0 = false; }
+	if (ret1 && checksum(buf1, sector_size, 0) != 0) { ret1 = false; }
+	if (ret0 && p0->sector_type != SECTOR_TYPE_SUPER) { ret0 = false; }
+	if (ret1 && p1->sector_type != SECTOR_TYPE_SUPER) { ret1 = false; }
+	if (!ret0 && !ret1) {
 		LOGe("Both superblocks are broken.\n");
-		goto error1;
+		ret = false;
 	} else if (ret0 && ret1) {
-		u64 lsid0 = ((struct walb_super_sector *)buf0)->written_lsid;
-		u64 lsid1 = ((struct walb_super_sector *)buf1)->written_lsid;
+		u64 lsid0 = p0->written_lsid;
+		u64 lsid1 = p1->written_lsid;
 		if (lsid0 >= lsid1) {
 			memcpy(super_sect, buf0, sizeof(*super_sect));
 		} else {
 			memcpy(super_sect, buf1, sizeof(*super_sect));
 		}
+		ret = true;
 	} else if (ret0) {
 		memcpy(super_sect, buf0, sizeof(*super_sect));
+		ret = true;
 	} else {
-		ASSERT(ret1);
 		memcpy(super_sect, buf1, sizeof(*super_sect));
+		ret = true;
 	}
 
 	free(buf);
-	return true;
-
-error1:
-	free(buf);
-error0:
-	return false;
+	return ret;
 }
 
 /**
  * Read super sector.
  *
  * Currently 2nd super sector is not read.
+ *
+ * RETURN:
+ *  true in success, or false.
  */
 bool read_super_sector(int fd, struct sector_data *sect)
 {
+	u64 off0;
+
 	if (!is_valid_sector_data(sect)) {
 		LOGe("Sector data is not valid.\n");
-		goto error0;
+		return false;
 	}
-
 	ASSERT(sect->size <= PAGE_SIZE);
 
-	u64 off0 = get_super_sector0_offset(sect->size);
+	off0 = get_super_sector0_offset(sect->size);
 	if (!sector_read(fd, off0, sect)) {
 		LOGe("Read sector failed.\n");
-		goto error0;
+		return false;
 	}
 	if (checksum(sect->data, sect->size, 0) != 0) {
 		LOGe("Checksum invalid.\n");
-		goto error0;
+		return false;
 	}
 	if (!is_valid_super_sector(sect)) {
 		LOGe("Super sector invalid.\n");
-		goto error0;
+		return false;
 	}
 	return true;
-error0:
-	return false;
 }
 
 /**
@@ -693,3 +700,4 @@ void print_u32bitmap(const u32 bitmap)
 	}
 }
 
+/* end of file. */
