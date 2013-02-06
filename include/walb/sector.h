@@ -458,7 +458,8 @@ static inline void sector_array_copy_detail(
 	while (copied < size) {
 		unsigned int sect_idx = (offset + copied) / sect_size;
 		unsigned int sect_off = (offset + copied) % sect_size;
-		unsigned int tmp_size = min(sect_size - sect_off, size - copied);
+		unsigned int tmp_size =
+			get_min_value(sect_size - sect_off, size - copied);
 
 		if (is_from) {
 			memcpy((u8 *)sect_ary->array[sect_idx]->data + sect_off,
@@ -594,7 +595,7 @@ static inline u32 sector_array_checksum(
 	off = offset % sect_size;
 	while (remaining > 0) {
 		ASSERT(idx < sect_ary->size);
-		tsize = min(sect_size - off, remaining);
+		tsize = get_min_value(sect_size - off, remaining);
 		sum = checksum_partial(
 			sum, &((u8 *)sect_ary->array[idx]->data)[off],
 			tsize);
@@ -631,7 +632,7 @@ static inline void sector_array_memset(
 	off = offset % ssize;
 	while (remaining > 0) {
 		ASSERT(idx < sect_ary->size);
-		tsize = min(ssize - off, remaining);
+		tsize = get_min_value(ssize - off, remaining);
 		memset(&((u8 *)sect_ary->array[idx]->data)[off], val, tsize);
 		remaining -= tsize;
 		idx++;

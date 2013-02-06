@@ -121,6 +121,20 @@ static inline void* amalloc(size_t size, size_t align)
 #define NOT_YET_IMPLEMENTED __attribute__((warning("NOT YET IMPLEMENTED")))
 
 /**
+ * min/max.
+ *
+ * Do not use min/max directly
+ * because c++ namespace will be affected.
+ */
+#ifdef __KERNEL__
+#define get_min_value(x, y) min(x, y)
+#define get_max_value(x, y) max(x, y)
+#else
+#define get_min_value(x, y) ((x) < (y) ? (x) : (y))
+#define get_max_value(x, y) ((x) > (y) ? (x) : (y))
+#endif
+
+/**
  * For test.
  */
 #define WALB_CHECK_LABEL(cond, label) do {			\
