@@ -10,19 +10,21 @@ LDEV=ldev32M
 DDEV=ddev32M
 WLOG=wlog
 CTL=../walbctl
+LOOP0=/dev/loop0
+LOOP1=/dev/loop1
 
 format_ldev()
 {
   dd if=/dev/zero of=$LDEV bs=1M count=32
   dd if=/dev/zero of=${DDEV}.0 bs=1M count=32
-  losetup /dev/loop0 $LDEV
-  losetup /dev/loop1 ${DDEV}.0
-  $CTL format_ldev --ldev /dev/loop0 --ddev /dev/loop1
-  RING_BUFFER_SIZE=$(./wlinfo /dev/loop0 |grep ringBufferSize |awk '{print $2}')
+  losetup $LOOP0 $LDEV
+  losetup $LOOP1 ${DDEV}.0
+  $CTL format_ldev --ldev $LOOP0 --ddev $LOOP1
+  RING_BUFFER_SIZE=$(./wlinfo $LOOP0 |grep ringBufferSize |awk '{print $2}')
   echo $RING_BUFFER_SIZE
   sleep 1
-  losetup -d /dev/loop0
-  losetup -d /dev/loop1
+  losetup -d $LOOP0
+  losetup -d $LOOP1
 }
 
 #
@@ -57,10 +59,10 @@ restore_test()
   dd if=/dev/zero of=${DDEV}.3 bs=1M count=32
   ./wlrestore $LDEV --lsidDiff $lsidDiff --invalidLsid $invalidLsid < ${WLOG}.0
   ./wlcat $LDEV -v -o ${WLOG}.1
-  losetup /dev/loop0 ${LDEV}
-  $CTL cat_wldev --wldev /dev/loop0 > ${WLOG}.2
+  losetup $LOOP0 ${LDEV}
+  $CTL cat_wldev --wldev $LOOP0 > ${WLOG}.2
   sleep 1
-  losetup -d /dev/loop0
+  losetup -d $LOOP0
   ./bdiff -b 512 ${WLOG}.1 ${WLOG}.2
   if [ $? -ne 0 ]; then
     echo ${WLOG}.1 and ${WLOG}.2 differ.
@@ -69,16 +71,16 @@ restore_test()
   fi
 
   ./wlredo ${DDEV}.1 < ${WLOG}.1
-  losetup /dev/loop1 ${DDEV}.2
-  $CTL redo_wlog --ddev /dev/loop1 < ${WLOG}.1
+  losetup $LOOP1 ${DDEV}.2
+  $CTL redo_wlog --ddev $LOOP1 < ${WLOG}.1
   sleep 1
-  losetup -d /dev/loop1
-  losetup /dev/loop0 ${LDEV}
-  losetup /dev/loop1 ${DDEV}.3
-  $CTL redo --ldev /dev/loop0 --ddev /dev/loop1
+  losetup -d $LOOP1
+  losetup $LOOP0 ${LDEV}
+  losetup $LOOP1 ${DDEV}.3
+  $CTL redo --ldev $LOOP0 --ddev $LOOP1
   sleep 1
-  losetup -d /dev/loop0
-  losetup -d /dev/loop1
+  losetup -d $LOOP0
+  losetup -d $LOOP1
   if [ $invalidLsid -eq -1 ]; then
     ./bdiff -b 512 ${DDEV}.0 ${DDEV}.1
     if [ $? -ne 0 ]; then
