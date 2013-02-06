@@ -78,38 +78,43 @@ bool get_datetime_str(time_t t, char* buf, size_t n)
 /**
  * Check block device.
  *
- * @return 0 in success, or -1.
+ * RETURN:
+ *   true in success, or false.
  */
-int check_bdev(const char* path)
+bool is_valid_bdev(const char* path)
 {
 	struct stat sb;
 	UNUSED dev_t devt;
 	UNUSED size_t sector_size;
 	UNUSED size_t dev_size;
-	UNUSED size_t size;
+	UNUSED size_t ssize;
+	int fd;
+	u64 isize;
+	int bs, ss;
+	unsigned int pbs;
 
 	if (!path) {
 		LOGe("path is null.\n");
-		goto error0;
+		return false;
 	}
 	if (*path == '\0') {
 		LOGe("path length is zero.\n");
-		goto error0;
+		return false;
 	}
 	if (stat(path, &sb) == -1) {
 		LOGe("stat failed: %s.\n", strerror(errno));
-		goto error0;
+		return false;
 	}
 
 	if ((sb.st_mode & S_IFMT) != S_IFBLK) {
 		LOGe("%s is not block device.\n", path);
-		goto error0;
+		return false;
 	}
 
 	devt = sb.st_rdev;
 	sector_size = sb.st_blksize;
 	dev_size = sb.st_blocks;
-	size = sb.st_size;
+	ssize = sb.st_size;
 
 	LOGd("devname: %s\n"
 		"device: %d:%d\n"
@@ -118,59 +123,45 @@ int check_bdev(const char* path)
 		"size: %zu\n",
 		path,
 		MAJOR(devt), MINOR(devt),
-		sector_size, dev_size, size);
+		sector_size, dev_size, ssize);
 
-	{
-		int fd;
-		u64 size;
-		int bs, ss;
-		unsigned int pbs;
-
-		fd = open(path, O_RDONLY);
-		if (fd < 0) {
-			LOGe("open failed\n");
-			goto error00;
-		}
-		/* soft block size */
-		if (ioctl(fd, BLKBSZGET, &bs) < 0) {
-			goto error01;
-		}
-		/* logical sector size */
-		if (ioctl(fd, BLKSSZGET, &ss) < 0) {
-			goto error01;
-		}
-		/* physical sector size */
-		if (ioctl(fd, BLKPBSZGET, &pbs) < 0) {
-			goto error01;
-		}
-		/* size */
-		if (ioctl(fd, BLKGETSIZE64, &size) < 0) {
-			goto error01;
-		}
-		if (close(fd)) {
-			LOGe("close failed\n");
-			goto error00;
-		}
-
-		LOGd("soft block size: %d\n"
-			"logical sector size: %d\n"
-			"physical sector size: %u\n"
-			"device size: %zu\n",
-			bs, ss, pbs, (size_t)size);
-		goto fin;
-
-	error01:
-		close(fd);
-	error00:
-		goto error0;
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		LOGe("open failed\n");
+		return false;
 	}
-fin:
-	return 0;
-error0:
-	return -1;
+	/* soft block size */
+	if (ioctl(fd, BLKBSZGET, &bs) < 0) {
+		goto error1;
+	}
+	/* logical sector size */
+	if (ioctl(fd, BLKSSZGET, &ss) < 0) {
+		goto error1;
+	}
+	/* physical sector size */
+	if (ioctl(fd, BLKPBSZGET, &pbs) < 0) {
+		goto error1;
+	}
+	/* size */
+	if (ioctl(fd, BLKGETSIZE64, &isize) < 0) {
+		goto error1;
+	}
+	if (close(fd)) {
+		LOGe("close failed\n");
+		return false;
+	}
+
+	LOGd("soft block size: %d\n"
+		"logical sector size: %d\n"
+		"physical sector size: %u\n"
+		"device size: %" PRIu64 "\n",
+		bs, ss, pbs, isize);
+	return true;
+
+error1:
+	close(fd);
+	return false;
 }
-
-
 
 /**
  * open file and confirm it is really block device.
@@ -577,7 +568,7 @@ bool write_data(int fd, const u8* data, size_t size)
  */
 bool is_same_block_size(const char* devpath1, const char* devpath2)
 {
-	ASSERT(check_bdev(devpath1) == 0 && check_bdev(devpath2) == 0);
+	ASSERT(is_valid_bdev(devpath1) && is_valid_bdev(devpath2));
 
 	int lbs1 = get_bdev_logical_block_size(devpath1);
 	int lbs2 = get_bdev_logical_block_size(devpath2);

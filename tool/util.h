@@ -22,7 +22,7 @@ void print_binary_hex(const u8* data, size_t size);
 bool get_datetime_str(time_t t, char* buf, size_t n);
 
 /* Block device operations. */
-int check_bdev(const char* path);
+bool is_valid_bdev(const char* path);
 int get_bdev_logical_block_size(const char* devpath);
 int get_bdev_physical_block_size(const char* devpath);
 u64 get_bdev_size(const char* devpath);

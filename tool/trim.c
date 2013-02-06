@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 		end_off *= 512;
 	}
 
-	if (check_bdev(dev_name) < 0) {
+	if (!is_valid_bdev(dev_name)) {
 		LOGe("Check block device failed %s.\n", dev_name);
 		goto error0;
 	}

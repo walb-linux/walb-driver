@@ -721,7 +721,7 @@ static bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_f
 		LOGe("Specify walb device.\n");
 		goto error0;
 	}
-	if (check_bdev(wdev_name) < 0) {
+	if (!is_valid_bdev(wdev_name)) {
 		LOGe("invoke_ioctl: check walb device failed %s.\n",
 			wdev_name);
 		goto error0;
@@ -1082,12 +1082,12 @@ static bool do_format_ldev(const struct config *cfg)
 	/*
 	 * Check devices.
 	 */
-	if (check_bdev(cfg->ldev_name) < 0) {
+	if (!is_valid_bdev(cfg->ldev_name)) {
 		LOGe("format_ldev: check log device failed %s.\n",
 			cfg->ldev_name);
 		goto error0;
 	}
-	if (check_bdev(cfg->ddev_name) < 0) {
+	if (!is_valid_bdev(cfg->ddev_name)) {
 		LOGe("format_ldev: check data device failed %s.\n",
 			cfg->ddev_name);
 		goto error0;
@@ -1190,11 +1190,11 @@ static bool do_create_wdev(const struct config *cfg)
 	/*
 	 * Check devices.
 	 */
-	if (check_bdev(cfg->ldev_name) < 0) {
+	if (!is_valid_bdev(cfg->ldev_name)) {
 		LOGe("create_wdev: check log device failed.\n");
 		goto error0;
 	}
-	if (check_bdev(cfg->ddev_name) < 0) {
+	if (!is_valid_bdev(cfg->ddev_name)) {
 		LOGe("create_wdev: check data device failed.\n");
 		goto error0;
 	}
@@ -1276,7 +1276,7 @@ static bool do_delete_wdev(const struct config *cfg)
 	/*
 	 * Check devices.
 	 */
-	if (check_bdev(cfg->wdev_name) < 0) {
+	if (!is_valid_bdev(cfg->wdev_name)) {
 		LOGe("Check target walb device failed.\n");
 		goto error0;
 	}
@@ -1338,7 +1338,7 @@ static bool do_create_snapshot(const struct config *cfg)
 	time_t timestamp = time(0);
 
 	/* Check config. */
-	if (check_bdev(cfg->wdev_name) < 0) {
+	if (!is_valid_bdev(cfg->wdev_name)) {
 		LOGe("Check target walb device failed.\n");
 		goto error0;
 	}
@@ -1395,7 +1395,7 @@ static bool do_delete_snapshot(const struct config *cfg)
 	ASSERT(strcmp(cfg->cmd_str, "delete_snapshot") == 0);
 
 	/* Check config. */
-	if (check_bdev(cfg->wdev_name) < 0) {
+	if (!is_valid_bdev(cfg->wdev_name)) {
 		LOGe("Check target walb device failed.\n");
 		goto error0;
 	}
@@ -1426,7 +1426,7 @@ static bool do_num_snapshot(const struct config *cfg)
 	ASSERT(strcmp(cfg->cmd_str, "num_snapshot") == 0);
 
 	/* Check config. */
-	if (check_bdev(cfg->wdev_name) < 0) {
+	if (!is_valid_bdev(cfg->wdev_name)) {
 		LOGe("Check target walb device failed.\n");
 		goto error0;
 	}
@@ -1477,7 +1477,7 @@ static bool do_list_snapshot(const struct config *cfg)
 		(struct walb_snapshot_record *)buf;
 
 	/* Check config. */
-	if (check_bdev(cfg->wdev_name) < 0) {
+	if (!is_valid_bdev(cfg->wdev_name)) {
 		LOGe("Check target walb device failed.\n");
 		goto error0;
 	}
@@ -1527,7 +1527,7 @@ static bool do_list_snapshot_range(const struct config *cfg)
 		(struct walb_snapshot_record *)buf;
 
 	/* Check config. */
-	if (check_bdev(cfg->wdev_name) < 0) {
+	if (!is_valid_bdev(cfg->wdev_name)) {
 		LOGe("Check target walb device failed.\n");
 		goto error0;
 	}
@@ -1582,7 +1582,7 @@ static bool do_check_snapshot(const struct config *cfg)
 	/*
 	 * Check devices.
 	 */
-	if (check_bdev(cfg->ldev_name) < 0) {
+	if (!is_valid_bdev(cfg->ldev_name)) {
 		LOGe("check_snapshot: check log device failed %s.\n",
 			cfg->ldev_name);
 		goto error0;
@@ -1628,7 +1628,7 @@ static bool do_clean_snapshot(const struct config *cfg)
 	/*
 	 * Check devices.
 	 */
-	if (check_bdev(cfg->ldev_name) < 0) {
+	if (!is_valid_bdev(cfg->ldev_name)) {
 		LOGe("clean_snapshot: check log device failed %s.\n",
 			cfg->ldev_name);
 		goto error0;
@@ -1769,7 +1769,7 @@ static bool do_cat_wldev(const struct config *cfg)
 	/*
 	 * Check device.
 	 */
-	if (check_bdev(cfg->wldev_name) < 0) {
+	if (!is_valid_bdev(cfg->wldev_name)) {
 		LOGe("cat_wldev: check log device failed %s.\n",
 			cfg->wldev_name);
 		goto error0;
@@ -1949,7 +1949,7 @@ static bool do_redo_wlog(const struct config *cfg)
 	ASSERT(strcmp(cfg->cmd_str, "redo_wlog") == 0);
 
 	/* Check data device. */
-	if (check_bdev(cfg->ddev_name) < 0) {
+	if (!is_valid_bdev(cfg->ddev_name)) {
 		LOGe("redo_wlog: check data device failed %s.\n",
 			cfg->ddev_name);
 		goto error0;
@@ -2095,7 +2095,7 @@ static bool do_redo(const struct config *cfg)
 	/*
 	 * Check devices.
 	 */
-	if (check_bdev(cfg->ldev_name) < 0 || check_bdev(cfg->ddev_name) < 0) {
+	if (!is_valid_bdev(cfg->ldev_name) || !is_valid_bdev(cfg->ddev_name)) {
 		LOGe("%s or %s is not block device.\n", cfg->ldev_name, cfg->ddev_name);
 		goto error0;
 	}
@@ -2339,7 +2339,7 @@ static bool do_show_wldev(const struct config *cfg)
 	/*
 	 * Check device.
 	 */
-	if (check_bdev(cfg->wldev_name) < 0) {
+	if (!is_valid_bdev(cfg->wldev_name)) {
 		LOGe("check log device failed %s.\n",
 			cfg->wldev_name);
 		goto error0;
@@ -2554,7 +2554,7 @@ static bool do_resize(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "resize") == 0);
 
-	if (check_bdev(cfg->wdev_name) < 0) {
+	if (!is_valid_bdev(cfg->wdev_name)) {
 		LOGe("device check failed.\n");
 		goto error0;
 	}
@@ -2583,7 +2583,7 @@ static bool do_reset_wal(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "reset_wal") == 0);
 
-	if (check_bdev(cfg->wdev_name) < 0) {
+	if (!is_valid_bdev(cfg->wdev_name)) {
 		LOGe("device check failed.\n");
 		goto error0;
 	}
@@ -2711,7 +2711,7 @@ static bool do_get_version(const struct config *cfg)
 {
 	ASSERT(strcmp(cfg->cmd_str, "get_version") == 0);
 
-	if (check_bdev(cfg->wdev_name) < 0) {
+	if (!is_valid_bdev(cfg->wdev_name)) {
 		LOGe("device check failed.");
 		goto error0;
 	}
