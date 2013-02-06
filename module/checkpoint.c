@@ -43,8 +43,8 @@ bool take_checkpoint(struct checkpoint_data *cpd)
 
 	/* Get written_lsid and prev_written_lsid. */
 	spin_lock(&wdev->lsid_lock);
-	written_lsid = wdev->lsids.written_lsid;
-	prev_written_lsid = wdev->lsids.prev_written_lsid;
+	written_lsid = wdev->lsids.written;
+	prev_written_lsid = wdev->lsids.prev_written;
 	spin_unlock(&wdev->lsid_lock);
 
 	/* Write superblock if necessary. */

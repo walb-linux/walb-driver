@@ -1187,10 +1187,10 @@ static void create_logpack_list(
 
 	/* Load latest_lsid */
 	spin_lock(&wdev->lsid_lock);
-	latest_lsid = wdev->lsids.latest_lsid;
-	oldest_lsid = wdev->lsids.oldest_lsid;
-	written_lsid = wdev->lsids.written_lsid;
-	flush_lsid = wdev->lsids.flush_lsid;
+	latest_lsid = wdev->lsids.latest;
+	oldest_lsid = wdev->lsids.oldest;
+	written_lsid = wdev->lsids.written;
+	flush_lsid = wdev->lsids.flush;
 	log_flush_jiffies = iocored->log_flush_jiffies;
 	spin_unlock(&wdev->lsid_lock);
 	latest_lsid_old = latest_lsid;
@@ -1243,10 +1243,10 @@ static void create_logpack_list(
 	/* Store lsids. */
 	ASSERT(latest_lsid >= latest_lsid_old);
 	spin_lock(&wdev->lsid_lock);
-	ASSERT(wdev->lsids.latest_lsid == latest_lsid_old);
-	wdev->lsids.latest_lsid = latest_lsid;
-	if (wdev->lsids.flush_lsid < flush_lsid) {
-		wdev->lsids.flush_lsid = flush_lsid;
+	ASSERT(wdev->lsids.latest == latest_lsid_old);
+	wdev->lsids.latest = latest_lsid;
+	if (wdev->lsids.flush < flush_lsid) {
+		wdev->lsids.flush = flush_lsid;
 		iocored->log_flush_jiffies =
 			jiffies + wdev->log_flush_interval_jiffies;
 	}
@@ -1766,7 +1766,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 	/* Update written_lsid. */
 	ASSERT(written_lsid != INVALID_LSID);
 	spin_lock(&wdev->lsid_lock);
-	wdev->lsids.written_lsid = written_lsid;
+	wdev->lsids.written = written_lsid;
 	spin_unlock(&wdev->lsid_lock);
 }
 
@@ -2301,8 +2301,8 @@ static void wait_for_logpack_and_submit_datapack(
 		struct walb_logpack_header *logh =
 			get_logpack_header(wpack->logpack_header_sector);
 		spin_lock(&wdev->lsid_lock);
-		if (wdev->lsids.permanent_lsid < logh->logpack_lsid) {
-			wdev->lsids.permanent_lsid = logh->logpack_lsid;
+		if (wdev->lsids.permanent < logh->logpack_lsid) {
+			wdev->lsids.permanent = logh->logpack_lsid;
 			LOGd_("log_flush_completed_header\n");
 		}
 		spin_unlock(&wdev->lsid_lock);
@@ -2439,11 +2439,11 @@ static void wait_for_logpack_and_submit_datapack(
 			get_logpack_header(wpack->logpack_header_sector);
 		spin_lock(&wdev->lsid_lock);
 #ifdef WALB_FAST_ALGORITHM
-		wdev->lsids.completed_lsid = get_next_lsid(logh);
+		wdev->lsids.completed = get_next_lsid(logh);
 #endif
 		if (wpack->is_flush_contained &&
-			wdev->lsids.permanent_lsid < logh->logpack_lsid) {
-			wdev->lsids.permanent_lsid = logh->logpack_lsid;
+			wdev->lsids.permanent < logh->logpack_lsid) {
+			wdev->lsids.permanent = logh->logpack_lsid;
 			LOGd_("log_flush_completed_io\n");
 		}
 		spin_unlock(&wdev->lsid_lock);
@@ -3221,9 +3221,9 @@ static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
 	timeout_jiffies = jiffies + wdev->log_flush_interval_jiffies;
 retry:
 	spin_lock(&wdev->lsid_lock);
-	permanent_lsid = wdev->lsids.permanent_lsid;
-	flush_lsid = wdev->lsids.flush_lsid;
-	latest_lsid = wdev->lsids.latest_lsid;
+	permanent_lsid = wdev->lsids.permanent;
+	flush_lsid = wdev->lsids.flush;
+	latest_lsid = wdev->lsids.latest;
 	log_flush_jiffies = iocored->log_flush_jiffies;
 	spin_unlock(&wdev->lsid_lock);
 	if (lsid < permanent_lsid) {
@@ -3247,9 +3247,9 @@ retry:
 
 	/* Update flush_lsid. */
 	spin_lock(&wdev->lsid_lock);
-	latest_lsid = wdev->lsids.latest_lsid;
-	if (wdev->lsids.flush_lsid < latest_lsid) {
-		wdev->lsids.flush_lsid = latest_lsid;
+	latest_lsid = wdev->lsids.latest;
+	if (wdev->lsids.flush < latest_lsid) {
+		wdev->lsids.flush = latest_lsid;
 		iocored->log_flush_jiffies =
 			jiffies + wdev->log_flush_interval_jiffies;
 	}
@@ -3268,11 +3268,11 @@ retry:
 
 	/* Update permanent_lsid. */
 	spin_lock(&wdev->lsid_lock);
-	if (wdev->lsids.permanent_lsid < latest_lsid) {
-		wdev->lsids.permanent_lsid = latest_lsid;
+	if (wdev->lsids.permanent < latest_lsid) {
+		wdev->lsids.permanent = latest_lsid;
 		LOGd_("log_flush_completed_data\n");
 	}
-	ASSERT(lsid <= wdev->lsids.permanent_lsid);
+	ASSERT(lsid <= wdev->lsids.permanent);
 	spin_unlock(&wdev->lsid_lock);
 }
 

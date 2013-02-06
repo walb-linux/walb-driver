@@ -63,47 +63,45 @@ struct walb_iocore_operations
 /**
  * Lsid indicators.
  *
- * Each variable must be accessed with lsid_lock held.
- *
- * latest_lsid:
+ * latest:
  *   This is used to generate new logpack.
- * flush_lsid:
+ * flush:
  *   This is to remember the latest lsid of
  *   log flush request executed.
- * completed_lsid:
- *   All logpacks with lsid < completed_lsid
+ * completed:
+ *   All logpacks with lsid < completed
  *   have been written to the log device.
- * permanent_lsid:
- *   ALl logpacks with lsid < permanent_lsid
+ * permanent:
+ *   ALl logpacks with lsid < permanent
  *   have been permanent in the log device.
- * written_lsid:
- *   All logpacks with lsid < written_lsid
+ * written:
+ *   All logpacks with lsid < written
  *   have been written to the data device.
- * prev_written_lsid:
- *   Previously synced written_lsid to the superblock.
+ * prev_written:
+ *   Previously synced written to the superblock.
  *   You do not need to sync superblock
- *   while written_lsid == prev_written_lsid.
- * oldest_lsid:
- *   All logpacks with lsid < oldest_lsid
+ *   while written == prev_written.
+ * oldest:
+ *   All logpacks with lsid < oldest
  *   on the log device can be overwritten.
  *
  * Property 1
- *   oldest_lsid <= prev_written_lsid <= written_lsid
- *   <= permanent_lsid <= completed_lsid <= latest_lsid.
+ *   oldest <= prev_written <= written
+ *   <= permanent <= completed <= latest.
  * Property 2
- *   permanent_lsid <= flush_lsid <= latest_lsid.
+ *   permanent <= flush <= latest.
  */
 struct lsid_set
 {
-	u64 latest_lsid;
-	u64 flush_lsid;
+	u64 latest;
+	u64 flush;
 #ifdef WALB_FAST_ALGORITHM
-	u64 completed_lsid;
+	u64 completed;
 #endif
-	u64 permanent_lsid;
-	u64 written_lsid;
-	u64 prev_written_lsid;
-	u64 oldest_lsid;
+	u64 permanent;
+	u64 written;
+	u64 prev_written;
+	u64 oldest;
 };
 
 /**
@@ -163,7 +161,8 @@ struct walb_dev
 	   This is used for logpack header and log data. */
 	u32 log_checksum_salt;
 
-	/* Lsids and its lock. */
+	/* Lsids and its lock.
+	   Each variable must be accessed with lsid_lock held. */
 	spinlock_t lsid_lock;
 	struct lsid_set lsids;
 
@@ -183,7 +182,6 @@ struct walb_dev
 
 	/*
 	 * For checkpointing.
-	 * written_lsid is contained.
 	 */
 	struct checkpoint_data cpd;
 
