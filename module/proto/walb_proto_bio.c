@@ -283,11 +283,11 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	}
 	ssect = get_super_sector(wdev->lsuper0);
 	init_checkpointing(&wdev->cpd);
-	wdev->oldest_lsid = ssect->oldest_lsid;
-	wdev->written_lsid = ssect->written_lsid;
-	wdev->latest_lsid = wdev->written_lsid; /* redo must be done. */
+	wdev->lsids.oldest_lsid = ssect->oldest_lsid;
+	wdev->lsids.written_lsid = ssect->written_lsid;
+	wdev->lsids.latest_lsid = wdev->lsids.written_lsid; /* redo must be done. */
 #ifdef WALB_FAST_ALGORITHM
-	wdev->completed_lsid = wdev->written_lsid; /* redo must be done. */
+	wdev->lsids.completed_lsid = wdev->lsids.written_lsid; /* redo must be done. */
 #endif
 	wdev->ring_buffer_size = ssect->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(ssect);
@@ -398,8 +398,8 @@ static void destroy_private_data(struct wrapper_blk_dev *wrdev)
 	   The locks are not required because
 	   block device is now offline. */
 	ssect = get_super_sector(wdev->lsuper0);
-	ssect->written_lsid = wdev->written_lsid;
-	ssect->oldest_lsid = wdev->oldest_lsid;
+	ssect->written_lsid = wdev->lsids.written_lsid;
+	ssect->oldest_lsid = wdev->lsids.oldest_lsid;
 	if (!walb_write_super_sector(wdev->ldev, wdev->lsuper0)) {
 		LOGe("super block write failed.\n");
 	}

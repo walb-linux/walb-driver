@@ -1133,7 +1133,7 @@ bool execute_redo(struct walb_dev *wdev)
 	ASSERT(ret < WORKER_NAME_MAX_LEN);
 
 	spin_lock(&wdev->lsid_lock);
-	written_lsid = wdev->written_lsid;
+	written_lsid = wdev->lsids.written_lsid;
 	spin_unlock(&wdev->lsid_lock);
 	start_lsid = written_lsid;
 	read_rd = create_redo_data(wdev, written_lsid);
@@ -1218,14 +1218,14 @@ bool execute_redo(struct walb_dev *wdev)
 
 	/* Update lsid variables. */
 	spin_lock(&wdev->lsid_lock);
-	wdev->prev_written_lsid = written_lsid;
-	wdev->written_lsid = written_lsid;
+	wdev->lsids.prev_written_lsid = written_lsid;
+	wdev->lsids.written_lsid = written_lsid;
 #ifdef WALB_FAST_ALGORITHM
-	wdev->completed_lsid = written_lsid;
+	wdev->lsids.completed_lsid = written_lsid;
 #endif
-	wdev->permanent_lsid = written_lsid;
-	wdev->flush_lsid = written_lsid;
-	wdev->latest_lsid = written_lsid;
+	wdev->lsids.permanent_lsid = written_lsid;
+	wdev->lsids.flush_lsid = written_lsid;
+	wdev->lsids.latest_lsid = written_lsid;
 	spin_unlock(&wdev->lsid_lock);
 
 	/* Update superblock. */

@@ -61,6 +61,52 @@ struct walb_iocore_operations
 #endif
 
 /**
+ * Lsid indicators.
+ *
+ * Each variable must be accessed with lsid_lock held.
+ *
+ * latest_lsid:
+ *   This is used to generate new logpack.
+ * flush_lsid:
+ *   This is to remember the latest lsid of
+ *   log flush request executed.
+ * completed_lsid:
+ *   All logpacks with lsid < completed_lsid
+ *   have been written to the log device.
+ * permanent_lsid:
+ *   ALl logpacks with lsid < permanent_lsid
+ *   have been permanent in the log device.
+ * written_lsid:
+ *   All logpacks with lsid < written_lsid
+ *   have been written to the data device.
+ * prev_written_lsid:
+ *   Previously synced written_lsid to the superblock.
+ *   You do not need to sync superblock
+ *   while written_lsid == prev_written_lsid.
+ * oldest_lsid:
+ *   All logpacks with lsid < oldest_lsid
+ *   on the log device can be overwritten.
+ *
+ * Property 1
+ *   oldest_lsid <= prev_written_lsid <= written_lsid
+ *   <= permanent_lsid <= completed_lsid <= latest_lsid.
+ * Property 2
+ *   permanent_lsid <= flush_lsid <= latest_lsid.
+ */
+struct lsid_set
+{
+	u64 latest_lsid;
+	u64 flush_lsid;
+#ifdef WALB_FAST_ALGORITHM
+	u64 completed_lsid;
+#endif
+	u64 permanent_lsid;
+	u64 written_lsid;
+	u64 prev_written_lsid;
+	u64 oldest_lsid;
+};
+
+/**
  * The internal representation of walb and walblog device.
  */
 struct walb_dev
@@ -117,49 +163,9 @@ struct walb_dev
 	   This is used for logpack header and log data. */
 	u32 log_checksum_salt;
 
-	/*
-	 * lsid indicators.
-	 * Each variable must be accessed with lsid_lock held.
-	 *
-	 * latest_lsid:
-	 *   This is used to generate new logpack.
-	 * flush_lsid:
-	 *   This is to remember the latest lsid of
-	 *   log flush request executed.
-	 * completed_lsid:
-	 *   All logpacks with lsid < completed_lsid
-	 *   have been written to the log device.
-	 * permanent_lsid:
-	 *   ALl logpacks with lsid < permanent_lsid
-	 *   have been permanent in the log device.
-	 * written_lsid:
-	 *   All logpacks with lsid < written_lsid
-	 *   have been written to the data device.
-	 * prev_written_lsid:
-	 *   Previously synced written_lsid to the superblock.
-	 *   You do not need to sync superblock
-	 *   while written_lsid == prev_written_lsid.
-	 * oldest_lsid:
-	 *   All logpacks with lsid < oldest_lsid
-	 *   on the log device can be overwritten.
-	 *
-	 * Property 1
-	 *   oldest_lsid <= prev_written_lsid <= written_lsid
-	 *   <= permanent_lsid <= completed_lsid <= latest_lsid.
-	 * Property 2
-	 *   permanent_lsid <= flush_lsid <= latest_lsid.
-	 */
+	/* Lsids and its lock. */
 	spinlock_t lsid_lock;
-
-	u64 latest_lsid;
-	u64 flush_lsid;
-#ifdef WALB_FAST_ALGORITHM
-	u64 completed_lsid;
-#endif
-	u64 permanent_lsid;
-	u64 written_lsid;
-	u64 prev_written_lsid;
-	u64 oldest_lsid;
+	struct lsid_set lsids;
 
 	/*
 	 * For wrapper device.
