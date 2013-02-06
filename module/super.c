@@ -27,8 +27,8 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 
 	/* Get written/oldest lsid. */
 	spin_lock(&wdev->lsid_lock);
-	written_lsid = wdev->lsids.written_lsid;
-	oldest_lsid = wdev->lsids.oldest_lsid;
+	written_lsid = wdev->lsids.written;
+	oldest_lsid = wdev->lsids.oldest;
 	spin_unlock(&wdev->lsid_lock);
 
 	/* device size. */
@@ -65,7 +65,7 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 
 	/* Update previously written lsid. */
 	spin_lock(&wdev->lsid_lock);
-	wdev->lsids.prev_written_lsid = written_lsid;
+	wdev->lsids.prev_written = written_lsid;
 	spin_unlock(&wdev->lsid_lock);
 
 	return true;
@@ -93,7 +93,7 @@ bool walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
 	 */
 
 	spin_lock(&wdev->lsid_lock);
-	wdev->lsids.written_lsid = wdev->lsids.latest_lsid;
+	wdev->lsids.written = wdev->lsids.latest;
 	spin_unlock(&wdev->lsid_lock);
 
 	if (is_superblock_sync) {
