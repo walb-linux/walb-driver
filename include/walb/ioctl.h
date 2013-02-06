@@ -81,7 +81,7 @@ static inline void print_walb_ctl(
 		"command: %d\n"
 		"val_int: %d\n"
 		"val_u32: %u\n"
-		"val_u64: %"PRIu64"\n"
+		"val_u64: %" PRIu64"\n"
 		"error: %d\n"
 
 		"u2k.wdevt: (%u:%u)\n"
@@ -582,18 +582,18 @@ struct walb_start_param
 static inline bool is_walb_start_param_valid(
 	const struct walb_start_param *param)
 {
-	CHECK(param);
-	CHECK(strnlen(param->name, DISK_NAME_LEN) < DISK_NAME_LEN);
-	CHECK(2 <= param->max_pending_mb);
-	CHECK(param->max_pending_mb <= MAX_PENDING_MB);
-	CHECK(1 <= param->min_pending_mb);
-	CHECK(param->min_pending_mb < param->max_pending_mb);
-	CHECK(1 <= param->queue_stop_timeout_ms);
-	/* CHECK(0 <= param->log_flush_interval_ms); */
-	/* CHECK(0 <= param->log_flush_interval_mb); */
-	CHECK(param->log_flush_interval_mb * 2 <= param->max_pending_mb);
-	CHECK(0 < param->n_pack_bulk);
-	CHECK(0 < param->n_io_bulk);
+	CHECKd(param);
+	CHECKd(strnlen(param->name, DISK_NAME_LEN) < DISK_NAME_LEN);
+	CHECKd(2 <= param->max_pending_mb);
+	CHECKd(param->max_pending_mb <= MAX_PENDING_MB);
+	CHECKd(1 <= param->min_pending_mb);
+	CHECKd(param->min_pending_mb < param->max_pending_mb);
+	CHECKd(1 <= param->queue_stop_timeout_ms);
+	/* CHECKd(0 <= param->log_flush_interval_ms); */
+	/* CHECKd(0 <= param->log_flush_interval_mb); */
+	CHECKd(param->log_flush_interval_mb * 2 <= param->max_pending_mb);
+	CHECKd(0 < param->n_pack_bulk);
+	CHECKd(0 < param->n_io_bulk);
 	return true;
 error:
 	return false;

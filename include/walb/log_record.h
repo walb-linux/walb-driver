@@ -123,7 +123,14 @@ struct walb_logpack_header {
 static inline unsigned int max_n_log_record_in_sector(unsigned int pbs);
 static inline void log_record_init(struct walb_log_record *rec);
 static inline int is_valid_log_record(struct walb_log_record *rec);
+static inline int is_valid_log_record_const(const struct walb_log_record *rec);
 static inline int is_valid_logpack_header(const struct walb_logpack_header *lhead);
+static inline int is_valid_logpack_header_with_checksum(
+	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt);
+static inline int is_valid_logpack_header_and_records(
+	const struct walb_logpack_header *lhead);
+static inline int is_valid_logpack_header_and_records_with_checksum(
+	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt);
 static inline u64 get_next_lsid(const struct walb_logpack_header *lhead);
 
 /*******************************************************************************
@@ -157,18 +164,23 @@ static inline void log_record_init(struct walb_log_record *rec)
  */
 static inline int is_valid_log_record(struct walb_log_record *rec)
 {
-	CHECK(rec);
-	CHECK(test_bit_u32(LOG_RECORD_EXIST, &rec->flags));
-
+	CHECKd(rec);
+	CHECKd(test_bit_u32(LOG_RECORD_EXIST, &rec->flags));
 	if (!test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
-		CHECK(rec->io_size > 0);
+		CHECKd(rec->io_size > 0);
 	}
-	CHECK(rec->lsid_local > 0);
-	CHECK(rec->lsid <= MAX_LSID);
+	CHECKd(rec->lsid_local > 0);
+	CHECKd(rec->lsid <= MAX_LSID);
 
 	return 1; /* valid */
 error:
 	return 0; /* invalid */
+}
+
+static inline int is_valid_log_record_const(
+	const struct walb_log_record *rec)
+{
+	return is_valid_log_record((struct walb_log_record *)rec);
 }
 
 /**
@@ -183,25 +195,21 @@ static inline int is_valid_logpack_header(
 	const struct walb_logpack_header *lhead)
 {
 
-	CHECK(lhead);
-	CHECK(lhead->sector_type == SECTOR_TYPE_LOGPACK);
+	CHECKd(lhead);
+	CHECKd(lhead->sector_type == SECTOR_TYPE_LOGPACK);
 	if (lhead->n_records == 0) {
-		CHECK(lhead->total_io_size == 0);
-		CHECK(lhead->n_padding == 0);
+		CHECKd(lhead->total_io_size == 0);
+		CHECKd(lhead->n_padding == 0);
 	} else {
-#if 0
-		/* If All records are DISCARD, then total_io_size will be 0. */
-		CHECK(lhead->total_io_size > 0);
-#endif
-		CHECK(lhead->n_padding <= lhead->n_records);
+		CHECKd(lhead->n_padding <= lhead->n_records);
 
 		/* logpack_lsid overflow check. */
-		CHECK(lhead->logpack_lsid <
+		CHECKd(lhead->logpack_lsid <
 			lhead->logpack_lsid + 1 + lhead->total_io_size);
 	}
 	return 1;
 error:
-	LOGe("log pack header is invalid "
+	LOGd("log pack header is invalid "
 		"(n_records: %u total_io_size %u sector_type %u).\n",
 		lhead->n_records, lhead->total_io_size,
 		lhead->sector_type);
@@ -220,17 +228,56 @@ error:
 static inline int is_valid_logpack_header_with_checksum(
 	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt)
 {
-	CHECKL(error0, is_valid_logpack_header(lhead));
+	CHECKLd(error0, is_valid_logpack_header(lhead));
 	if (lhead->n_records > 0) {
-		CHECKL(error1, checksum((const u8 *)lhead, pbs, salt) == 0);
+		CHECKLd(error1, checksum((const u8 *)lhead, pbs, salt) == 0);
 	}
 	return 1;
 error0:
 	return 0;
 error1:
-	LOGe("logpack header checksum is invalid (lsid %"PRIu64").\n",
+	LOGd("logpack header checksum is invalid (lsid %" PRIu64").\n",
 		lhead->logpack_lsid);
 	return 0;
+}
+
+/**
+ * Check validness of a logpack header and records.
+ */
+static inline int is_valid_logpack_header_and_records(
+	const struct walb_logpack_header *lhead)
+{
+	unsigned int i;
+
+	if (!is_valid_logpack_header(lhead)) {
+		LOGd("header invalid.\n");
+		return 0;
+	}
+	for (i = 0; i < lhead->n_records; i++) {
+		const struct walb_log_record *rec = &lhead->record[i];
+		if (!is_valid_log_record_const(rec)) {
+			LOGd("record %u invalid.\n", i);
+			return 0;
+		}
+		if (rec->lsid - rec->lsid_local != lhead->logpack_lsid) {
+			LOGd("lsid(%" PRIu64 ") - lsid_local(%u)"
+				" != logpack_lsid(%" PRIu64 ")\n",
+				rec->lsid, rec->lsid_local, lhead->logpack_lsid);
+			return 0;
+		}
+	}
+	return 1;
+}
+
+static inline int is_valid_logpack_header_and_records_with_checksum(
+	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt)
+{
+	if (lhead->n_records > 0) {
+		if (checksum((const u8 *)lhead, pbs, salt) != 0) {
+			return 0;
+		}
+	}
+	return is_valid_logpack_header_and_records(lhead);
 }
 
 /**

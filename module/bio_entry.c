@@ -202,25 +202,25 @@ UNUSED static bool bio_cursor_is_valid(const struct bio_cursor *cur)
 	int i;
 	unsigned int off;
 
-	CHECK(cur);
-	CHECK(cur->bioe);
+	CHECKd(cur);
+	CHECKd(cur->bioe);
 
 	if (cur->bioe->len == 0) {
 		/* zero bio. */
-		CHECK(cur->idx == 0);
-		CHECK(cur->off == 0);
-		CHECK(cur->off_in == 0);
+		CHECKd(cur->idx == 0);
+		CHECKd(cur->off == 0);
+		CHECKd(cur->off_in == 0);
 		goto fin;
 	}
 
-	CHECK(cur->bioe->bio);
-	CHECK(cur->idx >= cur->bioe->bio->bi_idx);
-	CHECK(cur->idx <= cur->bioe->bio->bi_vcnt);
+	CHECKd(cur->bioe->bio);
+	CHECKd(cur->idx >= cur->bioe->bio->bi_idx);
+	CHECKd(cur->idx <= cur->bioe->bio->bi_vcnt);
 
 	if (cur->idx == cur->bioe->bio->bi_vcnt) {
 		/* cursur indicates the end. */
-		CHECK(cur->off == cur->bioe->len * LOGICAL_BLOCK_SIZE);
-		CHECK(cur->off_in == 0);
+		CHECKd(cur->off == cur->bioe->len * LOGICAL_BLOCK_SIZE);
+		CHECKd(cur->off_in == 0);
 		goto fin;
 	}
 
@@ -230,7 +230,7 @@ UNUSED static bool bio_cursor_is_valid(const struct bio_cursor *cur)
 		if (i == cur->idx) { break; }
 		off += bvec->bv_len;
 	}
-	CHECK(off + cur->off_in == cur->off);
+	CHECKd(off + cur->off_in == cur->off);
 
 fin:
 	return true;
@@ -1222,35 +1222,35 @@ bool bio_entry_cursor_is_valid(const struct bio_entry_cursor *cur)
 	unsigned int off_bytes;
 	struct bio_entry *bioe;
 
-	CHECK(cur);
-	CHECK(cur->bio_ent_list);
+	CHECKd(cur);
+	CHECKd(cur->bio_ent_list);
 
 	if (list_empty(cur->bio_ent_list)) {
 		/* Empty */
-		CHECK(!cur->bioe);
-		CHECK(cur->off == 0);
-		CHECK(cur->off_in == 0);
+		CHECKd(!cur->bioe);
+		CHECKd(cur->off == 0);
+		CHECKd(cur->off_in == 0);
 		goto fin;
 	}
 
 	if (!cur->bioe) {
 		/* End */
-		CHECK(cur->off_in == 0);
+		CHECKd(cur->off_in == 0);
 		goto fin;
 	}
 
 	ASSERT(cur->bioe);
-	CHECK(cur->bioe->len > 0);
-	CHECK(cur->off_in < cur->bioe->len);
+	CHECKd(cur->bioe->len > 0);
+	CHECKd(cur->off_in < cur->bioe->len);
 	bioe = NULL;
 	off_bytes = 0;
 	list_for_each_entry(bioe, cur->bio_ent_list, list) {
 		if (bioe == cur->bioe) { break; }
 		off_bytes += bioe->len * LOGICAL_BLOCK_SIZE;
 	}
-	CHECK(off_bytes % LOGICAL_BLOCK_SIZE == 0);
-	CHECK(off_bytes / LOGICAL_BLOCK_SIZE + cur->off_in == cur->off);
-	CHECK(cur->bioe == bioe);
+	CHECKd(off_bytes % LOGICAL_BLOCK_SIZE == 0);
+	CHECKd(off_bytes / LOGICAL_BLOCK_SIZE + cur->off_in == cur->off);
+	CHECKd(cur->bioe == bioe);
 
 fin:
 	return true;

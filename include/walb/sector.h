@@ -136,7 +136,7 @@ static inline struct sector_data* sector_alloc(
 
 	ASSERT(sector_size > 0);
 
-	sect = MALLOC(sizeof(struct sector_data), gfp_mask);
+	sect = (struct sector_data *)MALLOC(sizeof(struct sector_data), gfp_mask);
 	if (!sect) { goto error0; }
 	sect->size = sector_size;
 	sect->data = AMALLOC(sector_size, sector_size, gfp_mask);
@@ -286,7 +286,8 @@ static inline struct sector_data_array* sector_array_alloc(
 	ASSERT(sector_size > 0);
 
 	/* For itself. */
-	sect_ary = MALLOC(sizeof(struct sector_data_array), mask);
+	sect_ary = (struct sector_data_array *)
+		MALLOC(sizeof(struct sector_data_array), mask);
 	if (!sect_ary) { goto nomem0; }
 
 	/* For array of sector pointer. */
@@ -351,7 +352,7 @@ static inline int sector_array_realloc(
 
 	} else if (sect_ary->size < n_sectors) {
 		/* Grow */
-		new_ary = REALLOC(sect_ary->array,
+		new_ary = (struct sector_data **)REALLOC(sect_ary->array,
 				sizeof(struct sector_data *) * n_sectors, mask);
 		if (!new_ary) { goto error0; }
 		for (i = sect_ary->size; i < n_sectors; i++) {
@@ -457,7 +458,8 @@ static inline void sector_array_copy_detail(
 	while (copied < size) {
 		unsigned int sect_idx = (offset + copied) / sect_size;
 		unsigned int sect_off = (offset + copied) % sect_size;
-		unsigned int tmp_size = min(sect_size - sect_off, size - copied);
+		unsigned int tmp_size =
+			get_min_value(sect_size - sect_off, size - copied);
 
 		if (is_from) {
 			memcpy((u8 *)sect_ary->array[sect_idx]->data + sect_off,
@@ -519,8 +521,7 @@ static inline int sector_array_compare(
 	unsigned int i, sect_size;
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary1);
-
-	sect_size = sect_ary0->array[0]->size;
+	sect_size = sect_ary0->sector_size;
 
 	if (sect_ary0->size != sect_ary1->size) {
 		return sect_ary0->size - sect_ary1->size;
@@ -549,8 +550,7 @@ static inline int sector_array_sprint(
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(str);
 	ASSERT(str_size > 0);
-
-	sect_size = sect_ary->array[0]->size;
+	sect_size = sect_ary->sector_size;
 
 	str[0] = '\0';
 	for (i = 0; i < sect_ary->size; i++) {
@@ -589,13 +589,13 @@ static inline u32 sector_array_checksum(
 	ASSERT(size > 0);
 	ASSERT_SECTOR_DATA_ARRAY(sect_ary);
 	ASSERT(sect_ary->size > 0);
-	sect_size = sect_ary->array[0]->size;
+	sect_size = sect_ary->sector_size;
 
 	idx = offset / sect_size;
 	off = offset % sect_size;
 	while (remaining > 0) {
 		ASSERT(idx < sect_ary->size);
-		tsize = min(sect_size - off, remaining);
+		tsize = get_min_value(sect_size - off, remaining);
 		sum = checksum_partial(
 			sum, &((u8 *)sect_ary->array[idx]->data)[off],
 			tsize);
@@ -632,7 +632,7 @@ static inline void sector_array_memset(
 	off = offset % ssize;
 	while (remaining > 0) {
 		ASSERT(idx < sect_ary->size);
-		tsize = min(ssize - off, remaining);
+		tsize = get_min_value(ssize - off, remaining);
 		memset(&((u8 *)sect_ary->array[idx]->data)[off], val, tsize);
 		remaining -= tsize;
 		idx++;

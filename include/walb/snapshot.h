@@ -42,7 +42,7 @@ extern "C" {
 		flag,					\
 		"snapshot_record: id %u name "		\
 		"%."SNAPSHOT_NAME_MAX_LEN_S"s "		\
-		"lsid %"PRIu64" ts %"PRIu64"\n",	\
+		"lsid %" PRIu64" ts %" PRIu64"\n",	\
 		rec->snapshot_id,			\
 		rec->name, rec->lsid, rec->timestamp)
 

@@ -33,22 +33,28 @@ void dump_memory(u8 *data, size_t size)
 	}
 }
 
+/**
+ * USAGE:
+ *   test_rw BLOCK_DEVICE_PATH N_BLOCKS_TO_TEST
+ */
 int main(int argc, char* argv[])
 {
-	int i;
+	int i, fd, num;
+	const int n_blocks = 3;
+	u8 *block[n_blocks];
+	char *dev_path;
+	char *nblocks_str;
 
 	if (argc != 3) {
 		printf("usage: test_rw [walb device] [num of blocks]\n");
 		exit(1);
 	}
-	const char *walb_dev = argv[1];
-	const char *nblocks_str = argv[2];
+	dev_path = argv[1];
+	nblocks_str = argv[2];
 
 	init_random();
-	const int n_blocks = 3;
-	u8 *block[n_blocks];
-	int ret;
 	for (i = 0; i < n_blocks; i++) {
+		int ret;
 		ret = posix_memalign((void **)&block[i], 512, BLOCK_SIZE);
 		if (ret != 0) {
 			printf("malloc error\n");
@@ -56,13 +62,13 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	int fd = open(walb_dev, O_RDWR | O_DIRECT);
+	fd = open(dev_path, O_RDWR | O_DIRECT);
 	if (fd < 0) {
 		printf("open error\n");
 		exit(1);
 	}
 
-	int num = atoi(nblocks_str);
+	num = atoi(nblocks_str);
 	for (i = 0; i < num; i++) {
 		memset_random(block[0], BLOCK_SIZE);
 		memcpy(block[2], block[0], BLOCK_SIZE);
@@ -85,8 +91,10 @@ int main(int argc, char* argv[])
 #endif
 	}
 
-	close(fd);
-	for (i = 0; i < 3; i++) {
+	if (close(fd)) {
+		perror("close failed.");
+	}
+	for (i = 0; i < n_blocks; i++) {
 		free(block[i]);
 	}
 	return 0;

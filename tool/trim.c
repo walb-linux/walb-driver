@@ -16,14 +16,19 @@
 
 int main(int argc, char *argv[])
 {
+	char *dev_path;
+	u64 start_off = 0;
+	u64 end_off = -1;
+	u64 len;
+	u64 range[2];
+	int fd, ret;
+
+	/* Get command line arguments. */
 	if (argc < 2) {
 		LOGe("Specify a block device.\n");
-		goto error0;
+		return 1;
 	}
-	const char *dev_name = argv[1];
-
-	u64 start_off = 0;
-	u64 end_off = (u64)(-1);
+	dev_path = argv[1];
 	if (argc >= 4) {
 		start_off = (u64)atoll(argv[2]);
 		start_off *= 512;
@@ -31,35 +36,33 @@ int main(int argc, char *argv[])
 		end_off *= 512;
 	}
 
-	if (check_bdev(dev_name) < 0) {
-		LOGe("Check block device failed %s.\n", dev_name);
-		goto error0;
+	if (!is_valid_bdev(dev_path)) {
+		LOGe("Check block device failed %s.\n", dev_path);
+		return 1;
 	}
-	u64 len = get_bdev_size(dev_name);
+	len = get_bdev_size(dev_path);
 	if (len == (u64)(-1)) {
 		LOGe("Get device size failed.\n");
-		goto error0;
+		return 1;
 	}
 	ASSERT(len % 512 == 0);
 	if (end_off > len) {
 		end_off = len;
 	}
 
-	u64 range[2];
 	range[0] = start_off;
 	range[1] = end_off;
-
-	int fd = open(dev_name, O_RDWR);
+	fd = open(dev_path, O_RDWR);
 	if (fd < 0) {
 		perror("open failed.");
-		goto error0;
+		return 1;
 	}
 
 	/* discard */
 #if 1
-	int ret = ioctl(fd, BLKDISCARD, &range);
+	ret = ioctl(fd, BLKDISCARD, &range);
 #else
-	int ret = ioctl(fd, BLKSECDISCARD, &range);
+	ret = ioctl(fd, BLKSECDISCARD, &range);
 #endif
 	if (ret) {
 		LOGe("ioctl() error: %s\n", strerror(errno));
@@ -68,12 +71,13 @@ int main(int argc, char *argv[])
 
 	if (close(fd)) {
 		LOGe("close() error: %s\n", strerror(errno));
-		goto error0;
+		return 1;
 	}
 	return 0;
 
 error1:
 	close(fd);
-error0:
 	return 1;
 }
+
+/* end of file. */

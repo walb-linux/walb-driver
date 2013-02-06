@@ -44,14 +44,6 @@ typedef int64_t s64;
 /* bool */
 #include <stdbool.h>
 
-/* min/max */
-#ifndef min
-#define min(x, y) ((x) < (y) ? (x) : (y))
-#endif
-#ifndef max
-#define max(x, y) ((x) > (y) ? (x) : (y))
-#endif
-
 #ifdef __cplusplus
 }
 #endif

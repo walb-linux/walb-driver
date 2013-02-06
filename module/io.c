@@ -1825,34 +1825,34 @@ static bool is_prepared_pack_valid(struct pack *pack)
 
 	LOGd_("is_prepared_pack_valid begin.\n");
 
-	CHECK(pack);
-	CHECK(pack->logpack_header_sector);
+	CHECKd(pack);
+	CHECKd(pack->logpack_header_sector);
 
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	pbs = pack->logpack_header_sector->size;
 	ASSERT_PBS(pbs);
-	CHECK(lhead);
-	CHECK(is_valid_logpack_header(lhead));
+	CHECKd(lhead);
+	CHECKd(is_valid_logpack_header(lhead));
 
-	CHECK(!list_empty(&pack->biow_list));
+	CHECKd(!list_empty(&pack->biow_list));
 
 	i = 0;
 	total_pb = 0;
 	list_for_each_entry(biow, &pack->biow_list, list) {
 		struct walb_log_record *lrec;
 
-		CHECK(biow->bio);
+		CHECKd(biow->bio);
 		if (biow->len == 0) {
-			CHECK(biow->bio->bi_rw & REQ_FLUSH);
-			CHECK(i == 0);
-			CHECK(lhead->n_records == 0);
-			CHECK(lhead->total_io_size == 0);
+			CHECKd(biow->bio->bi_rw & REQ_FLUSH);
+			CHECKd(i == 0);
+			CHECKd(lhead->n_records == 0);
+			CHECKd(lhead->total_io_size == 0);
 			continue;
 		}
 
-		CHECK(i < lhead->n_records);
+		CHECKd(i < lhead->n_records);
 		lrec = &lhead->record[i];
-		CHECK(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
+		CHECKd(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 
 		if (test_bit_u32(LOG_RECORD_PADDING, &lrec->flags)) {
 			LOGd_("padding found.\n"); /* debug */
@@ -1860,28 +1860,28 @@ static bool is_prepared_pack_valid(struct pack *pack)
 			n_padding++;
 			i++;
 			/* The corresponding record of the biow must be the next. */
-			CHECK(i < lhead->n_records);
+			CHECKd(i < lhead->n_records);
 		}
 
 		/* Normal record. */
-		CHECK(biow->bio);
-		CHECK(biow->bio->bi_rw & REQ_WRITE);
-		CHECK(biow->pos == (sector_t)lrec->offset);
-		CHECK(lhead->logpack_lsid == lrec->lsid - lrec->lsid_local);
-		CHECK(biow->len == lrec->io_size);
+		CHECKd(biow->bio);
+		CHECKd(biow->bio->bi_rw & REQ_WRITE);
+		CHECKd(biow->pos == (sector_t)lrec->offset);
+		CHECKd(lhead->logpack_lsid == lrec->lsid - lrec->lsid_local);
+		CHECKd(biow->len == lrec->io_size);
 		if (test_bit_u32(LOG_RECORD_DISCARD, &lrec->flags)) {
-			CHECK(bio_wrapper_state_is_discard(biow));
+			CHECKd(bio_wrapper_state_is_discard(biow));
 		} else {
-			CHECK(!bio_wrapper_state_is_discard(biow));
+			CHECKd(!bio_wrapper_state_is_discard(biow));
 			total_pb += capacity_pb(pbs, lrec->io_size);
 		}
 		i++;
 	}
-	CHECK(i == lhead->n_records);
-	CHECK(total_pb == lhead->total_io_size);
-	CHECK(n_padding == lhead->n_padding);
+	CHECKd(i == lhead->n_records);
+	CHECKd(total_pb == lhead->total_io_size);
+	CHECKd(n_padding == lhead->n_padding);
 	if (lhead->n_records == 0) {
-		CHECK(pack->is_zero_flush_only);
+		CHECKd(pack->is_zero_flush_only);
 	}
 	LOGd_("valid.\n");
 	return true;
@@ -1904,7 +1904,7 @@ static bool is_pack_list_valid(struct list_head *pack_list)
 	struct pack *pack;
 
 	list_for_each_entry(pack, pack_list, list) {
-		CHECK(is_prepared_pack_valid(pack));
+		CHECKd(is_prepared_pack_valid(pack));
 	}
 	return true;
 error:

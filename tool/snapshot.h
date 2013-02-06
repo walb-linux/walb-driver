@@ -21,7 +21,8 @@ extern "C" {
  * Prototypes for utility functions.
  */
 void print_snapshot_record(const struct walb_snapshot_record* snap_rec);
-void print_snapshot_sector_raw(const struct walb_snapshot_sector* snap_sect, u32 sector_size);
+void print_snapshot_sector_raw(
+	const struct walb_snapshot_sector* snap_sect, u32 sector_size);
 void print_snapshot_sector(const struct sector_data *snap_sect);
 bool write_snapshot_sector(
 	int fd, const struct sector_data *super_sect,

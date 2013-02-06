@@ -96,7 +96,7 @@ struct walblog_header
 /**
  * Print walblog header.
  */
-inline void print_wlog_header(struct walblog_header* wh)
+static inline void print_wlog_header(struct walblog_header* wh)
 {
 	char uuidstr[UUID_STR_SIZE];
 
@@ -107,13 +107,13 @@ inline void print_wlog_header(struct walblog_header* wh)
 
 	printf("*****walblog header*****\n"
 		"checksum: %08x\n"
-		"version: %"PRIu32"\n"
-		"log_checksum_salt: %"PRIu32"\n"
-		"logical_bs: %"PRIu32"\n"
-		"physical_bs: %"PRIu32"\n"
+		"version: %" PRIu32"\n"
+		"log_checksum_salt: %" PRIu32"\n"
+		"logical_bs: %" PRIu32"\n"
+		"physical_bs: %" PRIu32"\n"
 		"uuid: %s\n"
-		"begin_lsid: %"PRIu64"\n"
-		"end_lsid: %"PRIu64"\n",
+		"begin_lsid: %" PRIu64"\n"
+		"end_lsid: %" PRIu64"\n",
 		wh->checksum,
 		wh->version,
 		wh->log_checksum_salt,
@@ -129,29 +129,25 @@ inline void print_wlog_header(struct walblog_header* wh)
  *
  * @return true in valid, or false.
  */
-inline bool check_wlog_header(struct walblog_header* wh)
+static inline bool is_valid_wlog_header(struct walblog_header* wh)
 {
 	if (checksum((const u8 *)wh, WALBLOG_HEADER_SIZE, 0) != 0) {
 		LOGe("wlog checksum is invalid.\n");
-		goto error0;
+		return false;
 	}
 	if (wh->sector_type != SECTOR_TYPE_WALBLOG_HEADER) {
 		LOGe("wlog header sector type is invalid.\n");
-		goto error0;
+		return false;
 	}
 	if (wh->version != WALB_VERSION) {
 		LOGe("wlog header version is invalid.\n");
-		goto error0;
+		return false;
 	}
 	if (wh->begin_lsid >= wh->end_lsid) {
 		LOGe("wlog header does not satisfy begin_lsid < end_lsid.\n");
-		goto error0;
+		return false;
 	}
-
 	return true;
-
-error0:
-	return false;
 }
 
 #ifdef __cplusplus
