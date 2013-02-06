@@ -1971,7 +1971,10 @@ static bool do_redo_wlog(const struct config *cfg)
 
 	/* Read wlog header. */
 	read_data(0, (u8 *)wh, WALBLOG_HEADER_SIZE);
-	check_wlog_header(wh);
+	if (!is_valid_wlog_header(wh)) {
+		LOGe("wlog header invalid.\n");
+		goto error2;
+	}
 	print_wlog_header(wh); /* debug */
 
 	const u32 salt = wh->log_checksum_salt;
@@ -2244,7 +2247,10 @@ static bool do_show_wlog(const struct config *cfg)
 	print_wlog_header(wh);
 
 	/* Check wlog header. */
-	check_wlog_header(wh);
+	if (!is_valid_wlog_header(wh)) {
+		LOGe("wlog header invalid.\n");
+		goto error1;
+	}
 	const u32 salt = wh->log_checksum_salt;
 
 	/* Set block size. */
