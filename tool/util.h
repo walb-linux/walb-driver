@@ -43,10 +43,14 @@ bool write_data(int fd, const u8* data, size_t size);
 bool is_same_block_size(const char* devpath1, const char* devpath2);
 
 /* Sector functions (will be obsolute). */
-bool read_sectors_raw(int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n);
-bool read_sector_raw(int fd, u8* sector_buf, u32 sector_size, u64 offset);
-bool write_sectors_raw(int fd, const u8* sectors_buf, u32 sector_size, u64 offset, int n);
-bool write_sector_raw(int fd, const u8* sector_buf, u32 sector_size, u64 offset);
+bool read_sectors_raw(
+	int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n);
+bool read_sector_raw(
+	int fd, u8* sector_buf, u32 sector_size, u64 offset);
+bool write_sectors_raw(
+	int fd, const u8* sectors_buf, u32 sector_size, u64 offset, int n);
+bool write_sector_raw(
+	int fd, const u8* sector_buf, u32 sector_size, u64 offset);
 
 #ifdef __cplusplus
 }

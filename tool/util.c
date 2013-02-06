@@ -29,8 +29,8 @@ void print_binary_hex(const u8* data, size_t size)
 {
 	size_t i;
 	for (i = 0; i < size; i++) {
-
 		int c = (unsigned char)data[i];
+
 		if (c == 0) {
 			printf("__");
 		} else {
@@ -51,7 +51,8 @@ void print_binary_hex(const u8* data, size_t size)
  * @buf result buffer.
  * @n buffer size.
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool get_datetime_str(time_t t, char* buf, size_t n)
 {
@@ -72,7 +73,7 @@ bool get_datetime_str(time_t t, char* buf, size_t n)
 	len = (size_t)ret;
 
 	ASSERT(len <= n);
-	return (len < n ? true : false);
+	return len < n ? true : false;
 }
 
 /**
@@ -167,7 +168,8 @@ error1:
  * open file and confirm it is really block device.
  *
  * @devpath block device path.
- * @return fd is succeeded, -1 else.
+ * RETURN:
+ *   fd is succeeded, -1 else.
  */
 static int open_blk_dev(const char* devpath)
 {
@@ -178,24 +180,20 @@ static int open_blk_dev(const char* devpath)
 	fd = open(devpath, O_RDONLY);
 	if (fd < 0) {
 		perror("open failed");
-		goto error;
+		return -1;
 	}
-
 	if (fstat(fd, &sb) == -1) {
 		perror("fstat failed");
-		goto close;
+		goto error1;
 	}
-
 	if ((sb.st_mode & S_IFMT) != S_IFBLK) {
 		LOGe("%s is not block device.\n", devpath);
-		goto close;
+		goto error1;
 	}
-
 	return fd;
 
-close:
+error1:
 	close(fd);
-error:
 	return -1;
 }
 
@@ -204,31 +202,31 @@ error:
  * Get logical block size of the block device.
  *
  * @devpath device file path.
- * @return sector size in succeeded, or -1.
+ * RETURN:
+ *   sector size in succeeded, or -1.
  */
 int get_bdev_logical_block_size(const char* devpath)
 {
 	int fd;
-	unsigned int pbs;
+	unsigned int lbs;
 
 	fd = open_blk_dev(devpath);
 	if (fd < 0) {
 		perror("open failed.");
-		goto error0;
+		return -1;
 	}
-	if (ioctl(fd, BLKSSZGET, &pbs) < 0) {
+	if (ioctl(fd, BLKSSZGET, &lbs) < 0) {
 		perror("ioctl failed");
 		goto error1;
 	}
 	if (close(fd)) {
 		perror("close failed.");
-		goto error0;
+		return -1;
 	}
-	return (int)pbs;
+	return (int)lbs;
 
 error1:
 	close(fd);
-error0:
 	return -1;
 }
 
@@ -236,7 +234,8 @@ error0:
  * Get physical block size of the block device.
  *
  * @devpath device file path.
- * @return sector size in succeeded, or -1.
+ * RETURN:
+ *   sector size in succeeded, or -1.
  */
 int get_bdev_physical_block_size(const char* devpath)
 {
@@ -246,7 +245,7 @@ int get_bdev_physical_block_size(const char* devpath)
 	fd = open_blk_dev(devpath);
 	if (fd < 0) {
 		perror("open failed.");
-		goto error0;
+		return -1;
 	}
 	if (ioctl(fd, BLKPBSZGET, &pbs) < 0) {
 		perror("ioctl failed");
@@ -254,13 +253,12 @@ int get_bdev_physical_block_size(const char* devpath)
 	}
 	if (close(fd)) {
 		perror("close failed.");
-		goto error0;
+		return -1;
 	}
 	return (int)pbs;
 
 error1:
 	close(fd);
-error0:
 	return -1;
 }
 
@@ -268,36 +266,38 @@ error0:
  * Get block device size.
  *
  * @devpath device file path.
- * @return size in bytes in success, or (u64)(-1).
+ * RETURN:
+ *   size in bytes in success, or (u64)(-1).
  */
 u64 get_bdev_size(const char* devpath)
 {
 	int fd;
 	u64 size;
+	const u64 err_size = (u64)(-1);
 
 	fd = open_blk_dev(devpath);
 	if (fd < 0) {
-		goto error0;
+		return err_size;
 	}
 	if (ioctl(fd, BLKGETSIZE64, &size) < 0) {
 		goto error1;
 	}
 	if (close(fd)) {
-		goto error0;
+		return err_size;
 	}
 	return size;
 
 error1:
 	close(fd);
-error0:
-	return (u64)(-1);
+	return err_size;
 }
 
 /**
  * Get device id from the device file path.
  *
  * @devpath device file path.
- * @return device id.
+ * RETURN:
+ *   device id.
  */
 dev_t get_bdev_devt(const char *devpath)
 {
@@ -307,23 +307,21 @@ dev_t get_bdev_devt(const char *devpath)
 
 	if (stat(devpath, &sb) == -1) {
 		LOGe("%s stat failed.\n", devpath);
-		goto error;
+		return (dev_t)(-1);;
 	}
-
 	if ((sb.st_mode & S_IFMT) != S_IFBLK) {
 		LOGe("%s is not block device.\n", devpath);
-		goto error;
+		return (dev_t)(-1);
 	}
-
 	return sb.st_rdev;
-
-error:
-	return (dev_t)(-1);
 }
 
 /**
  * Check discard request support by
  * trying to discard the first physical sector.
+ *
+ * CAUSION:
+ *   The first physical sector may be discarded.
  *
  * @fd opened file descriptor.
  *
@@ -336,20 +334,17 @@ bool is_discard_supported(int fd)
 	int ret;
 	u64 range[2] = { 0, 0 };
 
-	if (fd < 0) { goto error0; }
+	if (fd < 0) { return false; }
 
 	/* Physical block size [bytes]. */
 	ret = ioctl(fd, BLKPBSZGET, &pbs);
-	if (ret < 0) { goto error0; }
+	if (ret < 0) { return false; }
 	ASSERT_PBS(pbs);
 	range[1] = pbs;
 
 	/* Try to discard. */
 	ret = ioctl(fd, BLKDISCARD, &range);
 	return ret == 0;
-
-error0:
-	return false;
 }
 
 /**
@@ -368,14 +363,14 @@ bool discard_whole_area(int fd)
 
 	if (fd < 0) {
 		LOGe("fd < 0.\n");
-		goto error0;
+		return false;
 	}
 
 	/* Device size [bytes]. */
 	ret = ioctl(fd, BLKGETSIZE64, &dev_size);
 	if (ret < 0) {
 		LOGe("ioctl() failed: %s.\n", strerror(errno));
-		goto error0;
+		return false;
 	}
 	range[1] = dev_size;
 
@@ -383,12 +378,9 @@ bool discard_whole_area(int fd)
 	ret = ioctl(fd, BLKDISCARD, &range);
 	if (ret) {
 		LOGe("discard failed: %s\n", strerror(errno));
-		goto error0;
+		return false;
 	}
 	return true;
-
-error0:
-	return false;
 }
 
 /**
@@ -430,9 +422,10 @@ void copy_uuid(u8* dst, const u8* src)
  *
  * @sector_buf aligned buffer to be filled with read sector data.
  * @sector_size sector size in bytes.
- * @offset offset in sectors.
+ * @offset offset in sectors [bytes].
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool read_sector_raw(int fd, u8* sector_buf, u32 sector_size, u64 offset)
 {
@@ -445,10 +438,11 @@ bool read_sector_raw(int fd, u8* sector_buf, u32 sector_size, u64 offset)
  *
  * @sectors_buf aligned buffer to be filled with read sectors data.
  * @sector_size sector size in bytes.
- * @offset offset in sectors.
+ * @offset offset in sectors [bytes].
  * @n number of sectors to read.
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool read_sectors_raw(
 	int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n)
@@ -475,9 +469,10 @@ bool read_sectors_raw(
  * @fd file descriptor to write.
  * @sector_buf aligned buffer containing sector data.
  * @sector_size sector size in bytes.
- * @offset offset in sectors.
+ * @offset offset in sectors [bytes].
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool write_sector_raw(
 	int fd, const u8* sector_buf, u32 sector_size, u64 offset)
@@ -491,10 +486,11 @@ bool write_sector_raw(
  * @fd file descriptor to write.
  * @sectors_buf aligned buffer containing sectors data.
  * @sector_size sector size in bytes.
- * @offset offset in sectors.
+ * @offset offset in sectors [bytes].
  * @n number of sectors to be written.
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool write_sectors_raw(
 	int fd, const u8* sectors_buf, u32 sector_size, u64 offset, int n)
@@ -517,12 +513,14 @@ bool write_sectors_raw(
 
 /**
  * Read data.
+ * This is for stream.
  *
  * @fd file descriptor.
  * @data pointer to store data.
  * @size read size [bytes].
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool read_data(int fd, u8* data, size_t size)
 {
@@ -540,12 +538,14 @@ bool read_data(int fd, u8* data, size_t size)
 
 /**
  * Write data.
+ * This is for stream.
  *
  * @fd file descriptor.
  * @data data pointer.
  * @size write size [bytes].
  *
- * @return true in success, or false.
+ * RETURN:
+ *   true in success, or false.
  */
 bool write_data(int fd, const u8* data, size_t size)
 {
@@ -564,7 +564,8 @@ bool write_data(int fd, const u8* data, size_t size)
 /**
  * Check block size of two devices.
  *
- * @return true when two devices has compatible block sizes, or false.
+ * RETURN:
+ *   true when two devices has compatible block sizes, or false.
  */
 bool is_same_block_size(const char* devpath1, const char* devpath2)
 {
@@ -575,7 +576,7 @@ bool is_same_block_size(const char* devpath1, const char* devpath2)
 	int pbs1 = get_bdev_physical_block_size(devpath1);
 	int pbs2 = get_bdev_physical_block_size(devpath2);
 
-	return (lbs1 == lbs2 && pbs1 == pbs2);
+	return lbs1 == lbs2 && pbs1 == pbs2;
 }
 
 /* end of file */
