@@ -116,8 +116,9 @@ test_logpack.o: test/test_logpack.c ../include/walb/block_size.h \
  ../include/walb/snapshot.h ../include/walb/u64bits.h logpack.h \
  ../include/walb/log_record.h ../include/walb/sector.h
 util.o: util.c ../include/walb/common.h ../include/walb/userland.h \
- ../include/walb/block_size.h ../include/walb/common.h random.h \
- check_userland.h ../include/walb/userland.h util.h
+ ../include/walb/block_size.h ../include/walb/common.h \
+ ../include/walb/util.h random.h check_userland.h \
+ ../include/walb/userland.h util.h
 logpack.o: logpack.c ../include/walb/block_size.h \
  ../include/walb/common.h ../include/walb/userland.h util.h \
  ../include/walb/common.h walb_util.h check_userland.h \
