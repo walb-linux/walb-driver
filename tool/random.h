@@ -25,8 +25,8 @@ extern "C" {
 
 /**
  * Read /dev/urandom to generate random value.
- *
- * @return random value in success, or 0.
+ * RETURN:
+ *   random value in success, or 0.
  */
 static inline u32 read_urandom()
 {
@@ -34,16 +34,17 @@ static inline u32 read_urandom()
 	fd = open("/dev/urandom", O_RDONLY);
 	if (fd < 0) {
 		perror("open /dev/urandom failed\n");
-		goto error;
+		return 0;
 	}
 	if (read(fd, (void *)&val, sizeof(u32)) != sizeof(u32)) {
-		printf("read /dev/urandom failed\n");
-		goto error;
+		perror("read /dev/urandom failed\n");
+		return 0;
 	}
-	close(fd);
+	if (close(fd)) {
+		perror("close failed");
+		/* no return. */
+	}
 	return val;
-error:
-	return 0;
 }
 
 /**
@@ -54,21 +55,29 @@ static inline void init_random()
 	u32 r;
 	r = read_urandom();
 	if (r == 0) {
-		srand(time(0));
-	} else {
-		srand(r);
+		r = time(0);
 	}
+	srand(r);
 }
 
+/**
+ * Get random value in a range.
+ * RETURN:
+ *   min <= val < max
+ */
+static inline int get_random_range(int min, int max)
+{
+	return min + (int)(rand() * (max - min + 0.0) / (RAND_MAX + 1.0));
+}
 
 /**
  * Get random value.
- * @return 0 <= val < max
+ * RETURN:
+ *   0 <= val < max.
  */
 static inline int get_random(int max)
 {
-	int min = 0;
-	return min + (int)(rand() * (max - min + 0.0) / (RAND_MAX + 1.0));
+	return get_random_range(0, max);
 }
 
 /**
@@ -81,7 +90,6 @@ static inline void memset_random(u8 *data, size_t size)
 		data[i] = (u8)get_random(255);
 	}
 }
-
 
 /**
  * Random generator test.
