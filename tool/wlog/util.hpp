@@ -111,40 +111,6 @@ void testFormatString()
     }
 }
 
-#if 0
-/**
- * Each IO log.
- */
-struct IoLog
-{
-    const unsigned int threadId;
-    const IoType type;
-    const size_t blockId;
-    const double startTime; /* unix time [second] */
-    const double response; /* [second] */
-
-    IoLog(unsigned int threadId_, IoType type_, size_t blockId_,
-          double startTime_, double response_)
-        : threadId(threadId_)
-        , type(type_)
-        , blockId(blockId_)
-        , startTime(startTime_)
-        , response(response_) {}
-
-    IoLog(const IoLog& log)
-        : threadId(log.threadId)
-        , type(log.type)
-        , blockId(log.blockId)
-        , startTime(log.startTime)
-        , response(log.response) {}
-
-    void print() {
-        ::printf("threadId %d type %d blockId %10zu startTime %.06f response %.06f\n",
-                 threadId, (int)type, blockId, startTime, response);
-    }
-};
-#endif
-
 static inline double getTime()
 {
     struct timeval tv;
@@ -827,25 +793,6 @@ std::shared_ptr<T> allocateBlock(size_t alignment, size_t size)
         });
 }
 
-#if 0
-template<typename T>
-class BlockAllocator
-{
-private:
-    const size_t alignment_;
-    const size_t size_;
-
-public:
-    BlockAllocator(size_t alignment, size_t size)
-        : alignment_(alignment)
-        , size_(size) {}
-
-    std::shared_ptr<T> alloc() {
-        return allocateBlock<T>(alignment_, size_);
-    }
-    size_t blockSize() const { return size_; }
-};
-#else
 template<typename T>
 class BlockAllocator
 {
@@ -875,7 +822,6 @@ public:
 
     size_t blockSize() const { return size_; }
 };
-#endif
 
 /**
  * Convert size string with unit suffix to unsigned integer.
