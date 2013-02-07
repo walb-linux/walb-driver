@@ -21,6 +21,8 @@
 #include <unordered_map>
 #include <cstdint>
 #include <cinttypes>
+#include <string>
+#include <cerrno>
 
 #include <sys/time.h>
 #include <sys/types.h>
@@ -123,12 +125,32 @@ static inline double getTime()
     return t;
 }
 
+class LibcError : public std::exception {
+public:
+    LibcError() : LibcError(errno) {}
+
+    explicit LibcError(int errnum)
+        : errnum_(errnum)
+        , str_(formatString("%s", ::strerror(errnum))) {}
+
+    virtual const char *what() const noexcept {
+        return str_.c_str();
+    }
+private:
+    int errnum_;
+    std::string str_;
+};
+
 class EofError : public std::exception {
+public:
     virtual const char *what() const noexcept {
         return "eof error";
     }
 };
 
+/**
+ * File descriptor operations wrapper.
+ */
 class FdOperator
 {
 private:
