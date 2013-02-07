@@ -32,7 +32,6 @@
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 
-
 #define RT_ERR(fmt, args...)                                    \
     std::runtime_error(walb::util::formatString(fmt, ##args))
 
@@ -52,7 +51,6 @@ namespace util {
 std::string formatString(const char * format, ...)
 {
     char *p = nullptr;
-
     va_list args;
     va_start(args, format);
     int ret = ::vasprintf(&p, format, args);
@@ -66,6 +64,9 @@ std::string formatString(const char * format, ...)
     return st;
 }
 
+/**
+ * Formst string with va_list.
+ */
 std::string formatStringV(const char *format, va_list ap)
 {
     char *p = nullptr;
@@ -125,13 +126,16 @@ static inline double getTime()
     return t;
 }
 
+/**
+ * Libc error wrapper.
+ */
 class LibcError : public std::exception {
 public:
     LibcError() : LibcError(errno) {}
 
-    explicit LibcError(int errnum)
+    LibcError(int errnum, const char* msg = "libc_error: ")
         : errnum_(errnum)
-        , str_(formatString("%s", ::strerror(errnum))) {}
+        , str_(formatString("%s%s", msg, ::strerror(errnum))) {}
 
     virtual const char *what() const noexcept {
         return str_.c_str();
@@ -141,6 +145,9 @@ private:
     std::string str_;
 };
 
+/**
+ * Eof error for IO.
+ */
 class EofError : public std::exception {
 public:
     virtual const char *what() const noexcept {
@@ -167,7 +174,7 @@ public:
         while (s < size) {
             ssize_t ret = ::read(fd_, &buf[s], size - s);
             if (ret < 0) {
-                throw RT_ERR("read failed: %s.", ::strerror(errno));
+                throw LibcError(errno, "read failed: ");
             }
             if (ret == 0) {
                 throw EofError();
@@ -184,7 +191,7 @@ public:
         while (s < size) {
             ssize_t ret = ::write(fd_, &buf[s], size - s);
             if (ret < 0) {
-                throw RT_ERR("write failed: %s.", ::strerror(errno));
+                throw LibcError(errno, "write failed: ");
             }
             if (ret == 0) {
                 throw EofError();
@@ -199,7 +206,7 @@ public:
     void lseek(off_t oft, int whence) {
         off_t ret = ::lseek(fd_, oft, whence);
         if (ret == -1) {
-            throw RT_ERR("lseek failed: %s.", ::strerror(errno));
+            throw LibcError(errno, "lseek failed: ");
         }
     }
 
@@ -209,7 +216,7 @@ public:
     void fdatasync() {
         int ret = ::fdatasync(fd_);
         if (ret) {
-            throw RT_ERR("fdsync failed: %s.", ::strerror(errno));
+            throw LibcError(errno, "fdsync failed: ");
         }
     }
 
@@ -219,11 +226,14 @@ public:
     void fsync() {
         int ret = ::fsync(fd_);
         if (ret) {
-            throw RT_ERR("fsync failed: %s.", ::strerror(errno));
+            throw LibcError(errno, "fsync failed: ");
         }
     }
 };
 
+/**
+ * File descriptor wrapper. Read only.
+ */
 class FdReader : public FdOperator
 {
 public:
@@ -233,6 +243,9 @@ public:
     void fsync() = delete;
 };
 
+/**
+ * File descriptor wrapper. Write only.
+ */
 class FdWriter : public FdOperator
 {
 public:
@@ -242,7 +255,7 @@ public:
 
 /**
  * A simple file opener.
- * close() will be called in destructor when you forget to call it.
+ * close() will be called in the destructor when you forget to call it.
  */
 class FileOpener
 {
@@ -262,7 +275,6 @@ public:
         try {
             close();
         } catch (...) {
-            ::fprintf(::stderr, "close() failed.\n");
         }
     }
 
@@ -276,7 +288,7 @@ public:
     void close() {
         std::call_once(closeFlag_, [&]() {
                 if (::close(fd_)) {
-                    throw RT_ERR("close failed: %s.", ::strerror(errno));
+                    throw LibcError(errno, "close failed: ");
                 }
                 fd_ = -1;
             });
@@ -285,14 +297,14 @@ private:
     static int staticOpen(const std::string& filePath, int flags) {
         int fd = ::open(filePath.c_str(), flags);
         if (fd < 0) {
-            throw RT_ERR("open failed: %s.", ::strerror(errno));
+            throw LibcError(errno, "open failed: ");
         }
         return fd;
     }
     static int staticOpen(const std::string& filePath, int flags, int mode) {
         int fd = ::open(filePath.c_str(), flags, mode);
         if (fd < 0) {
-            throw RT_ERR("open failed: %s.", ::strerror(errno));
+            throw LibcError(errno, "open failed: ");
         }
         return fd;
     }
@@ -309,7 +321,7 @@ private:
     unsigned int lbs_; // logical block size [bytes].
     unsigned int pbs_; // physical block size [bytes].
 
-    std::once_flag close_flag_;
+    std::once_flag closeFlag_;
 
 public:
     BlockDevice(const std::string& name, int flags)
@@ -342,7 +354,6 @@ public:
     }
 
     BlockDevice& operator=(BlockDevice&& rhs) {
-
         name_ = std::move(rhs.name_);
         openFlags_ = rhs.openFlags_;
         fd_ = rhs.fd_; rhs.fd_ = -1;
@@ -357,15 +368,14 @@ public:
         try {
             close();
         } catch (...) {
-            ::fprintf(::stderr, "close failed.\n");
         }
     }
 
     void close() {
-        std::call_once(close_flag_, [&]() {
+        std::call_once(closeFlag_, [&]() {
                 if (fd_ > 0) {
                     if (::close(fd_) < 0) {
-                        throw RT_ERR("close failed.");
+                        throw LibcError(errno, "close failed: ");
                     }
                     fd_ = -1;
                 }
@@ -376,7 +386,6 @@ public:
      * Read data and fill a buffer.
      */
     void read(off_t oft, size_t size, char* buf) {
-
         if (deviceSize_ < oft + size) { throw EofError(); }
         ::lseek(fd_, oft, SEEK_SET);
         size_t s = 0;
@@ -386,7 +395,7 @@ public:
 #endif
             ssize_t ret = ::read(fd_, &buf[s], size - s);
             if (ret < 0) {
-                throw RT_ERR("read failed: %s.", ::strerror(errno));
+                throw LibcError(errno, "read failed: ");
             }
             if (ret == 0) {
                 throw EofError();
@@ -399,7 +408,6 @@ public:
      * Write data of a buffer.
      */
     void write(off_t oft, size_t size, const char* buf) {
-
         if (deviceSize_ < oft + size) { throw EofError(); }
         ::lseek(fd_, oft, SEEK_SET);
         size_t s = 0;
@@ -409,7 +417,7 @@ public:
 #endif
             ssize_t ret = ::write(fd_, &buf[s], size - s);
             if (ret < 0) {
-                throw RT_ERR("write failed: %s.", ::strerror(errno));
+                throw LibcError(errno, "write failed: ");
             }
             if (ret == 0) {
                 throw EofError();
@@ -422,10 +430,9 @@ public:
      * fdatasync.
      */
     void fdatasync() {
-
         int ret = ::fdatasync(fd_);
         if (ret) {
-            throw RT_ERR("fdsync failed: %s.", ::strerror(errno));
+            throw LibcError(errno, "fdatasync failed: ");
         }
     }
 
@@ -433,10 +440,9 @@ public:
      * fsync.
      */
     void fsync() {
-
         int ret = ::fsync(fd_);
         if (ret) {
-            throw RT_ERR("fsync failed: %s.", ::strerror(errno));
+            throw LibcError(errno, "fsync failed: ");
         }
     }
 
@@ -470,26 +476,23 @@ private:
      * Helper function for constructor.
      */
     static int openDevice(const std::string& name, int flags) {
-
         int fd = ::open(name.c_str(), flags);
         if (fd < 0) {
-            throw RT_ERR("open %s failed: %s.",
-                         name.c_str(), ::strerror(errno));
+            throw LibcError(
+                errno, formatString("open %s failed: ", name.c_str()).c_str());
         }
         return fd;
     }
 
     static void statStatic(int fd, struct stat *s) {
-
         assert(fd >= 0);
         assert(s);
         if (::fstat(fd, s) < 0) {
-            throw RT_ERR("stat failed: %s.", ::strerror(errno));
+            throw LibcError(errno, "fstat failed: ");
         }
     }
 
     static unsigned int getPhysicalBlockSizeStatic(int fd) {
-
         assert(fd >= 0);
 
         if (!isBlockDeviceStatic(fd)) {
@@ -498,14 +501,13 @@ private:
 
         unsigned int pbs;
         if (::ioctl(fd, BLKPBSZGET, &pbs) < 0) {
-            throw RT_ERR("Getting physical block size failed.");
+            throw LibcError(errno, "Getting physical block size failed: ");
         }
         assert(pbs > 0);
         return pbs;
     }
 
     static unsigned int getLogicalBlockSizeStatic(int fd) {
-
         assert(fd >= 0);
 
         if (!isBlockDeviceStatic(fd)) {
@@ -514,14 +516,13 @@ private:
 
         unsigned int lbs;
         if (::ioctl(fd, BLKSSZGET, &lbs) < 0) {
-            throw RT_ERR("Geting logical block size failed.");
+            throw LibcError(errno, "Geting logical block size failed: ");
         }
         assert(lbs > 0);
         return lbs;
     }
 
     static bool isBlockDeviceStatic(int fd) {
-
         assert(fd >= 0);
 
         struct stat s;
@@ -543,7 +544,7 @@ private:
         if (isBlockDeviceStatic(fd)) {
             size_t size;
             if (::ioctl(fd, BLKGETSIZE64, &size) < 0) {
-                throw RT_ERR("ioctl failed: %s.", ::strerror(errno));
+                throw LibcError(errno, "ioctl failed: ");
             }
             return size;
         } else {
@@ -568,13 +569,17 @@ private:
     std::vector<T> data_;
 
 public:
-    DataBuffer(size_t size)
+    explicit DataBuffer(size_t size)
         : size_(size)
         , idx_(0)
         , allocated_(0)
         , bmp_(size, false)
         , data_(size) {}
 
+    /**
+     * RETURN:
+     *   buffer pointer in success, or nullptr.
+     */
     T* alloc() {
         if (allocated_ >= size_) {
             return nullptr;
@@ -590,6 +595,9 @@ public:
         return p;
     }
 
+    /**
+     * Do not call non-allocated buffer.
+     */
     void free(T *p) {
         size_t i = toIdx(p);
         //::fprintf(::stderr, "free %zu %p %d\n", i, p, bmp_[i] ? 1 : 0); //debug
@@ -612,6 +620,7 @@ private:
 
 /**
  * Ring buffer for block data.
+ * Each block memory is aligned.
  *
  * typename T must be (char) or (unsigned char).
  */
@@ -646,6 +655,10 @@ public:
         ::free(ary_);
     }
 
+    /**
+     * RETURN:
+     *   Buffer pointer in success, or nullptr.
+     */
     T* alloc() {
         if (allocated_ >= nr_) {
             return nullptr;
@@ -661,6 +674,9 @@ public:
         return p;
     }
 
+    /**
+     * Do not call this non-allocated buffers.
+     */
     void free(T *p) {
         size_t i = toIdx(p);
         //::fprintf(::stderr, "free %zu %p\n", i, p); //debug
@@ -684,7 +700,7 @@ private:
 };
 
 /**
- * Aligned
+ * Allocator for aligned memory blocks.
  */
 template<typename T>
 static inline
@@ -703,6 +719,10 @@ std::shared_ptr<T> allocateBlock(size_t alignment, size_t size)
         });
 }
 
+/**
+ * Fast aligned memory block allocator
+ * with pre-allocated ring buffer.
+ */
 template<typename T>
 class BlockAllocator
 {
@@ -719,6 +739,11 @@ public:
         , size_(size)
         , bb_(nr, alignment, size) {}
 
+    /**
+     * Allocate block.
+     * If allocation failed from ring buffer,
+     * this will allocate memory directly.
+     */
     std::shared_ptr<T> alloc() {
         T *p = bb_.alloc();
         if (p != nullptr) {
@@ -792,6 +817,9 @@ uint64_t fromUnitIntString(const std::string &valStr)
     return val << shift;
 }
 
+/**
+ * Random number generator for UIntType.
+ */
 template<typename UIntType>
 class Rand
 {
@@ -869,6 +897,9 @@ void testUnitIntString()
     }
 }
 
+/**
+ * Print byte array as hex list.
+ */
 template <typename ByteType>
 void printByteArray(ByteType *data, size_t size)
 {
