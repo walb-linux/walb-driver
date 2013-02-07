@@ -60,6 +60,7 @@ struct AioData
     double beginTime;
     double endTime;
     bool done;
+    int err;
 };
 
 /**
@@ -166,6 +167,11 @@ static void testAioDataAllocator()
  *
  * Do not use prepareFlush().
  * Currently aio flush is not supported by Linux kernel.
+ *
+ * Thrown EofError and LibcError in waitFor()/waitOne()/wait(),
+ * you can use the Aio instance continuously,
+ * however, thrown other error(s),
+ * the Aio instance will be not operational.
  */
 class Aio
 {
@@ -263,6 +269,7 @@ public:
         ptr->beginTime = 0.0;
         ptr->endTime = 0.0;
         ptr->done = false;
+        ptr->err = 0;
         ::io_prep_pread(&ptr->iocb, fd_, buf, size, oft);
         ptr->iocb.data = reinterpret_cast<void *>(ptr->key);
         return ptr->key;
@@ -286,6 +293,7 @@ public:
         ptr->beginTime = 0.0;
         ptr->endTime = 0.0;
         ptr->done = false;
+        ptr->err = 0;
         ::io_prep_pwrite(&ptr->iocb, fd_, buf, size, oft);
         ptr->iocb.data = reinterpret_cast<void *>(ptr->key);
         return ptr->key;
@@ -312,6 +320,7 @@ public:
         ptr->beginTime = 0.0;
         ptr->endTime = 0.0;
         ptr->done = false;
+        ptr->err = 0;
         ::io_prep_fdsync(&ptr->iocb, fd_);
         ptr->iocb.data = reinterpret_cast<void *>(ptr->key);
         return ptr->key;
@@ -390,7 +399,6 @@ public:
         AioDataPtr p0 = m[key];
         while (!p0->done) {
             AioDataPtr p1 = waitOne_(false);
-            p1->done = true;
             if (p0 != p1) {
                 completedIOs_.push(p1);
             } else {
@@ -398,6 +406,11 @@ public:
             }
         }
         m.erase(key);
+        if (p0->err == 0) {
+            throw util::EofError();
+        } else if (p0->err < 0) {
+            throw util::LibcError(-(p0->err), "waitFor: ");
+        }
     }
 
     /**
@@ -427,6 +440,10 @@ public:
      *   EofError
      *   LibcError
      *   std::runtime_error
+     *
+     * If EofError or LibcError ocurred,
+     * you can not know which IO(s) failed.
+     * Use waitFor() to know it.
      */
     void wait(size_t nr, std::queue<unsigned int>& queue) {
         while (nr > 0 && !completedIOs_.empty()) {
@@ -440,9 +457,25 @@ public:
         if (nr > 0) {
             std::queue<AioDataPtr> q;
             wait_(nr, q, true);
+            bool isEofError = false;
+            bool isLibcError = false;
             while (!q.empty()) {
-                queue.push(q.front()->key);
+                const AioDataPtr &p = q.front();
+                if (p->err == 0) {
+                    isEofError = true;
+                } else if (p->err < 0) {
+                    isLibcError = true;
+                }
+                assert(p->iocb.u.c.nbytes ==
+                       static_cast<unsigned int>(p->err));
+                queue.push(p->key);
                 q.pop();
+            }
+            if (isLibcError) {
+                throw util::LibcError(EIO, "wait: ");
+            }
+            if (isEofError) {
+                throw util::EofError();
             }
         }
     }
@@ -457,18 +490,26 @@ public:
      *   EofError
      *   LibcError
      *   std::runtime_error
+     *
+     * You should use waitFor() to know errors.
      */
     unsigned int waitOne() {
+        AioDataPtr p;
         if (completedIOs_.empty()) {
-            AioDataPtr p = waitOne_(true);
-            return p->key;
+            p = waitOne_(true);
         } else {
             AioDataPtr p = completedIOs_.front();
             completedIOs_.pop();
             assert(pendingIOs_.find(p->key) != pendingIOs_.end());
             pendingIOs_.erase(p->key);
-            return p->key;
         }
+        if (p->err == 0) {
+            throw util::EofError();
+        } else if (p->err < 0) {
+            throw util::LibcError(-(p->err), "waitOne: ");
+        }
+        assert(p->iocb.u.c.nbytes == static_cast<unsigned int>(p->err));
+        return p->key;
     }
 
 private:
@@ -480,18 +521,15 @@ private:
      * @isDelete AioDataPtr will be deleted from pendingIOs_ if true.
      *
      * EXCEPTION:
-     *  EofError
      *  LibcError
      *  std::runtime_error
      */
     void wait_(size_t nr, std::queue<AioDataPtr>& queue, bool isDelete) {
         size_t done = 0;
-        bool isEofError = false;
-        bool isOtherError = false;
         while (done < nr) {
             int tmpNr = ::io_getevents(ctx_, 1, nr - done, &ioEvents_[done], NULL);
             if (tmpNr < 0) {
-                throw util::LibcError(-tmpNr);
+                throw util::LibcError(-tmpNr, "io_getevents: ");
             }
             if (tmpNr < 1) {
                 throw RT_ERR("io_getevents failed.");
@@ -503,28 +541,18 @@ private:
                 unsigned int key =
                     static_cast<unsigned int>(
                         reinterpret_cast<uintptr_t>(iocb->data));
-                if (ioEvents_[i].res == 0) {
-                    isEofError = true;
-                } else if (ioEvents_[i].res != iocb->u.c.nbytes) {
-                    isOtherError = true;
-                }
                 assert(pendingIOs_.find(key) != pendingIOs_.end());
                 AioDataPtr ptr = pendingIOs_[key];
                 assert(!ptr->done);
                 ptr->done = true;
                 ptr->endTime = endTime;
+                ptr->err = ioEvents_[i].res;
                 queue.push(ptr);
                 if (isDelete) {
                     pendingIOs_.erase(key);
                 }
             }
             done += tmpNr;
-        }
-        if (isOtherError) {
-            throw RT_ERR("wait_ other errors occurred.");
-        }
-        if (isEofError) {
-            throw util::EofError();
         }
     }
 
@@ -536,9 +564,7 @@ private:
      * RETURN:
      *   AioDataPtr.
      * EXCEPTION:
-     *  EofError
-     *  LibcError
-     *  std::runtime_error
+     *   std::runtime_error
      */
     AioDataPtr waitOne_(bool isDelete) {
         auto& event = ioEvents_[0];
@@ -555,17 +581,12 @@ private:
         unsigned int key =
             static_cast<unsigned int>(
                 reinterpret_cast<uintptr_t>(iocb->data));
-        if (event.res == 0) {
-            throw util::EofError();
-        }
-        if (event.res != iocb->u.c.nbytes) {
-            throw RT_ERR("waitOne_ error: %lu", event.res);
-        }
         assert(pendingIOs_.find(key) != pendingIOs_.end());
         AioDataPtr ptr = pendingIOs_[key];
         ptr->endTime = endTime;
         assert(!ptr->done);
         ptr->done = true;
+        ptr->err = event.res;
         if (isDelete) {
             pendingIOs_.erase(key);
         }
