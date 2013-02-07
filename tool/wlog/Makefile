@@ -73,8 +73,8 @@ wlcat.o: wlcat.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
  ../../include/walb/u32bits.h ../../include/walb/super.h \
  ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
  ../../include/walb/log_record.h ../walblog_format.h \
- ../../include/walb/walb.h aio_util.hpp ../random.h ../check_userland.h \
- ../../include/walb/userland.h
+ ../../include/walb/walb.h aio_util.hpp ../../include/walb/common.h \
+ ../random.h ../check_userland.h ../../include/walb/userland.h
 wlredo.o: wlredo.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
  ../../include/walb/walb.h ../../include/walb/common.h \
  ../../include/walb/userland.h ../../include/walb/disk_name.h \
@@ -84,8 +84,8 @@ wlredo.o: wlredo.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
  ../../include/walb/u32bits.h ../../include/walb/super.h \
  ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
  ../../include/walb/log_record.h ../walblog_format.h \
- ../../include/walb/walb.h aio_util.hpp ../random.h ../check_userland.h \
- ../../include/walb/userland.h
+ ../../include/walb/walb.h aio_util.hpp ../../include/walb/common.h \
+ ../random.h ../check_userland.h ../../include/walb/userland.h
 wlgen.o: wlgen.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
  ../../include/walb/walb.h ../../include/walb/common.h \
  ../../include/walb/userland.h ../../include/walb/disk_name.h \
@@ -115,8 +115,8 @@ wlinfo.o: wlinfo.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
  ../../include/walb/u32bits.h ../../include/walb/super.h \
  ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
  ../../include/walb/log_record.h ../walblog_format.h \
- ../../include/walb/walb.h aio_util.hpp ../random.h ../check_userland.h \
- ../../include/walb/userland.h
+ ../../include/walb/walb.h aio_util.hpp ../../include/walb/common.h \
+ ../random.h ../check_userland.h ../../include/walb/userland.h
 wlanalyze.o: wlanalyze.cpp util.hpp walb_util.hpp \
  ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
@@ -126,6 +126,7 @@ wlanalyze.o: wlanalyze.cpp util.hpp walb_util.hpp \
  ../../include/walb/log_record.h ../../include/walb/u32bits.h \
  ../../include/walb/super.h ../../include/walb/snapshot.h \
  ../../include/walb/u64bits.h ../../include/walb/log_record.h \
- ../walblog_format.h ../../include/walb/walb.h aio_util.hpp ../random.h \
- ../check_userland.h ../../include/walb/userland.h
+ ../walblog_format.h ../../include/walb/walb.h aio_util.hpp \
+ ../../include/walb/common.h ../random.h ../check_userland.h \
+ ../../include/walb/userland.h
 bdiff.o: bdiff.cpp util.hpp
