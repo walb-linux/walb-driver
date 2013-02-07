@@ -99,6 +99,9 @@ public:
         }
     }
 private:
+    /**
+     * Never return 0.
+     */
     unsigned int getKey() {
         unsigned int ret = key_;
         if (key_ == static_cast<unsigned int>(-1)) {
@@ -151,13 +154,6 @@ static void testAioDataAllocator()
              (double)nTrials / (eTime - bTime));
 }
 
-class EofError : public std::exception {
-public:
-    virtual const char *what() const noexcept {
-        return "eof error";
-    }
-};
-
 /**
  * Asynchronous IO wrapper.
  *
@@ -208,10 +204,12 @@ private:
 public:
     /**
      * @fd Opened file descripter.
+     *   You must open the file/device with O_DIRECT
+     *   to work it really asynchronously.
      * @queueSize queue size for aio.
      * @isMeasureTime true if you want to measure IO begein/end time.
      */
-    Aio(int fd, size_t queueSize, bool isMeasureTime = false)
+    Aio(int fd, size_t queueSize)
         : fd_(fd)
         , queueSize_(queueSize)
         , allocator_(queueSize * 2)
@@ -220,7 +218,7 @@ public:
         , completedIOs_()
         , iocbs_(queueSize)
         , ioEvents_(queueSize)
-        , isMeasureTime_(isMeasureTime) {
+        , isMeasureTime_(false) {
         assert(fd_ >= 0);
         assert(queueSize > 0);
         int err = ::io_queue_init(queueSize_, &ctx_);
@@ -526,7 +524,7 @@ private:
             throw RT_ERR("wait_ other errors occurred.");
         }
         if (isEofError) {
-            throw EofError();
+            throw util::EofError();
         }
     }
 
@@ -558,7 +556,7 @@ private:
             static_cast<unsigned int>(
                 reinterpret_cast<uintptr_t>(iocb->data));
         if (event.res == 0) {
-            throw EofError();
+            throw util::EofError();
         }
         if (event.res != iocb->u.c.nbytes) {
             throw RT_ERR("waitOne_ error: %lu", event.res);
