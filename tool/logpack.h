@@ -51,6 +51,29 @@ void shrink_logpack_header(
 	struct walb_logpack_header *logh, unsigned int invalid_idx,
 	unsigned int pbs, u32 salt);
 
+
+/*******************************************************************************
+ * Helper data structure for logpack data.
+ *******************************************************************************/
+
+struct logpack
+{
+	/* for logpack header. */
+	struct sector_data *sectd;
+
+	/* for logpack data. */
+	struct sector_data_array *sectd_ary;
+
+	/* pointer to header sector data. */
+	struct walb_logpack_header *header;
+
+	unsigned int pbs;
+};
+
+struct logpack *alloc_logpack(unsigned int pbs, unsigned int n_sectors);
+void free_logpack(struct logpack *pack);
+bool resize_logpack_if_necessary(struct logpack *pack, unsigned int n_sectors);
+
 #ifdef __cplusplus
 }
 #endif

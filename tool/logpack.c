@@ -420,4 +420,68 @@ void shrink_logpack_header(
 	ASSERT(is_valid_logpack_header_with_checksum(logh, pbs, salt));
 }
 
+/**
+ * Create a logpack.
+ *
+ * @logh_sectdp pointer to sector data pointer
+ *   for logpack header (will be set).
+ * @logd_sect_aryp pointer to sector data array pointer
+ *   for logpack data (will be set).
+ * @pbs physical block size [byte].
+ * @bufsize buffer size for log data [byte].
+ *
+ * RETURN:
+ *    allocated logpack in success, or NULL.
+ */
+struct logpack *alloc_logpack(
+	unsigned int pbs, unsigned int n_sectors)
+{
+	struct logpack *pack;
+
+	ASSERT(is_valid_pbs(pbs));
+	ASSERT(0 < n_sectors);
+
+	pack = (struct logpack *)malloc(sizeof(*pack));
+	if (!pack) { goto error1; }
+	memset(pack, 0, sizeof(*pack));
+
+	/* Buffer for logpack header. */
+	pack->sectd = sector_alloc(pbs);
+	if (!pack->sectd) { goto error1; }
+	pack->header = get_logpack_header(pack->sectd);
+
+	/* Buffer for logpack data. */
+	pack->sectd_ary = sector_array_alloc(pbs, n_sectors);
+	if (!pack->sectd_ary) { goto error1; }
+	return pack;
+
+error1:
+	LOGe("Memory allocation failure.\n");
+	free_logpack(pack);
+	return NULL;
+}
+
+/**
+ * Free memories for a logpack.
+ */
+void free_logpack(struct logpack *pack)
+{
+	if (pack) {
+		sector_free(pack->sectd);
+		sector_array_free(pack->sectd_ary);
+		free(pack);
+	}
+}
+
+/**
+ * Resize logpack if necessary.
+ */
+bool resize_logpack_if_necessary(struct logpack *pack, unsigned int n_sectors)
+{
+	if (n_sectors <= pack->sectd_ary->size) {
+		return true;
+	}
+	return sector_array_realloc(pack->sectd_ary, n_sectors);
+}
+
 /* end of file */

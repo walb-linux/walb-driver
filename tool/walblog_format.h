@@ -143,8 +143,18 @@ static inline bool is_valid_wlog_header(struct walblog_header* wh)
 		LOGe("wlog header version is invalid.\n");
 		return false;
 	}
-	if (wh->begin_lsid >= wh->end_lsid) {
+	if (wh->end_lsid <= wh->begin_lsid) {
 		LOGe("wlog header does not satisfy begin_lsid < end_lsid.\n");
+		return false;
+	}
+	if (wh->logical_bs != LOGICAL_BLOCK_SIZE) {
+		LOGe("wlog header's logical_bs is invalid: %u\n",
+			wh->logical_bs);
+		return false;
+	}
+	if (!is_valid_pbs(wh->physical_bs)) {
+		LOGe("wlog header's physical_bs is invalid: %u\n",
+			wh->physical_bs);
 		return false;
 	}
 	return true;

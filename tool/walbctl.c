@@ -269,6 +269,9 @@ static bool delete_snapshot_by_lsid_range(const struct config *cfg);
 static u64 get_lsid_by_snapshot_name(
 	const char *wdev_name, const char *snap_name);
 static void decide_lsid_range(const struct config *cfg, u64 lsid[2]);
+static struct walblog_header *create_and_read_wlog_header(int inFd);
+static struct walb_super_sector *create_and_read_super_sector(
+	struct sector_data **sectdp, int fd, unsigned int pbs);
 
 /* commands. */
 static bool do_format_ldev(const struct config *cfg);
@@ -1106,6 +1109,83 @@ error0:
 	lsid[1] = INVALID_LSID;
 }
 
+/**
+ * Create and read walblog header.
+ *
+ * @inFd input file descriptor.
+ *
+ * RETURN:
+ *   allocated and read walblog header, or NULL.
+ */
+static struct walblog_header *create_and_read_wlog_header(int inFd)
+{
+	struct walblog_header *wh;
+
+	wh = (struct walblog_header *)malloc(WALBLOG_HEADER_SIZE);
+	if (!wh) {
+		LOGe("%s", NOMEM_STR);
+		return NULL;
+	}
+
+	/* Read and print wlog header. */
+	if (!read_data(inFd, (u8 *)wh, WALBLOG_HEADER_SIZE)) {
+		LOGe("read failed.\n");
+		goto error1;
+	}
+
+	/* Check wlog header. */
+	if (!is_valid_wlog_header(wh)) {
+		LOGe("wlog header invalid.\n");
+		goto error1;
+	}
+	return wh;
+
+error1:
+	free(wh);
+	return NULL;
+}
+
+/**
+ * Create sector data and read from the log device.
+ *
+ * @sectdp pointer to sector data pointer (will be set).
+ * @fd log device file descriptor.
+ * @pbs physical block size.
+ *
+ * RETURN:
+ *  super sector pointer in success, or NULL.
+ */
+static struct walb_super_sector *create_and_read_super_sector(
+	struct sector_data **sectdp, int fd, unsigned int pbs)
+{
+	struct sector_data *sectd;
+	u64 off;
+
+	ASSERT(fd > 0);
+	ASSERT(is_valid_pbs(pbs));
+
+	sectd = sector_alloc(pbs);
+	if (!sectd) {
+		LOGe("memory allocation failed.\n");
+		return NULL;
+	}
+	off = get_super_sector0_offset(pbs);
+	if (!sector_read(fd, off, sectd)) {
+		LOGe("read super sector0 failed.\n");
+		goto error1;
+	}
+	if (!is_valid_super_sector(sectd)) {
+		LOGe("read super sector is not valid.\n");
+		goto error1;
+	}
+	*sectdp = sectd;
+	return get_super_sector(sectd);
+
+error1:
+	sector_free(sectd);
+	return NULL;
+}
+
 /*******************************************************************************
  * Commands.
  *******************************************************************************/
@@ -1756,16 +1836,14 @@ static bool do_cat_wldev(const struct config *cfg)
 	bool retb;
 	int lbs, pbs;
 	int fd;
-	struct sector_data *super_sect, *lhead_sect;
+	struct sector_data *super_sectd;
 	struct walb_super_sector *super;
-	struct walb_logpack_header *lhead;
-	u64 off0;
+	const size_t bufsize = 1024 * 1024; /* 1MB */
+	struct logpack *pack;
 	u64 lsid, oldest_lsid, begin_lsid, end_lsid;
 	u32 salt;
 	u8 buf[WALBLOG_HEADER_SIZE];
 	struct walblog_header *wh = (struct walblog_header *)buf;
-	const size_t bufsize = 1024 * 1024; /* 1MB */
-	struct sector_data_array *sect_ary;
 
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "cat_wldev") == 0);
@@ -1780,7 +1858,7 @@ static bool do_cat_wldev(const struct config *cfg)
 	}
 	lbs = get_bdev_logical_block_size(cfg->wldev_name);
 	pbs = get_bdev_physical_block_size(cfg->wldev_name);
-	if (lbs < 0 || pbs < 0) {
+	if (!(lbs == LOGICAL_BLOCK_SIZE && is_valid_pbs(pbs))) {
 		return false;
 	}
 
@@ -1791,35 +1869,22 @@ static bool do_cat_wldev(const struct config *cfg)
 		return false;
 	}
 
-	/* Allocate memory. */
-	super_sect = sector_alloc(pbs);
-	if (!super_sect) {
-		LOGe("%s", NOMEM_STR);
+	/* Create and read super sector. */
+	super = create_and_read_super_sector(&super_sectd, fd, pbs);
+	if (!super) {
 		goto error1;
 	}
-	super = get_super_sector(super_sect);
-	lhead_sect = sector_alloc(pbs);
-	if (!lhead_sect) {
-		LOGe("%s", NOMEM_STR);
+	salt = super->log_checksum_salt;
+
+	/* Allocate memory. */
+	pack = alloc_logpack(pbs, bufsize / pbs);
+	if (!pack) {
 		goto error2;
 	}
-	lhead =	get_logpack_header(lhead_sect);
-
-	/* Read super block */
-	off0 = get_super_sector0_offset(pbs);
-	if (!sector_read(fd, off0, super_sect)) {
-		LOGe("read super sector0 failed.\n");
-		goto error3;
-	}
-	if (!is_valid_super_sector(super_sect)) {
-		LOGe("read super sector is not valid.\n");
-		goto error3;
-	}
-
-	oldest_lsid = super->oldest_lsid;
-	LOGd("oldest_lsid: %"PRIu64"\n", oldest_lsid);
 
 	/* Range check */
+	oldest_lsid = super->oldest_lsid;
+	LOGd("oldest_lsid: %"PRIu64"\n", oldest_lsid);
 	if (cfg->lsid0 == (u64)(-1)) {
 		begin_lsid = oldest_lsid;
 	} else {
@@ -1836,8 +1901,6 @@ static bool do_cat_wldev(const struct config *cfg)
 		goto error3;
 	}
 
-	salt = super->log_checksum_salt;
-
 	/* Prepare and write walblog_header. */
 	memset(wh, 0, WALBLOG_HEADER_SIZE);
 	wh->header_size = WALBLOG_HEADER_SIZE;
@@ -1853,77 +1916,66 @@ static bool do_cat_wldev(const struct config *cfg)
 	/* Checksum */
 	wh->checksum = checksum((const u8 *)wh, WALBLOG_HEADER_SIZE, 0);
 	/* Write */
-	retb = write_data(1, buf, WALBLOG_HEADER_SIZE);
-	ASSERT(retb);
-	LOGd("lsid %"PRIu64" to %"PRIu64"\n", begin_lsid, end_lsid);
-
-	/* Prepare a sector array. */
-	ASSERT(bufsize % pbs == 0);
-	sect_ary = sector_array_alloc(pbs, bufsize / pbs);
-	if (!sect_ary) {
-		LOGe("%s", NOMEM_STR);
+	if (!write_data(1, buf, WALBLOG_HEADER_SIZE)) {
 		goto error3;
 	}
+	LOGd("lsid %"PRIu64" to %"PRIu64"\n", begin_lsid, end_lsid);
 
 	/* Write each logpack to stdout. */
 	lsid = begin_lsid;
 	while (lsid < end_lsid) {
 		unsigned int invalid_idx;
 		bool should_break = false;
+		struct walb_logpack_header *logh = pack->header;
 
 		/* Logpack header */
 		retb = read_logpack_header_from_wldev(
-			fd, super, lsid, salt, lhead_sect);
+			fd, super, lsid, salt, pack->sectd);
 		if (!retb) { break; }
-		LOGd("logpack %"PRIu64"\n", lhead->logpack_lsid);
+		LOGd("logpack %"PRIu64"\n", logh->logpack_lsid);
 
 		/* Realloc buffer if buffer size is not enough. */
-		if (sect_ary->size < lhead->total_io_size) {
-			if (!sector_array_realloc(sect_ary, lhead->total_io_size)) {
-				LOGe("realloc_sectors failed.\n");
-				goto error4;
-			}
-			LOGd("realloc_sectors called. %u sectors.\n",
-				sect_ary->size);
+		if (!resize_logpack_if_necessary(
+				pack, logh->total_io_size)) {
+			goto error3;
 		}
 
 		/* Read and write logpack data. */
 		invalid_idx = read_logpack_data_from_wldev(
-			fd, super, lhead, salt, sect_ary);
+			fd, super, logh, salt, pack->sectd_ary);
 		if (invalid_idx == 0) { break; }
-		if (invalid_idx < lhead->n_records) {
-			shrink_logpack_header(lhead, invalid_idx, pbs, salt);
+		if (invalid_idx < logh->n_records) {
+			shrink_logpack_header(
+				logh, invalid_idx, pbs, salt);
 			should_break = true;
 		}
 
 		/* Write logpack header and data. */
-		retb = write_data(1, (u8 *)lhead, pbs);
+		retb = write_data(1, (u8 *)logh, pbs);
 		if (!retb) {
 			LOGe("write logpack header failed.\n");
-			goto error4;
+			goto error3;
 		}
 
-		retb = sector_array_write(1, sect_ary, 0, lhead->total_io_size);
+		retb = sector_array_write(
+			1, pack->sectd_ary, 0, logh->total_io_size);
 		if (!retb) {
 			LOGe("write logpack data failed.\n");
-			goto error4;
+			goto error3;
 		}
 
 		if (should_break) { break; }
-		lsid += lhead->total_io_size + 1;
+		lsid += logh->total_io_size + 1;
 	}
 
-	sector_array_free(sect_ary);
-	sector_free(lhead_sect);
-	sector_free(super_sect);
+	free_logpack(pack);
+	sector_free(super_sectd);
 	return close_(fd) == 0;
 
-error4:
-	sector_array_free(sect_ary);
 error3:
-	sector_free(lhead_sect);
+	free_logpack(pack);
 error2:
-	sector_free(super_sect);
+	sector_free(super_sectd);
 error1:
 	close_(fd);
 	return false;
@@ -1943,12 +1995,10 @@ static bool do_redo_wlog(const struct config *cfg)
 	int fd;
 	struct walblog_header *wh;
 	u32 salt;
-	int lbs, pbs, ddev_lbs, ddev_pbs;
+	int lbs, pbs;
 	u64 lsid, begin_lsid, end_lsid;
-	struct sector_data *lhead_sect;
-	struct walb_logpack_header *lhead;
+	struct logpack *pack;
 	const size_t bufsize = 1024 * 1024; /* 1MB */
-	struct sector_data_array *sect_ary;
 
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "redo_wlog") == 0);
@@ -1967,36 +2017,19 @@ static bool do_redo_wlog(const struct config *cfg)
 		return false;
 	}
 
-	/* Allocate walblog header. */
-	wh = (struct walblog_header *)malloc(WALBLOG_HEADER_SIZE);
+	/* Read wlog header. */
+	wh = create_and_read_wlog_header(0);
 	if (!wh) {
-		LOGe("%s", NOMEM_STR);
 		goto error1;
 	}
-
-	/* Read wlog header. */
-	read_data(0, (u8 *)wh, WALBLOG_HEADER_SIZE);
-	if (!is_valid_wlog_header(wh)) {
-		LOGe("wlog header invalid.\n");
-		goto error2;
-	}
-	print_wlog_header(wh); /* debug */
-
 	salt = wh->log_checksum_salt;
-
-	/* Set block size */
 	lbs = wh->logical_bs;
 	pbs = wh->physical_bs;
-	if (!(lbs == LOGICAL_BLOCK_SIZE && is_valid_pbs(pbs))) {
-		LOGe("physical_bs or logical_bs is not valid.\n");
-		goto error2;
-	}
-	ddev_lbs = get_bdev_logical_block_size(cfg->ddev_name);
-	ddev_pbs = get_bdev_physical_block_size(cfg->ddev_name);
-	if (ddev_lbs != lbs || ddev_pbs != pbs) {
-		LOGe("block size check is not valid\n"
-			"(wlog lbs %d, ddev lbs %d, wlog pbs %d, ddev pbs %d.\n",
-			lbs, ddev_lbs, pbs, ddev_pbs);
+	print_wlog_header(wh); /* debug */
+
+	/* Check block sizes of the device. */
+	if (!is_same_bdev_block_size(cfg->ddev_name, lbs, pbs)) {
+		LOGe("block size check is not %u %u\n", lbs, pbs);
 		goto error2;
 	}
 
@@ -2012,57 +2045,50 @@ static bool do_redo_wlog(const struct config *cfg)
 		end_lsid = cfg->lsid1;
 	}
 
-	/* Allocate for logpack header. */
-	lhead_sect = sector_alloc(pbs);
-	if (!lhead_sect) { LOGe("%s", NOMEM_STR); goto error2; }
-	lhead = get_logpack_header(lhead_sect);
-
-	/* Allocate for logpack data. */
-	sect_ary = sector_array_alloc(pbs, bufsize / pbs);
-	if (!sect_ary) { LOGe("%s", NOMEM_STR); goto error3; }
+	/* Allocate logpack. */
+	pack = alloc_logpack(pbs, bufsize / pbs);
+	if (!pack) {
+		goto error2;
+	}
 
 	lsid = begin_lsid;
 	while (lsid < end_lsid) {
+		struct walb_logpack_header *logh = pack->header;
+
 		/* Read logpack header */
-		if (!read_logpack_header(0, pbs, salt, lhead)) {
+		if (!read_logpack_header(0, pbs, salt, logh)) {
 			break;
 		}
 
-		/* Realloc buffer if needed. */
-		if (lhead->total_io_size > sect_ary->size) {
-			if (!sector_array_realloc(sect_ary, lhead->total_io_size)) {
-				LOGe("realloc_sectors failed.\n");
-				goto error4;
-			}
-		}
-
 		/* Read logpack data. */
-		if (!read_logpack_data(0, lhead, salt, sect_ary)) {
+		if (!resize_logpack_if_necessary(
+				pack, logh->total_io_size)) {
+			goto error3;
+		}
+		if (!read_logpack_data(
+				0, logh, salt, pack->sectd_ary)) {
 			LOGe("read logpack data failed.\n");
-			goto error4;
+			goto error3;
 		}
 
 		/* Decision of skip and end. */
-		lsid = lhead->logpack_lsid;
+		lsid = logh->logpack_lsid;
 		if (lsid < begin_lsid) { continue; }
 		if (end_lsid <= lsid) { break; }
 		LOGd("logpack %"PRIu64"\n", lsid);
 
 		/* Redo */
-		if (!redo_logpack(fd, lhead, sect_ary)) {
+		if (!redo_logpack(fd, logh, pack->sectd_ary)) {
 			LOGe("redo_logpack failed.\n");
-			goto error4;
+			goto error3;
 		}
 	}
-	sector_array_free(sect_ary);
-	sector_free(lhead_sect);
+	free_logpack(pack);
 	free(wh);
 	return fdatasync_and_close(fd) == 0;
 
-error4:
-	sector_array_free(sect_ary);
 error3:
-	sector_free(lhead_sect);
+	free_logpack(pack);
 error2:
 	free(wh);
 error1:
@@ -2084,13 +2110,11 @@ static bool do_redo(const struct config *cfg)
 {
 	int pbs;
 	int lfd, dfd;
-	struct sector_data *super_sectd, *lhead_sectd;
+	struct sector_data *super_sectd;
 	struct walb_super_sector *super;
-	struct walb_logpack_header *lhead;
-	u64 off0;
+	struct logpack *pack;
 	u32 salt;
 	const size_t bufsize = 1024 * 1024; /* 1MB */
-	struct sector_data_array *sect_ary;
 	u64 lsid, begin_lsid, end_lsid;
 	int ret0, ret1;
 
@@ -2106,14 +2130,13 @@ static bool do_redo(const struct config *cfg)
 		return false;
 	}
 
-	if (!is_same_block_size(cfg->ldev_name, cfg->ddev_name)) {
+	if (!is_same_two_bdev_block_size(cfg->ldev_name, cfg->ddev_name)) {
 		LOGe("block size is not the same.\n");
 		return false;
 	}
 
 	/* Block size. */
 	pbs = get_bdev_physical_block_size(cfg->ldev_name);
-	if (pbs < 0) { return false; }
 	ASSERT_PBS(pbs);
 
 	/* Open devices. */
@@ -2129,77 +2152,53 @@ static bool do_redo(const struct config *cfg)
 	}
 
 	/* Read super sector. */
-	super_sectd = sector_alloc(pbs);
-	if (!super_sectd) {
-		LOGe("%s", NOMEM_STR);
+	super = create_and_read_super_sector(&super_sectd, lfd, pbs);
+	if (!super) {
 		goto error2;
-	}
-	off0 = get_super_sector0_offset(pbs);
-	if (!sector_read(lfd, off0, super_sectd)) {
-		LOGe("Read super sector failed.\n");
-		goto error3;
-	}
-	if (!is_valid_super_sector(super_sectd)) {
-		LOGe("super sector is not valid.\n");
-		goto error3;
 	}
 	super = get_super_sector(super_sectd);
 	salt = super->log_checksum_salt;
 
 	/* Allocate logpack data. */
-	ASSERT(bufsize % pbs == 0);
-	sect_ary = sector_array_alloc(pbs, bufsize / pbs);
-	if (!sect_ary) {
-		LOGe("%s", NOMEM_STR);
+	pack = alloc_logpack(pbs, bufsize / pbs);
+	if (!pack) {
 		goto error3;
 	}
-
-	/* Allocate logpack header. */
-	lhead_sectd = sector_alloc(pbs);
-	if (!lhead_sectd) {
-		LOGe("%s", NOMEM_STR);
-		goto error4;
-	}
-	lhead = get_logpack_header(lhead_sectd);
 
 	lsid = super->written_lsid;
 	begin_lsid = lsid;
 	/* Read logpack header */
-	while (read_logpack_header_from_wldev(lfd, super, lsid, salt, lhead_sectd)) {
+	while (read_logpack_header_from_wldev(
+			lfd, super, lsid, salt, pack->sectd)) {
 		unsigned int invalid_idx;
 		bool should_break = false;
+		struct walb_logpack_header *logh = pack->header;
 
-		LOGd("logpack %"PRIu64"\n", lhead->logpack_lsid);
+		LOGd("logpack %"PRIu64"\n", logh->logpack_lsid);
 
 		/* Realloc buf if bufsize is not enough. */
-		if (sect_ary->size < lhead->total_io_size) {
-			if (!sector_array_realloc(sect_ary, lhead->total_io_size)) {
-				LOGe("realloc_sectors failed.\n");
-				goto error5;
-			}
-			LOGd("realloc_sectors called. %u sectors.\n",
-				sect_ary->size);
+		if (!resize_logpack_if_necessary(pack, logh->total_io_size)) {
+			goto error4;
 		}
 
 		/* Read logpack data from log device. */
 		invalid_idx = read_logpack_data_from_wldev(
-			lfd, super, lhead, salt, sect_ary);
+			lfd, super, logh, salt, pack->sectd_ary);
 
 		if (invalid_idx == 0) { break; }
-
-		if (invalid_idx < lhead->n_records) {
-			shrink_logpack_header(lhead, invalid_idx, pbs, salt);
+		if (invalid_idx < logh->n_records) {
+			shrink_logpack_header(logh, invalid_idx, pbs, salt);
 			should_break = true;
 		}
 
 		/* Write logpack to data device. */
-		if (!redo_logpack(dfd, lhead, sect_ary)) {
+		if (!redo_logpack(dfd, logh, pack->sectd_ary)) {
 			LOGe("redo_logpack failed.\n");
-			goto error5;
+			goto error4;
 		}
 
 		if (should_break) { break; }
-		lsid += lhead->total_io_size + 1;
+		lsid += logh->total_io_size + 1;
 	}
 
 	/* Set new written_lsid and sync down. */
@@ -2207,14 +2206,13 @@ static bool do_redo(const struct config *cfg)
 	super->written_lsid = end_lsid;
 	if (!write_super_sector(lfd, super_sectd)) {
 		LOGe("write super sector failed.\n");
-		goto error5;
+		goto error4;
 	}
 	LOGn("Redo from lsid %"PRIu64" to %"PRIu64"\n",
 		begin_lsid, end_lsid);
 
 	/* Free resources. */
-	sector_free(lhead_sectd);
-	sector_array_free(sect_ary);
+	free_logpack(pack);
 	sector_free(super_sectd);
 
 	/* Finalize block devices. */
@@ -2222,10 +2220,8 @@ static bool do_redo(const struct config *cfg)
 	ret1 = fdatasync_and_close(lfd);
 	return ret0 == 0 && ret1 == 0;
 
-error5:
-	sector_free(lhead_sectd);
 error4:
-	sector_array_free(sect_ary);
+	free_logpack(pack);
 error3:
 	sector_free(super_sectd);
 error2:
@@ -2242,52 +2238,24 @@ static bool do_show_wlog(const struct config *cfg)
 {
 	struct walblog_header *wh;
 	u32 salt;
-	unsigned int lbs, pbs;
-	struct sector_data *lhead_sectd;
-	struct walb_logpack_header *lhead;
+	unsigned int pbs;
+	struct logpack *pack;
+	struct walb_logpack_header *logh;
 	const size_t bufsize = 1024 * 1024; /* 1MB */
-	struct sector_data_array *sect_ary;
 	u64 begin_lsid, end_lsid;
 
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "show_wlog") == 0);
 
-	wh = (struct walblog_header *)malloc(WALBLOG_HEADER_SIZE);
-	if (!wh) {
-		LOGe("%s", NOMEM_STR);
-		return false;
-	}
-
-	/* Read and print wlog header. */
-	read_data(0, (u8 *)wh, WALBLOG_HEADER_SIZE);
+	wh = create_and_read_wlog_header(0);
+	if (!wh) { return false; }
+	pbs = wh->physical_bs;
+	salt = wh->log_checksum_salt;
 	print_wlog_header(wh);
 
-	/* Check wlog header. */
-	if (!is_valid_wlog_header(wh)) {
-		LOGe("wlog header invalid.\n");
-		goto error1;
-	}
-	salt = wh->log_checksum_salt;
-
-	/* Set block size. */
-	lbs = wh->logical_bs;
-	pbs = wh->physical_bs;
-	if (!(lbs == LOGICAL_BLOCK_SIZE && is_valid_pbs(pbs))) {
-		LOGe("physical_bs %% logical_bs must be 0.\n");
-		goto error1;
-	}
-
-	/* Buffer for logpack header. */
-	lhead_sectd = sector_alloc(pbs);
-	if (!lhead_sectd) {
-		LOGe("%s", NOMEM_STR);
-		goto error1;
-	}
-	lhead = get_logpack_header(lhead_sectd);
-
-	/* Buffer for logpack data. */
-	sect_ary = sector_array_alloc(pbs, bufsize / pbs);
-	if (!sect_ary) { LOGe("%s", NOMEM_STR); goto error2; }
+	pack = alloc_logpack(pbs, bufsize / pbs);
+	if (!pack) { goto error1; }
+	logh = pack->header;
 
 	/* Range */
 	if (cfg->lsid0 == (u64)(-1)) {
@@ -2298,43 +2266,36 @@ static bool do_show_wlog(const struct config *cfg)
 	end_lsid = cfg->lsid1;
 
 	/* Read, print and check each logpack */
-	while (read_logpack_header(0, pbs, salt, lhead)) {
+	while (read_logpack_header(0, pbs, salt, logh)) {
+		u64 lsid;
+
 		/* Check sect_ary size and reallocate if necessary. */
-		if (lhead->total_io_size > sect_ary->size) {
-			if (!sector_array_realloc(sect_ary, lhead->total_io_size)) {
-				LOGe("realloc_sectors failed.\n");
-				goto error3;
-			}
+		if (!resize_logpack_if_necessary(pack, logh->total_io_size)) {
+			goto error2;
 		}
 
 		/* Read logpack data. */
-		if (!read_logpack_data(0, lhead, salt, sect_ary)) {
+		if (!read_logpack_data(0, logh, salt, pack->sectd_ary)) {
 			LOGe("read logpack data failed.\n");
-			goto error3;
+			goto error2;
 		}
 
 		/* Check range. */
-		if (lhead->logpack_lsid < begin_lsid) {
-			continue; /* skip */
-		}
-		if (end_lsid <= lhead->logpack_lsid ) {
-			break; /* end */
-		}
+		lsid = logh->logpack_lsid;
+		if (lsid < begin_lsid) { continue; /* skip */ }
+		if (end_lsid <= lsid) { break; /* end */ }
 
 		/* Print logpack header. */
-		print_logpack_header(lhead);
+		print_logpack_header(logh);
 	}
 
 	/* Free resources. */
-	sector_array_free(sect_ary);
-	sector_free(lhead_sectd);
+	free_logpack(pack);
 	free(wh);
 	return true;
 
-error3:
-	sector_array_free(sect_ary);
 error2:
-	sector_free(lhead_sectd);
+	free_logpack(pack);
 error1:
 	free(wh);
 	return false;
@@ -2347,27 +2308,27 @@ static bool do_show_wldev(const struct config *cfg)
 {
 	int pbs;
 	int fd;
-	struct sector_data *super_sectd, *lhead_sectd;
+	struct sector_data *super_sectd;
 	struct walb_super_sector *super;
-	struct walb_logpack_header *lhead;
-	u64 off0;
+	struct logpack *pack;
 	u64 oldest_lsid, lsid, begin_lsid, end_lsid;
 	u32 salt;
 
 	ASSERT(strcmp(cfg->cmd_str, "show_wldev") == 0);
 
-	/*
-	 * Check device.
-	 */
+	/* Check device. */
 	if (!is_valid_bdev(cfg->wldev_name)) {
 		LOGe("check log device failed %s.\n",
 			cfg->wldev_name);
 		return false;
 	}
 	pbs = get_bdev_physical_block_size(cfg->wldev_name);
-	if (pbs < 0) { return false; }
-	ASSERT(is_valid_pbs(pbs));
+	if (!is_valid_pbs(pbs)) {
+		LOGe("Invalid physical block size.\n");
+		return false;
+	}
 
+	/* Open walb log device. */
 	fd = open(cfg->wldev_name, O_RDONLY | O_DIRECT);
 	if (fd < 0) {
 		perror("open failed");
@@ -2375,24 +2336,16 @@ static bool do_show_wldev(const struct config *cfg)
 	}
 
 	/* Allocate memory and read super block */
-	super_sectd = sector_alloc(pbs);
-	if (!super_sectd) { LOGe("%s", NOMEM_STR); goto error1; }
-	super = get_super_sector(super_sectd);
-
-	off0 = get_super_sector0_offset(pbs);
-	if (!sector_read(fd, off0, super_sectd)) {
-		LOGe("read super sector0 failed.\n");
-		goto error1;
-	}
-
-	lhead_sectd = sector_alloc(pbs);
-	if (!lhead_sectd)  { LOGe("%s", NOMEM_STR); goto error2; }
-	lhead = get_logpack_header(lhead_sectd);
-
+	super = create_and_read_super_sector(&super_sectd, fd, pbs);
+	if (!super) { goto error1; }
 	print_super_sector(super_sectd); /* debug */
 	oldest_lsid = super->oldest_lsid;
 	LOGd("oldest_lsid: %"PRIu64"\n", oldest_lsid);
 	salt = super->log_checksum_salt;
+
+	/* Allocate logpack. */
+	pack = alloc_logpack(pbs, 1); /* no need for log data. */
+	if (!pack) { goto error2; }
 
 	/* Range check */
 	if (cfg->lsid0 == (u64)(-1)) {
@@ -2415,18 +2368,18 @@ static bool do_show_wldev(const struct config *cfg)
 	lsid = begin_lsid;
 	while (lsid < end_lsid) {
 		bool retb = read_logpack_header_from_wldev(
-			fd, super, lsid, salt, lhead_sectd);
+			fd, super, lsid, salt, pack->sectd);
 		if (!retb) { break; }
-		print_logpack_header(lhead);
-		lsid += lhead->total_io_size + 1;
+		print_logpack_header(pack->header);
+		lsid += pack->header->total_io_size + 1;
 	}
 
-	sector_free(lhead_sectd);
+	free_logpack(pack);
 	sector_free(super_sectd);
 	return close_(fd) == 0;
 
 error3:
-	sector_free(lhead_sectd);
+	free_logpack(pack);
 error2:
 	sector_free(super_sectd);
 error1:

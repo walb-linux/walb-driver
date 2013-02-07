@@ -263,6 +263,40 @@ error1:
 }
 
 /**
+ * RETURN:
+ *   true if the devpath block device has
+ *   specified logical/physical block size.
+ */
+bool is_same_bdev_block_size(
+	const char* devpath, unsigned int lbs, unsigned int pbs)
+{
+	int lbs2 = get_bdev_logical_block_size(devpath);
+	int pbs2 = get_bdev_physical_block_size(devpath);
+	if (lbs2 < 0 || pbs2 < 0) { return false; }
+	return (int)lbs == lbs2 && (int)pbs == pbs2;
+}
+
+/**
+ * Check block size of two devices.
+ *
+ * RETURN:
+ *   true when two devices has compatible block sizes, or false.
+ */
+bool is_same_two_bdev_block_size(const char* devpath1, const char* devpath2)
+{
+	int lbs1, lbs2, pbs1, pbs2;
+
+	ASSERT(is_valid_bdev(devpath1) && is_valid_bdev(devpath2));
+
+	lbs1 = get_bdev_logical_block_size(devpath1);
+	lbs2 = get_bdev_logical_block_size(devpath2);
+	pbs1 = get_bdev_physical_block_size(devpath1);
+	pbs2 = get_bdev_physical_block_size(devpath2);
+	return lbs1 > 0 && lbs2 > 0 && pbs1 > 0 && pbs2 > 0 &&
+		lbs1 == lbs2 && pbs1 == pbs2;
+}
+
+/**
  * Get block device size.
  *
  * @devpath device file path.
@@ -559,24 +593,6 @@ bool write_data(int fd, const u8* data, size_t size)
 	}
 	ASSERT(w == size);
 	return true;
-}
-
-/**
- * Check block size of two devices.
- *
- * RETURN:
- *   true when two devices has compatible block sizes, or false.
- */
-bool is_same_block_size(const char* devpath1, const char* devpath2)
-{
-	ASSERT(is_valid_bdev(devpath1) && is_valid_bdev(devpath2));
-
-	int lbs1 = get_bdev_logical_block_size(devpath1);
-	int lbs2 = get_bdev_logical_block_size(devpath2);
-	int pbs1 = get_bdev_physical_block_size(devpath1);
-	int pbs2 = get_bdev_physical_block_size(devpath2);
-
-	return lbs1 == lbs2 && pbs1 == pbs2;
 }
 
 /* end of file */

@@ -25,6 +25,9 @@ bool get_datetime_str(time_t t, char* buf, size_t n);
 bool is_valid_bdev(const char* path);
 int get_bdev_logical_block_size(const char* devpath);
 int get_bdev_physical_block_size(const char* devpath);
+bool is_same_bdev_block_size(
+	const char* devpath, unsigned int lbs, unsigned int pbs);
+bool is_same_two_bdev_block_size(const char* devpath1, const char* devpath2);
 u64 get_bdev_size(const char* devpath);
 dev_t get_bdev_devt(const char *devpath);
 bool is_discard_supported(int fd);
@@ -38,9 +41,6 @@ void copy_uuid(u8* dst, const u8* src);
 /* basic IO functions. */
 bool read_data(int fd, u8* data, size_t size);
 bool write_data(int fd, const u8* data, size_t size);
-
-/* blocksize function. */
-bool is_same_block_size(const char* devpath1, const char* devpath2);
 
 /* Sector functions (will be obsolute). */
 bool read_sectors_raw(
