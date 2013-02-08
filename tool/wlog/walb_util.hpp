@@ -28,14 +28,16 @@ namespace util {
 class WalbSuperBlock
 {
 private:
+    /* Log device. */
     BlockDevice& bd_;
+    /* Physical block size */
     const unsigned int pbs_;
+    /* Super block offset in the log device [physical block]. */
     const u64 offset_;
 
+    /* Super block data. */
     struct FreeDeleter {
-        void operator()(u8 *p) {
-            ::free(p);
-        }
+        void operator()(u8 *p) { ::free(p); }
     };
     std::unique_ptr<u8, FreeDeleter> data_;
 
@@ -45,10 +47,10 @@ public:
         , pbs_(bd.getPhysicalBlockSize())
         , offset_(get1stSuperBlockOffsetStatic(pbs_))
         , data_(allocAlignedBufferStatic(pbs_)) {
-        /* Read the superblock. */
 #if 0
-        ::printf("offset %" PRIu64" pbs %u\n", offset_ * pbs_, pbs_);
+        ::printf("offset %" PRIu64 " pbs %u\n", offset_ * pbs_, pbs_);
 #endif
+        /* Read the superblock. */
         read();
 #if 0
         print(); //debug
@@ -132,18 +134,25 @@ public:
         return (lsid % s) + getRingBufferOffset();
     }
 
+    /**
+     * Read super block from the log device.
+     */
     void read() {
-        bd_.read(offset_ * pbs_, pbs_, (char *)data_.get());
-        /* Check. */
+        bd_.read(offset_ * pbs_, pbs_, ptr<char>());
         if (!isValid()) {
-            throw RT_ERR("super block is not valid.");
+            throw RT_ERR("super block is invalid.");
         }
     }
 
+    /**
+     * Write super block to the log device.
+     */
     void write() {
         updateChecksum();
-        bd_.write(offset_ * pbs_, pbs_,
-                  reinterpret_cast<char *>(data_.get()));
+        if (!isValid()) {
+            throw RT_ERR("super block is invalid.");
+        }
+        bd_.write(offset_ * pbs_, pbs_, ptr<char>());
     }
 
     void print(FILE *fp) const {
@@ -174,9 +183,8 @@ public:
                   getWrittenLsid(),
                   getDeviceSize(),
                   getRingBufferOffset());
-
         ::fprintf(fp, "uuid: ");
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < UUID_SIZE; i++) {
             ::fprintf(fp, "%02x", getUuid()[i]);
         }
         ::fprintf(fp, "\n");
@@ -200,12 +208,22 @@ private:
         return p;
     }
 
+    template <typename T>
+    T *ptr() {
+        return reinterpret_cast<T *>(data_.get());
+    }
+
+    template <typename T>
+    const T *ptr() const {
+        return reinterpret_cast<const T *>(data_.get());
+    }
+
     struct walb_super_sector* super() {
-        return (struct walb_super_sector *)data_.get();
+        return ptr<struct walb_super_sector>();
     }
 
     const struct walb_super_sector* super() const {
-        return (const struct walb_super_sector *)data_.get();
+        return ptr<const struct walb_super_sector>();
     }
 
     bool isValid(bool isChecksum = true) const {
@@ -396,7 +414,7 @@ public:
         header().total_io_size = 0;
         header().n_padding = 0;
         for (size_t i = 0; i < nRecords(); i++) {
-            auto &rec = record(i);
+            struct walb_log_record &rec = record(i);
             if (!::test_bit_u32(LOG_RECORD_DISCARD, &rec.flags)) {
                 header().total_io_size += ::capacity_pb(pbs(), rec.io_size);
             }
@@ -706,7 +724,7 @@ public:
     u64 offset() const { return record().offset; }
 
     bool isValid(bool isChecksum = true) const {
-        const auto &rec = record();
+        const struct walb_log_record &rec = record();
         if (!::is_valid_log_record_const(&rec)) {
             return false;
         }
