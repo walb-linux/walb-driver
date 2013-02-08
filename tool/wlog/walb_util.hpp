@@ -251,8 +251,9 @@ public:
         return block_;
     }
 
-    const u8* getRawBuffer() const {
-        return block_.get();
+    template <typename ByteType>
+    const ByteType* getRawBuffer() const {
+        return reinterpret_cast<ByteType *>(block_.get());
     }
 
     struct walb_logpack_header& header() {
@@ -626,10 +627,15 @@ public:
         data_.push_back(block);
     }
 
-    Block getBlock(size_t idx) const {
+    Block getBlock(size_t idx) {
         assert(hasData());
         assert(idx < ioSizePb());
         return data_[idx];
+    }
+
+    template <typename ByteType>
+    ByteType* getRawBuffer(size_t idx) {
+        return reinterpret_cast<ByteType *>(getBlock(idx).get());
     }
 
     /**
@@ -637,7 +643,7 @@ public:
      * You can access the range of
      * [ret, ret + LOGICAL_BLOCK_SIZE).
      */
-    u8* getLogicalBlock(size_t idx) const {
+    u8* getLogicalBlock(size_t idx) {
         assert(hasData());
         assert(idx < ioSizeLb());
 

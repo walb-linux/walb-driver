@@ -392,8 +392,7 @@ private:
             paddingLogh.updateChecksum();
             assert(paddingLogh.isValid());
             blkdev.write(
-                offPb * pbs, pbs,
-                reinterpret_cast<const char *>(paddingLogh.getRawBuffer()));
+                offPb * pbs, pbs, paddingLogh.getRawBuffer<char>());
 
             /* Update logh's lsid information. */
             lsidDiff_ += paddingPb;
@@ -441,7 +440,7 @@ private:
 #endif
         blkdev.write(
             offPb * pbs, pbs,
-            reinterpret_cast<const char *>(logh.getRawBuffer()));
+            logh.getRawBuffer<char>());
         for (size_t i = 0; i < blocks.size(); i++) {
             blkdev.write((offPb + 1 + i) * pbs, pbs,
                          reinterpret_cast<const char *>(blocks[i].get()));
@@ -454,7 +453,10 @@ private:
             offPb * pbs, pbs,
             reinterpret_cast<char *>(b2.get()));
         walb::util::WalbLogpackHeader logh2(b2, pbs, salt);
-        ::printf("memcmp %d\n", ::memcmp(logh.getRawBuffer(), logh2.getRawBuffer(), pbs));
+        int ret = ::memcmp(
+            logh.getRawBuffer<char>(),
+            logh2.getRawBuffer<char>(), pbs);
+        ::printf("memcmp %d\n", ret);
         assert(logh2.isValid());
 #endif
 
