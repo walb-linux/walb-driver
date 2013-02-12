@@ -39,6 +39,7 @@ private:
     int64_t lsidDiff_; /* 0 means no change. */
     uint64_t invalidLsid_; /* -1 means no invalidation. */
     uint64_t ddevLb_; /* 0 means no clipping. */
+    bool isVerify_;
     bool isVerbose_;
     bool isHelp_;
     std::vector<std::string> args_;
@@ -51,6 +52,7 @@ public:
         , lsidDiff_(0)
         , invalidLsid_(-1)
         , ddevLb_(0)
+        , isVerify_(false)
         , isVerbose_(false)
         , isHelp_(false)
         , args_() {
@@ -63,6 +65,7 @@ public:
     int64_t lsidDiff() const { return lsidDiff_; }
     uint64_t invalidLsid() const { return invalidLsid_; }
     uint64_t ddevLb() const { return ddevLb_; }
+    bool isVerify() const { return isVerify_; }
     bool isVerbose() const { return isVerbose_; }
     bool isHelp() const { return isHelp_; }
 
@@ -73,12 +76,13 @@ public:
                  "lsidDiff: %" PRIi64 "\n"
                  "invalidLsid: %" PRIu64 "\n"
                  "ddevLb: %" PRIu64 "\n"
+                 "verify: %d\n"
                  "verbose: %d\n"
                  "isHelp: %d\n",
                  ldevPath().c_str(),
                  beginLsid(), endLsid(), lsidDiff(),
                  invalidLsid(), ddevLb(),
-                 isVerbose(), isHelp());
+                 isVerify(), isVerbose(), isHelp());
         int i = 0;
         for (const auto& s : args_) {
             ::printf("arg%d: %s\n", i++, s.c_str());
@@ -112,6 +116,7 @@ private:
         LSID_DIFF,
         LSID_INVALID,
         DDEV_SIZE,
+        VERIFY,
         VERBOSE,
         HELP,
     };
@@ -135,6 +140,7 @@ private:
                 {"lsidDiff", 1, 0, Opt::LSID_DIFF},
                 {"invalidLsid", 1, 0, Opt::LSID_INVALID},
                 {"ddevSize", 1, 0, Opt::DDEV_SIZE},
+                {"verify", 0, 0, Opt::VERIFY},
                 {"verbose", 0, 0, Opt::VERBOSE},
                 {"help", 0, 0, Opt::HELP},
                 {0, 0, 0, 0}
@@ -164,6 +170,9 @@ private:
             case 's':
                 ddevLb_ = walb::util::fromUnitIntString(optarg);
                 break;
+            case Opt::VERIFY:
+                isVerify_ = true;
+                break;
             case Opt::VERBOSE:
             case 'v':
                 isVerbose_ = true;
@@ -188,13 +197,14 @@ private:
     static std::string generateHelpString() {
         return walb::util::formatString(
             "Wlresotre: restore walb log to a log device.\n"
-            "Usage: wlrestore [options] LOG_DEVICE_PATH\n"
+            "Usage: wlrestore [options] LOG_DEVICE_PATH < WLOG_FILE\n"
             "Options:\n"
             "  -b, --beginLsid LSID:  begin lsid to restore. (default: 0)\n"
             "  -e, --endLsid LSID:    end lsid to restore. (default: -1)\n"
             "  -d, --lsidDiff DIFF:   lsid diff. (default: 0)\n"
             "  -i, --invalidLsid LSID:invalidate lsid after restore. (default: no invalidation)\n"
             "  -s, --ddevSize SIZE:   data device size for clipping. (default: no clipping)\n"
+            "      --verify:          verify written logpack (default: no)\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
             "  -h, --help:            show this message.\n");
     }
@@ -211,6 +221,12 @@ private:
 
     using Block = std::shared_ptr<u8>;
     using BlockA = walb::util::BlockAllocator<u8>;
+    using BlockDev = walb::util::BlockDevice;
+    using WlogHeader = walb::util::WalbLogFileHeader;
+    using PackHeader = walb::util::WalbLogpackHeader;
+    using PackData = walb::util::WalbLogpackData;
+    using FdReader = walb::util::FdReader;
+    using SuperBlock = walb::util::WalbSuperBlock;
 
 public:
     WalbLogRestorer(const Config& config)
@@ -223,8 +239,8 @@ public:
      */
     void restore(int fdIn) {
         /* Read walb log file header from stdin. */
-        walb::util::FdReader fdr(fdIn);
-        walb::util::WalbLogFileHeader wlHead;
+        FdReader fdr(fdIn);
+        WlogHeader wlHead;
         wlHead.read(fdr);
         if (!wlHead.isValid()) {
             throw RT_ERR("Walb log file header is invalid.");
@@ -232,13 +248,15 @@ public:
         const unsigned int pbs = wlHead.pbs();
 
         /* Open the log device. */
-        walb::util::BlockDevice blkdev(config_.ldevPath(), O_RDWR);
+        BlockDev blkdev(config_.ldevPath(), O_RDWR);
         if (!blkdev.isBlockDevice()) {
-            ::fprintf(::stderr, "Warning: the log device does not seem to be block device.\n");
+            ::fprintf(
+                ::stderr,
+                "Warning: the log device does not seem to be block device.\n");
         }
 
         /* Load superblock. */
-        walb::util::WalbSuperBlock super(blkdev);
+        SuperBlock super(blkdev);
 
         /* Check physical block size. */
         if (super.getPhysicalBlockSize() != pbs) {
@@ -293,10 +311,11 @@ public:
                  beginLsid, restoredLsid);
     }
 private:
+    /**
+     * Invalidate a specified lsid.
+     */
     void invalidateLsid(
-        walb::util::BlockDevice &blkdev,
-        walb::util::WalbSuperBlock &super,
-        walb::util::BlockAllocator<u8> &ba,
+        BlockDev &blkdev, SuperBlock &super, BlockA &ba,
         unsigned int pbs, uint64_t lsid) {
         uint64_t off = super.getOffsetFromLsid(lsid);
         Block b = ba.alloc();
@@ -307,22 +326,19 @@ private:
     /**
      * Read a block data from a fd reader.
      */
-    Block readBlock(walb::util::FdReader& fdr, BlockA& ba, unsigned int pbs) {
+    Block readBlock(FdReader& fdr, BlockA& ba, unsigned int pbs) {
         Block b = ba.alloc();
         if (b.get() == nullptr) {
             throw RT_ERR("allocate failed.");
         }
-        char *p = reinterpret_cast<char *>(b.get());
-        fdr.read(p, pbs);
+        fdr.read(reinterpret_cast<char *>(b.get()), pbs);
         return b;
     }
 
     /**
      * Read a logpack data.
      */
-    void readLogpackData(
-        walb::util::WalbLogpackData &logd, walb::util::FdReader &fdr,
-        walb::util::BlockAllocator<u8> &ba) {
+    void readLogpackData(PackData &logd, FdReader &fdr, BlockA &ba) {
         if (!logd.hasData()) { return; }
         //::printf("ioSizePb: %u\n", logd.ioSizePb()); //debug
         for (size_t i = 0; i < logd.ioSizePb(); i++) {
@@ -347,24 +363,21 @@ private:
      *   true in normal termination, or false.
      */
     bool readLogpackAndRestore(
-        walb::util::FdReader &fdr,
-        walb::util::BlockDevice &blkdev,
-        walb::util::WalbSuperBlock &super,
-        walb::util::BlockAllocator<u8> &ba,
-        walb::util::WalbLogFileHeader &wlHead,
+        FdReader &fdr, BlockDev &blkdev,
+        SuperBlock &super, BlockA &ba, WlogHeader &wlHead,
         uint64_t &restoredLsid) {
 
         u32 salt = wlHead.salt();
         unsigned int pbs = wlHead.pbs();
 
         /* Read logpack header. */
-        walb::util::WalbLogpackHeader logh(readBlock(fdr, ba, pbs), pbs, salt);
+        PackHeader logh(readBlock(fdr, ba, pbs), pbs, salt);
         if (!logh.isValid()) {
             return false;
         }
-#if 0
-        logh.printShort(); /* debug */
-#endif
+        if (config_.isVerbose()) {
+            logh.printShort();
+        }
         const u64 originalLsid = logh.logpackLsid();
         if (config_.endLsid() <= originalLsid) {
             return false;
@@ -379,14 +392,14 @@ private:
 
         /* Padding check. */
         u64 offPb = super.getOffsetFromLsid(logh.logpackLsid());
-        const u64 endOffPb = super.getRingBufferOffset() + super.getRingBufferSize();
+        const u64 endOffPb = super.getRingBufferOffset() +
+            super.getRingBufferSize();
         if (endOffPb < offPb + 1 + logh.totalIoSize()) {
             /* Create and write padding logpack. */
             unsigned int paddingPb = endOffPb - offPb;
             assert(0 < paddingPb);
             assert(paddingPb < (1U << 16));
-            walb::util::WalbLogpackHeader paddingLogh(
-                ba.alloc(), pbs, wlHead.salt());
+            PackHeader paddingLogh(ba.alloc(), pbs, wlHead.salt());
             paddingLogh.init(logh.logpackLsid());
             paddingLogh.addPadding(paddingPb - 1);
             paddingLogh.updateChecksum();
@@ -409,7 +422,7 @@ private:
         std::vector<Block> blocks;
         blocks.reserve(logh.totalIoSize());
         for (size_t i = 0; i < logh.nRecords(); i++) {
-            walb::util::WalbLogpackData logd(logh, i);
+            PackData logd(logh, i);
             readLogpackData(logd, fdr, ba);
             if (logd.hasData()) {
                 for (size_t j = 0; j < logd.ioSizePb(); j++) {
@@ -434,31 +447,36 @@ private:
         logh.updateChecksum();
         assert(logh.isValid());
         assert(offPb + 1 + logh.totalIoSize() <= endOffPb);
-#if 0
-        ::printf("header %u records\n", logh.nRecords());
-        ::printf("offPb %" PRIu64 "\n", offPb);
-#endif
-        blkdev.write(
-            offPb * pbs, pbs,
-            logh.ptr<char>());
+
+        if (config_.isVerbose()) {
+            ::printf("header %u records\n", logh.nRecords());
+            ::printf("offPb %" PRIu64 "\n", offPb);
+        }
+        blkdev.write(offPb * pbs, pbs, logh.ptr<char>());
         for (size_t i = 0; i < blocks.size(); i++) {
             blkdev.write((offPb + 1 + i) * pbs, pbs,
                          reinterpret_cast<const char *>(blocks[i].get()));
         }
 
-#if 0
-        /* debug */
-        Block b2 = ba.alloc();
-        blkdev.read(
-            offPb * pbs, pbs,
-            reinterpret_cast<char *>(b2.get()));
-        walb::util::WalbLogpackHeader logh2(b2, pbs, salt);
-        int ret = ::memcmp(
-            logh.getRawBuffer<char>(),
-            logh2.getRawBuffer<char>(), pbs);
-        ::printf("memcmp %d\n", ret);
-        assert(logh2.isValid());
-#endif
+        if (config_.isVerify()) {
+            /* Currently only header block will be verified. */
+            Block b2 = ba.alloc();
+            blkdev.read(
+                offPb * pbs, pbs,
+                reinterpret_cast<char *>(b2.get()));
+            PackHeader logh2(b2, pbs, salt);
+            int ret = ::memcmp(logh.ptr<char>(), logh2.ptr<char>(), pbs);
+            if (ret) {
+                throw RT_ERR("Logpack header verification failed: "
+                             "lsid %" PRIu64 " offPb %" PRIu64 ".",
+                             logh2.logpackLsid(), offPb);
+            }
+            if (!logh2.isValid()) {
+                throw RT_ERR("Stored logpack header Invalid: "
+                             "lsid %" PRIu64 " offPb %" PRIu64 ".",
+                             logh2.logpackLsid(), offPb);
+            }
+        }
 
         restoredLsid = logh.logpackLsid() + 1 + logh.totalIoSize();
         return true;
@@ -471,7 +489,6 @@ int main(int argc, char* argv[])
 
     try {
         Config config(argc, argv);
-        /* config.print(); */
         if (config.isHelp()) {
             Config::printHelp();
             return 0;
