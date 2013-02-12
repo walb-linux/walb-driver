@@ -33,7 +33,7 @@ class Config
 {
 private:
     std::string ddevPath_;
-    std::string inPath_;
+    std::string inWlogPath_;
     bool isVerbose_;
     bool isHelp_;
     std::vector<std::string> args_;
@@ -41,7 +41,7 @@ private:
 public:
     Config(int argc, char* argv[])
         : ddevPath_()
-        , inPath_("-")
+        , inWlogPath_("-")
         , isVerbose_(false)
         , isHelp_(false)
         , args_() {
@@ -49,17 +49,17 @@ public:
     }
 
     const std::string& ddevPath() const { return ddevPath_; }
-    const std::string& inPath() const { return inPath_; }
-    bool isFromStdin() const { return inPath_ == "-"; }
+    const std::string& inWlogPath() const { return inWlogPath_; }
+    bool isFromStdin() const { return inWlogPath_ == "-"; }
     bool isVerbose() const { return isVerbose_; }
     bool isHelp() const { return isHelp_; }
 
     void print() const {
         ::printf("ddevPath: %s\n"
-                 "inPath: %s\n"
+                 "inWlogPath: %s\n"
                  "verbose: %d\n"
                  "isHelp: %d\n",
-                 ddevPath().c_str(), inPath().c_str(),
+                 ddevPath().c_str(), inWlogPath().c_str(),
                  isVerbose(), isHelp());
         int i = 0;
         for (const auto& s : args_) {
@@ -75,7 +75,7 @@ public:
         if (ddevPath_.empty()) {
             throwError("Specify device path.");
         }
-        if (inPath_.empty()) {
+        if (inWlogPath_.empty()) {
             throwError("Specify input wlog path.");
         }
     }
@@ -89,7 +89,7 @@ public:
 private:
     /* Option ids. */
     enum Opt {
-        IN_PATH = 1,
+        IN_WLOG_PATH = 1,
         VERBOSE,
         HELP,
     };
@@ -108,7 +108,7 @@ private:
     void parse(int argc, char* argv[]) {
         while (1) {
             const struct option long_options[] = {
-                {"inPath", 1, 0, Opt::IN_PATH},
+                {"inWlogPath", 1, 0, Opt::IN_WLOG_PATH},
                 {"verbose", 0, 0, Opt::VERBOSE},
                 {"help", 0, 0, Opt::HELP},
                 {0, 0, 0, 0}
@@ -118,9 +118,9 @@ private:
             if (c == -1) { break; }
 
             switch (c) {
-            case Opt::IN_PATH:
+            case Opt::IN_WLOG_PATH:
             case 'i':
-                inPath_ = std::string(optarg);
+                inWlogPath_ = std::string(optarg);
                 break;
             case Opt::VERBOSE:
             case 'v':
@@ -148,14 +148,17 @@ private:
             "Wlredo: redo wlog on a block device.\n"
             "Usage: wlcat [options] DEVICE_PATH\n"
             "Options:\n"
-            "  -i, --inPath PATH: input wlog path. '-' for stdin. (default: '-')\n"
-            "  -v, --verbose:     verbose messages to stderr.\n"
-            "  -h, --help:        show this message.\n");
+            "  -i, --inWlogPath PATH: input wlog path. '-' for stdin. (default: '-')\n"
+            "  -v, --verbose:         verbose messages to stderr.\n"
+            "  -h, --help:            show this message.\n");
     }
 };
 
 using Block = std::shared_ptr<u8>;
 
+/**
+ * Sequence id generator.
+ */
 class SimpleSequenceIdGenerator
 {
 private:
@@ -250,12 +253,12 @@ public:
         }
     }
 
-    void submit() {
+    void markSubmitted() {
         assert(!isSubmitted());
         isSubmitted_ = true;
     }
 
-    void complete() {
+    void markCompleted() {
         assert(!isCompleted());
         isCompleted_ = true;
     }
@@ -264,11 +267,13 @@ public:
         ::fprintf(p, "IO offset: %zu size: %zu aioKey: %u "
                   "submitted: %d completed: %d\n",
                   offset_, size_, aioKey_,
-                  isSubmitted_ ? 1 : 0, isCompleted_ ? 1 : 0);
+                  isSubmitted_, isCompleted_);
         for (auto &b : blocks_) {
-            ::fprintf(p, " block %p\n", b.get());
+            ::fprintf(p, "  block %p\n", b.get());
         }
     }
+
+    void print() const { print(::stdout); }
 
     /**
      * Can an IO be merged to this.
@@ -322,7 +327,7 @@ public:
         const off_t off1 = rhs->offset_;
         const off_t size0 = static_cast<const off_t>(size_);
         const off_t size1 = static_cast<const off_t>(rhs->size_);
-        return off0 + size0 > off1 && off1 + size1 > off0;
+        return off0 < off1 + size1 && off1 < off0 + size0;
     }
 
     /**
@@ -343,7 +348,7 @@ using IoPtr = std::shared_ptr<Io>;
 
 /**
  * This class can merge the last IO in the queue
- * and the added IO into a large IO.
+ * in order to reduce number of IOs.
  */
 class IoQueue {
 private:
@@ -382,32 +387,15 @@ public:
     bool empty() const {
         return ioQ_.empty();
     }
-
-    std::shared_ptr<u8> ptr() {
-        return ioQ_.front()->ptr();
-    }
-
 private:
     /**
-     * MUST REFACTOR.
-     * bool canMerge(IoPtr rhs);
+     * Try to merge io1 to io0.
      */
     bool tryMerge(IoPtr io0, IoPtr io1) {
-        //io0->print(::stderr); //debug
-        //io1->print(::stderr); //debug
-
-        /* Replace if empty. */
-        assert(!io1->empty());
-        if (io0->empty()) {
-            *io0 = std::move(*io1);
-            return true;
-        }
-
-        /* Check mas io size. */
-        if (io0->size() + io1->size() > maxIoSize_) {
+        /* Check max io size. */
+        if (maxIoSize_ < io0->size() + io1->size()) {
             return false;
         }
-
         /* Try merge. */
         return io0->tryMerge(io1);
     }
@@ -415,12 +403,13 @@ private:
 
 /**
  * In order to serialize overlapped IOs execution.
- * IOs must be FIFO.
+ * IOs must be FIFO. (ins() and del()).
  */
 class OverlappedData
 {
 private:
-    std::set<std::pair<off_t, IoPtr> > set_;
+    using IoSet = std::set<std::pair<off_t, IoPtr> >;
+    IoSet set_;
     size_t maxSize_;
 
 public:
@@ -442,17 +431,15 @@ public:
 
         /* Get search range. */
         off_t key0 = 0;
-        if (iop->offset() > static_cast<off_t>(maxSize_)) {
+        if (static_cast<off_t>(maxSize_) < iop->offset()) {
             key0 = iop->offset() - static_cast<off_t>(maxSize_);
         }
         off_t key1 = iop->offset() + iop->size();
 
-        std::pair<off_t, IoPtr> k0 = std::make_pair(key0, IoPtr());
-
         /* Count overlapped IOs. */
         iop->nOverlapped() = 0;
-        auto it = set_.lower_bound(k0);
-        int c = 0;
+        std::pair<off_t, IoPtr> k0 = std::make_pair(key0, IoPtr());
+        IoSet::iterator it = set_.lower_bound(k0);
         while (it != set_.end() && it->first < key1) {
             IoPtr p = it->second;
             if (p->isOverlapped(iop)) {
@@ -462,9 +449,7 @@ public:
                 }
             }
             it++;
-            c++;
         }
-        //::printf("mmap.size %zu c %d\n", mmap_.size(), c); //debug
 
         /* Insert iop. */
         set_.insert(std::make_pair(iop->offset(), iop));
@@ -481,6 +466,7 @@ public:
      * (1) Delete from the overlapping data.
      * (2) Decrement the overlapping IOs in the data.
      * (3) IOs where iop->nOverlapped became 0 will be added to the ioQ.
+     *     You can submit them just after returned.
      */
     void del(IoPtr iop, std::queue<IoPtr> &ioQ) {
         assert(iop.get() != nullptr);
@@ -500,10 +486,10 @@ public:
             key0 = iop->offset() - static_cast<off_t>(maxSize_);
         }
         off_t key1 = iop->offset() + iop->size();
-        auto k0 = std::make_pair(key0, IoPtr());
 
         /* Decrement nOverlapped of overlapped IOs. */
-        auto it = set_.lower_bound(k0);
+        std::pair<off_t, IoPtr> k0 = std::make_pair(key0, IoPtr());
+        IoSet::iterator it = set_.lower_bound(k0);
         while (it != set_.end() && it->first < key1) {
             IoPtr p = it->second;
             if (p->isOverlapped(iop)) {
@@ -550,17 +536,22 @@ private:
     walb::util::WalbLogFileHeader wh_;
     const bool isDiscardSupport_;
 
-    std::queue<IoPtr> ioQ_; /* serialized. */
+    std::queue<IoPtr> ioQ_; /* serialized by lsid. */
     std::deque<IoPtr> readyIoQ_; /* ready to submit. */
-    std::deque<IoPtr> submitIoQ_;
+    std::deque<IoPtr> submitIoQ_; /* submitted, but not completed. */
+
     /* Number of blocks where the corresponding IO
        is submitted, but not completed. */
     size_t nPendingBlocks_;
+
     /* Number of prepared but not submitted IOs. */
     size_t nPreparedIos_;
+
     OverlappedData olData_;
 
-    using LogDataPtr = std::shared_ptr<walb::util::WalbLogpackData>;
+    using PackHeader = walb::util::WalbLogpackHeader;
+    using PackData = walb::util::WalbLogpackData;
+    using PackDataPtr = std::shared_ptr<PackData>;
 
 public:
     WalbLogApplyer(
@@ -614,17 +605,17 @@ public:
         try {
             while (true) {
                 Block b = readBlock(fdr);
-                walb::util::WalbLogpackHeader logh(b, blockSize_, salt());
+                PackHeader logh(b, blockSize_, salt());
                 if (!logh.isValid()) {
                     break;
                 }
-#if 0
-                logh.printShort(); /* debug */
-#endif
+                if (config_.isVerbose()) {
+                    logh.printShort();
+                }
                 for (size_t i = 0; i < logh.nRecords(); i++) {
-                    walb::util::WalbLogpackData logd(logh, i);
+                    PackData logd(logh, i);
                     readLogpackData(logd, fdr);
-                    createIoAndSubmit(logd);
+                    createIoAndPrepare(logd);
                     redoLsid = logd.lsid();
                 }
             } // while (true)
@@ -650,7 +641,7 @@ public:
 private:
     bool canApply() const {
         const struct walblog_header &h = wh_.header();
-        bool ret = h.physical_bs >= blockSize_ &&
+        bool ret = blockSize_ <= h.physical_bs &&
             h.physical_bs % blockSize_ == 0;
         if (!ret) {
             LOGe("Physical block size does not match %u %zu.\n",
@@ -666,12 +657,11 @@ private:
     /**
      * Read a logpack data.
      */
-    void readLogpackData(walb::util::WalbLogpackData &logd, walb::util::FdReader &fdr) {
+    void readLogpackData(PackData &logd, walb::util::FdReader &fdr) {
         if (!logd.hasData()) { return; }
         //::printf("ioSizePb: %u\n", logd.ioSizePb()); //debug
         for (size_t i = 0; i < logd.ioSizePb(); i++) {
-            auto block = readBlock(fdr);
-            logd.addBlock(block);
+            logd.addBlock(readBlock(fdr));
         }
         if (!logd.isValid()) {
             throw walb::util::InvalidLogpackData();
@@ -686,8 +676,7 @@ private:
         if (b.get() == nullptr) {
             throw RT_ERR("allocate failed.");
         }
-        char *p = reinterpret_cast<char *>(b.get());
-        fdr.read(p, blockSize_);
+        fdr.read(reinterpret_cast<char *>(b.get()), blockSize_);
         return b;
     }
 
@@ -698,7 +687,15 @@ private:
         return IoPtr(new Io(offset, size, block));
     }
 
-    void executeDiscard(UNUSED walb::util::WalbLogpackData &logd) {
+    /**
+     * Discard.
+     *
+     * Three types:
+     * (1) Ignore discard log.
+     * (2) Issue discard.
+     * (3) Issue zero-data IO.
+     */
+    void executeDiscard(UNUSED PackData &logd) {
 
         /* Wait for all IO done. */
         waitForAllPendingIos();
@@ -735,6 +732,9 @@ private:
         assert(olData_.empty());
     }
 
+    /**
+     * Convert [byte] to [physical block].
+     */
     unsigned int bytesToPb(unsigned int bytes) const {
         assert(bytes % LOGICAL_BLOCK_SIZE == 0);
         unsigned int lb = bytes / LOGICAL_BLOCK_SIZE;
@@ -743,15 +743,15 @@ private:
 
     /**
      * Wait for an IO completion.
+     * If not submitted, submit before waiting.
      */
     void waitForAnIoCompletion() {
-        //::printf("waitForAnIoCompletion\n"); //debug
         assert(!ioQ_.empty());
         IoPtr iop = ioQ_.front();
         ioQ_.pop();
 
         if (!iop->isSubmitted() && !iop->isOverwritten()) {
-            /* The IO is still not submitted. */
+            /* The IO is not still submitted. */
             prepareIos();
             submitIos();
         }
@@ -760,7 +760,7 @@ private:
             assert(!iop->isCompleted());
             assert(iop->aioKey() > 0);
             aio_.waitFor(iop->aioKey());
-            iop->complete();
+            iop->markCompleted();
         } else {
             assert(iop->isOverwritten());
         }
@@ -769,7 +769,6 @@ private:
         deleteFromOverlappedData(iop, tmpIoQ);
 
         /* Insert to the head of readyIoQ_. */
-        std::deque<IoPtr> sortedQ;
         while (!tmpIoQ.empty()) {
             IoPtr p = tmpIoQ.front();
             tmpIoQ.pop();
@@ -777,24 +776,19 @@ private:
                 /* No need to execute the IO. */
                 continue;
             }
+            assert(p->nOverlapped() == 0);
             readyIoQ_.push_front(p);
         }
 
-        /* debug */
-#if 0
-        ::printf("COMPLETE\t\t%" PRIu64 "\t%zu\t%zu\n",
-                 (u64)iop->offset() >> 9, iop->size() >> 9,
-                 nPendingBlocks_);
-#endif
-
-        /* all IOs added to the readyIoQ_ must satisfy
-           their nOverlapped == 0. */
-
-        /* You must handle errors here. */
+        if (config_.isVerbose()) {
+            ::printf("COMPLETE\t\t%" PRIu64 "\t%zu\t%zu\n",
+                     (u64)iop->offset() >> 9, iop->size() >> 9,
+                     nPendingBlocks_);
+        }
     }
 
     /**
-     * Submit IOs.
+     * Move IOs from readyIoQ_ to submitIoQ_.
      */
     void prepareIos() {
         assert(readyIoQ_.size() <= queueSize_);
@@ -819,13 +813,17 @@ private:
             submitIoQ_.push_back(iop);
 #endif
 
-            if (submitIoQ_.size() >= queueSize_ / 2) {
+            /* now editing */
+            if (queueSize_ <= submitIoQ_.size()) {
                 submitIos();
             }
         }
         assert(readyIoQ_.empty());
     }
 
+    /**
+     * Submit IOs in the submitIoQ_.
+     */
     void submitIos() {
         if (submitIoQ_.empty()) {
             return;
@@ -844,25 +842,25 @@ private:
             iop->aioKey() = aio_.prepareWrite(
                 iop->offset(), iop->size(), iop->rawPtr<char>());
             assert(iop->aioKey() > 0);
-            iop->submit();
+            iop->markSubmitted();
             nBulk++;
-#if 0
-            ::printf("SUBMIT\t\t%" PRIu64 "\t%zu\t%zu\n",
-                     (u64)iop->offset() >> 9, iop->size() >> 9, nPendingBlocks_);
-#endif
+            if (config_.isVerbose()) {
+                ::printf("SUBMIT\t\t%" PRIu64 "\t%zu\t%zu\n",
+                         (u64)iop->offset() >> 9, iop->size() >> 9, nPendingBlocks_);
+            }
         }
         if (nBulk > 0) {
             aio_.submit();
-#if 0
-            ::printf("nBulk: %zu\n", nBulk);
-#endif
+            if (config_.isVerbose()) {
+                ::printf("nBulk: %zu\n", nBulk);
+            }
         }
     }
 
     /**
-     * Create related IOs and submit it.
+     * Create related IOs and prepare them.
      */
-    void createIoAndSubmit(walb::util::WalbLogpackData &logd) {
+    void createIoAndPrepare(PackData &logd) {
         assert(logd.isExist());
         if (logd.isPadding()) {
             /* Do nothing. */
@@ -884,7 +882,7 @@ private:
         for (size_t i = 0; i < logd.ioSizePb(); i++) {
             Block block = logd.getBlock(i);
             nBlocks++;
-            if (remaining >= blockSize_) {
+            if (blockSize_ <= remaining) {
                 IoPtr iop = createIo(off, blockSize_, block);
                 tmpIoQ.add(iop);
                 off += blockSize_;
@@ -902,15 +900,14 @@ private:
         nPendingBlocks_ += nBlocks;
 
         /* Wait for IOs if there are too much pending IOs. */
-        while (!ioQ_.empty() && nPendingBlocks_ + nBlocks > queueSize_) {
+        while (!ioQ_.empty() && queueSize_ < nPendingBlocks_ + nBlocks) {
             waitForAnIoCompletion();
         }
 
-        /* debug */
-#if 0
-        ::printf("CREATE\t\t%" PRIu64 "\t%u\n",
-                 logd.offset(), logd.ioSizeLb());
-#endif
+        if (config_.isVerbose()) {
+            ::printf("CREATE\t\t%" PRIu64 "\t%u\n",
+                     logd.offset(), logd.ioSizeLb());
+        }
 
         /* Enqueue IOs. */
         while (!tmpIoQ.empty()) {
@@ -924,12 +921,12 @@ private:
                 /* Ready to submit. */
                 readyIoQ_.push_back(iop);
             } else {
-                /* debug */
-#if 0
-                ::printf("OVERLAP\t\t%" PRIu64 "\t%zu\t%u\n",
-                         static_cast<u64>(iop->offset()) >> 9,
-                         iop->offset() >> 9, iop->nOverlapped());
-#endif
+                /* Will be submitted later. */
+                if (config_.isVerbose()) {
+                    ::printf("OVERLAP\t\t%" PRIu64 "\t%zu\t%u\n",
+                             static_cast<u64>(iop->offset()) >> 9,
+                             iop->offset() >> 9, iop->nOverlapped());
+                }
             }
             ioQ_.push(iop);
         }
@@ -937,6 +934,9 @@ private:
     }
 
     static size_t getQueueSizeStatic(size_t bufferSize, size_t blockSize) {
+        if (bufferSize <= blockSize) {
+            throw RT_ERR("Buffer size must be > blockSize.");
+        }
         size_t qs = bufferSize / blockSize;
         if (qs == 0) {
             throw RT_ERR("Queue size is must be positive.");
@@ -945,13 +945,10 @@ private:
     }
 };
 
-const size_t KILO = 1024;
-const size_t MEGA = KILO * 1024;
-const size_t BUFFER_SIZE = 4 * MEGA;
-
 int main(int argc, char* argv[])
 {
     int ret = 0;
+    const size_t BUFFER_SIZE = 4 * 1024 * 1024; /* 4MB. */
 
     try {
         Config config(argc, argv);
@@ -961,11 +958,11 @@ int main(int argc, char* argv[])
         }
         config.check();
 
-        WalbLogApplyer wlApp(config, BUFFER_SIZE);
+        WalbLogApplyer wlApp(config, BUFFER_SIZE, false);
         if (config.isFromStdin()) {
             wlApp.readAndApply(0);
         } else {
-            walb::util::FileOpener fo(config.inPath(), O_RDONLY);
+            walb::util::FileOpener fo(config.inWlogPath(), O_RDONLY);
             wlApp.readAndApply(fo.fd());
             fo.close();
         }
