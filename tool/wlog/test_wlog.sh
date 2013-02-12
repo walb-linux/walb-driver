@@ -32,7 +32,9 @@ format_ldev()
 #
 format_ldev
 ./wlgen -s 32M -z 16M --maxPackSize 4M -o ${WLOG}.0
+cp ${DDEV}.0 ${DDEV}.0z
 ./wlredo ${DDEV}.0 < ${WLOG}.0
+./wlredo ${DDEV}.0z --zerodiscard < ${WLOG}.0
 
 #
 # Simple test.
@@ -55,6 +57,7 @@ restore_test()
   local ret2
 
   dd if=/dev/zero of=${DDEV}.1 bs=1M count=32
+  dd if=/dev/zero of=${DDEV}.1z bs=1M count=32
   dd if=/dev/zero of=${DDEV}.2 bs=1M count=32
   dd if=/dev/zero of=${DDEV}.3 bs=1M count=32
   ./wlrestore $LDEV --verify --lsidDiff $lsidDiff --invalidLsid $invalidLsid < ${WLOG}.0
@@ -71,6 +74,7 @@ restore_test()
   fi
 
   ./wlredo ${DDEV}.1 < ${WLOG}.1
+  ./wlredo ${DDEV}.1z --zerodiscard < ${WLOG}.1
   losetup $LOOP1 ${DDEV}.2
   $CTL redo_wlog --ddev $LOOP1 < ${WLOG}.1
   sleep 1
@@ -97,6 +101,12 @@ restore_test()
     ./bdiff -b 512 ${DDEV}.0 ${DDEV}.3
     if [ $? -ne 0 ]; then
       echo "failed: ./bdiff -b 512 ${DDEV}.0 ${DDEV}.3"
+      echo "TEST${testId}_FAILURE"
+      exit 1
+    fi
+    ./bdiff -b 512 ${DDEV}.0z ${DDEV}.1z
+    if [ $? -ne 0 ]; then
+      echo "failed: ./bdiff -b 512 ${DDEV}.0z ${DDEV}.1z"
       echo "TEST${testId}_FAILURE"
       exit 1
     fi
