@@ -449,11 +449,18 @@ public:
      * Write the logpack header block.
      */
     void write(int fd) {
+        util::FdWriter fdw(fd);
+        write(fdw);
+    }
+
+    /**
+     * Write the logpack header block.
+     */
+    void write(util::FdWriter &fdw) {
         updateChecksum();
         if (!isValid(true)) {
             throw RT_ERR("logpack header invalid.");
         }
-        util::FdWriter fdw(fd);
         fdw.write(ptr<char>(), pbs());
     }
 

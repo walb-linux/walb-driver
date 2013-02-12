@@ -49,7 +49,7 @@ private:
 
 public:
     Config(int argc, char* argv[])
-        : pbs_(512)
+        : pbs_(LOGICAL_BLOCK_SIZE)
         , devSize_(16 * 1024 * 1024) /* default 16MB. */
         , minIoSize_(pbs_)
         , maxIoSize_(32 * 1024) /* default 32KB. */
@@ -65,9 +65,9 @@ public:
         parse(argc, argv);
     }
 
-    uint64_t devLb() const { return devSize_ / 512; }
-    unsigned int minIoLb() const { return minIoSize_ / 512; }
-    unsigned int maxIoLb() const { return maxIoSize_ / 512; }
+    uint64_t devLb() const { return devSize_ / LOGICAL_BLOCK_SIZE; }
+    unsigned int minIoLb() const { return minIoSize_ / LOGICAL_BLOCK_SIZE; }
+    unsigned int maxIoLb() const { return maxIoSize_ / LOGICAL_BLOCK_SIZE; }
     unsigned int pbs() const { return pbs_; }
     unsigned int maxPackPb() const { return maxPackSize_ / pbs(); }
     uint64_t outLogPb() const { return outLogSize_ / pbs(); }
@@ -106,22 +106,19 @@ public:
     }
 
     void check() const {
-        if (pbs() < 512) {
-            throwError("pbs must be 512 or more.");
+        if (!::is_valid_pbs(pbs())) {
+            throwError("pbs invalid.");
         }
-        if (pbs() % 512 != 0) {
-            throwError("pbs must be multiple of 512.");
-        }
-        if (minIoLb() > 65535) {
+        if (65535 < minIoLb()) {
             throwError("minSize must be < 512 * 65536 bytes.");
         }
-        if (maxIoLb() > 65535) {
+        if (65535 < maxIoLb()) {
             throwError("maxSize must be < 512 * 65536 bytes.");
         }
-        if (minIoLb() > maxIoLb()) {
+        if (maxIoLb() < minIoLb()) {
             throwError("minIoSize must be <= maxIoSize.");
         }
-        if (maxPackPb() < 1 + capacity_pb(pbs(), maxIoLb())) {
+        if (maxPackPb() < 1 + ::capacity_pb(pbs(), maxIoLb())) {
             throwError("maxPackSize must be >= pbs + maxIoSize.");
         }
         if (lsid() + outLogPb() < lsid()) {
@@ -166,6 +163,11 @@ private:
         throw Error(msg);
     }
 
+    template <typename IntType>
+    IntType str2int(const char *str) const {
+        return static_cast<IntType>(walb::util::fromUnitIntString(str));
+    }
+
     void parse(int argc, char* argv[]) {
         while (1) {
             const struct option long_options[] = {
@@ -193,24 +195,24 @@ private:
                 devSize_ = walb::util::fromUnitIntString(optarg);
                 break;
             case Opt::MINIOSIZE:
-                minIoSize_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
+                minIoSize_ = str2int<unsigned int>(optarg);
                 break;
             case Opt::MAXIOSIZE:
-                maxIoSize_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
+                maxIoSize_ = str2int<unsigned int>(optarg);
                 break;
             case Opt::PBS:
             case 'b':
-                pbs_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
+                pbs_ = str2int<unsigned int>(optarg);
                 break;
             case Opt::MAXPACKSIZE:
-                maxPackSize_ = static_cast<unsigned int>(walb::util::fromUnitIntString(optarg));
+                maxPackSize_ = str2int<unsigned int>(optarg);
                 break;
             case Opt::OUTLOGSIZE:
             case 'z':
-                outLogSize_ = walb::util::fromUnitIntString(optarg);
+                outLogSize_ = str2int<uint64_t>(optarg);
                 break;
             case Opt::LSID:
-                lsid_ = walb::util::fromUnitIntString(optarg);
+                lsid_ = str2int<uint64_t>(optarg);
                 break;
             case Opt::NOPADDING:
                 isPadding_ = false;
@@ -246,7 +248,7 @@ private:
             "Usage: wlgen [options]\n"
             "Options:\n"
             "  -o, --outPath PATH:    output file path or '-' for stdout.\n"
-            "  -b, --pbs(-b) SIZE:    physical block size [byte]. (default: 512)\n"
+            "  -b, --pbs SIZE:        physical block size [byte]. (default: %u)\n"
             "  -s, --devSize SIZE:    device size [byte]. (default: 16M)\n"
             "  -z, --outLogSize SIZE: total log size to generate [byte]. (default: 1M)\n"
             "  --minIoSize SIZE:      minimum IO size [byte]. (default: pbs)\n"
@@ -256,7 +258,8 @@ private:
             "  --nopadding:           no padding. (default: randomly inserted)\n"
             "  --nodiscard:           no discard. (default: randomly inserted)\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
-            "  -h, --help:            show this message.\n");
+            "  -h, --help:            show this message.\n",
+            LOGICAL_BLOCK_SIZE);
     }
 };
 
@@ -285,17 +288,9 @@ private:
             , dist64_(0, UINT64_MAX)
             , distp_(4) {}
 
-        uint32_t get32() {
-            return dist32_(gen_);
-        }
-
-        uint64_t get64() {
-            return dist64_(gen_);
-        }
-
-        uint16_t getp() {
-            return distp_(gen_);
-        }
+        uint32_t get32() { return dist32_(gen_); }
+        uint64_t get64() { return dist64_(gen_); }
+        uint16_t getp() { return distp_(gen_); }
     };
 public:
     WalbLogGenerator(const Config& config)
@@ -316,14 +311,24 @@ public:
 private:
     using Block = std::shared_ptr<u8>;
 
+    void setUuid(Rand &rand, std::vector<u8> &uuid) {
+        const size_t t = sizeof(uint64_t);
+        const size_t n = uuid.size() / t;
+        const size_t m = uuid.size() % t;
+        for (size_t i = 0; i < n; i++) {
+            *reinterpret_cast<uint64_t *>(&uuid[i * t]) = rand.get64();
+        }
+        for (size_t i = 0; i < m; i++) {
+            uuid[n * t + i] = static_cast<u8>(rand.get32());
+        }
+    }
+
     void generateAndWrite(int fd) {
         Rand rand;
-        uint64_t written = 0;
+        uint64_t writtenPb = 0;
         walb::util::WalbLogFileHeader wlHead;
-        std::vector<u8> uuid(16);
-        for (int i = 0; i < 4; i ++) {
-            *reinterpret_cast<uint32_t *>(&uuid[i * 4]) = rand.get32();
-        }
+        std::vector<u8> uuid(UUID_SIZE);
+        setUuid(rand, uuid);
 
         const uint32_t salt = rand.get32();
         const unsigned int pbs = config_.pbs();
@@ -342,7 +347,7 @@ private:
         }
 
         uint64_t nPack = 0;
-        while (written < config_.outLogPb()) {
+        while (writtenPb < config_.outLogPb()) {
             walb::util::WalbLogpackHeader logh(hBlock, pbs, salt);
             generateLogpackHeader(rand, logh, lsid);
             assert(::is_valid_logpack_header_and_records(&logh.header()));
@@ -355,7 +360,7 @@ private:
                 if (logd.hasData()) {
                     for (unsigned int j = 0; j < logd.ioSizePb(); j++) {
                         Block b = ba.alloc();
-                        memset(b.get(), 0, pbs);
+                        ::memset(b.get(), 0, pbs);
                         *reinterpret_cast<uint64_t *>(b.get()) = tmpLsid++;
                         logd.addBlock(b);
                         blocks.push_back(b);
@@ -370,20 +375,21 @@ private:
             assert(blocks.size() == logh.totalIoSize());
 
             /* Calculate header checksum and write. */
-            logh.write(fd);
+            walb::util::FdWriter fdw(fd);
+            logh.write(fdw);
 
             /* Write each IO data. */
-            walb::util::FdWriter fdw(fd);
             for (Block b : blocks) {
 #if 0
-                ::printf("block data %" PRIu64 "\n", *reinterpret_cast<uint64_t *>(b.get())); /* debug */
+                ::printf("block data %" PRIu64 "\n",
+                         *reinterpret_cast<uint64_t *>(b.get())); /* debug */
 #endif
                 fdw.write(reinterpret_cast<const char *>(b.get()), pbs);
             }
 
             uint64_t w = 1 + logh.totalIoSize();
             assert(tmpLsid == lsid + w);
-            written += w;
+            writtenPb += w;
             lsid += w;
             nPack++;
 
@@ -400,7 +406,7 @@ private:
                       "\n"
                       "nPack: %" PRIu64 "\n"
                       "written %" PRIu64 " physical blocks\n",
-                      nPack, written);
+                      nPack, writtenPb);
         }
     }
 
@@ -420,16 +426,17 @@ private:
             /* Decide io_size. */
             uint16_t ioSize = config_.minIoLb();
             uint16_t range = config_.maxIoLb() - config_.minIoLb();
-            if (range > 0) {
+            if (0 < range) {
                 ioSize += rand.get32() % range;
             }
-            assert(ioSize > 0);
-            if (offset + ioSize > devLb) {
+            if (devLb < offset + ioSize) {
                 ioSize = devLb - offset; /* clipping. */
             }
+            assert(0 < ioSize);
             /* Check total_io_size limitation. */
-            if (logh.totalIoSize() > 0 && nRecords > 1 &&
-                logh.totalIoSize() + capacity_pb(pbs, ioSize) > config_.maxPackPb()) {
+            if (0 < logh.totalIoSize() && 1 < nRecords &&
+                config_.maxPackPb() <
+                logh.totalIoSize() + ::capacity_pb(pbs, ioSize)) {
                 break;
             }
             /* Decide IO type. */
