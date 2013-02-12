@@ -549,6 +549,11 @@ private:
 
     OverlappedData olData_;
 
+    /* For statistics. */
+    size_t nWritten_;
+    size_t nOverwritten_;
+    size_t nClipped_;
+
     using PackHeader = walb::util::WalbLogpackHeader;
     using PackData = walb::util::WalbLogpackData;
     using PackDataPtr = std::shared_ptr<PackData>;
@@ -568,7 +573,10 @@ public:
         , readyIoQ_()
         , nPendingBlocks_(0)
         , nPreparedIos_(0)
-        , olData_() {}
+        , olData_()
+        , nWritten_(0)
+        , nOverwritten_(0)
+        , nClipped_(0) {}
 
     ~WalbLogApplyer() {
         while (!ioQ_.empty()) {
@@ -634,8 +642,12 @@ public:
         /* Sync device. */
         bd_.fdatasync();
 
-        ::printf("Applied lsid range [%" PRIu64 ", %" PRIu64 ")\n",
-                 beginLsid, redoLsid);
+        ::printf("Applied lsid range [%" PRIu64 ", %" PRIu64 ")\n"
+                 "nWritten: %" PRIu64 "\n"
+                 "nOverwritten: %" PRIu64 "\n"
+                 "nClipped: %" PRIu64 "\n",
+                 beginLsid, redoLsid,
+                 nWritten_, nOverwritten_, nClipped_);
     }
 
 private:
@@ -761,8 +773,10 @@ private:
             assert(iop->aioKey() > 0);
             aio_.waitFor(iop->aioKey());
             iop->markCompleted();
+            nWritten_++;
         } else {
             assert(iop->isOverwritten());
+            nOverwritten_++;
         }
         nPendingBlocks_ -= bytesToPb(iop->size());
         std::queue<IoPtr> tmpIoQ;
@@ -813,7 +827,6 @@ private:
             submitIoQ_.push_back(iop);
 #endif
 
-            /* now editing */
             if (queueSize_ <= submitIoQ_.size()) {
                 submitIos();
             }
@@ -881,22 +894,30 @@ private:
         size_t nBlocks = 0;
         for (size_t i = 0; i < logd.ioSizePb(); i++) {
             Block block = logd.getBlock(i);
-            nBlocks++;
+            IoPtr iop;
             if (blockSize_ <= remaining) {
-                IoPtr iop = createIo(off, blockSize_, block);
-                tmpIoQ.add(iop);
+                iop = createIo(off, blockSize_, block);
                 off += blockSize_;
                 remaining -= blockSize_;
             } else {
-                IoPtr iop = createIo(off, remaining, block);
-                tmpIoQ.add(iop);
+                iop = createIo(off, remaining, block);
                 off += remaining;
                 remaining = 0;
             }
+            assert(iop.get() != nullptr);
+            /* Clip if the IO area is out of range in the device. */
+            if (iop->offset() + iop->size() <= bd_.getDeviceSize()) {
+                tmpIoQ.add(iop);
+                nBlocks++;
+            } else {
+                if (config_.isVerbose()) {
+                    ::printf("CLIPPED\t\t%" PRIu64 "\t%zu\n",
+                             iop->offset(), iop->size());
+                }
+                nClipped_++;
+            }
         }
         assert(remaining == 0);
-        assert(!tmpIoQ.empty());
-        assert(nBlocks > 0);
         nPendingBlocks_ += nBlocks;
 
         /* Wait for IOs if there are too much pending IOs. */
@@ -912,9 +933,6 @@ private:
         /* Enqueue IOs. */
         while (!tmpIoQ.empty()) {
             IoPtr iop = tmpIoQ.pop();
-
-            /* Clipping IO that is out of range of the device. */
-            /* now editing */
 
             insertToOverlappedData(iop);
             if (iop->nOverlapped() == 0) {
