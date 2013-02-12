@@ -34,6 +34,8 @@ class Config
 private:
     std::string ddevPath_;
     std::string inWlogPath_;
+    bool isDiscard_;
+    bool isZeroDiscard_;
     bool isVerbose_;
     bool isHelp_;
     std::vector<std::string> args_;
@@ -42,6 +44,8 @@ public:
     Config(int argc, char* argv[])
         : ddevPath_()
         , inWlogPath_("-")
+        , isDiscard_(false)
+        , isZeroDiscard_(false)
         , isVerbose_(false)
         , isHelp_(false)
         , args_() {
@@ -51,15 +55,20 @@ public:
     const std::string& ddevPath() const { return ddevPath_; }
     const std::string& inWlogPath() const { return inWlogPath_; }
     bool isFromStdin() const { return inWlogPath_ == "-"; }
+    bool isDiscard() const { return isDiscard_; }
+    bool isZeroDiscard() const { return isZeroDiscard_; }
     bool isVerbose() const { return isVerbose_; }
     bool isHelp() const { return isHelp_; }
 
     void print() const {
         ::printf("ddevPath: %s\n"
                  "inWlogPath: %s\n"
+                 "discard: %d\n"
+                 "zerodiscard: %d\n"
                  "verbose: %d\n"
                  "isHelp: %d\n",
                  ddevPath().c_str(), inWlogPath().c_str(),
+                 isDiscard(), isZeroDiscard(),
                  isVerbose(), isHelp());
         int i = 0;
         for (const auto& s : args_) {
@@ -78,6 +87,9 @@ public:
         if (inWlogPath_.empty()) {
             throwError("Specify input wlog path.");
         }
+        if (isDiscard() && isZeroDiscard()) {
+            throwError("Do not specify both -d and -z together.");
+        }
     }
 
     class Error : public std::runtime_error {
@@ -90,6 +102,8 @@ private:
     /* Option ids. */
     enum Opt {
         IN_WLOG_PATH = 1,
+        DISCARD,
+        ZERO_DISCARD,
         VERBOSE,
         HELP,
     };
@@ -109,18 +123,29 @@ private:
         while (1) {
             const struct option long_options[] = {
                 {"inWlogPath", 1, 0, Opt::IN_WLOG_PATH},
+                {"discard", 0, 0, Opt::DISCARD},
+                {"zerodiscard", 0, 0, Opt::ZERO_DISCARD},
                 {"verbose", 0, 0, Opt::VERBOSE},
                 {"help", 0, 0, Opt::HELP},
                 {0, 0, 0, 0}
             };
             int option_index = 0;
-            int c = ::getopt_long(argc, argv, "i:vh", long_options, &option_index);
+            int c = ::getopt_long(argc, argv, "i:d:z:vh",
+                                  long_options, &option_index);
             if (c == -1) { break; }
 
             switch (c) {
             case Opt::IN_WLOG_PATH:
             case 'i':
                 inWlogPath_ = std::string(optarg);
+                break;
+            case Opt::DISCARD:
+            case 'd':
+                isDiscard_ = true;
+                break;
+            case Opt::ZERO_DISCARD:
+            case 'z':
+                isZeroDiscard_ = true;
                 break;
             case Opt::VERBOSE:
             case 'v':
@@ -149,6 +174,9 @@ private:
             "Usage: wlcat [options] DEVICE_PATH\n"
             "Options:\n"
             "  -i, --inWlogPath PATH: input wlog path. '-' for stdin. (default: '-')\n"
+            "  -d, --discard:         issue discard for discard logs.\n"
+            "  -z, --zerodiscard:     zero-clear for discard logs.\n"
+            "                         -d and -z are exclusive.\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
             "  -h, --help:            show this message.\n");
     }
@@ -534,7 +562,6 @@ private:
     walb::aio::Aio aio_;
     walb::util::BlockAllocator<u8> ba_;
     walb::util::WalbLogFileHeader wh_;
-    const bool isDiscardSupport_;
 
     std::queue<IoPtr> ioQ_; /* serialized by lsid. */
     std::deque<IoPtr> readyIoQ_; /* ready to submit. */
@@ -553,6 +580,8 @@ private:
     size_t nWritten_;
     size_t nOverwritten_;
     size_t nClipped_;
+    size_t nDiscard_;
+    size_t nPadding_;
 
     using PackHeader = walb::util::WalbLogpackHeader;
     using PackData = walb::util::WalbLogpackData;
@@ -560,7 +589,7 @@ private:
 
 public:
     WalbLogApplyer(
-        const Config& config, size_t bufferSize, bool isDiscardSupport = false)
+        const Config& config, size_t bufferSize)
         : config_(config)
         , bd_(config.ddevPath().c_str(), O_RDWR | O_DIRECT)
         , blockSize_(bd_.getPhysicalBlockSize())
@@ -568,7 +597,6 @@ public:
         , aio_(bd_.getFd(), queueSize_)
         , ba_(queueSize_ * 2, blockSize_, blockSize_)
         , wh_()
-        , isDiscardSupport_(isDiscardSupport)
         , ioQ_()
         , readyIoQ_()
         , nPendingBlocks_(0)
@@ -576,7 +604,9 @@ public:
         , olData_()
         , nWritten_(0)
         , nOverwritten_(0)
-        , nClipped_(0) {}
+        , nClipped_(0)
+        , nDiscard_(0)
+        , nPadding_(0) {}
 
     ~WalbLogApplyer() {
         while (!ioQ_.empty()) {
@@ -623,12 +653,10 @@ public:
                 for (size_t i = 0; i < logh.nRecords(); i++) {
                     PackData logd(logh, i);
                     readLogpackData(logd, fdr);
-                    createIoAndPrepare(logd);
+                    redoPack(logd);
                     redoLsid = logd.lsid();
                 }
-            } // while (true)
-            submitIos();
-
+            }
         } catch (walb::util::EofError &e) {
             ::printf("Reach input EOF.\n");
         } catch (walb::util::InvalidLogpackData &e) {
@@ -643,11 +671,13 @@ public:
         bd_.fdatasync();
 
         ::printf("Applied lsid range [%" PRIu64 ", %" PRIu64 ")\n"
-                 "nWritten: %" PRIu64 "\n"
-                 "nOverwritten: %" PRIu64 "\n"
-                 "nClipped: %" PRIu64 "\n",
+                 "nWritten: %zu\n"
+                 "nOverwritten: %zu\n"
+                 "nClipped: %zu\n"
+                 "nDiscard: %zu\n"
+                 "nPadding: %zu\n",
                  beginLsid, redoLsid,
-                 nWritten_, nOverwritten_, nClipped_);
+                 nWritten_, nOverwritten_, nClipped_, nDiscard_, nPadding_);
     }
 
 private:
@@ -700,19 +730,17 @@ private:
     }
 
     /**
-     * Discard.
-     *
-     * Three types:
-     * (1) Ignore discard log.
-     * (2) Issue discard.
-     * (3) Issue zero-data IO.
+     * Redo a discard log by issuing discard command.
      */
-    void executeDiscard(UNUSED PackData &logd) {
+    void redoDiscard(UNUSED PackData &logd) {
+        assert(config_.isDiscard());
+        assert(logd.isDiscard());
 
         /* Wait for all IO done. */
         waitForAllPendingIos();
 
         /* Issue the corresponding discard IOs. */
+
 
         /* now editing */
 
@@ -764,7 +792,7 @@ private:
 
         if (!iop->isSubmitted() && !iop->isOverwritten()) {
             /* The IO is not still submitted. */
-            prepareIos();
+            scheduleIos();
             submitIos();
         }
 
@@ -802,9 +830,44 @@ private:
     }
 
     /**
-     * Move IOs from readyIoQ_ to submitIoQ_.
+     * Prepare IOs with 'nBlocks' blocks.
+     *
+     * @ioQ IOs to make ready.
+     * @nBlocks nBlocks <= queueSize_. This will be set to 0.
      */
-    void prepareIos() {
+    void prepareIos(IoQueue &ioQ, size_t &nBlocks) {
+        assert(nBlocks <= queueSize_);
+
+        /* Wait for pending IOs for submission. */
+        while (!ioQ_.empty() && queueSize_ < nPendingBlocks_ + nBlocks) {
+            waitForAnIoCompletion();
+        }
+        nPendingBlocks_ += nBlocks;
+        nBlocks = 0;
+
+        /* Enqueue IOs to readyIoQ_. */
+        while (!ioQ.empty()) {
+            IoPtr iop = ioQ.pop();
+            insertToOverlappedData(iop);
+            if (iop->nOverlapped() == 0) {
+                /* Ready to submit. */
+                readyIoQ_.push_back(iop);
+            } else {
+                /* Will be submitted later. */
+                if (config_.isVerbose()) {
+                    ::printf("OVERLAP\t\t%" PRIu64 "\t%zu\t%u\n",
+                             static_cast<u64>(iop->offset()) >> 9,
+                             iop->offset() >> 9, iop->nOverlapped());
+                }
+            }
+            ioQ_.push(iop);
+        }
+    }
+
+    /**
+     * Move IOs from readyIoQ_ to submitIoQ_ (with sorting).
+     */
+    void scheduleIos() {
         assert(readyIoQ_.size() <= queueSize_);
         while (!readyIoQ_.empty()) {
             IoPtr iop = readyIoQ_.front();
@@ -871,21 +934,13 @@ private:
     }
 
     /**
-     * Create related IOs and prepare them.
+     * Redo normal IO for a logpack data.
+     * Zero-discard also uses this method.
      */
-    void createIoAndPrepare(PackData &logd) {
+    void redoNormalIo(PackData &logd) {
         assert(logd.isExist());
-        if (logd.isPadding()) {
-            /* Do nothing. */
-            return;
-        }
-
-        if (logd.isDiscard()) {
-            if (isDiscardSupport_) {
-                executeDiscard(logd);
-            }
-            return;
-        }
+        assert(!logd.isPadding());
+        assert(config_.isZeroDiscard() || !logd.isDiscard());
 
         /* Create IOs. */
         IoQueue tmpIoQ;
@@ -893,7 +948,14 @@ private:
         off_t off = static_cast<off_t>(logd.offset()) * LOGICAL_BLOCK_SIZE;
         size_t nBlocks = 0;
         for (size_t i = 0; i < logd.ioSizePb(); i++) {
-            Block block = logd.getBlock(i);
+            Block block;
+            if (logd.isDiscard()) {
+                assert(config_.isZeroDiscard());
+                block = ba_.alloc();
+                ::memset(block.get(), 0, blockSize_);
+            } else {
+                block = logd.getBlock(i);
+            }
             IoPtr iop;
             if (blockSize_ <= remaining) {
                 iop = createIo(off, blockSize_, block);
@@ -909,6 +971,7 @@ private:
             if (iop->offset() + iop->size() <= bd_.getDeviceSize()) {
                 tmpIoQ.add(iop);
                 nBlocks++;
+                if (logd.isDiscard()) { nDiscard_++; }
             } else {
                 if (config_.isVerbose()) {
                     ::printf("CLIPPED\t\t%" PRIu64 "\t%zu\n",
@@ -916,39 +979,48 @@ private:
                 }
                 nClipped_++;
             }
+            /* Do not prepare too many blocks at once. */
+            if (queueSize_ / 2 <= nBlocks) {
+                prepareIos(tmpIoQ, nBlocks);
+                scheduleIos();
+            }
         }
         assert(remaining == 0);
-        nPendingBlocks_ += nBlocks;
-
-        /* Wait for IOs if there are too much pending IOs. */
-        while (!ioQ_.empty() && queueSize_ < nPendingBlocks_ + nBlocks) {
-            waitForAnIoCompletion();
-        }
+        prepareIos(tmpIoQ, nBlocks);
+        scheduleIos();
 
         if (config_.isVerbose()) {
             ::printf("CREATE\t\t%" PRIu64 "\t%u\n",
                      logd.offset(), logd.ioSizeLb());
         }
+    }
 
-        /* Enqueue IOs. */
-        while (!tmpIoQ.empty()) {
-            IoPtr iop = tmpIoQ.pop();
+    /**
+     * Redo a logpack data.
+     */
+    void redoPack(PackData &logd) {
+        assert(logd.isExist());
 
-            insertToOverlappedData(iop);
-            if (iop->nOverlapped() == 0) {
-                /* Ready to submit. */
-                readyIoQ_.push_back(iop);
-            } else {
-                /* Will be submitted later. */
-                if (config_.isVerbose()) {
-                    ::printf("OVERLAP\t\t%" PRIu64 "\t%zu\t%u\n",
-                             static_cast<u64>(iop->offset()) >> 9,
-                             iop->offset() >> 9, iop->nOverlapped());
-                }
-            }
-            ioQ_.push(iop);
+        if (logd.isPadding()) {
+            /* Do nothing. */
+            nPadding_ += logd.ioSizePb();
+            return;
         }
-        prepareIos();
+
+        if (logd.isDiscard()) {
+            if (config_.isDiscard()) {
+                redoDiscard(logd);
+                return;
+            }
+            if (!config_.isZeroDiscard()) {
+                /* Ignore discard logs. */
+                nDiscard_ += logd.ioSizePb();
+                return;
+            }
+            /* zero-discard will use redoNormalIo(). */
+        }
+
+        redoNormalIo(logd);
     }
 
     static size_t getQueueSizeStatic(size_t bufferSize, size_t blockSize) {
@@ -976,7 +1048,7 @@ int main(int argc, char* argv[])
         }
         config.check();
 
-        WalbLogApplyer wlApp(config, BUFFER_SIZE, false);
+        WalbLogApplyer wlApp(config, BUFFER_SIZE);
         if (config.isFromStdin()) {
             wlApp.readAndApply(0);
         } else {
