@@ -84,7 +84,7 @@ public:
         super()->log_checksum_salt = salt;
     }
     void setUuid(const u8 *uuid) {
-        ::memcpy(super()->uuid, uuid, 16);
+        ::memcpy(super()->uuid, uuid, UUID_SIZE);
     }
     void updateChecksum() {
         super()->checksum = 0;
@@ -265,52 +265,56 @@ public:
         ASSERT_PBS(pbs);
     }
 
-    Block getBlock() const {
-        return block_;
+    Block getBlock() { return block_; }
+
+    template <typename T>
+    T* ptr() {
+        return reinterpret_cast<T *>(block_.get());
     }
 
-    template <typename ByteType>
-    const ByteType* getRawBuffer() const {
-        return reinterpret_cast<ByteType *>(block_.get());
+    template <typename T>
+    const T* ptr() const {
+        return reinterpret_cast<const T *>(block_.get());
     }
 
     struct walb_logpack_header& header() {
         checkBlock();
-        return *(struct walb_logpack_header *)block_.get();
+        return *ptr<struct walb_logpack_header>();
     }
 
     const struct walb_logpack_header& header() const {
         checkBlock();
-        return *(struct walb_logpack_header *)block_.get();
+        return* ptr<const struct walb_logpack_header>();
     }
 
     unsigned int pbs() const { return pbs_; }
-
     u32 salt() const { return salt_; }
-    unsigned int totalIoSize() const { return header().total_io_size; }
-    unsigned int nRecords() const { return header().n_records; }
-    unsigned int nPadding() const { return header().n_padding; }
-    u64 logpackLsid() const { return header().logpack_lsid; }
 
-    /**
+    /*
+     * Fields.
+     */
+    u32 checksum() const { return header().checksum; }
+    u16 sectorType() const { return header().sector_type; }
+    u16 totalIoSize() const { return header().total_io_size; }
+    u64 logpackLsid() const { return header().logpack_lsid; }
+    u16 nRecords() const { return header().n_records; }
+    u16 nPadding() const { return header().n_padding; }
+
+    /*
      * N'th log record.
      */
     struct walb_log_record& operator[](size_t pos) { return record(pos); }
     const struct walb_log_record& operator[](size_t pos) const { return record(pos); }
-
     struct walb_log_record& recordUnsafe(size_t pos) {
         return header().record[pos];
     }
-
     const struct walb_log_record& recordUnsafe(size_t pos) const {
         return header().record[pos];
     }
-
     struct walb_log_record& record(size_t pos) {
         checkIndexRange(pos);
         return recordUnsafe(pos);
     }
-
     const struct walb_log_record& record(size_t pos) const {
         checkIndexRange(pos);
         return recordUnsafe(pos);
@@ -330,12 +334,12 @@ public:
         ::fprintf(fp,
                   "record %zu\n"
                   "  checksum: %08x(%u)\n"
-                  "  lsid: %" PRIu64"\n"
+                  "  lsid: %" PRIu64 "\n"
                   "  lsid_local: %u\n"
                   "  is_exist: %u\n"
                   "  is_padding: %u\n"
                   "  is_discard: %u\n"
-                  "  offset: %" PRIu64"\n"
+                  "  offset: %" PRIu64 "\n"
                   "  io_size: %u\n",
                   pos,
                   rec.checksum, rec.checksum,
@@ -354,7 +358,7 @@ public:
                   "n_records: %u\n"
                   "n_padding: %u\n"
                   "total_io_size: %u\n"
-                  "logpack_lsid: %" PRIu64"\n",
+                  "logpack_lsid: %" PRIu64 "\n",
                   logh.checksum, logh.checksum,
                   logh.n_records,
                   logh.n_padding,
@@ -382,12 +386,8 @@ public:
             const struct walb_log_record &rec = record(i);
             assert(::test_bit_u32(LOG_RECORD_EXIST, &rec.flags));
             char mode = 'W';
-            if (::test_bit_u32(LOG_RECORD_DISCARD, &rec.flags)) {
-                mode = 'D';
-            }
-            if (::test_bit_u32(LOG_RECORD_PADDING, &rec.flags)) {
-                mode = 'P';
-            }
+            if (::test_bit_u32(LOG_RECORD_DISCARD, &rec.flags)) { mode = 'D'; }
+            if (::test_bit_u32(LOG_RECORD_PADDING, &rec.flags)) { mode = 'P'; }
             ::fprintf(fp,
                       "%" PRIu64 "\t%c\t%" PRIu64 "\t%u\n",
                       header().logpack_lsid,
@@ -442,8 +442,7 @@ public:
     /* Update checksum field. */
     void updateChecksum() {
         header().checksum = 0;
-        header().checksum = ::checksum(
-            reinterpret_cast<const u8*>(&header()), pbs(), salt());
+        header().checksum = ::checksum(ptr<u8>(), pbs(), salt());
     }
 
     /**
@@ -455,7 +454,7 @@ public:
             throw RT_ERR("logpack header invalid.");
         }
         util::FdWriter fdw(fd);
-        fdw.write(reinterpret_cast<const char*>(block_.get()), pbs());
+        fdw.write(ptr<char>(), pbs());
     }
 
     /**
@@ -483,16 +482,17 @@ public:
      *   true in success, or false (you must create a new header).
      */
     bool addNormalIo(u64 offset, u16 size) {
-        if (header().n_records >= ::max_n_log_record_in_sector(pbs())) {
+        if (::max_n_log_record_in_sector(pbs()) <= nRecords()) {
             return false;
         }
-        if (header().total_io_size + capacity_pb(pbs(), size) > 65535) {
+        if (MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER <
+            totalIoSize() + ::capacity_pb(pbs(), size)) {
             return false;
         }
         if (size == 0) {
             throw RT_ERR("Normal IO can not be zero-sized.");
         }
-        size_t pos = header().n_records;
+        size_t pos = nRecords();
         struct walb_log_record &rec = recordUnsafe(pos);
         rec.flags = 0;
         ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
@@ -518,13 +518,13 @@ public:
      *   true in success, or false (you must create a new header).
      */
     bool addDiscardIo(u64 offset, u16 size) {
-        if (header().n_records >= ::max_n_log_record_in_sector(pbs())) {
+        if (::max_n_log_record_in_sector(pbs()) <= nRecords()) {
             return false;
         }
         if (size == 0) {
             throw RT_ERR("Discard IO can not be zero-sized.");
         }
-        size_t pos = header().n_records;
+        size_t pos = nRecords();
         struct walb_log_record &rec = recordUnsafe(pos);
         rec.flags = 0;
         ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
@@ -550,38 +550,41 @@ public:
      *   true in success, or false (you must create a new header).
      */
     bool addPadding(u16 size) {
-        if (header().n_records >= ::max_n_log_record_in_sector(pbs())) {
+        if (::max_n_log_record_in_sector(pbs()) <= nRecords()) {
             return false;
         }
-        if (header().total_io_size + capacity_pb(pbs(), size) > 65535) {
+        if (MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER <
+            totalIoSize() + ::capacity_pb(pbs(), size)) {
             return false;
         }
-        if (header().n_padding > 0) {
+        if (0 < nPadding()) {
             return false;
         }
-        if (size % n_lb_in_pb(pbs()) != 0) {
+        if (size % ::n_lb_in_pb(pbs()) != 0) {
             throw RT_ERR("Padding size must be pbs-aligned.");
         }
 
-        size_t pos = header().n_records;
+        size_t pos = nRecords();
         struct walb_log_record &rec = recordUnsafe(pos);
         rec.flags = 0;
         ::set_bit_u32(LOG_RECORD_EXIST, &rec.flags);
         ::set_bit_u32(LOG_RECORD_PADDING, &rec.flags);
-        rec.offset = 0; /* not be used. */
+        rec.offset = 0; /* will not be used. */
         rec.io_size = size;
         rec.lsid_local = header().total_io_size + 1;
         rec.lsid = header().logpack_lsid + rec.lsid_local;
-        rec.checksum = 0;  /* not be used. */
+        rec.checksum = 0;  /* will not be used. */
 
         header().n_records++;
-        header().total_io_size += capacity_pb(pbs(), size);
+        header().total_io_size += ::capacity_pb(pbs(), size);
         header().n_padding++;
         assert(::is_valid_logpack_header_and_records(&header()));
         return true;
     }
 
     /**
+     * Update all lsid entries in the logpack header.
+     *
      * @newLsid new logpack lsid.
      *   If -1, nothing will be changed.
      *
@@ -646,27 +649,20 @@ public:
     }
 
     Block getBlock(size_t idx) {
-        assert(hasData());
-        assert(idx < ioSizePb());
+        checkForGetBlock(idx);
         return data_[idx];
     }
 
-    template <typename ByteType>
-    ByteType* getRawBuffer(size_t idx) {
-        return reinterpret_cast<ByteType *>(getBlock(idx).get());
+    template <typename T>
+    T* ptr(size_t idx) {
+        checkForGetBlock(idx);
+        return reinterpret_cast<T *>(data_[idx].get());
     }
 
-    /**
-     * Causion!!!
-     * You can access the range of
-     * [ret, ret + LOGICAL_BLOCK_SIZE).
-     */
-    u8* getLogicalBlock(size_t idx) {
-        assert(hasData());
-        assert(idx < ioSizeLb());
-
-        Block b = getBlock(::addr_pb(pbs(), idx));
-        return b.get() + off_in_pb(pbs(), idx) * LOGICAL_BLOCK_SIZE;
+    template <typename T>
+    const T* ptr(size_t idx) const {
+        checkForGetBlock(idx);
+        return reinterpret_cast<T *>(data_[idx].get());
     }
 
     struct walb_log_record& record() {
@@ -681,15 +677,15 @@ public:
     unsigned int pbs() const { return logh_.pbs(); }
 
     bool isExist() const {
-        return test_bit_u32(LOG_RECORD_EXIST, &record().flags);
+        return ::test_bit_u32(LOG_RECORD_EXIST, &record().flags);
     }
 
     bool isPadding() const {
-        return test_bit_u32(LOG_RECORD_PADDING, &record().flags);
+        return ::test_bit_u32(LOG_RECORD_PADDING, &record().flags);
     }
 
     bool isDiscard() const {
-        return test_bit_u32(LOG_RECORD_DISCARD, &record().flags);
+        return ::test_bit_u32(LOG_RECORD_DISCARD, &record().flags);
     }
 
     bool hasData() const {
@@ -701,26 +697,26 @@ public:
     }
 
     void setPadding() {
-        set_bit_u32(LOG_RECORD_PADDING, &record().flags);
+        ::set_bit_u32(LOG_RECORD_PADDING, &record().flags);
     }
     void setExist() {
-        set_bit_u32(LOG_RECORD_EXIST, &record().flags);
+        ::set_bit_u32(LOG_RECORD_EXIST, &record().flags);
     }
     void setDiscard() {
-        set_bit_u32(LOG_RECORD_DISCARD, &record().flags);
+        ::set_bit_u32(LOG_RECORD_DISCARD, &record().flags);
     }
     void clearPadding() {
-        clear_bit_u32(LOG_RECORD_PADDING, &record().flags);
+        ::clear_bit_u32(LOG_RECORD_PADDING, &record().flags);
     }
     void clearExist() {
-        clear_bit_u32(LOG_RECORD_EXIST, &record().flags);
+        ::clear_bit_u32(LOG_RECORD_EXIST, &record().flags);
     }
     void clearDiscard() {
-        clear_bit_u32(LOG_RECORD_DISCARD, &record().flags);
+        ::clear_bit_u32(LOG_RECORD_DISCARD, &record().flags);
     }
 
     unsigned int ioSizeLb() const { return record().io_size; }
-    unsigned int ioSizePb() const { return capacity_pb(pbs(), ioSizeLb()); }
+    unsigned int ioSizePb() const { return ::capacity_pb(pbs(), ioSizeLb()); }
     u64 offset() const { return record().offset; }
 
     bool isValid(bool isChecksum = true) const {
@@ -748,31 +744,34 @@ public:
 
 private:
     u32 calcIoChecksum() const {
-        unsigned int pbs = logh_.pbs();
         assert(hasDataForChecksum());
         assert(ioSizeLb() > 0);
-        unsigned int nPb = ioSizePb();
+        unsigned int pbs = logh_.pbs();
         unsigned int remaining = ioSizeLb() * LOGICAL_BLOCK_SIZE;
 
-        if (nPb != data_.size()) {
+        if (ioSizePb() != data_.size()) {
             throw RT_ERR("There is not sufficient data block.");
         }
 
         u32 csum = logh_.salt();
-        for (size_t i = 0; i < nPb; i++) {
-            if (remaining >= pbs) {
-                csum = ::checksum_partial(
-                    csum, data_[i].get(), pbs);
+        for (size_t i = 0; i < ioSizePb(); i++) {
+            if (pbs <= remaining) {
+                csum = ::checksum_partial(csum, data_[i].get(), pbs);
                 remaining -= pbs;
             } else {
-                csum = ::checksum_partial(
-                    csum, data_[i].get(), remaining);
+                csum = ::checksum_partial(csum, data_[i].get(), remaining);
                 remaining = 0;
             }
         }
         csum = ::checksum_finish(csum);
         //::printf("csum %08x(%u)\n", csum, csum); //debug
         return csum;
+    }
+
+    void checkForGetBlock(UNUSED size_t idx) const {
+        assert(hasData());
+        assert(idx < ioSizePb());
+        assert(idx < data_.size());
     }
 };
 
@@ -796,7 +795,7 @@ public:
         header().log_checksum_salt = salt;
         header().logical_bs = LOGICAL_BLOCK_SIZE;
         header().physical_bs = pbs;
-        ::memcpy(header().uuid, uuid, 16);
+        ::memcpy(header().uuid, uuid, UUID_SIZE);
         header().begin_lsid = beginLsid;
         header().end_lsid = endLsid;
     }
@@ -807,7 +806,7 @@ public:
     }
 
     void read(FdReader& fdr) {
-        fdr.read(reinterpret_cast<char *>(&data_[0]), WALBLOG_HEADER_SIZE);
+        fdr.read(ptr<char>(), WALBLOG_HEADER_SIZE);
     }
 
     void write(int fd) {
@@ -816,21 +815,21 @@ public:
     }
 
     void write(util::FdWriter& fdw) {
-        calcChecksum();
-        fdw.write(reinterpret_cast<char *>(&data_[0]), WALBLOG_HEADER_SIZE);
+        updateChecksum();
+        fdw.write(ptr<char>(), WALBLOG_HEADER_SIZE);
     }
 
-    void calcChecksum() {
+    void updateChecksum() {
         header().checksum = 0;
         header().checksum = ::checksum(&data_[0], WALBLOG_HEADER_SIZE, 0);
     }
 
     struct walblog_header& header() {
-        return *reinterpret_cast<struct walblog_header *>(&data_[0]);
+        return *ptr<struct walblog_header>();
     }
 
     const struct walblog_header& header() const {
-        return *reinterpret_cast<const struct walblog_header *>(&data_[0]);
+        return *ptr<struct walblog_header>();
     }
 
     u32 checksum() const { return header().checksum; }
@@ -857,34 +856,30 @@ public:
     }
 
     void print(FILE *fp) const {
-        ::fprintf(fp,
+        ::fprintf(
+            fp,
             "sector_type %d\n"
             "version %u\n"
             "header_size %u\n"
             "log_checksum_salt %" PRIu32 " (%08x)\n"
             "logical_bs %u\n"
             "physical_bs %u\n"
-            "uuid %02x%02x%02x%02x"
-            "%02x%02x%02x%02x"
-            "%02x%02x%02x%02x"
-            "%02x%02x%02x%02x\n"
-            "begin_lsid %" PRIu64 "\n"
-            "end_lsid %" PRIu64 "\n",
+            "uuid ",
             header().sector_type,
             header().version,
             header().header_size,
             header().log_checksum_salt,
             header().log_checksum_salt,
             header().logical_bs,
-            header().physical_bs,
-            header().uuid[0], header().uuid[1],
-            header().uuid[2], header().uuid[3],
-            header().uuid[4], header().uuid[5],
-            header().uuid[6], header().uuid[7],
-            header().uuid[8], header().uuid[9],
-            header().uuid[10], header().uuid[11],
-            header().uuid[12], header().uuid[13],
-            header().uuid[14], header().uuid[15],
+            header().physical_bs);
+        for (size_t i = 0; i < UUID_SIZE; i++) {
+            ::fprintf(fp, "%02x", header().uuid[i]);
+        }
+        ::fprintf(
+            fp,
+            "\n"
+            "begin_lsid %" PRIu64 "\n"
+            "end_lsid %" PRIu64 "\n",
             header().begin_lsid,
             header().end_lsid);
     }
@@ -892,6 +887,13 @@ public:
     void print() {
         print(::stdout);
     }
+
+private:
+    template <typename T>
+    T *ptr() { return reinterpret_cast<T *>(&data_[0]); }
+
+    template <typename T>
+    const T *ptr() const { return reinterpret_cast<const T *>(&data_[0]); }
 };
 
 } //namespace util

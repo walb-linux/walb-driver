@@ -470,7 +470,7 @@ private:
             return;
         }
         /* Write the header. */
-        fdw.write(logh.getRawBuffer<char>(), logh.pbs());
+        fdw.write(logh.ptr<char>(), logh.pbs());
         /* Write the IO data. */
         size_t nWritten = 0;
         while (!q.empty()) {
@@ -478,7 +478,7 @@ private:
             q.pop();
             if (!logd->hasData()) { continue; }
             for (size_t i = 0; i < logd->ioSizePb(); i++) {
-                fdw.write(logd->getRawBuffer<char>(i), logh.pbs());
+                fdw.write(logd->ptr<char>(i), logh.pbs());
                 nWritten++;
             }
         }

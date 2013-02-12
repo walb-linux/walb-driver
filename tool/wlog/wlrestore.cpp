@@ -392,7 +392,7 @@ private:
             paddingLogh.updateChecksum();
             assert(paddingLogh.isValid());
             blkdev.write(
-                offPb * pbs, pbs, paddingLogh.getRawBuffer<char>());
+                offPb * pbs, pbs, paddingLogh.ptr<char>());
 
             /* Update logh's lsid information. */
             lsidDiff_ += paddingPb;
@@ -440,7 +440,7 @@ private:
 #endif
         blkdev.write(
             offPb * pbs, pbs,
-            logh.getRawBuffer<char>());
+            logh.ptr<char>());
         for (size_t i = 0; i < blocks.size(); i++) {
             blkdev.write((offPb + 1 + i) * pbs, pbs,
                          reinterpret_cast<const char *>(blocks[i].get()));
