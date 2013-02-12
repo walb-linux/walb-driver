@@ -24,7 +24,7 @@
 #include "walb/walb.h"
 
 /**
- * Wlcat configuration.
+ * Command line configuration.
  */
 class Config
 {
@@ -158,8 +158,6 @@ public:
     void show() {
         super_.print();
     }
-
-private:
 };
 
 int main(int argc, char* argv[])
@@ -167,9 +165,6 @@ int main(int argc, char* argv[])
     int ret = 0;
 
     try {
-#if 0
-        walb::aio::testAioDataAllocator();
-#endif
         Config config(argc, argv);
         if (config.isHelp()) {
             Config::printHelp();

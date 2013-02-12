@@ -38,7 +38,7 @@ private:
 public:
     Config(int argc, char* argv[])
         : isFromStdin_(false)
-        , blockSize_(512)
+        , blockSize_(LOGICAL_BLOCK_SIZE)
         , isVerbose_(false)
         , isHelp_(false)
         , args_() {
@@ -74,8 +74,9 @@ public:
         if (numWlogs() == 0) {
             throwError("Specify input wlog path.");
         }
-        if (blockSize() % 512 != 0) {
-            throwError("Block size must be a multiple of 512.");
+        if (blockSize() % LOGICAL_BLOCK_SIZE != 0) {
+            throwError("Block size must be a multiple of %u.",
+                       LOGICAL_BLOCK_SIZE);
         }
     }
 
@@ -149,9 +150,10 @@ private:
             "  WLOG_PATH: walb log path. '-' for stdin. (default: '-')\n"
             "             wlog files must be linkable each other in line.\n"
             "Options:\n"
-            "  -b, --blockSize SIZE: block size in bytes. (default: 512)\n"
+            "  -b, --blockSize SIZE: block size in bytes. (default: %u)\n"
             "  -v, --verbose:        verbose messages to stderr.\n"
-            "  -h, --help:           show this message.\n");
+            "  -h, --help:           show this message.\n",
+            LOGICAL_BLOCK_SIZE);
     }
 };
 
@@ -159,11 +161,12 @@ class WalbLogAnalyzer
 {
 private:
     const Config &config_;
-    /**
-     * key: offset [block].
-     * val: number of
-     */
+
+    /* If bits_[physical block offset] is set,
+       the block is written once or more. */
     std::vector<bool> bits_;
+
+    /* Number of written logical blocks. */
     uint64_t writtenLb_;
 
     using LogpackHeader = walb::util::WalbLogpackHeader;
@@ -177,7 +180,7 @@ public:
 
     void analyze() {
         uint64_t lsid = -1;
-        u8 uuid[16];
+        u8 uuid[UUID_SIZE];
         if (config_.isFromStdin()) {
             try {
                 while (true) {
@@ -203,8 +206,8 @@ private:
      * @beginLsid begin lsid to check continuity of wlog(s).
      *   specify uint64_t(-1) not to check that.
      * @uuid uuid for equality check.
-     *   This is effective when beginLsid is not uint64_t(-1).
-     *   This will be updated when beginLsid is uint64_t(-1).
+     *   If beginLsid is uint64_t(-1), the uuid will be set.
+     *   Else the uuid will be used to check equality of wlog source device.
      *
      * RETURN:
      *   end lsid of the wlog data.
@@ -228,11 +231,10 @@ private:
 
         if (beginLsid == uint64_t(-1)) {
             /* First call. */
-            ::memcpy(uuid, wh.uuid(), 16);
+            ::memcpy(uuid, wh.uuid(), UUID_SIZE);
         } else {
-            /* Second and more. */
-            if (::memcmp(uuid, wh.uuid(), 16) != 0) {
-                throw RT_ERR("Not the same uuid.");
+            if (::memcmp(uuid, wh.uuid(), UUID_SIZE) != 0) {
+                throw RT_ERR("Not the same wlog uuid.");
             }
         }
 
@@ -251,14 +253,14 @@ private:
                 throw RT_ERR("wrong lsid.");
             }
             readLogpackData(logh, fdr, ba);
-            update(logh);
+            updateBitmap(logh);
             lsid = logh.nextLogpackLsid();
         }
         assert(lsid == wh.endLsid());
         return lsid;
     }
 
-    std::shared_ptr<u8> readBlock(
+    Block readBlock(
         walb::util::FdReader &fdr, walb::util::BlockAllocator<u8> &ba) {
         Block b = ba.alloc();
         unsigned int bs = ba.blockSize();
@@ -274,7 +276,7 @@ private:
     }
 
     /**
-     * Read, check, and throw away logpack data.
+     * Read, validate, and throw away logpack data.
      */
     void readLogpackData(
         LogpackHeader &logh, walb::util::FdReader &fdr,
@@ -294,7 +296,7 @@ private:
     /**
      * Update bitmap with a logpack header.
      */
-    void update(const LogpackHeader &logh) {
+    void updateBitmap(const LogpackHeader &logh) {
         const unsigned int bs = config_.blockSize();
         for (size_t i = 0; i < logh.nRecords(); i++) {
             const struct walb_log_record &rec = logh.record(i);
@@ -356,7 +358,6 @@ private:
                  "number of changed blocks: %" PRIu64 "\n"
                  "overwritten rate: %.2f\n",
                  bs, written, changed, rate);
-        /* now editing */
     }
 };
 

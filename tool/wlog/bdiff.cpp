@@ -24,7 +24,7 @@ private:
     std::vector<std::string> args_;
 public:
     Config(int argc, char* argv[])
-        : blockSize_(1)
+        : blockSize_(512)
         , isVerbose_(false)
         , isHelp_(false)
         , args_() {
@@ -115,7 +115,7 @@ private:
             "bdiff: Show block diff.\n"
             "Usage: bdiff [options] FILE1 FILE2\n"
             "Options:\n"
-            "  -b, --blockSize SIZE:  block size in bytes (default: 1)\n"
+            "  -b, --blockSize SIZE:  block size in bytes (default: 512)\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
             "  -h, --help:            show this message.\n");
     }

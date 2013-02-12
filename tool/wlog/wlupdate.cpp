@@ -50,7 +50,7 @@ public:
         , beginLsid_(0)
         , endLsid_(-1)
         , salt_(0)
-        , uuid_(16)
+        , uuid_(UUID_SIZE)
         , isVerbose_(false)
         , isHelp_(false)
         , args_() {
@@ -69,25 +69,29 @@ public:
     bool isVerbose() const { return isVerbose_; }
     bool isHelp() const { return isHelp_; }
 
-    void print() const {
-        ::printf("beginLsid: %" PRIu64 "\n"
-                 "endLsid: %" PRIu64 "\n"
-                 "salt: %u\n"
-                 "uuid: ""%02x%02x%02x%02x%02x%02x%02x%02x"
-                 "%02x%02x%02x%02x%02x%02x%02x%02x""\n"
-                 "verbose: %d\n"
-                 "isHelp: %d\n",
-                 beginLsid(), endLsid(), salt(),
-                 uuid()[0], uuid()[1], uuid()[2], uuid()[3],
-                 uuid()[4], uuid()[5], uuid()[6], uuid()[7],
-                 uuid()[8], uuid()[9], uuid()[10], uuid()[11],
-                 uuid()[12], uuid()[13], uuid()[14], uuid()[15],
-                 isVerbose(), isHelp());
+    void print(::FILE *fp) const {
+        ::fprintf(fp,
+                  "beginLsid: %" PRIu64 "\n"
+                  "endLsid: %" PRIu64 "\n"
+                  "salt: %u\n"
+                  "uuid: ",
+                  beginLsid(), endLsid(), salt());
+
+        for (size_t i = 0; i < UUID_SIZE; i++) {
+            ::fprintf(fp, "%02x", uuid()[i]);
+        }
+        ::fprintf(fp,
+                  "\n"
+                  "verbose: %d\n"
+                  "isHelp: %d\n",
+                  isVerbose(), isHelp());
         int i = 0;
         for (const auto& s : args_) {
             ::printf("arg%d: %s\n", i++, s.c_str());
         }
     }
+
+    void print() const { print(::stdout); }
 
     static void printHelp() {
         ::printf("%s", generateHelpString().c_str());
@@ -124,7 +128,8 @@ private:
         if (uuidStr.size() != 32) {
             throwError("Invalid UUID string.");
         }
-        for (size_t i = 0; i < 16; i++) {
+        for (size_t i = 0; i < UUID_SIZE; i++) {
+            /* ex. "ff" -> 255 */
             uuid_[i] = hexchar2uint8(uuidStr[i * 2]) * 16 +
                 hexchar2uint8(uuidStr[i * 2 + 1]);
         }
@@ -207,7 +212,7 @@ private:
 
     static std::string generateHelpString() {
         return walb::util::formatString(
-            "Wlupdate: update wlog header.\n"
+            "Wlupdate: update wlog file header.\n"
             "Usage: wlupdate [options] WLOG_PATH\n"
             "  WLOG_PATH: walb log path. must be seekable.\n"
             "Options:\n"
@@ -263,13 +268,13 @@ public:
         }
         if (config_.isUuid()) {
             updated = true;
-            ::memcpy(wh.header().uuid, &config_.uuid()[0], 16);
+            ::memcpy(wh.header().uuid, &config_.uuid()[0], UUID_SIZE);
         }
 
         /* Write header if necessary. */
         if (updated) {
             if (!wh.isValid(false)) {
-                throw RT_ERR("New header is invalid.");
+                throw RT_ERR("Updated header is invalid.");
             }
             walb::util::FdWriter fdw(fo.fd());
             fdw.lseek(0, SEEK_SET);
