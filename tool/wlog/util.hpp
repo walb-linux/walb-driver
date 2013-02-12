@@ -317,7 +317,7 @@ private:
     int openFlags_;
     int fd_;
     bool isBlockDevice_;
-    size_t deviceSize_; // [bytes].
+    uint64_t deviceSize_; // [bytes].
     unsigned int lbs_; // logical block size [bytes].
     unsigned int pbs_; // physical block size [bytes].
 
@@ -449,7 +449,7 @@ public:
     /**
      * Get device size [byte].
      */
-    size_t getDeviceSize() const { return deviceSize_; }
+    uint64_t getDeviceSize() const { return deviceSize_; }
 
     /**
      * Open flags.
@@ -539,10 +539,10 @@ private:
      * EXCEPTION:
      *   std::runtime_error.
      */
-    static size_t getDeviceSizeStatic(int fd) {
+    static uint64_t getDeviceSizeStatic(int fd) {
 
         if (isBlockDeviceStatic(fd)) {
-            size_t size;
+            uint64_t size;
             if (::ioctl(fd, BLKGETSIZE64, &size) < 0) {
                 throw LibcError(errno, "ioctl failed: ");
             }
@@ -550,7 +550,7 @@ private:
         } else {
             struct stat s;
             statStatic(fd, &s);
-            return static_cast<size_t>(s.st_size);
+            return static_cast<uint64_t>(s.st_size);
         }
     }
 };
