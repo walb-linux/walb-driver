@@ -732,7 +732,7 @@ private:
     /**
      * Redo a discard log by issuing discard command.
      */
-    void redoDiscard(UNUSED PackData &logd) {
+    void redoDiscard(PackData &logd) {
         assert(config_.isDiscard());
         assert(logd.isDiscard());
 
@@ -740,11 +740,14 @@ private:
         waitForAllPendingIos();
 
         /* Issue the corresponding discard IOs. */
-
-
-        /* now editing */
-
-        ::printf("discard is not supported now.\n");
+        uint64_t offsetAndSize[2];
+        offsetAndSize[0] = logd.offset() * LOGICAL_BLOCK_SIZE;
+        offsetAndSize[1] = logd.ioSizeLb() * LOGICAL_BLOCK_SIZE;
+        int ret = ::ioctl(bd_.getFd(), BLKDISCARD, &offsetAndSize);
+        if (ret) {
+            throw RT_ERR("discard command failed.");
+        }
+        nDiscard_ += logd.ioSizePb();
     }
 
     /**
