@@ -37,7 +37,7 @@ format_ldev
 #
 # Simple test.
 #
-./wlrestore $LDEV < ${WLOG}.0
+./wlrestore --verify $LDEV < ${WLOG}.0
 ./wlcat $LDEV -v -o ${WLOG}.1
 ./bdiff -b 512 ${WLOG}.0 ${WLOG}.1
 if [ $? -ne 0 ]; then
@@ -57,7 +57,7 @@ restore_test()
   dd if=/dev/zero of=${DDEV}.1 bs=1M count=32
   dd if=/dev/zero of=${DDEV}.2 bs=1M count=32
   dd if=/dev/zero of=${DDEV}.3 bs=1M count=32
-  ./wlrestore $LDEV --lsidDiff $lsidDiff --invalidLsid $invalidLsid < ${WLOG}.0
+  ./wlrestore $LDEV --verify --lsidDiff $lsidDiff --invalidLsid $invalidLsid < ${WLOG}.0
   ./wlcat $LDEV -v -o ${WLOG}.1
   losetup $LOOP0 ${LDEV}
   $CTL cat_wldev --wldev $LOOP0 > ${WLOG}.2
