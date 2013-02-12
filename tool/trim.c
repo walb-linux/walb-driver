@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 	u64 start_off = 0;
 	u64 end_off = -1;
 	u64 len;
-	u64 range[2];
+	u64 offsetAndSize[2];
 	int fd, ret;
 
 	/* Get command line arguments. */
@@ -49,9 +49,13 @@ int main(int argc, char *argv[])
 	if (end_off > len) {
 		end_off = len;
 	}
+	if (end_off <= start_off) {
+		LOGe("start offset must be < end offset.\n");
+		return 1;
+	}
 
-	range[0] = start_off;
-	range[1] = end_off;
+	offsetAndSize[0] = start_off;
+	offsetAndSize[1] = end_off - start_off;
 	fd = open(dev_path, O_RDWR);
 	if (fd < 0) {
 		perror("open failed.");
@@ -60,9 +64,9 @@ int main(int argc, char *argv[])
 
 	/* discard */
 #if 1
-	ret = ioctl(fd, BLKDISCARD, &range);
+	ret = ioctl(fd, BLKDISCARD, &offsetAndSize);
 #else
-	ret = ioctl(fd, BLKSECDISCARD, &range);
+	ret = ioctl(fd, BLKSECDISCARD, &offsetAndSize);
 #endif
 	if (ret) {
 		LOGe("ioctl() error: %s\n", strerror(errno));
