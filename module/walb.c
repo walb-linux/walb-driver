@@ -1573,7 +1573,7 @@ static void walb_decide_flush_support(struct walb_dev *wdev)
 		}
 		blk_queue_flush_queueable(q, true);
 	} else {
-		LOGw("REQ_FLUSH is not suported!\n"
+		LOGw("REQ_FLUSH is not supported!\n"
 			"WalB can not guarantee data consistency...\n");
 	}
 }
