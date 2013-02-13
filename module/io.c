@@ -2446,6 +2446,11 @@ static void wait_for_logpack_and_submit_datapack(
 			wdev->lsids.permanent = logh->logpack_lsid;
 			LOGd_("log_flush_completed_io\n");
 		}
+		if (!(wdev->queue->flush_flags & REQ_FLUSH)) {
+			/* For flush-not-supportted device. */
+			wdev->lsids.flush = get_next_lsid(logh);
+			wdev->lsids.permanent = wdev->lsids.flush;
+		}
 		spin_unlock(&wdev->lsid_lock);
 	}
 }

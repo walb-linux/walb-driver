@@ -1524,6 +1524,7 @@ static int walb_set_name(struct walb_dev *wdev,
 static void walb_decide_flush_support(struct walb_dev *wdev)
 {
 	struct request_queue *q, *lq, *dq;
+	bool lq_flush, dq_flush, lq_fua, dq_fua;
 	ASSERT(wdev);
 
 	/* Get queues. */
@@ -1532,9 +1533,17 @@ static void walb_decide_flush_support(struct walb_dev *wdev)
 	lq = bdev_get_queue(wdev->ldev);
 	dq = bdev_get_queue(wdev->ddev);
 
+	/* Get flush/fua flags. */
+	lq_flush = lq->flush_flags & REQ_FLUSH;
+	dq_flush = dq->flush_flags & REQ_FLUSH;
+	lq_fua = lq->flush_flags & REQ_FUA;
+	dq_fua = dq->flush_flags & REQ_FUA;
+	LOGn("flush/fua flags: log_device %d/%d data_device %d/%d\n",
+		lq_flush, lq_fua, dq_flush, dq_fua);
+
 	/* Check REQ_FLUSH/REQ_FUA supports. */
-	if (lq->flush_flags & REQ_FLUSH && dq->flush_flags & REQ_FLUSH) {
-		if (lq->flush_flags & REQ_FUA) {
+	if (lq_flush && dq_flush) {
+		if (lq_fua) {
 			LOGn("Supports REQ_FLUSH | REQ_FUA.");
 			blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
 		} else {
