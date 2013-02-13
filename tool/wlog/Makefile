@@ -31,6 +31,9 @@ wlinfo.cpp wlanalyze.cpp wlupdate bdiff.cpp
 
 all: $(BINARIES)
 
+echo_binaries:
+	@echo $(BINARIES)
+
 wlcat: wlcat.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 wlredo: wlredo.o
