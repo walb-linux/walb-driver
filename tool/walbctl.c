@@ -190,6 +190,8 @@ static struct cmdhelp cmdhelps_[] = {
 	  "Get log usage in the log device." },
 	{ "get_log_capacity WDEV",
 	  "Get log capacity in the log device." },
+	{ "is_flush_capable WDEV",
+	  "Check the device can accept flush requests." },
 	{ "resize WDEV SIZE",
 	  "Resize device capacity [logical block] (Only grow is allowed)."
 	  " Specify --size 0 to auto-detect the size." },
@@ -257,6 +259,7 @@ static bool init_snapshot_metadata(
 	int fd, const struct sector_data *super_sect);
 static bool invoke_ioctl(
 	const char *wdev_name, struct walb_ctl *ctl, int open_flag);
+static bool ioctl_and_print_bool(const char *wdev_name, int cmd);
 static u64 get_oldest_lsid(const char* wdev_name);
 static u64 get_written_lsid(const char* wdev_name);
 static u64 get_permanent_lsid(const char* wdev_name);
@@ -299,6 +302,7 @@ static bool do_get_permanent_lsid(const struct config *cfg);
 static bool do_get_completed_lsid(const struct config *cfg);
 static bool do_get_log_usage(const struct config *cfg);
 static bool do_get_log_capacity(const struct config *cfg);
+static bool do_is_flush_capable(const struct config *cfg);
 static bool do_resize(const struct config *cfg);
 static bool do_reset_wal(const struct config *cfg);
 static bool do_is_log_overflow(const struct config *cfg);
@@ -307,6 +311,47 @@ static bool do_melt(const struct config *cfg);
 static bool do_is_frozen(const struct config *cfg);
 static bool do_get_version(const struct config *cfg);
 static bool do_help(const struct config *cfg);
+
+/*******************************************************************************
+ * Command map.
+ *******************************************************************************/
+
+const struct map_str_to_fn cmd_map_[] = {
+	{ "format_ldev", do_format_ldev },
+	{ "create_wdev", do_create_wdev },
+	{ "delete_wdev", do_delete_wdev },
+	{ "create_snapshot", do_create_snapshot },
+	{ "delete_snapshot", do_delete_snapshot },
+	{ "num_snapshot", do_num_snapshot },
+	{ "list_snapshot", do_list_snapshot },
+	{ "list_snapshot_range", do_list_snapshot_range },
+	{ "check_snapshot", do_check_snapshot },
+	{ "clean_snapshot", do_clean_snapshot },
+	{ "take_checkpoint", do_take_checkpoint },
+	{ "set_checkpoint_interval", do_set_checkpoint_interval },
+	{ "get_checkpoint_interval", do_get_checkpoint_interval },
+	{ "cat_wldev", do_cat_wldev },
+	{ "show_wlog", do_show_wlog },
+	{ "show_wldev", do_show_wldev },
+	{ "redo_wlog", do_redo_wlog },
+	{ "redo", do_redo },
+	{ "set_oldest_lsid", do_set_oldest_lsid },
+	{ "get_oldest_lsid", do_get_oldest_lsid },
+	{ "get_written_lsid", do_get_written_lsid },
+	{ "get_permanent_lsid", do_get_permanent_lsid },
+	{ "get_completed_lsid", do_get_completed_lsid },
+	{ "get_log_usage", do_get_log_usage },
+	{ "get_log_capacity", do_get_log_capacity },
+	{ "is_flush_capable", do_is_flush_capable },
+	{ "resize", do_resize },
+	{ "reset_wal", do_reset_wal },
+	{ "is_log_overflow", do_is_log_overflow },
+	{ "freeze", do_freeze },
+	{ "melt", do_melt },
+	{ "is_frozen", do_is_frozen },
+	{ "get_version", do_get_version },
+	{ "help", do_help },
+};
 
 /*******************************************************************************
  * Helper functions.
@@ -794,6 +839,27 @@ error1:
 }
 
 /**
+ * Invoke ioctl and print returned boolean value.
+ *
+ * RETURN:
+ *   true in success, or false.
+ */
+static bool ioctl_and_print_bool(const char *wdev_name, int cmd)
+{
+	struct walb_ctl ctl = {
+		.command = cmd,
+		.u2k = { .buf_size = 0 },
+		.k2u = { .buf_size = 0 },
+	};
+
+	if (!invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
+		return false;
+	}
+	printf("%d\n", ctl.val_int);
+	return true;
+}
+
+/**
  * Get oldest_lsid.
  *
  * RETURN:
@@ -926,48 +992,13 @@ static bool dispatch(const struct config *cfg)
 {
 	int i;
 	bool ret = false;
-	const struct map_str_to_fn map[] = {
-		{ "format_ldev", do_format_ldev },
-		{ "create_wdev", do_create_wdev },
-		{ "delete_wdev", do_delete_wdev },
-		{ "create_snapshot", do_create_snapshot },
-		{ "delete_snapshot", do_delete_snapshot },
-		{ "num_snapshot", do_num_snapshot },
-		{ "list_snapshot", do_list_snapshot },
-		{ "list_snapshot_range", do_list_snapshot_range },
-		{ "check_snapshot", do_check_snapshot },
-		{ "clean_snapshot", do_clean_snapshot },
-		{ "take_checkpoint", do_take_checkpoint },
-		{ "set_checkpoint_interval", do_set_checkpoint_interval },
-		{ "get_checkpoint_interval", do_get_checkpoint_interval },
-		{ "cat_wldev", do_cat_wldev },
-		{ "show_wlog", do_show_wlog },
-		{ "show_wldev", do_show_wldev },
-		{ "redo_wlog", do_redo_wlog },
-		{ "redo", do_redo },
-		{ "set_oldest_lsid", do_set_oldest_lsid },
-		{ "get_oldest_lsid", do_get_oldest_lsid },
-		{ "get_written_lsid", do_get_written_lsid },
-		{ "get_permanent_lsid", do_get_permanent_lsid },
-		{ "get_completed_lsid", do_get_completed_lsid },
-		{ "get_log_usage", do_get_log_usage },
-		{ "get_log_capacity", do_get_log_capacity },
-		{ "resize", do_resize },
-		{ "reset_wal", do_reset_wal },
-		{ "is_log_overflow", do_is_log_overflow },
-		{ "freeze", do_freeze },
-		{ "melt", do_melt },
-		{ "is_frozen", do_is_frozen },
-		{ "get_version", do_get_version },
-		{ "help", do_help },
-	};
-	const int array_size = sizeof(map)/sizeof(map[0]);
+	const int array_size = sizeof(cmd_map_)/sizeof(cmd_map_[0]);
 
 	ASSERT(cfg->cmd_str);
 
 	for (i = 0; i < array_size; i++) {
-		if (strcmp(cfg->cmd_str, map[i].str) == 0) {
-			ret = (*map[i].fn)(cfg);
+		if (strcmp(cfg->cmd_str, cmd_map_[i].str) == 0) {
+			ret = (*cmd_map_[i].fn)(cfg);
 			break;
 		}
 	}
@@ -2512,6 +2543,16 @@ static bool do_get_log_capacity(const struct config *cfg)
 }
 
 /**
+ * Is flush capable.
+ */
+static bool do_is_flush_capable(const struct config *cfg)
+{
+	ASSERT(strcmp(cfg->cmd_str, "is_flush_capable") == 0);
+	return ioctl_and_print_bool(
+		cfg->wdev_name, WALB_IOCTL_IS_FLUSH_CAPABLE);
+}
+
+/**
  * Resize the disk.
  */
 static bool do_resize(const struct config *cfg)
@@ -2557,19 +2598,9 @@ static bool do_reset_wal(const struct config *cfg)
  */
 static bool do_is_log_overflow(const struct config *cfg)
 {
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_IS_LOG_OVERFLOW,
-		.u2k = { .buf_size = 0 },
-		.k2u = { .buf_size = 0 },
-	};
-
 	ASSERT(strcmp(cfg->cmd_str, "is_log_overflow") == 0);
-
-	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDONLY)) {
-		return false;
-	}
-	printf("%d\n", ctl.val_int);
-	return true;
+	return ioctl_and_print_bool(
+		cfg->wdev_name, WALB_IOCTL_IS_LOG_OVERFLOW);
 }
 
 /**
@@ -2616,21 +2647,9 @@ static bool do_melt(const struct config *cfg)
  */
 static bool do_is_frozen(const struct config *cfg)
 {
-	int is_frozen;
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_IS_FROZEN,
-		.u2k = { .buf_size = 0 },
-		.k2u = { .buf_size = 0 },
-	};
-
 	ASSERT(strcmp(cfg->cmd_str, "is_frozen") == 0);
-
-	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDONLY)) {
-		return false;
-	}
-	is_frozen = ctl.val_int;
-	printf("%d\n", is_frozen);
-	return true;
+	return ioctl_and_print_bool(
+		cfg->wdev_name, WALB_IOCTL_IS_FROZEN);
 }
 
 /**

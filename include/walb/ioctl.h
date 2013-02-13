@@ -455,6 +455,15 @@ enum {
 	WALB_IOCTL_GET_LOG_CAPACITY,
 
 	/*
+	 * Is flush capability.
+	 * INPUT:
+	 *   None
+	 * OUTPUT:
+	 *   ctl->val_int as boolean (non-zero is true).
+	 */
+	WALB_IOCTL_IS_FLUSH_CAPABLE,
+
+	/*
 	 * Resize walb device.
 	 *
 	 * INPUT:

@@ -146,6 +146,7 @@ static int ioctl_wdev_get_permanent_lsid(struct walb_dev *wdev, struct walb_ctl 
 static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *ctl);
+static int ioctl_wdev_is_flush_capable(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ctl);
@@ -370,6 +371,9 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		break;
 	case WALB_IOCTL_GET_LOG_CAPACITY:
 		ret = ioctl_wdev_get_log_capacity(wdev, ctl);
+		break;
+	case WALB_IOCTL_IS_FLUSH_CAPABLE:
+		ret = ioctl_wdev_is_flush_capable(wdev, ctl);
 		break;
 	case WALB_IOCTL_CREATE_SNAPSHOT:
 		ret = ioctl_wdev_create_snapshot(wdev, ctl);
@@ -992,7 +996,7 @@ static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl 
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
- *   0 in success, or -EFAULT.
+ *   0.
  */
 static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
@@ -1009,7 +1013,7 @@ static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl)
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
- *   0 in success, or -EFAULT.
+ *   0.
  */
 static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
@@ -1017,6 +1021,23 @@ static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *c
 	ASSERT(ctl->command == WALB_IOCTL_GET_LOG_CAPACITY);
 
 	ctl->val_u64 = get_log_capacity(wdev);
+	return 0;
+}
+
+/**
+ * Get flush request capable or not.
+ *
+ * @wdev walb dev.
+ * @ctl ioctl data.
+ * RETURN:
+ *   0.
+ */
+static int ioctl_wdev_is_flush_capable(struct walb_dev *wdev, struct walb_ctl *ctl)
+{
+	LOGn("WALB_IOCTL_IS_FLUAH_CAPABLE");
+	ASSERT(ctl->command == WALB_IOCTL_IS_FLUSH_CAPABLE);
+
+	ctl->val_int = (wdev->queue->flush_flags & REQ_FLUSH) != 0;
 	return 0;
 }
 
