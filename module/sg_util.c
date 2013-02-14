@@ -229,10 +229,10 @@ bool sg_copy_to_sg_offset(
 	if (!sg_pos_get(src, &src_pos, src_offset)) { return false; }
 
 	while (remaining > 0) {
-		unsigned int tmp_size = min(
+		unsigned int tmp_size = min3(
 			sg_pos_fragment_size(&dst_pos),
-			sg_pos_fragment_size(&src_pos));
-		tmp_size = min(tmp_size, remaining);
+			sg_pos_fragment_size(&src_pos),
+			remaining);
 		/* LOGd("remaining %u tmp_size %u\n", remaining, tmp_size); */
 		memcpy(sg_pos_virt(&dst_pos), sg_pos_virt(&src_pos), tmp_size);
 		if (!sg_pos_go_forward(&dst_pos, tmp_size)) { return false; }
