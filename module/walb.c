@@ -179,7 +179,8 @@ static void cancel_melt_work(struct walb_dev *wdev);
 static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec);
 static bool melt_if_frozen(struct walb_dev *wdev, bool restarts_checkpointing);
 static void set_geometry(struct hd_geometry *geo, u64 n_sectors);
-static bool get_lsid_range_from_ctl(u64 *lsid0, u64 *lsid1, struct walb_ctl *ctl);
+static bool get_lsid_range_from_ctl(
+	u64 *lsid0, u64 *lsid1, const struct walb_ctl *ctl);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -1824,14 +1825,14 @@ static void set_geometry(struct hd_geometry *geo, u64 n_sectors)
  *   true in success, or false.
  */
 static bool get_lsid_range_from_ctl(
-	u64 *lsid0, u64 *lsid1, struct walb_ctl *ctl)
+	u64 *lsid0, u64 *lsid1, const struct walb_ctl *ctl)
 {
 	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
 		LOGe("Buffer is too small for u64 * 2.\n");
 		return false;
 	}
-	*lsid0 = ((u64 *)ctl->u2k.__buf)[0];
-	*lsid1 = ((u64 *)ctl->u2k.__buf)[1];
+	*lsid0 = ((const u64 *)ctl->u2k.__buf)[0];
+	*lsid1 = ((const u64 *)ctl->u2k.__buf)[1];
 	if (!is_lsid_range_valid(*lsid0, *lsid1)) {
 		LOGe("Specify valid lsid range.\n");
 		return false;
