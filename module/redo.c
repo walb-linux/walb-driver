@@ -595,7 +595,7 @@ static unsigned int get_bio_wrapper_from_read_queue(
 	ASSERT(read_rd);
 	ASSERT(biow_list);
 
-	if (n == 0) { goto fin; }
+	if (n == 0) { return 0; }
 
 	spin_lock(&read_rd->queue_lock);
 	list_for_each_entry_safe(biow, biow_next, &read_rd->queue, list) {
@@ -607,7 +607,6 @@ static unsigned int get_bio_wrapper_from_read_queue(
 		}
 	}
 	spin_unlock(&read_rd->queue_lock);
-fin:
 	return n_biow;
 }
 
@@ -691,7 +690,7 @@ static bool redo_logpack(
 	struct walb_logpack_header *logh;
 	unsigned int i, invalid_idx = 0;
 	struct list_head biow_list_pack, biow_list_io, biow_list_ready;
-	unsigned int n_pb, n_lb, n;
+	unsigned int n_pb, n;
 	unsigned int pbs;
 	struct bio_wrapper *biow, *biow_next;
 	u32 csum;
@@ -739,11 +738,11 @@ retry1:
 			test_bit_u32(LOG_RECORD_DISCARD, &rec->flags);
 		const bool is_padding =
 			test_bit_u32(LOG_RECORD_PADDING, &rec->flags);
+		unsigned int n_lb = rec->io_size;
 
 		ASSERT(test_bit_u32(LOG_RECORD_EXIST, &rec->flags));
 		ASSERT(list_empty(&biow_list_io));
 
-		n_lb = rec->io_size;
 		if (n_lb == 0) {
 			/* zero-sized IO. */
 			continue;
@@ -925,8 +924,6 @@ static u32 calc_checksum_for_redo(
 {
 	struct bio_wrapper *biow;
 	u32 csum = salt;
-	unsigned int len;
-	struct sector_data *sectd;
 
 	ASSERT(n_lb > 0);
 	ASSERT_PBS(pbs);
@@ -934,17 +931,13 @@ static u32 calc_checksum_for_redo(
 	ASSERT(!list_empty(biow_list));
 
 	list_for_each_entry(biow, biow_list, list) {
-		sectd = biow->private_data;
+		struct sector_data *sectd = biow->private_data;
+		const unsigned int len = min(biow->len, n_lb);
 		ASSERT_SECTOR_DATA(sectd);
 		ASSERT(sectd->size == pbs);
 		ASSERT(biow->len == n_lb_in_pb(pbs));
 		ASSERT(n_lb > 0);
 
-		if (biow->len <= n_lb) {
-			len = biow->len;
-		} else {
-			len = n_lb;
-		}
 		csum = checksum_partial(
 			csum, sectd->data, len * LOGICAL_BLOCK_SIZE);
 		n_lb -= len;
@@ -971,7 +964,6 @@ static void create_data_io_for_redo(
 	unsigned int pbs = wdev->physical_bs;
 	struct bio_wrapper *biow, *biow_next;
 	u64 off;
-	unsigned int len;
 	struct list_head new_list;
 
 	ASSERT(rec);
@@ -986,11 +978,7 @@ static void create_data_io_for_redo(
 
 	INIT_LIST_HEAD(&new_list);
 	list_for_each_entry_safe(biow, biow_next, biow_list, list) {
-		if (biow->len <= n_lb) {
-			len = biow->len;
-		} else {
-			len = n_lb;
-		}
+		const unsigned int len = min(biow->len, n_lb);
 		list_del(&biow->list);
 	retry:
 		if (!prepare_data_bio_for_redo(wdev, biow, off, len)) {

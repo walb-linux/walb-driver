@@ -178,6 +178,9 @@ static void task_melt(struct work_struct *work);
 static void cancel_melt_work(struct walb_dev *wdev);
 static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec);
 static bool melt_if_frozen(struct walb_dev *wdev, bool restarts_checkpointing);
+static void set_geometry(struct hd_geometry *geo, u64 n_sectors);
+static bool get_lsid_range_from_ctl(
+	u64 *lsid0, u64 *lsid1, const struct walb_ctl *ctl);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -439,7 +442,6 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 		unsigned int cmd, unsigned long arg)
 {
-	long size;
 	struct hd_geometry geo;
 	struct walb_dev *wdev = bdev->bd_disk->private_data;
 	int ret = -ENOTTY;
@@ -450,17 +452,7 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 
 	switch(cmd) {
 	case HDIO_GETGEO:
-		/*
-		 * Get geometry: since we are a virtual device, we have to make
-		 * up something plausible.  So we claim 16 sectors, four heads,
-		 * and calculate the corresponding number of cylinders.	 We set the
-		 * start of data at sector four.
-		 */
-		size = wdev->ddev_size;
-		geo.cylinders = (size & ~0x3f) >> 6;
-		geo.heads = 4;
-		geo.sectors = 16;
-		geo.start = 4;
+		set_geometry(&geo, wdev->ddev_size);
 		if (copy_to_user((void __user *) arg, &geo, sizeof(geo)))
 			return -EFAULT;
 		ret = 0;
@@ -677,14 +669,7 @@ static int ioctl_wdev_delete_snapshot_range(struct walb_dev *wdev, struct walb_c
 	LOGn("WALB_IOCTL_DELETE_SNAPSHOT_RANGE");
 	ASSERT(ctl->command == WALB_IOCTL_DELETE_SNAPSHOT_RANGE);
 
-	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
-		LOGe("Buffer is too small for u64 * 2.\n");
-		return -EFAULT;
-	}
-	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
-	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
-	if (!is_lsid_range_valid(lsid0, lsid1)) {
-		LOGe("Specify valid lsid range.\n");
+	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
 		return -EFAULT;
 	}
 	ret = snapshot_del_range(wdev->snapd, lsid0, lsid1);
@@ -753,17 +738,9 @@ static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_c
 	LOGn("WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE\n");
 	ASSERT(ctl->command == WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE);
 
-	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
-		LOGe("Buffer is too small for u64 * 2.\n");
+	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
 		return -EFAULT;
 	}
-	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
-	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
-	if (!is_lsid_range_valid(lsid0, lsid1)) {
-		LOGe("Specify valid lsid range.\n");
-		return -EFAULT;
-	}
-
 	ret = snapshot_n_records_range(
 		wdev->snapd, lsid0, lsid1);
 	if (ret < 0) {
@@ -792,14 +769,7 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 	LOGn("WALB_IOCTL_LIST_SNAPSHOT_RANGE\n");
 	ASSERT(ctl->command == WALB_IOCTL_LIST_SNAPSHOT_RANGE);
 
-	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
-		LOGe("Buffer is too small for u64 * 2.\n");
-		return -EFAULT;
-	}
-	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
-	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
-	if (!is_lsid_range_valid(lsid0, lsid1)) {
-		LOGe("Specify valid lsid range.\n");
+	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
 		return -EFAULT;
 	}
 	srec = (struct walb_snapshot_record *)ctl->k2u.__buf;
@@ -1386,17 +1356,12 @@ static int walblog_release(struct gendisk *gd, fmode_t mode)
 static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 			unsigned int cmd, unsigned long arg)
 {
-	long size;
 	struct hd_geometry geo;
 	struct walb_dev *wdev = bdev->bd_disk->private_data;
 
 	switch(cmd) {
 	case HDIO_GETGEO:
-		size = wdev->ldev_size;
-		geo.cylinders = (size & ~0x3f) >> 6;
-		geo.heads = 4;
-		geo.sectors = 16;
-		geo.start = 4;
+		set_geometry(&geo, wdev->ldev_size);
 		if (copy_to_user((void __user *) arg, &geo, sizeof(geo)))
 			return -EFAULT;
 		return 0;
@@ -1840,6 +1805,38 @@ static bool melt_if_frozen(
 	}
 	ASSERT(wdev->freeze_state == FRZ_MELTED);
 	mutex_unlock(&wdev->freeze_lock);
+	return true;
+}
+
+/**
+ * Set geometry for compatibility.
+ */
+static void set_geometry(struct hd_geometry *geo, u64 n_sectors)
+{
+	geo->heads = 4;
+	geo->sectors = 16;
+	geo->cylinders = n_sectors >> 6;
+	geo->start = 0;
+}
+
+/**
+ * Get two lsid values as a range from a walb ctl buffer.
+ * RETURN:
+ *   true in success, or false.
+ */
+static bool get_lsid_range_from_ctl(
+	u64 *lsid0, u64 *lsid1, const struct walb_ctl *ctl)
+{
+	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
+		LOGe("Buffer is too small for u64 * 2.\n");
+		return false;
+	}
+	*lsid0 = ((const u64 *)ctl->u2k.__buf)[0];
+	*lsid1 = ((const u64 *)ctl->u2k.__buf)[1];
+	if (!is_lsid_range_valid(*lsid0, *lsid1)) {
+		LOGe("Specify valid lsid range.\n");
+		return false;
+	}
 	return true;
 }
 

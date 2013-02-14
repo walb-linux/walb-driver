@@ -520,14 +520,13 @@ static int wait_for_bio_entry_list(struct list_head *bioe_list)
 	int bio_error = 0;
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
-	int c;
 	ASSERT(bioe_list);
 
 	/* wait for completion. */
 	list_for_each_entry(bioe, bioe_list, list) {
 
 		if (bio_entry_should_wait_completion(bioe)) {
-			c = 0;
+			int c = 0;
 		retry:
 			rtimeo = wait_for_completion_timeout(&bioe->done, timeo);
 			if (rtimeo == 0) {
@@ -2576,7 +2575,6 @@ static void wait_for_bio_wrapper(
 	unsigned int remaining;
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
-	int c;
 	unsigned i = 0;
 
 	ASSERT(biow);
@@ -2585,7 +2583,7 @@ static void wait_for_bio_wrapper(
 	remaining = biow->len;
 	list_for_each_entry(bioe, &biow->bioe_list, list) {
 		if (bio_entry_should_wait_completion(bioe)) {
-			c = 0;
+			int c = 0;
 		retry:
 			rtimeo = wait_for_completion_timeout(&bioe->done, timeo);
 			if (rtimeo == 0) {
