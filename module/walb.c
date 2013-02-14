@@ -179,6 +179,7 @@ static void cancel_melt_work(struct walb_dev *wdev);
 static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec);
 static bool melt_if_frozen(struct walb_dev *wdev, bool restarts_checkpointing);
 static void set_geometry(struct hd_geometry *geo, u64 n_sectors);
+static bool get_lsid_range_from_ctl(u64 *lsid0, u64 *lsid1, struct walb_ctl *ctl);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -667,14 +668,7 @@ static int ioctl_wdev_delete_snapshot_range(struct walb_dev *wdev, struct walb_c
 	LOGn("WALB_IOCTL_DELETE_SNAPSHOT_RANGE");
 	ASSERT(ctl->command == WALB_IOCTL_DELETE_SNAPSHOT_RANGE);
 
-	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
-		LOGe("Buffer is too small for u64 * 2.\n");
-		return -EFAULT;
-	}
-	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
-	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
-	if (!is_lsid_range_valid(lsid0, lsid1)) {
-		LOGe("Specify valid lsid range.\n");
+	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
 		return -EFAULT;
 	}
 	ret = snapshot_del_range(wdev->snapd, lsid0, lsid1);
@@ -743,17 +737,9 @@ static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_c
 	LOGn("WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE\n");
 	ASSERT(ctl->command == WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE);
 
-	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
-		LOGe("Buffer is too small for u64 * 2.\n");
+	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
 		return -EFAULT;
 	}
-	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
-	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
-	if (!is_lsid_range_valid(lsid0, lsid1)) {
-		LOGe("Specify valid lsid range.\n");
-		return -EFAULT;
-	}
-
 	ret = snapshot_n_records_range(
 		wdev->snapd, lsid0, lsid1);
 	if (ret < 0) {
@@ -782,14 +768,7 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 	LOGn("WALB_IOCTL_LIST_SNAPSHOT_RANGE\n");
 	ASSERT(ctl->command == WALB_IOCTL_LIST_SNAPSHOT_RANGE);
 
-	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
-		LOGe("Buffer is too small for u64 * 2.\n");
-		return -EFAULT;
-	}
-	lsid0 = ((u64 *)ctl->u2k.__buf)[0];
-	lsid1 = ((u64 *)ctl->u2k.__buf)[1];
-	if (!is_lsid_range_valid(lsid0, lsid1)) {
-		LOGe("Specify valid lsid range.\n");
+	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
 		return -EFAULT;
 	}
 	srec = (struct walb_snapshot_record *)ctl->k2u.__buf;
@@ -1837,6 +1816,27 @@ static void set_geometry(struct hd_geometry *geo, u64 n_sectors)
 	geo->sectors = 16;
 	geo->cylinders = n_sectors >> 6;
 	geo->start = 0;
+}
+
+/**
+ * Get two lsid values as a range from a walb ctl buffer.
+ * RETURN:
+ *   true in success, or false.
+ */
+static bool get_lsid_range_from_ctl(
+	u64 *lsid0, u64 *lsid1, struct walb_ctl *ctl)
+{
+	if (sizeof(u64) * 2 > ctl->u2k.buf_size) {
+		LOGe("Buffer is too small for u64 * 2.\n");
+		return false;
+	}
+	*lsid0 = ((u64 *)ctl->u2k.__buf)[0];
+	*lsid1 = ((u64 *)ctl->u2k.__buf)[1];
+	if (!is_lsid_range_valid(*lsid0, *lsid1)) {
+		LOGe("Specify valid lsid range.\n");
+		return false;
+	}
+	return true;
 }
 
 /**
