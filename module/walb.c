@@ -178,6 +178,7 @@ static void task_melt(struct work_struct *work);
 static void cancel_melt_work(struct walb_dev *wdev);
 static bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec);
 static bool melt_if_frozen(struct walb_dev *wdev, bool restarts_checkpointing);
+static void set_geometry(struct hd_geometry *geo, u64 n_sectors);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -439,7 +440,6 @@ static int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 		unsigned int cmd, unsigned long arg)
 {
-	long size;
 	struct hd_geometry geo;
 	struct walb_dev *wdev = bdev->bd_disk->private_data;
 	int ret = -ENOTTY;
@@ -450,17 +450,7 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 
 	switch(cmd) {
 	case HDIO_GETGEO:
-		/*
-		 * Get geometry: since we are a virtual device, we have to make
-		 * up something plausible.  So we claim 16 sectors, four heads,
-		 * and calculate the corresponding number of cylinders.	 We set the
-		 * start of data at sector four.
-		 */
-		size = wdev->ddev_size;
-		geo.cylinders = (size & ~0x3f) >> 6;
-		geo.heads = 4;
-		geo.sectors = 16;
-		geo.start = 4;
+		set_geometry(&geo, wdev->ddev_size);
 		if (copy_to_user((void __user *) arg, &geo, sizeof(geo)))
 			return -EFAULT;
 		ret = 0;
@@ -1386,17 +1376,12 @@ static int walblog_release(struct gendisk *gd, fmode_t mode)
 static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 			unsigned int cmd, unsigned long arg)
 {
-	long size;
 	struct hd_geometry geo;
 	struct walb_dev *wdev = bdev->bd_disk->private_data;
 
 	switch(cmd) {
 	case HDIO_GETGEO:
-		size = wdev->ldev_size;
-		geo.cylinders = (size & ~0x3f) >> 6;
-		geo.heads = 4;
-		geo.sectors = 16;
-		geo.start = 4;
+		set_geometry(&geo, wdev->ldev_size);
 		if (copy_to_user((void __user *) arg, &geo, sizeof(geo)))
 			return -EFAULT;
 		return 0;
@@ -1841,6 +1826,17 @@ static bool melt_if_frozen(
 	ASSERT(wdev->freeze_state == FRZ_MELTED);
 	mutex_unlock(&wdev->freeze_lock);
 	return true;
+}
+
+/**
+ * Set geometry for compatibility.
+ */
+static void set_geometry(struct hd_geometry *geo, u64 n_sectors)
+{
+	geo->heads = 4;
+	geo->sectors = 16;
+	geo->cylinders = n_sectors >> 6;
+	geo->start = 0;
 }
 
 /**
