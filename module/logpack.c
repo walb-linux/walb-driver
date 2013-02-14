@@ -80,7 +80,7 @@ bool walb_logpack_header_add_req(
 	u64 logpack_lsid;
 	u64 req_lsid;
 	unsigned int req_lb, req_pb;
-	unsigned int padding_pb;
+	u64 padding_pb;
 	unsigned int max_n_rec;
 	int idx;
 
@@ -111,11 +111,10 @@ bool walb_logpack_header_add_req(
 	ASSERT(65536 > req_lb); /* can be u16. */
 	req_pb = capacity_pb(pbs, req_lb);
 
-	if (req_lsid % ring_buffer_size + req_pb > ring_buffer_size) {
+	padding_pb = ring_buffer_size - (req_lsid % ring_buffer_size);
+	if (padding_pb < req_pb) {
 		/* Log of this request will cross the end of ring buffer.
 		   So padding is required. */
-		padding_pb = ring_buffer_size - (req_lsid % ring_buffer_size);
-
 		if (lhead->total_io_size + padding_pb
 			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
 			LOGd("no more request can not be added.\n");
@@ -158,8 +157,6 @@ bool walb_logpack_header_add_req(
 	lhead->n_records++;
 	lhead->total_io_size += req_pb;
 
-	req_lsid += req_pb;
-	idx++;
 	return true;
 }
 
@@ -190,10 +187,9 @@ bool walb_logpack_header_add_bio(
 	u64 logpack_lsid;
 	u64 bio_lsid;
 	unsigned int bio_lb, bio_pb;
-	unsigned int padding_pb;
+	u64 padding_pb;
 	unsigned int max_n_rec;
 	int idx;
-	u64 offset_in_ring_buffer;
 	bool is_discard;
 	UNUSED const char no_more_bio_msg[] = "no more bio can not be added.\n";
 
@@ -227,13 +223,12 @@ bool walb_logpack_header_add_bio(
 	ASSERT((1U << 16) > bio_lb); /* can be u16. */
 	bio_pb = capacity_pb(pbs, bio_lb);
 	is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
-	offset_in_ring_buffer = bio_lsid % ring_buffer_size;
 
 	/* Padding check. */
-	if (!is_discard && offset_in_ring_buffer + bio_pb > ring_buffer_size) {
+	padding_pb = ring_buffer_size - bio_lsid % ring_buffer_size;
+	if (!is_discard && padding_pb < bio_pb) {
 		/* Log of this request will cross the end of ring buffer.
 		   So padding is required. */
-		padding_pb = ring_buffer_size - offset_in_ring_buffer;
 
 		if (lhead->total_io_size + padding_pb
 			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {

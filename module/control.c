@@ -112,7 +112,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 		wminor = get_free_minor();
 	} else {
 		wminor = ctl->u2k.wminor;
-		if (wminor % 2 != 0) { wminor--; }
+		wminor &= ~1U;
 	}
 	LOGd("wminor: %u\n", wminor);
 
@@ -139,7 +139,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	/* Return values to userland. */
 	ctl->k2u.wmajor = walb_major_;
 	ctl->k2u.wminor = wminor;
-	memcpy(param1, param0, sizeof(struct walb_start_param));
+	*param1 = *param0;
 	ctl->error = 0;
 
 	print_walb_ctl(ctl); /* debug */

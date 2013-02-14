@@ -140,7 +140,6 @@ static unsigned int sg_pos_fragment_size(const struct sg_pos *pos)
 static bool sg_pos_go_forward(struct sg_pos *pos, unsigned int size)
 {
 	unsigned int remaining = size;
-	unsigned int tmp_size;
 	struct scatterlist *sg;
 	unsigned int off;
 
@@ -149,7 +148,7 @@ static bool sg_pos_go_forward(struct sg_pos *pos, unsigned int size)
 	off = pos->offset;
 
 	while (remaining > 0) {
-		tmp_size = min(remaining, sg_pos_fragment_size(pos));
+		unsigned int tmp_size = min(remaining, sg_pos_fragment_size(pos));
 		off += tmp_size;
 		ASSERT(off <= sg->length);
 		if (off == sg->length) {
@@ -219,7 +218,7 @@ bool sg_copy_to_sg_offset(
 	unsigned int size)
 {
 	struct sg_pos src_pos, dst_pos;
-	unsigned int remaining = size, tmp_size;
+	unsigned int remaining = size;
 
 	LOGd("sg_copy_to_sg_offset() begin.\n");
 	LOGd("dst(off %u len %u) src(off %u len %u) size %u\n",
@@ -230,7 +229,8 @@ bool sg_copy_to_sg_offset(
 	if (!sg_pos_get(src, &src_pos, src_offset)) { return false; }
 
 	while (remaining > 0) {
-		tmp_size = min(sg_pos_fragment_size(&dst_pos),
+		unsigned int tmp_size = min(
+			sg_pos_fragment_size(&dst_pos),
 			sg_pos_fragment_size(&src_pos));
 		tmp_size = min(tmp_size, remaining);
 		/* LOGd("remaining %u tmp_size %u\n", remaining, tmp_size); */
