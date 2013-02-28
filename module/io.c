@@ -274,6 +274,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	UNUSED int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	int bi_cnt;
 	ASSERT(bioe);
+	ASSERT(bio->bi_bdev);
 #ifdef WALB_DEBUG
 	if (bioe->bio_orig) {
 		ASSERT(bio_entry_state_is_splitted(bioe));
@@ -283,9 +284,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	}
 #endif
 	if (!uptodate) {
-		unsigned int devt;
-		ASSERT(bio->bi_bdev);
-		devt = bio->bi_bdev->bd_dev;
+		unsigned int devt = bio->bi_bdev->bd_dev;
 		LOGn("BIO_UPTODATE is false (dev %u:%u rw %lu pos %"PRIu64" len %u).\n",
 			MAJOR(devt), MINOR(devt),
 			bio->bi_rw, (u64)bioe->pos, bioe->len);
@@ -300,15 +299,14 @@ static void bio_entry_end_io(struct bio *bio, int error)
 			/* 2 for data, 1 for log. */
 			ASSERT(bi_cnt == 2 || bi_cnt == 1);
 		} else {
+#ifdef WALB_DEBUG
 			if (!(bi_cnt == 3 || bi_cnt == 1)) {
-				unsigned int devt;
-				ASSERT(bio->bi_bdev);
-				devt = bio->bi_bdev->bd_dev;
+				unsigned int devt = bio->bi_bdev->bd_dev;
 				LOGe("pos %" PRIu64 " len %u dev %u:%u bi_cnt %d\n",
 					(u64)bioe->pos, bioe->len,
-					MAJOR(devt), MINOR(devt),
-					bi_cnt);
+					MAJOR(devt), MINOR(devt), bi_cnt);
 			}
+#endif
 			/* 3 for data, 1 for log. */
 			ASSERT(bi_cnt == 3 || bi_cnt == 1);
 		}
