@@ -421,6 +421,27 @@ void shrink_logpack_header(
 }
 
 /**
+ * Get total size of padding data in a logpack header.
+ *
+ * RETURN:
+ *   total padding size [physical block].
+ */
+unsigned int get_padding_size_in_logpack_header(
+	const struct walb_logpack_header *logh, unsigned int pbs)
+{
+	unsigned int total_padding_size = 0;
+	const struct walb_log_record *rec;
+	int i;
+
+	for_each_logpack_record(i, rec, logh) {
+		if (test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
+			total_padding_size += capacity_pb(pbs, rec->io_size);
+		}
+	}
+	return total_padding_size;
+}
+
+/**
  * Create a logpack.
  *
  * @logh_sectdp pointer to sector data pointer

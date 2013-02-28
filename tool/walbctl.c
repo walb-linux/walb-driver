@@ -1728,6 +1728,7 @@ static bool do_check_snapshot(const struct config *cfg)
 		close_(fd);
 		return false;
 	}
+	LOGn("snapshot metadata valid.\n");
 	return close_(fd) == 0;
 }
 
@@ -2273,7 +2274,8 @@ static bool do_show_wlog(const struct config *cfg)
 	struct logpack *pack;
 	struct walb_logpack_header *logh;
 	const size_t bufsize = 1024 * 1024; /* 1MB */
-	u64 begin_lsid, end_lsid;
+	u64 begin_lsid, end_lsid, lsid;
+	u64 n_packs = 0, total_padding_size = 0;
 
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "show_wlog") == 0);
@@ -2295,10 +2297,17 @@ static bool do_show_wlog(const struct config *cfg)
 		begin_lsid = cfg->lsid0;
 	}
 	end_lsid = cfg->lsid1;
+	lsid = begin_lsid;
 
 	/* Read, print and check each logpack */
 	while (read_logpack_header(0, pbs, salt, logh)) {
-		u64 lsid;
+		/* Check range. */
+		lsid = logh->logpack_lsid;
+		if (lsid < begin_lsid) { continue; /* skip */ }
+		if (end_lsid <= lsid) { break; /* end */ }
+
+		/* Print logpack header. */
+		print_logpack_header(logh);
 
 		/* Check sect_ary size and reallocate if necessary. */
 		if (!resize_logpack_if_necessary(pack, logh->total_io_size)) {
@@ -2311,14 +2320,15 @@ static bool do_show_wlog(const struct config *cfg)
 			goto error2;
 		}
 
-		/* Check range. */
-		lsid = logh->logpack_lsid;
-		if (lsid < begin_lsid) { continue; /* skip */ }
-		if (end_lsid <= lsid) { break; /* end */ }
-
-		/* Print logpack header. */
-		print_logpack_header(logh);
+		lsid += 1 + logh->total_io_size;
+		total_padding_size += get_padding_size_in_logpack_header(logh, pbs);
+		n_packs++;
 	}
+	/* Print the end lsids */
+	printf("end_lsid_really: %" PRIu64 "\n"
+		"total_padding_size: %" PRIu64 "\n"
+		"n_packs: %" PRIu64 "\n",
+		lsid, total_padding_size, n_packs);
 
 	/* Free resources. */
 	free_logpack(pack);

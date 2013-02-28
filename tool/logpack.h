@@ -51,6 +51,8 @@ void shrink_logpack_header(
 	struct walb_logpack_header *logh, unsigned int invalid_idx,
 	unsigned int pbs, u32 salt);
 
+unsigned int get_padding_size_in_logpack_header(
+	const struct walb_logpack_header *logh, unsigned int pbs);
 
 /*******************************************************************************
  * Helper data structure for logpack data.
