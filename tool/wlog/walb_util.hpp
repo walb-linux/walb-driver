@@ -680,6 +680,7 @@ public:
         return logh_.record(pos_);
     }
 
+    size_t pos() const { return pos_; }
     u64 lsid() const { return record().lsid; }
     unsigned int pbs() const { return logh_.pbs(); }
 
@@ -748,6 +749,13 @@ public:
         record().checksum = calcIoChecksum();
         return true;
     }
+
+    void print(::FILE *fp) const {
+        logh_.print(fp);
+        ::fprintf(fp, "index: %zu\n", pos());
+    }
+
+    void print() const { print(::stdout); }
 
 private:
     u32 calcIoChecksum() const {
