@@ -182,11 +182,8 @@ public:
         uint64_t lsid = -1;
         u8 uuid[UUID_SIZE];
         if (config_.isFromStdin()) {
-            try {
-                while (true) {
-                    lsid = analyzeWlog(0, lsid, uuid);
-                }
-            } catch (walb::util::EofError &e) {
+            while (true) {
+                lsid = analyzeWlog(0, lsid, uuid);
             }
         } else {
             for (size_t i = 0; i < config_.numWlogs(); i++) {
@@ -221,7 +218,11 @@ private:
         walb::util::FdReader fdr(inFd);
 
         walb::util::WalbLogFileHeader wh;
-        wh.read(fdr);
+        try {
+            wh.read(fdr);
+        } catch (walb::util::EofError &e) {
+            return beginLsid;
+        }
         if (!wh.isValid(true)) {
             throw RT_ERR("invalid wlog header.");
         }
@@ -246,17 +247,23 @@ private:
         if (beginLsid != uint64_t(-1) && lsid != beginLsid) {
             throw RT_ERR("wrong lsid.");
         }
-        while (lsid < wh.endLsid()) {
-            LogpackHeaderPtr loghp = readLogpackHeader(fdr, ba, wh.salt());
-            LogpackHeader &logh = *loghp;
-            if (lsid != logh.logpackLsid()) {
-                throw RT_ERR("wrong lsid.");
+        try {
+            while (lsid < wh.endLsid()) {
+                LogpackHeaderPtr loghp = readLogpackHeader(fdr, ba, wh.salt());
+                LogpackHeader &logh = *loghp;
+                if (lsid != logh.logpackLsid()) {
+                    throw RT_ERR("wrong lsid.");
+                }
+                readLogpackData(logh, fdr, ba);
+                updateBitmap(logh);
+                lsid = logh.nextLogpackLsid();
             }
-            readLogpackData(logh, fdr, ba);
-            updateBitmap(logh);
-            lsid = logh.nextLogpackLsid();
+        } catch (walb::util::EofError &e) {
         }
-        assert(lsid == wh.endLsid());
+        if (lsid != wh.endLsid()) {
+            throw RT_ERR("the wlog lacks logs from %" PRIu64 ". endLsid is %" PRIu64 "",
+                         lsid, wh.endLsid());
+        }
         return lsid;
     }
 
