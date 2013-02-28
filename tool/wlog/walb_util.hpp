@@ -616,6 +616,20 @@ public:
         return isValid(false);
     }
 
+    uint64_t totalPaddingPb() const {
+        if (nPadding() == 0) {
+            return 0;
+        }
+        uint64_t t = 0;
+        for (size_t i = 0; i < nRecords(); i++) {
+            const struct walb_log_record &rec = record(i);
+            if (::test_bit_u32(LOG_RECORD_PADDING, &rec.flags)) {
+                t += ::capacity_pb(pbs(), rec.io_size);
+            }
+        }
+        return t;
+    }
+
 private:
     void checkBlock() const {
         if (block_.get() == nullptr) {
@@ -751,8 +765,16 @@ public:
     }
 
     void print(::FILE *fp) const {
-        logh_.print(fp);
-        ::fprintf(fp, "index: %zu\n", pos());
+        logh_.printRecord(fp, pos());
+        if (hasDataForChecksum() && ioSizePb() == data_.size()) {
+            ::fprintf(fp, "record_checksum: %08x\n"
+                      "calculated_checksum: %08x\n",
+                      record().checksum, calcIoChecksum());
+            for (size_t i = 0; i < ioSizePb(); i++) {
+                ::fprintf(fp, "----------block %zu----------\n", i);
+                util::printByteArray(fp, data_[i].get(), pbs());
+            }
+        }
     }
 
     void print() const { print(::stdout); }

@@ -405,9 +405,11 @@ public:
 
         /* Read and write each logpack. */
         if (config_.isVerbose()) {
-            ::printf("beginLsid: %" PRIu64 "\n", beginLsid);
+            ::fprintf(::stderr, "beginLsid: %" PRIu64 "\n", beginLsid);
         }
         u64 lsid = beginLsid;
+        u64 totalPaddingPb = 0;
+        u64 nPacks = 0;
         while (lsid < config_.endLsid()) {
             bool isEnd = false;
             readAhead();
@@ -415,6 +417,9 @@ public:
             try {
                 loghP = std::move(readLogpackHeader());
             } catch (InvalidLogpackHeader& e) {
+                if (config_.isVerbose()) {
+                    ::fprintf(::stderr, "Caught invalid logpack header error.\n");
+                }
                 isEnd = true;
                 break;
             }
@@ -422,11 +427,17 @@ public:
             std::queue<PackDataPtr> q;
             isEnd = readAllLogpackData(logh, q);
             writeLogpack(fdw, logh, q);
-            if (isEnd) { break; }
             lsid = logh.nextLogpackLsid();
+            totalPaddingPb += logh.totalPaddingPb();
+            nPacks++;
+            if (isEnd) { break; }
         }
         if (config_.isVerbose()) {
-            ::printf("endLsid: %" PRIu64 "\n", lsid);
+            ::fprintf(::stderr, "endLsid: %" PRIu64 "\n"
+                      "lackOfLogPb: %" PRIu64 "\n"
+                      "totalPaddingPb: %" PRIu64 "\n"
+                      "nPacks: %" PRIu64 "\n",
+                      lsid, config_.endLsid() - lsid, totalPaddingPb, nPacks);
         }
     }
 
@@ -446,13 +457,15 @@ private:
                 readLogpackData(*p);
                 q.push(p);
             } catch (InvalidLogpackData& e) {
+                if (config_.isVerbose()) { logh.print(::stderr); }
                 uint64_t prevLsid = logh.nextLogpackLsid();
                 logh.shrink(i);
                 uint64_t currentLsid = logh.nextLogpackLsid();
+                if (config_.isVerbose()) { logh.print(::stderr); }
                 isEnd = true;
                 if (config_.isVerbose()) {
-                    ::printf("Logpack shrink from %" PRIu64 " to %" PRIu64 "\n",
-                             prevLsid, currentLsid);
+                    ::fprintf(::stderr, "Logpack shrink from %" PRIu64 " to %" PRIu64 "\n",
+                              prevLsid, currentLsid);
                 }
                 break;
             }
@@ -520,6 +533,9 @@ private:
             logd.addBlock(block.ptr);
         }
         if (!logd.isValid()) {
+            if (config_.isVerbose()) {
+                logd.print(::stderr);
+            }
             throw InvalidLogpackData();
         }
     }

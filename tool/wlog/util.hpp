@@ -901,14 +901,20 @@ void testUnitIntString()
  * Print byte array as hex list.
  */
 template <typename ByteType>
-void printByteArray(ByteType *data, size_t size)
+void printByteArray(::FILE *fp, ByteType *data, size_t size)
 {
     for (size_t i = 0; i < size; i++) {
-        ::printf("%02x", static_cast<uint8_t>(data[i]));
+        ::fprintf(fp, "%02x", static_cast<uint8_t>(data[i]));
 
-        if (i % 64 == 63) { ::printf("\n"); }
+        if (i % 64 == 63) { ::fprintf(fp, "\n"); }
     }
-    if (size % 64 != 0) { ::printf("\n"); }
+    if (size % 64 != 0) { ::fprintf(fp, "\n"); }
+}
+
+template <typename ByteType>
+void printByteArray(ByteType *data, size_t size)
+{
+    printByteArray<ByteType>(::stdout, data, size);
 }
 
 } //namespace util
