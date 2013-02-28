@@ -181,6 +181,8 @@ static bool melt_if_frozen(struct walb_dev *wdev, bool restarts_checkpointing);
 static void set_geometry(struct hd_geometry *geo, u64 n_sectors);
 static bool get_lsid_range_from_ctl(
 	u64 *lsid0, u64 *lsid1, const struct walb_ctl *ctl);
+static bool get_snapshot_record_from_ctl_u2k(
+	struct walb_snapshot_record *srec, const struct walb_ctl *ctl);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -582,32 +584,25 @@ static int ioctl_wdev_status(struct walb_dev *wdev, struct walb_ctl *ctl)
 static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	int error;
-	struct walb_snapshot_record *srec;
+	struct walb_snapshot_record srec;
 
 	LOGn("WALB_IOCTL_CREATE_SNAPSHOT\n");
 	ASSERT(ctl->command == WALB_IOCTL_CREATE_SNAPSHOT);
 
-	if (sizeof(struct walb_snapshot_record) > ctl->u2k.buf_size) {
-		LOGe("Buffer is too small for walb_snapshot_record.\n");
+	if (!get_snapshot_record_from_ctl_u2k(&srec, ctl)) {
 		return -EFAULT;
 	}
-	srec = (struct walb_snapshot_record *)ctl->u2k.__buf;
-	if (!srec) {
-		LOGe("Buffer must be walb_snapshot_record data.\n");
-		return -EFAULT;
+	if (srec.lsid == INVALID_LSID) {
+		srec.lsid = get_completed_lsid(wdev);
+		ASSERT(srec.lsid != INVALID_LSID);
 	}
-	if (srec->lsid == INVALID_LSID) {
-		srec->lsid = get_completed_lsid(wdev);
-		ASSERT(srec->lsid != INVALID_LSID);
-	}
-
-	if (!is_valid_snapshot_name(srec->name)) {
+	if (!is_valid_snapshot_name(srec.name)) {
 		LOGe("Snapshot name is invalid.\n");
 		return -EFAULT;
 	}
 	LOGn("Create snapshot name %s lsid %"PRIu64" ts %"PRIu64"\n",
-		srec->name, srec->lsid, srec->timestamp);
-	error = snapshot_add(wdev->snapd, srec->name, srec->lsid, srec->timestamp);
+		srec.name, srec.lsid, srec.timestamp);
+	error = snapshot_add(wdev->snapd, srec.name, srec.lsid, srec.timestamp);
 	if (error) {
 		ctl->error = error;
 		return -EFAULT;
@@ -625,27 +620,20 @@ static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ct
  */
 static int ioctl_wdev_delete_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	struct walb_snapshot_record *srec;
+	struct walb_snapshot_record srec;
 	int error;
 
 	LOGn("WALB_IOCTL_DELETE_SNAPSHOT\n");
 	ASSERT(ctl->command == WALB_IOCTL_DELETE_SNAPSHOT);
 
-	if (sizeof(struct walb_snapshot_record) > ctl->u2k.buf_size) {
-		LOGe("Buffer is too small for walb_snapshot_record.\n");
+	if (!get_snapshot_record_from_ctl_u2k(&srec, ctl)) {
 		return -EFAULT;
 	}
-	srec = (struct walb_snapshot_record *)ctl->u2k.__buf;
-	if (!srec) {
-		LOGe("Buffer must be walb_snapshot_record data.\n");
-		return -EFAULT;
-	}
-	if (!is_valid_snapshot_name(srec->name)) {
+	if (!is_valid_snapshot_name(srec.name)) {
 		LOGe("Invalid snapshot name.\n");
 		return -EFAULT;
 	}
-
-	error = snapshot_del(wdev->snapd, srec->name);
+	error = snapshot_del(wdev->snapd, srec.name);
 	if (error) {
 		ctl->error = error;
 		return -EFAULT;
@@ -693,32 +681,31 @@ static int ioctl_wdev_delete_snapshot_range(struct walb_dev *wdev, struct walb_c
 static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	int ret;
-	struct walb_snapshot_record *srec0, *srec1, *srec;
+	struct walb_snapshot_record srec0t;
+	struct walb_snapshot_record *srec1, *srec;
 
 	LOGn("WALB_IOCTL_GET_SNAPSHOT\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_SNAPSHOT);
 
-	if (sizeof(struct walb_snapshot_record) > ctl->u2k.buf_size) {
-		LOGe("buffer size too small.\n");
+	if (!get_snapshot_record_from_ctl_u2k(&srec0t, ctl)) {
 		return -EFAULT;
 	}
 	if (sizeof(struct walb_snapshot_record) > ctl->k2u.buf_size) {
 		LOGe("buffer size too small.\n");
 		return -EFAULT;
 	}
-	srec0 = (struct walb_snapshot_record *)ctl->u2k.__buf;
-	srec1 = (struct walb_snapshot_record *)ctl->k2u.__buf;
-	ASSERT(srec0);
-	ASSERT(srec1);
-	ret = snapshot_get(wdev->snapd, srec0->name, &srec);
-	if (ret) {
-		ASSERT(srec);
-		memcpy(srec1, srec, sizeof(struct walb_snapshot_record));
-	} else {
-		snapshot_record_init(srec1);
-		ctl->error = ret;
+	srec1 = (struct walb_snapshot_record *)ctl->k2u.__buf; /* assign pointer. */
+	if (!srec1) {
+		LOGe("You must specify buffers for an output snapshot record.\n");
 		return -EFAULT;
 	}
+	ret = snapshot_get(wdev->snapd, srec0t.name, &srec);
+	if (!ret) {
+		snapshot_record_init(srec1);
+		ctl->error = 1;
+		return -EFAULT;
+	}
+	*srec1 = *srec;
 	return 0;
 }
 
@@ -1837,6 +1824,31 @@ static bool get_lsid_range_from_ctl(
 		LOGe("Specify valid lsid range.\n");
 		return false;
 	}
+	return true;
+}
+
+/**
+ * Get snapshot record from a walb ctl buffer.
+ *
+ * @srec pointer to result buffer.
+ * @ctl control.
+ *
+ * RETURN:
+ *   true in success, or false.
+ */
+static bool get_snapshot_record_from_ctl_u2k(
+	struct walb_snapshot_record *srec, const struct walb_ctl *ctl)
+{
+	ASSERT(srec);
+	if (ctl->u2k.buf_size < sizeof(*srec)) {
+		LOGe("Buffer is too small for walb_snapshot_record.\n");
+		return false;
+	}
+	if (!ctl->u2k.__buf) {
+		LOGe("Buffer must not be NULL, be walb_snapshot_record data.\n");
+		return false;
+	}
+	*srec = *(struct walb_snapshot_record *)ctl->u2k.__buf;
 	return true;
 }
 
