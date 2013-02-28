@@ -2326,9 +2326,10 @@ static bool do_show_wlog(const struct config *cfg)
 	}
 	/* Print the end lsids */
 	printf("end_lsid_really: %" PRIu64 "\n"
+		"lacked_log_size: %" PRIu64 "\n"
 		"total_padding_size: %" PRIu64 "\n"
 		"n_packs: %" PRIu64 "\n",
-		lsid, total_padding_size, n_packs);
+		lsid, end_lsid - lsid, total_padding_size, n_packs);
 
 	/* Free resources. */
 	free_logpack(pack);
@@ -2354,6 +2355,7 @@ static bool do_show_wldev(const struct config *cfg)
 	struct logpack *pack;
 	u64 oldest_lsid, lsid, begin_lsid, end_lsid;
 	u32 salt;
+	u64 total_padding_size = 0, n_packs = 0;
 
 	ASSERT(strcmp(cfg->cmd_str, "show_wldev") == 0);
 
@@ -2412,8 +2414,18 @@ static bool do_show_wldev(const struct config *cfg)
 			fd, super, lsid, salt, pack->sectd);
 		if (!retb) { break; }
 		print_logpack_header(pack->header);
+
 		lsid += pack->header->total_io_size + 1;
+		total_padding_size +=
+			get_padding_size_in_logpack_header(pack->header, pbs);
+		n_packs++;
 	}
+	/* Print the end lsids */
+	printf("end_lsid_really: %" PRIu64 "\n"
+		"lacked_log_size: %" PRIu64 "\n"
+		"total_padding_size: %" PRIu64 "\n"
+		"n_packs: %" PRIu64 "\n",
+		lsid, end_lsid - lsid, total_padding_size, n_packs);
 
 	free_logpack(pack);
 	sector_free(super_sectd);
