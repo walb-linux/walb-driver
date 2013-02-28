@@ -10,6 +10,7 @@ LDEV=ldev32M
 DDEV=ddev32M
 WLOG=wlog
 CTL=../walbctl
+BIN=.
 LOOP0=/dev/loop0
 LOOP1=/dev/loop1
 
@@ -31,17 +32,17 @@ format_ldev()
 # Initialization.
 #
 format_ldev
-./wlgen -s 32M -z 16M --maxPackSize 4M -o ${WLOG}.0
+${BIN}/wlgen -s 32M -z 16M --maxPackSize 4M -o ${WLOG}.0
 cp ${DDEV}.0 ${DDEV}.0z
-./wlredo ${DDEV}.0 < ${WLOG}.0
-./wlredo ${DDEV}.0z --zerodiscard < ${WLOG}.0
+${BIN}/wlredo ${DDEV}.0 < ${WLOG}.0
+${BIN}/wlredo ${DDEV}.0z --zerodiscard < ${WLOG}.0
 
 #
 # Simple test.
 #
-./wlrestore --verify $LDEV < ${WLOG}.0
-./wlcat $LDEV -v -o ${WLOG}.1
-./bdiff -b 512 ${WLOG}.0 ${WLOG}.1
+${BIN}/wlrestore --verify $LDEV < ${WLOG}.0
+${BIN}/wlcat $LDEV -v -o ${WLOG}.1
+${BIN}/bdiff -b 512 ${WLOG}.0 ${WLOG}.1
 if [ $? -ne 0 ]; then
   echo "TEST1_FAILURE"
   exit 1
@@ -60,21 +61,21 @@ restore_test()
   dd if=/dev/zero of=${DDEV}.1z bs=1M count=32
   dd if=/dev/zero of=${DDEV}.2 bs=1M count=32
   dd if=/dev/zero of=${DDEV}.3 bs=1M count=32
-  ./wlrestore $LDEV --verify --lsidDiff $lsidDiff --invalidLsid $invalidLsid < ${WLOG}.0
-  ./wlcat $LDEV -v -o ${WLOG}.1
+  ${BIN}/wlrestore $LDEV --verify --lsidDiff $lsidDiff --invalidLsid $invalidLsid < ${WLOG}.0
+  ${BIN}/wlcat $LDEV -v -o ${WLOG}.1
   losetup $LOOP0 ${LDEV}
   $CTL cat_wldev --wldev $LOOP0 > ${WLOG}.2
   sleep 1
   losetup -d $LOOP0
-  ./bdiff -b 512 ${WLOG}.1 ${WLOG}.2
+  ${BIN}/bdiff -b 512 ${WLOG}.1 ${WLOG}.2
   if [ $? -ne 0 ]; then
     echo ${WLOG}.1 and ${WLOG}.2 differ.
     echo "TEST${testId}_FAILURE"
     exit 1
   fi
 
-  ./wlredo ${DDEV}.1 < ${WLOG}.1
-  ./wlredo ${DDEV}.1z --zerodiscard < ${WLOG}.1
+  ${BIN}/wlredo ${DDEV}.1 < ${WLOG}.1
+  ${BIN}/wlredo ${DDEV}.1z --zerodiscard < ${WLOG}.1
   losetup $LOOP1 ${DDEV}.2
   $CTL redo_wlog --ddev $LOOP1 < ${WLOG}.1
   sleep 1
@@ -86,38 +87,38 @@ restore_test()
   losetup -d $LOOP0
   losetup -d $LOOP1
   if [ $invalidLsid -eq -1 ]; then
-    ./bdiff -b 512 ${DDEV}.0 ${DDEV}.1
+    ${BIN}/bdiff -b 512 ${DDEV}.0 ${DDEV}.1
     if [ $? -ne 0 ]; then
       echo "failed: ./bdiff -b 512 ${DDEV}.0 ${DDEV}.1"
       echo "TEST${testId}_FAILURE"
       exit 1
     fi
-    ./bdiff -b 512 ${DDEV}.0 ${DDEV}.2
+    ${BIN}/bdiff -b 512 ${DDEV}.0 ${DDEV}.2
     if [ $? -ne 0 ]; then
       echo "failed: ./bdiff -b 512 ${DDEV}.0 ${DDEV}.2"
       echo "TEST${testId}_FAILURE"
       exit 1
     fi
-    ./bdiff -b 512 ${DDEV}.0 ${DDEV}.3
+    ${BIN}/bdiff -b 512 ${DDEV}.0 ${DDEV}.3
     if [ $? -ne 0 ]; then
       echo "failed: ./bdiff -b 512 ${DDEV}.0 ${DDEV}.3"
       echo "TEST${testId}_FAILURE"
       exit 1
     fi
-    ./bdiff -b 512 ${DDEV}.0z ${DDEV}.1z
+    ${BIN}/bdiff -b 512 ${DDEV}.0z ${DDEV}.1z
     if [ $? -ne 0 ]; then
       echo "failed: ./bdiff -b 512 ${DDEV}.0z ${DDEV}.1z"
       echo "TEST${testId}_FAILURE"
       exit 1
     fi
   else
-    ./bdiff -b 512 ${DDEV}.1 ${DDEV}.2
+    ${BIN}/bdiff -b 512 ${DDEV}.1 ${DDEV}.2
     if [ $? -ne 0 ]; then
       echo "failed: ./bdiff -b 512 ${DDEV}.1 ${DDEV}.2"
       echo "TEST${testId}_FAILURE"
       exit 1
     fi
-    ./bdiff -b 512 ${DDEV}.1 ${DDEV}.3
+    ${BIN}/bdiff -b 512 ${DDEV}.1 ${DDEV}.3
     if [ $? -ne 0 ]; then
       echo "failed: ./bdiff -b 512 ${DDEV}.1 ${DDEV}.3"
       echo "TEST${testId}_FAILURE"
