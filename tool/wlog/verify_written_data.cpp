@@ -58,7 +58,7 @@ public:
     const std::string& recipePath() const { return recipePath_; }
 
     bool isDirect() const {
-#if 1
+#if 0
         return false;
 #else
         return blockSize() % LOGICAL_BLOCK_SIZE == 0;
@@ -181,20 +181,21 @@ private:
     }
 };
 
-class ReadDataVerifier
+class IoDataVerifier
 {
 private:
     const Config &config_;
     walb::util::BlockDevice bd_;
-    walb::util::Rand<unsigned int> randUint_;
-    std::shared_ptr<char> block_;
+    size_t bufSizeB_; /* buffer size [block]. */
+    std::shared_ptr<char> buf_;
+
 public:
-    ReadDataVerifier(const Config &config)
+    IoDataVerifier(const Config &config)
         : config_(config)
         , bd_(config.targetPath(), O_RDONLY | (config.isDirect() ? O_DIRECT : 0))
-        , randUint_()
-        , block_(getBlockStatic(config.blockSize(), config.isDirect())) {
-        assert(block_);
+        , bufSizeB_(1024 * 1024 / config.blockSize()) /* 1MB */
+        , buf_(getBufferStatic(config.blockSize(), bufSizeB_, config.isDirect())) {
+        assert(buf_);
     }
 
     void run() {
@@ -212,25 +213,35 @@ public:
         /* Read and verify for each IO recipe. */
         while (!recipeParser.isEnd()) {
             walb::util::IoRecipe r = recipeParser.get();
-            uint32_t csum = 0;
-            for (uint64_t off = r.offsetB(); off < r.offsetB() + r.ioSizeB(); off++) {
-                bd_.read(off * bs, bs, block_.get());
-                csum = walb::util::checksumPartial(block_.get(), bs, csum);
-            }
-            csum = walb::util::checksumFinish(csum);
+            resizeBufferIfneed(r.ioSizeB());
+            bd_.read(r.offsetB() * bs, r.ioSizeB() * bs, buf_.get());
+            uint32_t csum = walb::util::calcChecksum(buf_.get(), r.ioSizeB() * bs, 0);
             ::printf("%s\t%s\t%08x\n",
                      (csum == r.csum() ? "OK" : "NG"), r.toString().c_str(), csum);
         }
     }
 
 private:
-    static std::shared_ptr<char> getBlockStatic(unsigned int blockSize, bool isDirect) {
+    static std::shared_ptr<char> getBufferStatic(unsigned int blockSize, unsigned sizeB, bool isDirect) {
         assert(0 < blockSize);
+        assert(0 < sizeB);
         if (isDirect) {
-            return walb::util::allocateBlock<char>(blockSize, blockSize);
+            return walb::util::allocateBlock<char>(blockSize, blockSize * sizeB);
         } else {
-            return std::shared_ptr<char>(reinterpret_cast<char *>(::malloc(blockSize)));
+            return std::shared_ptr<char>(reinterpret_cast<char *>(::malloc(blockSize * sizeB)));
         }
+    }
+
+    void resizeBufferIfneed(unsigned int newSizeB) {
+        if (newSizeB <= bufSizeB_) { return; }
+        const unsigned int bs = config_.blockSize();
+        if (config_.isDirect()) {
+            buf_ = walb::util::allocateBlock<char>(bs, bs * newSizeB);
+        } else {
+            buf_.reset(reinterpret_cast<char *>(::malloc(bs * newSizeB)));
+        }
+        if (!buf_) { throw std::bad_alloc(); }
+        bufSizeB_ = newSizeB;
     }
 };
 
@@ -245,8 +256,8 @@ int main(int argc, char* argv[])
         }
         config.check();
 
-        ReadDataVerifier rdv(config);
-        rdv.run();
+        IoDataVerifier v(config);
+        v.run();
         return 0;
 
     } catch (Config::Error& e) {

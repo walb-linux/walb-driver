@@ -67,7 +67,7 @@ public:
     const std::string& targetPath() const { return targetPath_; }
 
     bool isDirect() const {
-#if 1
+#if 0
         return false;
 #else
         return blockSize() % LOGICAL_BLOCK_SIZE == 0;
@@ -99,6 +99,12 @@ public:
     void check() const {
         if (blockSize() == 0) {
             throwError("blockSize must be non-zero.");
+        }
+        if (minIoB() == 0) {
+            throwError("minIoSize must be > 0.");
+        }
+        if (maxIoB() == 0) {
+            throwError("maxIoSize must be > 0.");
         }
         if (maxIoB() < minIoB()) {
             throwError("minIoSize must be <= maxIoSize.");
@@ -223,15 +229,15 @@ private:
     const Config &config_;
     walb::util::BlockDevice bd_;
     walb::util::Rand<unsigned int> randUint_;
-    std::shared_ptr<char> block_;
+    std::shared_ptr<char> buf_;
 
 public:
     RandomDataWriter(const Config &config)
         : config_(config)
         , bd_(config.targetPath(), O_RDWR | (config.isDirect() ? O_DIRECT : 0))
         , randUint_()
-        , block_(getBlockStatic(config.blockSize(), config.isDirect())) {
-        assert(block_);
+        , buf_(getBufferStatic(config.blockSize(), config.maxIoB(), config.isDirect())) {
+        assert(buf_);
     }
 
     void run() {
@@ -242,13 +248,9 @@ public:
         while (written < totalSize) {
             const unsigned int bs = config_.blockSize();
             unsigned int ioSize = decideIoSize(totalSize - written);
-            uint32_t csum = 0;
-            for (uint64_t off = offset; off < offset + ioSize; off++) {
-                fillBlockRandomly();
-                csum = walb::util::checksumPartial(block_.get(), bs, csum);
-                bd_.write(off * bs, bs, block_.get());
-            }
-            csum = walb::util::checksumFinish(csum);
+            fillBufferRandomly(ioSize);
+            uint32_t csum = walb::util::calcChecksum(buf_.get(), bs * ioSize, 0);
+            bd_.write(offset * bs, bs * ioSize, buf_.get());
             walb::util::IoRecipe r(offset, ioSize, csum);
             r.print();
 
@@ -272,7 +274,7 @@ private:
         return size;
     }
 
-    unsigned int decideIoSize(unsigned int maxSize) {
+    unsigned int decideIoSize(uint64_t maxSize) {
         unsigned int min = config_.minIoB();
         unsigned int max = config_.maxIoB();
         if (maxSize < max) { max = maxSize; }
@@ -286,33 +288,36 @@ private:
         return randUint_.get() % (max - min) + min;
     }
 
-    static std::shared_ptr<char> getBlockStatic(unsigned int blockSize, bool isDirect) {
+    static std::shared_ptr<char> getBufferStatic(
+        unsigned int blockSize, unsigned int maxIoB, bool isDirect) {
         assert(0 < blockSize);
+        assert(0 < maxIoB);
         if (isDirect) {
-            return walb::util::allocateBlock<char>(blockSize, blockSize);
+            return walb::util::allocateBlock<char>(blockSize, blockSize * maxIoB);
         } else {
-            return std::shared_ptr<char>(reinterpret_cast<char *>(::malloc(blockSize)));
+            return std::shared_ptr<char>(reinterpret_cast<char *>(::malloc(blockSize * maxIoB)));
         }
     }
 
-    void fillBlockRandomly() {
+    void fillBufferRandomly(unsigned int sizeB) {
+        assert(0 < sizeB);
         size_t offset = 0;
-        size_t remaining = config_.blockSize();
+        size_t remaining = config_.blockSize() * sizeB;
         unsigned int r;
         assert(0 < remaining);
         while (sizeof(r) <= remaining) {
             r = randUint_.get();
-            *reinterpret_cast<unsigned int *>(block_.get() + offset) = r;
+            *reinterpret_cast<unsigned int *>(buf_.get() + offset) = r;
             offset += sizeof(r);
             remaining -= sizeof(r);
         }
         while (0 < remaining) {
             r = randUint_.get();
-            *reinterpret_cast<unsigned int *>(block_.get() + offset) = static_cast<char>(r);
+            *reinterpret_cast<unsigned int *>(buf_.get() + offset) = static_cast<char>(r);
             offset++;
             remaining--;
         }
-        assert(offset == config_.blockSize());
+        assert(offset == config_.blockSize() * sizeB);
         assert(remaining == 0);
     }
 };
