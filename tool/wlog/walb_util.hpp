@@ -779,8 +779,11 @@ public:
 
     void print() const { print(::stdout); }
 
-private:
     u32 calcIoChecksum() const {
+        return calcIoChecksum(logh_.salt());
+    }
+
+    u32 calcIoChecksum(u32 salt) const {
         assert(hasDataForChecksum());
         assert(ioSizeLb() > 0);
         unsigned int pbs = logh_.pbs();
@@ -790,7 +793,7 @@ private:
             throw RT_ERR("There is not sufficient data block.");
         }
 
-        u32 csum = logh_.salt();
+        u32 csum = salt;
         for (size_t i = 0; i < ioSizePb(); i++) {
             if (pbs <= remaining) {
                 csum = ::checksum_partial(csum, data_[i].get(), pbs);
@@ -805,6 +808,7 @@ private:
         return csum;
     }
 
+private:
     void checkForGetBlock(UNUSED size_t idx) const {
         assert(hasData());
         assert(idx < ioSizePb());
