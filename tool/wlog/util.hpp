@@ -349,6 +349,12 @@ private:
     }
 };
 
+/**
+ * Block device manager.
+ *
+ * You can do write/read or other operations on the device.
+ * You can deal with normal file as a block device also.
+ */
 class BlockDevice
 {
 private:
