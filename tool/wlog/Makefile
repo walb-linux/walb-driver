@@ -24,11 +24,11 @@ else
 LDFLAGS = -laio -lpthread
 endif
 
-BINARIES = wlcat wlredo wlgen wlrestore wlinfo \
-wlanalyze wlupdate bdiff write_random_data verify_written_data
+BINARIES = wlcat wlredo wlgen wlrestore wlinfo wlanalyze wlupdate bdiff \
+write_random_data verify_written_data verify_wlog
 SRCS = wlcat.cpp wlredo.cpp wlgen.cpp wlrestore.cpp \
 wlinfo.cpp wlanalyze.cpp wlupdate.cpp bdiff.cpp \
-write_random_data.cpp verify_written_data.cpp
+write_random_data.cpp verify_written_data.cpp verify_wlog.cpp
 
 all: $(BINARIES)
 
@@ -54,6 +54,8 @@ bdiff: bdiff.o
 write_random_data: write_random_data.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 verify_written_data: verify_written_data.o
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
+verify_wlog: verify_wlog.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 .cpp.o:
@@ -157,3 +159,14 @@ verify_written_data.o: verify_written_data.cpp util.hpp \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/block_size.h ../../include/walb/common.h \
  io_recipe.hpp
+verify_wlog.o: verify_wlog.cpp util.hpp walb_util.hpp \
+ ../../include/walb/super.h ../../include/walb/walb.h \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/disk_name.h ../../include/walb/sector.h \
+ ../../include/walb/checksum.h ../../include/walb/block_size.h \
+ ../../include/walb/util.h ../../include/walb/log_device.h \
+ ../../include/walb/log_record.h ../../include/walb/u32bits.h \
+ ../../include/walb/super.h ../../include/walb/snapshot.h \
+ ../../include/walb/u64bits.h ../../include/walb/log_record.h \
+ ../walblog_format.h ../../include/walb/walb.h io_recipe.hpp \
+ ../../include/walb/common.h ../../include/walb/block_size.h
