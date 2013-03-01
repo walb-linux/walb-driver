@@ -156,6 +156,45 @@ public:
 };
 
 /**
+ * Calculate checksum partially.
+ * You must call this several time and finally call checksumFinish() to get csum.
+ *
+ * @data pointer to data.
+ * @size data size.
+ * @csum result of previous call, or salt.
+ */
+uint32_t checksumPartial(const char *data, size_t size, uint32_t csum)
+{
+    while (sizeof(uint32_t) <= size) {
+        csum += *reinterpret_cast<const uint32_t *>(data);
+        size -= sizeof(uint32_t);
+        data += sizeof(uint32_t);
+    }
+    if (0 < size) {
+        uint32_t padding = 0;
+        ::memcpy(&padding, data, size);
+        csum += padding;
+    }
+    return csum;
+}
+
+/**
+ * Finish checksum calculation.
+ */
+uint32_t checksumFinish(uint32_t csum)
+{
+    return ~csum + 1;
+}
+
+/**
+ * Get checksum of a byte array.
+ */
+uint32_t calcChecksum(const char *data, size_t size, uint32_t salt)
+{
+    return checksumFinish(checksumPartial(data, size, salt));
+}
+
+/**
  * File descriptor operations wrapper.
  */
 class FdOperator
