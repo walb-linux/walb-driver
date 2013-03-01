@@ -6,3 +6,5 @@ wlinfo
 wlanalyze
 wlupdate
 bdiff
+write_random_data
+verify_written_data

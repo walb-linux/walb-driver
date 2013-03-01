@@ -25,9 +25,10 @@ LDFLAGS = -laio -lpthread
 endif
 
 BINARIES = wlcat wlredo wlgen wlrestore wlinfo \
-wlanalyze wlupdate bdiff
+wlanalyze wlupdate bdiff write_random_data verify_written_data
 SRCS = wlcat.cpp wlredo.cpp wlgen.cpp wlrestore.cpp \
-wlinfo.cpp wlanalyze.cpp wlupdate bdiff.cpp
+wlinfo.cpp wlanalyze.cpp wlupdate.cpp bdiff.cpp \
+write_random_data.cpp verify_written_data.cpp
 
 all: $(BINARIES)
 
@@ -49,6 +50,10 @@ wlanalyze: wlanalyze.o
 wlupdate: wlupdate.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 bdiff: bdiff.o
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
+write_random_data: write_random_data.o
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
+verify_written_data: verify_written_data.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 .cpp.o:
@@ -132,4 +137,23 @@ wlanalyze.o: wlanalyze.cpp util.hpp walb_util.hpp \
  ../walblog_format.h ../../include/walb/walb.h aio_util.hpp \
  ../../include/walb/common.h ../random.h ../check_userland.h \
  ../../include/walb/userland.h
+wlupdate.o: wlupdate.cpp util.hpp walb_util.hpp \
+ ../../include/walb/super.h ../../include/walb/walb.h \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/disk_name.h ../../include/walb/sector.h \
+ ../../include/walb/checksum.h ../../include/walb/block_size.h \
+ ../../include/walb/util.h ../../include/walb/log_device.h \
+ ../../include/walb/log_record.h ../../include/walb/u32bits.h \
+ ../../include/walb/super.h ../../include/walb/snapshot.h \
+ ../../include/walb/u64bits.h ../../include/walb/log_record.h \
+ ../walblog_format.h ../../include/walb/walb.h aio_util.hpp \
+ ../../include/walb/common.h ../random.h ../check_userland.h \
+ ../../include/walb/userland.h
 bdiff.o: bdiff.cpp util.hpp
+write_random_data.o: write_random_data.cpp util.hpp io_recipe.hpp \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/block_size.h ../../include/walb/common.h
+verify_written_data.o: verify_written_data.cpp util.hpp \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/block_size.h ../../include/walb/common.h \
+ io_recipe.hpp
