@@ -8,3 +8,5 @@ wlupdate
 bdiff
 write_random_data
 verify_written_data
+verify_wlog
+verify_wldev
