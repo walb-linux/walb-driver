@@ -1382,7 +1382,6 @@ static void submit_logpack(
 	unsigned int chunk_sectors)
 {
 	struct bio_wrapper *biow;
-	u64 lsid;
 	int i;
 
 	ASSERT(list_empty(bioe_list));
@@ -1398,12 +1397,13 @@ static void submit_logpack(
 	/* Submit logpack contents for each request. */
 	i = 0;
 	list_for_each_entry(biow, biow_list, list) {
-		if (test_bit_u32(LOG_RECORD_PADDING, &logh->record[i].flags)) {
+		struct walb_log_record *rec = &logh->record[i];
+		if (test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
 			i++;
-			/* Do nothing. */
-			continue;
+			rec = &logh->record[i];
+			/* The biow must be for the next record. */
 		}
-		if (test_bit_u32(LOG_RECORD_DISCARD, &logh->record[i].flags)) {
+		if (test_bit_u32(LOG_RECORD_DISCARD, &rec->flags)) {
 			/* No need to execute IO to the log device. */
 			ASSERT(bio_wrapper_state_is_discard(biow));
 			ASSERT(biow->bio->bi_rw & REQ_DISCARD);
@@ -1420,12 +1420,12 @@ static void submit_logpack(
 			logpack_submit_bio_wrapper_zero(
 				biow, &biow->bioe_list, pbs, ldev);
 		} else {
+			/* Normal IO. */
 			ASSERT(i < logh->n_records);
-			lsid = logh->record[i].lsid;
 
 			/* submit bio(s) for the biow. */
 			logpack_submit_bio_wrapper(
-				biow, lsid, &biow->bioe_list,
+				biow, rec->lsid, &biow->bioe_list,
 				pbs, ldev, ring_buffer_off, ring_buffer_size,
 				chunk_sectors);
 		}
@@ -1858,6 +1858,8 @@ static bool is_prepared_pack_valid(struct pack *pack)
 			i++;
 			/* The corresponding record of the biow must be the next. */
 			CHECKd(i < lhead->n_records);
+			lrec = &lhead->record[i];
+			CHECKd(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 		}
 
 		/* Normal record. */
@@ -2082,7 +2084,10 @@ static bool writepack_add_bio_wrapper(
 		goto newpack;
 	}
 	if (lhead->n_records > 0) {
-		biow->lsid = lhead->record[lhead->n_records - 1].lsid;
+		struct walb_log_record *rec = &lhead->record[lhead->n_records - 1];
+		ASSERT(rec->offset == biow->pos);
+		ASSERT(rec->io_size == biow->len);
+		biow->lsid = rec->lsid;
 	}
 	goto fin;
 
@@ -2100,7 +2105,10 @@ newpack:
 	ret = walb_logpack_header_add_bio(lhead, biow->bio, pbs, ring_buffer_size);
 	ASSERT(ret);
 	if (lhead->n_records > 0) {
-		biow->lsid = lhead->record[lhead->n_records - 1].lsid;
+		struct walb_log_record *rec = &lhead->record[lhead->n_records - 1];
+		ASSERT(rec->offset == biow->pos);
+		ASSERT(rec->io_size == biow->len);
+		biow->lsid = rec->lsid;
 	}
 fin:
 	/* The request is just added to the pack. */
