@@ -249,6 +249,7 @@ bool walb_logpack_header_add_bio(
 
 		bio_lsid += padding_pb;
 		idx++;
+		ASSERT(bio_lsid == logpack_lsid + 1 + lhead->total_io_size);
 
 		if (lhead->n_records == max_n_rec) {
 			LOGd_(no_more_bio_msg);
