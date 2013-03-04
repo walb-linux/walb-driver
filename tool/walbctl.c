@@ -2292,11 +2292,15 @@ static bool do_show_wlog(const struct config *cfg)
 
 	/* Range */
 	if (cfg->lsid0 == (u64)(-1)) {
-		begin_lsid = 0;
+		begin_lsid = wh->begin_lsid;
 	} else {
 		begin_lsid = cfg->lsid0;
 	}
-	end_lsid = cfg->lsid1;
+	if (cfg->lsid1 == (u64)(-1)) {
+		end_lsid = wh->end_lsid;
+	} else {
+		end_lsid = cfg->lsid1;
+	}
 	lsid = begin_lsid;
 
 	/* Read, print and check each logpack */
