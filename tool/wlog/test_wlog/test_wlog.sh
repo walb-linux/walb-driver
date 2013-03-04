@@ -1,31 +1,62 @@
 #!/bin/sh
 
 #
-# You can test walb-log related commands.
+# This script will test walb-log related functionalities.
+#
+# If you use loopback devices, set USE_LOOP_DEV=1.
 # You must have privilege of 'disk' group to use losetup commands.
 # /dev/loop0 and /dev/loop1 will be used.
+# 
+# If you set USE_LOOP_DEV=0,
+# LOOP0 and LOOP1 must be ordinal block devices.
 #
 
 LDEV=ldev32M
 DDEV=ddev32M
 WLOG=wlog
-CTL=../walbctl
-BIN=.
+CTL=../../walbctl
+BIN=..
+
 LOOP0=/dev/loop0
 LOOP1=/dev/loop1
+#LOOP0=/dev/data/test-log
+#LOOP1=/dev/data/test-data
+USE_LOOP_DEV=1
+
+prepare_bdev()
+{
+  local devPath=$1 # ex. /dev/loop0
+  local devFile=$2 # ex. ldev32M.0
+  if [ $USE_LOOP_DEV -eq 1 ]; then
+    losetup $devPath $devFile
+  else
+    dd oflag=direct if=$devFile of=$devPath bs=1M
+  fi
+}
+
+finalize_bdev()
+{
+  local devPath=$1
+  local devFile=$2
+  if [ $USE_LOOP_DEV -eq 1 ]; then
+    losetup -d $devPath
+  else
+    dd oflag=direct if=$devPath of=$devFile bs=1M
+  fi
+}
 
 format_ldev()
 {
   dd if=/dev/zero of=$LDEV bs=1M count=32
   dd if=/dev/zero of=${DDEV}.0 bs=1M count=32
-  losetup $LOOP0 $LDEV
-  losetup $LOOP1 ${DDEV}.0
+  prepare_bdev $LOOP0 $LDEV
+  prepare_bdev $LOOP1 ${DDEV}.0
   $CTL format_ldev --ldev $LOOP0 --ddev $LOOP1
   RING_BUFFER_SIZE=$(${BIN}/wlinfo $LOOP0 |grep ringBufferSize |awk '{print $2}')
   echo $RING_BUFFER_SIZE
   sleep 1
-  losetup -d $LOOP0
-  losetup -d $LOOP1
+  finalize_bdev $LOOP0 $LDEV
+  finalize_bdev $LOOP1 ${DDEV}.0
 }
 
 echo_wlog_value()
@@ -74,10 +105,10 @@ restore_test()
   dd if=/dev/zero of=${DDEV}.3 bs=1M count=32
   ${BIN}/wlrestore $LDEV --verify --lsidDiff $lsidDiff --invalidLsid $invalidLsid < ${WLOG}.0
   ${BIN}/wlcat $LDEV -v -o ${WLOG}.1
-  losetup $LOOP0 ${LDEV}
+  prepare_bdev $LOOP0 ${LDEV}
   $CTL cat_wldev --wldev $LOOP0 > ${WLOG}.2
   sleep 1
-  losetup -d $LOOP0
+  finalize_bdev $LOOP0 ${LDEV}
   if [ $invalidLsid -lt 0 ]; then
     local endLsid0a=$(expr $endLsid0 + $lsidDiff - $nPacks0 - $totalPadding0)
     local endLsid1=$(echo_wlog_value ${WLOG}.1 end_lsid_really:)
@@ -108,16 +139,17 @@ restore_test()
 
   ${BIN}/wlredo ${DDEV}.1 < ${WLOG}.1
   ${BIN}/wlredo ${DDEV}.1z --zerodiscard < ${WLOG}.1
-  losetup $LOOP1 ${DDEV}.2
+  prepare_bdev $LOOP1 ${DDEV}.2
   $CTL redo_wlog --ddev $LOOP1 < ${WLOG}.1
   sleep 1
-  losetup -d $LOOP1
-  losetup $LOOP0 ${LDEV}
-  losetup $LOOP1 ${DDEV}.3
+  finalize_bdev $LOOP1 ${DDEV}.2
+  sleep 1
+  prepare_bdev $LOOP0 ${LDEV}
+  prepare_bdev $LOOP1 ${DDEV}.3
   $CTL redo --ldev $LOOP0 --ddev $LOOP1
   sleep 1
-  losetup -d $LOOP0
-  losetup -d $LOOP1
+  finalize_bdev $LOOP0 ${LDEV}
+  finalize_bdev $LOOP1 ${DDEV}.3
   if [ $invalidLsid -eq -1 ]; then
     ${BIN}/bdiff -b 512 ${DDEV}.0 ${DDEV}.1
     if [ $? -ne 0 ]; then
