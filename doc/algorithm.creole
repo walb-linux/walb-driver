@@ -1,0 +1,55 @@
+= Algorithm details
+
+== IO processing
+
+There are two IO processing algorithms: easy and fast.
+
+=== Easy algorithm
+
+It is very simple.
+
+Write IOs:
+(1) write to the log device
+(2) write to the data device
+(3) notify IO completion
+
+Read IOs:
+(1) Just forward IOs to the data device.
+
+== Fast algorithm
+
+Write IOs:
+(1) write to the log device
+(2) insert to the pending data on the main memory
+(3) notify IO completion
+(4) write to the data device
+(5) delete from the pending data
+
+Read IOs:
+(1) copy data from the pending data if the corresponding data exist.
+(2) forward IOs to the data device for remaining addresses.
+
+Currently the choice is determined before building the WalB module.
+
+== Overlapped IOs serialization
+
+To keep strict write-after-write consistency,
+you can use the functionality called overlapped IOs serialization.
+It will serialize overlapped IOs that have been written to the log device but
+have not been wirtten to the data device.
+It achieves seirializability for write IOs.
+
+Currently the choice is determined before building the WalB module.
+
+You can choose fast/easy and overlapped serialization on/off independently,
+which are named as 'easy', 'fast', 'easy-ol', 'fast-ol'.
+For normal usage, you should choose fast-ol.
+
+=== IO sorting
+
+With the fast algorithm, write IOs for the data device can be sorted by address.
+without additional overheads, for better performance.
+This feature will be useful for data devices that consist of
+a HDD or a raid device with HDDs.
+
+You can disable the functionality.

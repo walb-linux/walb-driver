@@ -1,0 +1,161 @@
+= WalB Usage
+
+== Introduction
+
+* Get to start
+* Create/delete a device
+* Manage snapshots
+* Manage logs
+* Other functionalities
+
+Under construction.
+
+
+== Get start
+
+Under construction.
+
+
+== Initial setup
+
+=== Load the kernel module
+
+Load the kernel module.
+
+{{{
+> insmod walb-mod.ko
+}}}
+The control file {{{/dev/walb/control}}} will be created.
+
+
+== Prepare a walb device
+
+(1) Prepare two block devices for a walb device.
+{{{$LDEV}}} is log device path, {{{$DDEV}}} is data device path.
+
+(2) Format the log device:
+{{{
+> walbctl format_ldev --ldev $LDEV --ddev $DDEV
+}}}
+See {{{walbctl --help}}} for more detailed options.
+
+The data on the data device is not lost.
+
+
+== Create a walb device
+
+Create walb device:
+{{{
+> walbctl create_wdev --ldev $LDEV --ddev $DDEV
+}}}
+You will get {{{/dev/walb/$MINOR}}} as the wrapper device,
+and {{{/dev/walb/L$MINOR}}} as the device for log extraction.
+The device {{{/dev/walb/L$MINOR}}} is read-only.
+
+You can name the device with {{{--name}}} option instead of using minor number.
+In that case, you will get {{{/dev/walb/$NAME}}} and {{{/dev/walb/L$NAME}}} devices.
+
+Now you can use {{{/dev/walb/$MINOR}}} as always.
+Ex.:
+{{{
+> mkfs.ext3 /dev/walb/0
+> mount /dev/walb/0 /mnt/tmp
+}}}
+
+== Delete a walb device
+
+Delete walb device:
+{{{
+> walbctl delete_wdev --wdev $WDEV
+}}}
+{{{$WDEV}}} is walb device like {{{/dev/walb/0}}} or so.
+
+The data will not be deleted, you can re-assemble the device with
+{{{walbctl create_wdev}}} command.
+
+
+== Control a walb device
+
+=== Log capacity and usage
+* get_log_capacity WDEV
+* get_log_usage WDEV
+
+=== Get/set log sequence ids.
+* set_oldest_lsid WDEV LSID
+* get_oldest_lsid WDEV
+* get_written_lsid WDEV
+* get_permanent_lsid WDEV
+* get_completed_lsid WDEV
+
+If (ring_buffer_size < completed_lsid - oldest_lsid) then
+the ring buffer has overflowed.
+
+You can use {{{set_oldest_lsid}}} to delete old logs.
+
+When the ring buffer does not overflow, surely valid logs are
+lsids in the range oldest_range <= lsid < permanent_lsid.
+
+=== Checkpointing
+* get_checkpoint_interval WDEV
+* set_checkpoint_interval WDEV SIZE
+
+Get/set checkpointing interval.
+
+=== Resize
+* resize WDEV SIZE
+
+Resize a walb device.
+You must grow the underlying data device before calling this.
+The option {{{--size 0}}} will fit the new size.
+Currently 'shrink' is not supported.
+
+=== Reset WAL
+* reset_wal WDEV
+
+Remove all logs and snapshot data stored in the log device
+and re-format it adjusting to the new underlying block device size
+on-line.
+You must execute this when {{{walbctl is_log_overflow}}} returns 1.
+and also get full/diff image before restarting to use new logs
+for backup/replication.
+
+=== Freeze
+* freeze WDEV SIZE
+* melt WDEV
+* is_frozen WDEV
+
+Under construction
+
+
+=== Other status
+* is_flush_capable WDEV
+* is_log_overflow WDEV
+
+== Manage snapshots
+
+* create_snapshot WDEV NAME
+* delete_snapshot WDEV NAME | LRANGE
+* num_snapshot WDEV (LRANGE | TRANGE | SRANGE)
+* list_snapshot WDEV
+* list_snapshot_range WDEV (LRANGE | TRANGE | SRANGE)
+* check_snapshot LDEV
+* clean_snapshot LDEV
+
+Under construction
+
+== Manage logs
+
+=== Extract logs
+
+* cat_wldev WLDEV (LRANGE) > WLOG
+* show_wldev WLDEV (LRANGE)
+* show_wlog (LRANGE) < WLOG
+* redo_wlog DDEV (LRANGE) < WLOG
+* redo LDEV DDEV
+
+Under construction
+
+== Others (for debug, analysis etc.)
+
+* get_version
+

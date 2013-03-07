@@ -1,0 +1,48 @@
+= Overview
+
+== What is WalB?
+
+WalB is a Linux kernel module and its realted userland tools
+for incremental backup and asynchronous replication of storage devices.
+
+'WalB' was named after Block-level Write-Ahead Logging (WAL).
+
+== Characteristics
+
+* Block-level solution.
+* Small overhead.
+
+== Architecture
+
+* A walb device is wrapper of two underlying block devices: log and data.
+* Write IOs will be stored in the log device as redo-logs and in the data device nomally.
+* Read IOs will be just forward to the data device in almost cases.
+
+== Pros and Cons
+
+=== Pros
+
+* Almost-zero overhead for read IOs.
+* Small overhead for write IOs.
+** Response time: almost the same as that of the underlying devices.
+** Throughput: almost the same as that of the underlying devices, when the log and data devices are independent physically and the bandwidth of HBA is enough (2x + alpha or more).
+* You can use any filesystems on a walb device.
+* You can get portable diff files. You can store them for backup, compress and transfer them for remote replication, as you like.
+
+=== Cons
+
+* WalB uses 2x bandwidth for writes.
+* A walb device requires a bit more storage space for logs additionally.
+* You can not access to past snapshot images with a walb device only.
+
+== Functionalities
+
+* Online extraction of the logs (called wlog).
+* Online WAL reset with auto log device resize.
+* Online resize of the device.
+* Snapshot management (you can not access to snapshot images directly)
+
+== License
+
+GPL v2 or v3.
+

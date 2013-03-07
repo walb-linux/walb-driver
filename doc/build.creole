@@ -1,0 +1,42 @@
+= How to build WalB
+
+== Kernel module
+
+{{{
+> cd walb.git/module
+> make
+}}}
+
+You will get {{{walb-mod.ko}}} file.
+
+You can specify the following make options:
+* {{{DEBUG=1}}}: debug build. ASSERT() will be enabled (a wrapper of BUG_ON()).
+* {{{DYNAMIC_DEBUG=1}}}: for pr_debug().
+* {{{OVERLAP=0}}}: disable overlapped write IOs serialization.
+* {{{FAST_ALG=0}}}: use easy algorithm instead fast.
+* {{{ASSERT=1}}}: enable ASSERT() even with release build {{{DEBUG=0}}}.
+
+== Userland tools
+
+{{{
+> cd walb.git/tool
+> make
+}}}
+
+You will get {{{walbctl}}} executable file.
+Specify {{{DEBUG=1}}} for debug build.
+
+Run tests:
+{{{
+> cd walb.git/tool
+> make test
+}}}
+You must build them with {{{DEBUG=1}}} before running tests.
+
+== Test and prototype tools
+
+* {{{module/test/*}}}: test code for kernel land.
+* {{{module/proto/*}}}: prototype modules.
+* {{{tool/test/*}}}: test code for userland tools.
+* {{{tool/wlog/*}}}: userland prototypes written by C++.
+
