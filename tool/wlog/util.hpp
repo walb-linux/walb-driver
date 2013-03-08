@@ -19,6 +19,7 @@
 #include <cstring>
 #include <memory>
 #include <unordered_map>
+#include <set>
 #include <cstdint>
 #include <cinttypes>
 #include <string>
@@ -720,7 +721,7 @@ public:
     }
 
     /**
-     * Do not call this non-allocated buffers.
+     * Do not call this for non-allocated buffers.
      */
     void free(T *p) {
         size_t i = toIdx(p);
@@ -730,6 +731,11 @@ public:
         allocated_--;
         bmp_[i] = false;
     }
+
+    /**
+     * Number of allocated blocks.
+     */
+    size_t nAllocated() const { return allocated_; }
 
 private:
     size_t toIdx(T *p) const {
@@ -745,7 +751,7 @@ private:
 };
 
 /**
- * Allocator for aligned memory blocks.
+ * Allocate an aligned memory block.
  */
 template<typename T>
 static inline
@@ -769,7 +775,7 @@ std::shared_ptr<T> allocateBlock(size_t alignment, size_t size)
  * with pre-allocated ring buffer.
  */
 template<typename T>
-class BlockAllocator
+class BlockAllocator /* final */
 {
 private:
     const size_t nr_;
@@ -778,11 +784,20 @@ private:
     BlockBuffer<T> bb_;
 
 public:
+    /**
+     * @nr number of pre-allocated blocks.
+     * @alignment alignemnt bytes for posix_memalign().
+     * @size block size in bytes.
+     */
     BlockAllocator(size_t nr, size_t alignment, size_t size)
         : nr_(nr)
         , alignment_(alignment)
         , size_(size)
         , bb_(nr, alignment, size) {}
+
+    ~BlockAllocator() noexcept {}
+    BlockAllocator(const BlockAllocator &rhs) = delete;
+    BlockAllocator &operator=(const BlockAllocator &rhs) = delete;
 
     /**
      * Allocate block.
@@ -801,6 +816,166 @@ public:
     }
 
     size_t blockSize() const { return size_; }
+};
+
+/**
+ * Allocate a contiguous memory.
+ */
+template <typename T>
+static inline
+std::shared_ptr<T> allocateMemory(size_t size)
+{
+    T *p = nullptr;
+    p = reinterpret_cast<T *>(::malloc(size));
+    if (p == nullptr) {
+        throw std::bad_alloc();
+    }
+    assert(p != nullptr);
+    return std::shared_ptr<T>(p, [](T *p) {
+            ::free(p);
+        });
+}
+
+template <typename T>
+class MemoryBuffer /* final */
+{
+private:
+    size_t size_;
+    size_t off_;
+    /* key: offset. value 1 for begin, 0 for end. */
+    std::set<std::pair<size_t, int> > set_;
+    T *buf_;
+
+    using Entry = std::pair<size_t, int>;
+    using Set = std::set<Entry>;
+    using SetIterator = Set::iterator;
+
+public:
+    explicit MemoryBuffer(size_t size)
+        : size_(size), off_(0), set_(), buf_(nullptr) {
+
+        buf_ = reinterpret_cast<T *>(::malloc(size));
+        if (buf_ == nullptr) {
+            throw std::bad_alloc();
+        }
+    }
+
+    ~MemoryBuffer() noexcept { ::free(buf_); }
+    MemoryBuffer(const MemoryBuffer &rhs) = delete;
+    MemoryBuffer &operator=(const MemoryBuffer &rhs) = delete;
+
+    /**
+     * Allocate
+     */
+    T *alloc(size_t size) {
+        if (size == 0) { return nullptr; }
+        assert(size <= size_);
+        if (size_ - off_ < size) {
+            off_ = 0;
+        }
+
+        SetIterator it =
+            set_.lower_bound(std::make_pair(off_, 1));
+        bool canAlloc = false;
+        if (it == set_.end()) {
+            canAlloc = true;
+        } else {
+            size_t off = it->first;
+            int isBegin = it->second == 1;
+            if (isBegin && off_ + size <= off) {
+                canAlloc = true;
+            }
+        }
+        if (!canAlloc) { return nullptr; }
+
+        //::printf("alloc\t%zu\t%zu\n", off_, size);
+        T *p = buf_ + off_;
+        ins(off_, size);
+        off_ += size;
+        if (off_ == size_) {
+            off_ = 0;
+        }
+        assert(off_ < size_);
+        return p;
+    }
+
+    /**
+     * Free a memory.
+     */
+    void free(T *p) {
+        if (p == nullptr) { return; }
+
+        size_t off0 = p - buf_;
+        SetIterator it =
+            set_.lower_bound(std::make_pair(off0, 1));
+        assert(it->first == off0);
+        assert(it->second == 1);
+        ++it;
+        assert(it->second == 0);
+        size_t off1 = it->first;
+        assert(off0 < off1);
+        size_t size = off1 - off0;
+        //::printf("free\t%zu\t%zu\n", off0, size);
+        del(off0, size);
+    }
+
+private:
+    void ins(size_t off, size_t size) {
+        assert(off + size <= size_);
+        std::pair<SetIterator, bool> p0 =
+            set_.insert(std::make_pair(off, 1));
+        std::pair<SetIterator, bool> p1 =
+            set_.insert(std::make_pair(off + size, 0));
+        assert(p0.second && p1.second);
+    }
+
+    void del(size_t off, size_t size) {
+        assert(off + size <= size_);
+        size_t n0 = set_.erase(std::make_pair(off, 1));
+        size_t n1 = set_.erase(std::make_pair(off + size, 0));
+        assert(n0 == 1 && n1 == 1);
+    }
+
+    void printSet() const {
+        SetIterator it = set_.cbegin();
+        while (it != set_.cend()) {
+            ::printf("%zu %d\n", it->first, it->second);
+            ++it;
+        }
+    }
+};
+
+/**
+ * Memory allocator for arbitrary size of bytes.
+ * with pre-allocated ring buffer.
+ */
+template <typename T>
+class MemoryAllocator /* final */
+{
+private:
+    MemoryBuffer<T> mb_;
+
+public:
+    /**
+     * @size pre-allocated size in bytes.
+     */
+    MemoryAllocator(size_t size)
+        : mb_(size) {}
+
+    ~MemoryAllocator() noexcept {}
+    MemoryAllocator(const MemoryAllocator &rhs) = delete;
+    MemoryAllocator &operator=(const MemoryAllocator &rhs) = delete;
+
+    std::shared_ptr<T> alloc(size_t size) {
+        T *p = mb_.alloc(size);
+        if (p == nullptr) {
+            //::printf("direct\t\t%zu\n", size); /* debug */
+            return allocateMemory<T>(size);
+        }
+        return std::shared_ptr<T>(p, [&](T *p) {
+                mb_.free(p);
+            });
+    }
 };
 
 /**
