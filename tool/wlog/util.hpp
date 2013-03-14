@@ -869,7 +869,7 @@ public:
      */
     T *alloc(size_t size) {
         if (size == 0) { return nullptr; }
-        assert(size <= size_);
+        if (size_ < size) { return nullptr; }
         if (size_ - off_ < size) {
             off_ = 0;
         }
