@@ -41,8 +41,8 @@ extern "C" {
 #define PRINT_SNAPSHOT_RECORD(flag, rec) PRINT(		\
 		flag,					\
 		"snapshot_record: id %u name "		\
-		"%."SNAPSHOT_NAME_MAX_LEN_S"s "		\
-		"lsid %" PRIu64" ts %" PRIu64"\n",	\
+		"%." SNAPSHOT_NAME_MAX_LEN_S "s "	\
+		"lsid %" PRIu64 " ts %" PRIu64 "\n",	\
 		rec->snapshot_id,			\
 		rec->name, rec->lsid, rec->timestamp)
 
