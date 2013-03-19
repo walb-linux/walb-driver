@@ -183,6 +183,9 @@ static bool get_lsid_range_from_ctl(
 	u64 *lsid0, u64 *lsid1, const struct walb_ctl *ctl);
 static bool get_snapshot_record_from_ctl_u2k(
 	struct walb_snapshot_record *srec, const struct walb_ctl *ctl);
+static void set_chunk_sectors(
+	unsigned int *chunk_sectors, unsigned int pbs,
+	const struct request_queue *q);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -1846,6 +1849,26 @@ static bool get_snapshot_record_from_ctl_u2k(
 }
 
 /**
+ * Set chunk sectors.
+ *
+ * @chunk_sectors variable to be set.
+ * @pbs physical block size.
+ * @q request queue to see io_min parameter.
+ */
+static void set_chunk_sectors(
+	unsigned int *chunk_sectors, unsigned int pbs,
+	const struct request_queue *q)
+{
+	unsigned int io_min = queue_io_min((struct request_queue *)q);
+	ASSERT(io_min % LOGICAL_BLOCK_SIZE == 0);
+	if (pbs < io_min) {
+		*chunk_sectors = io_min / LOGICAL_BLOCK_SIZE;
+	} else {
+		*chunk_sectors = 0;
+	}
+}
+
+/**
  * Initialize workqueues.
  *
  * RETURN:
@@ -2476,16 +2499,8 @@ struct walb_dev* prepare_wdev(
 	lq = bdev_get_queue(wdev->ldev);
 	dq = bdev_get_queue(wdev->ddev);
 	/* Set chunk size. */
-	if (queue_io_min(lq) > wdev->physical_bs) {
-		wdev->ldev_chunk_sectors = queue_io_min(lq) / LOGICAL_BLOCK_SIZE;
-	} else {
-		wdev->ldev_chunk_sectors = 0;
-	}
-	if (queue_io_min(dq) > wdev->physical_bs) {
-		wdev->ddev_chunk_sectors = queue_io_min(dq) / LOGICAL_BLOCK_SIZE;
-	} else {
-		wdev->ddev_chunk_sectors = 0;
-	}
+	set_chunk_sectors(&wdev->ldev_chunk_sectors, wdev->physical_bs, lq);
+	set_chunk_sectors(&wdev->ddev_chunk_sectors, wdev->physical_bs, dq);
 	LOGn("chunk_sectors ldev %u ddev %u.\n",
 		wdev->ldev_chunk_sectors, wdev->ddev_chunk_sectors);
 
