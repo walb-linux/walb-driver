@@ -271,7 +271,7 @@ static void pack_cache_put(void);
 static void bio_entry_end_io(struct bio *bio, int error)
 {
 	struct bio_entry *bioe = bio->bi_private;
-	UNUSED int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
+	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	int bi_cnt;
 	ASSERT(bioe);
 	ASSERT(bio->bi_bdev);
