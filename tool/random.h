@@ -92,7 +92,7 @@ static inline void memset_random(u8 *data, size_t size)
 {
 	size_t i;
 	for (i = 0; i < size; i++) {
-		data[i] = (u8)get_random(255);
+		data[i] = (u8)rand();
 	}
 }
 
