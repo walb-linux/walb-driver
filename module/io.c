@@ -65,7 +65,7 @@ static struct treemap_memory_manager mmgr_;
 /**
  * Check read-only mode.
  */
-static inline bool is_read_only_mode(struct iocore_data *iocored)
+static inline bool is_read_only_mode(const struct iocore_data *iocored)
 {
 	ASSERT(iocored);
 	return test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
