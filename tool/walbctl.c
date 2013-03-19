@@ -618,9 +618,12 @@ static bool init_walb_metadata(
 	}
 
 	/* Initialize super sector. */
-	init_super_sector(
-		super_sect, lbs, pbs,
-		ddev_lb, ldev_lb, n_snapshots, name);
+	if (!init_super_sector(
+			super_sect, lbs, pbs,
+			ddev_lb, ldev_lb, n_snapshots, name)) {
+		LOGe("init super sector faield.\n");
+		goto error1;
+	}
 
 	/* Write super sector */
 	if (!write_super_sector(fd, super_sect)) {

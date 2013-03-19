@@ -54,7 +54,7 @@ bool sector_array_write(
 	unsigned int start_idx, unsigned int n_sectors);
 
 /* Raw super sector operations. */
-void init_super_sector_raw(
+bool init_super_sector_raw(
 	struct walb_super_sector* super_sect,
 	unsigned int pbs, unsigned int lbs,
 	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
@@ -68,7 +68,7 @@ bool write_super_sector_raw(
 	int fd, const struct walb_super_sector* super_sect);
 
 /* Super sector operations. */
-void init_super_sector(
+bool init_super_sector(
 	struct sector_data *sect,
 	unsigned int pbs, unsigned int lbs,
 	u64 ddev_lb, u64 ldev_lb, int n_snapshots,

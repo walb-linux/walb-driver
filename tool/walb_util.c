@@ -388,8 +388,11 @@ bool sector_array_write(
  * @ldev_lb log device size [logical block]
  * @n_snapshots number of snapshots to keep.
  * @name name of the walb device, or NULL.
+ *
+ * RETURN:
+ *   true in success.
  */
-void init_super_sector_raw(
+bool init_super_sector_raw(
 	struct walb_super_sector* super_sect,
 	unsigned int lbs, unsigned int pbs,
 	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
@@ -399,6 +402,7 @@ void init_super_sector_raw(
 	int t;
 	u32 salt;
 	char *rname;
+	bool ret;
 
 	ASSERT(super_sect);
 	ASSERT(lbs > 0);
@@ -423,7 +427,8 @@ void init_super_sector_raw(
 	super_sect->logical_bs = lbs;
 	super_sect->physical_bs = pbs;
 	super_sect->snapshot_metadata_size = n_sectors;
-	generate_uuid(super_sect->uuid);
+	ret = generate_uuid(super_sect->uuid);
+	if (!ret) { return false; }
 	memset_random((u8 *)&salt, sizeof(salt));
 	LOGn("salt: %"PRIu32"\n", salt);
 	super_sect->log_checksum_salt = salt;
@@ -439,12 +444,13 @@ void init_super_sector_raw(
 	}
 
 	ASSERT(is_valid_super_sector_raw(super_sect, pbs));
+	return true;
 }
 
 /**
  * Initialize super sector image.
  */
-void init_super_sector(
+bool init_super_sector(
 	struct sector_data *sect,
 	unsigned int lbs, unsigned int pbs,
 	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
@@ -453,7 +459,7 @@ void init_super_sector(
 	ASSERT_SECTOR_DATA(sect);
 	ASSERT(pbs == sect->size);
 
-	init_super_sector_raw(
+	return init_super_sector_raw(
 		sect->data, lbs, pbs, ddev_lb, ldev_lb, n_snapshots, name);
 }
 

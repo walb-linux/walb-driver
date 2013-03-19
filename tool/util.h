@@ -34,7 +34,7 @@ bool is_discard_supported(int fd);
 bool discard_whole_area(int fd);
 
 /* uuid functions */
-void generate_uuid(u8* uuid);
+bool generate_uuid(u8* uuid);
 void print_uuid(const u8* uuid);
 void copy_uuid(u8* dst, const u8* src);
 
