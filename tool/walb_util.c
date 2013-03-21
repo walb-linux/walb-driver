@@ -41,7 +41,7 @@ static bool pwrite_all(int fd, const void *buf, size_t count, off_t offset)
 
 	while (w < count) {
 		ssize_t s = pwrite(fd, c + w, count - w, offset + w);
-		if (0 <= s) {
+		if (s <= 0) {
 			perror("pwrite error.");
 			return false;
 		}
