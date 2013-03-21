@@ -43,7 +43,7 @@ static inline bool read_urandom(void *data, size_t size)
 	}
 	read_size = 0;
 	while (read_size < (ssize_t)size) {
-		int r = read(fd, data + read_size, size - read_size);
+		int r = read(fd, (u8 *)data + read_size, size - read_size);
 		if (read_size <= 0) {
 			perror("read /dev/urandom failed.");
 			return false;
