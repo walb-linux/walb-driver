@@ -205,7 +205,7 @@ static bool writepack_add_bio_wrapper(
 static void insert_to_sorted_bio_wrapper_list_by_lsid(
 	struct bio_wrapper *biow, struct list_head *biow_list);
 #endif
-void insert_to_sorted_bio_wrapper_list_by_pos(
+static void insert_to_sorted_bio_wrapper_list_by_pos(
 	struct bio_wrapper *biow, struct list_head *biow_list);
 static void writepack_check_and_set_flush(struct pack *wpack);
 static void wait_for_logpack_and_submit_datapack(
@@ -2204,7 +2204,7 @@ static void insert_to_sorted_bio_wrapper_list_by_lsid(
  * @biow (struct bio_wrapper *)
  * @biow_list (struct list_head *)
  */
-void insert_to_sorted_bio_wrapper_list_by_pos(
+static void insert_to_sorted_bio_wrapper_list_by_pos(
 	struct bio_wrapper *biow, struct list_head *biow_list)
 {
 	struct bio_wrapper *biow_tmp, *biow_next;
