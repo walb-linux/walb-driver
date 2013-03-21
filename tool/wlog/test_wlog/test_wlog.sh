@@ -52,7 +52,7 @@ format_ldev()
   prepare_bdev $LOOP0 $LDEV
   prepare_bdev $LOOP1 ${DDEV}.0
   $CTL format_ldev --ldev $LOOP0 --ddev $LOOP1
-  RING_BUFFER_SIZE=$(${BIN}/wlinfo $LOOP0 |grep ringBufferSize |awk '{print $2}')
+  RING_BUFFER_SIZE=$(${BIN}/wldev-info $LOOP0 |grep ringBufferSize |awk '{print $2}')
   echo $RING_BUFFER_SIZE
   sleep 1
   finalize_bdev $LOOP0 $LDEV
@@ -70,20 +70,20 @@ echo_wlog_value()
 # Initialization.
 #
 format_ldev
-${BIN}/wlgen -s 32M -z 16M --maxPackSize 4M -o ${WLOG}.0
-#${BIN}/wlgen -s 32M -z 16M --minIoSize 512 --maxIoSize 512 --maxPackSize 1M -o ${WLOG}.0
+${BIN}/wlog-gen -s 32M -z 16M --maxPackSize 4M -o ${WLOG}.0
+#${BIN}/wlog-gen -s 32M -z 16M --minIoSize 512 --maxIoSize 512 --maxPackSize 1M -o ${WLOG}.0
 endLsid0=$(echo_wlog_value ${WLOG}.0 end_lsid_really:)
 nPacks0=$(echo_wlog_value ${WLOG}.0 n_packs:)
 totalPadding0=$(echo_wlog_value ${WLOG}.0 total_padding_size:)
 cp ${DDEV}.0 ${DDEV}.0z
-${BIN}/wlredo ${DDEV}.0 < ${WLOG}.0
-${BIN}/wlredo ${DDEV}.0z --zerodiscard < ${WLOG}.0
+${BIN}/wlog-redo ${DDEV}.0 < ${WLOG}.0
+${BIN}/wlog-redo ${DDEV}.0z --zerodiscard < ${WLOG}.0
 
 #
 # Simple test.
 #
-${BIN}/wlrestore --verify $LDEV < ${WLOG}.0
-${BIN}/wlcat $LDEV -v -o ${WLOG}.1
+${BIN}/wlog-restore --verify $LDEV < ${WLOG}.0
+${BIN}/wlog-cat $LDEV -v -o ${WLOG}.1
 ${BIN}/bdiff -b 512 ${WLOG}.0 ${WLOG}.1
 if [ $? -ne 0 ]; then
   echo "TEST1_FAILURE"
@@ -103,8 +103,8 @@ restore_test()
   dd if=/dev/zero of=${DDEV}.1z bs=1M count=32
   dd if=/dev/zero of=${DDEV}.2 bs=1M count=32
   dd if=/dev/zero of=${DDEV}.3 bs=1M count=32
-  ${BIN}/wlrestore $LDEV --verify --lsidDiff $lsidDiff --invalidLsid $invalidLsid < ${WLOG}.0
-  ${BIN}/wlcat $LDEV -v -o ${WLOG}.1
+  ${BIN}/wlog-restore $LDEV --verify --lsidDiff $lsidDiff --invalidLsid $invalidLsid < ${WLOG}.0
+  ${BIN}/wlog-cat $LDEV -v -o ${WLOG}.1
   prepare_bdev $LOOP0 ${LDEV}
   $CTL cat_wldev --wldev $LOOP0 > ${WLOG}.2
   sleep 1
@@ -137,8 +137,8 @@ restore_test()
     exit 1
   fi
 
-  ${BIN}/wlredo ${DDEV}.1 < ${WLOG}.1
-  ${BIN}/wlredo ${DDEV}.1z --zerodiscard < ${WLOG}.1
+  ${BIN}/wlog-redo ${DDEV}.1 < ${WLOG}.1
+  ${BIN}/wlog-redo ${DDEV}.1z --zerodiscard < ${WLOG}.1
   prepare_bdev $LOOP1 ${DDEV}.2
   $CTL redo_wlog --ddev $LOOP1 < ${WLOG}.1
   sleep 1

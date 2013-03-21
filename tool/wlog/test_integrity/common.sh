@@ -12,4 +12,3 @@ MODULE_DIR=..
 MODULE_FILE=walb-mod-fast-ol.ko
 
 
-

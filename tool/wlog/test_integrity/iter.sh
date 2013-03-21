@@ -27,8 +27,8 @@ if [ $? -ne 0 ]; then
 fi
 grep ^NG ${RES_DIR}/result1.${ITER_ID}
 
-echo wlcat...
-${BIN}/wlcat --endLsid $endLsid $WLDEV > ${RES_DIR}/wlog.${ITER_ID}
+echo wlog-cat...
+${BIN}/wlog-cat --endLsid $endLsid $WLDEV > ${RES_DIR}/wlog.${ITER_ID}
 echo verify wlog
 ${BIN}/verify_wlog -r ${RES_DIR}/recipe.${ITER_ID} -w ${RES_DIR}/wlog.${ITER_ID} > ${RES_DIR}/result2.${ITER_ID}
 if [ $? -ne 0 ]; then

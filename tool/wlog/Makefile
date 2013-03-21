@@ -24,10 +24,13 @@ else
 LDFLAGS = -Wl,-R,'$$ORIGIN' -laio -lpthread
 endif
 
-BINARIES = wlcat wlredo wlgen wlrestore wlinfo wlanalyze wlupdate bdiff \
+BINARIES = wlog-cat wlog-redo wlog-analyze \
+wlog-gen wlog-restore wlog-update \
+wldev-info bdiff \
 write_random_data verify_written_data verify_wlog verify_wldev
-SRCS = wlcat.cpp wlredo.cpp wlgen.cpp wlrestore.cpp \
-wlinfo.cpp wlanalyze.cpp wlupdate.cpp bdiff.cpp \
+SRCS = wlog-cat.cpp wlog-redo.cpp wlog-analyze.cpp \
+wlog-gen.cpp wlog-restore.cpp wlog-update.cpp \
+wldev-info.cpp bdiff.cpp \
 write_random_data.cpp verify_written_data.cpp verify_wlog.cpp verify_wldev.cpp
 
 all: $(BINARIES)
@@ -35,19 +38,19 @@ all: $(BINARIES)
 echo_binaries:
 	@echo $(BINARIES)
 
-wlcat: wlcat.o
+wlog-cat: wlog-cat.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
-wlredo: wlredo.o
+wlog-redo: wlog-redo.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
-wlgen: wlgen.o
+wlog-analyze: wlog-analyze.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
-wlrestore: wlrestore.o
+wlog-gen: wlog-gen.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
-wlinfo: wlinfo.o
+wlog-restore: wlog-restore.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
-wlanalyze: wlanalyze.o
+wlog-update: wlog-update.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
-wlupdate: wlupdate.o
+wldev-info: wldev-info.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 bdiff: bdiff.o
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
@@ -76,60 +79,7 @@ depend: Makefile
 	mv Makefile.new Makefile
 
 # DO NOT DELETE
-wlcat.o: wlcat.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
- ../../include/walb/walb.h ../../include/walb/common.h \
- ../../include/walb/userland.h ../../include/walb/disk_name.h \
- ../../include/walb/sector.h ../../include/walb/checksum.h \
- ../../include/walb/block_size.h ../../include/walb/util.h \
- ../../include/walb/log_device.h ../../include/walb/log_record.h \
- ../../include/walb/u32bits.h ../../include/walb/super.h \
- ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
- ../../include/walb/log_record.h ../walblog_format.h \
- ../../include/walb/walb.h aio_util.hpp ../../include/walb/common.h \
- ../random.h ../check_userland.h ../../include/walb/userland.h
-wlredo.o: wlredo.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
- ../../include/walb/walb.h ../../include/walb/common.h \
- ../../include/walb/userland.h ../../include/walb/disk_name.h \
- ../../include/walb/sector.h ../../include/walb/checksum.h \
- ../../include/walb/block_size.h ../../include/walb/util.h \
- ../../include/walb/log_device.h ../../include/walb/log_record.h \
- ../../include/walb/u32bits.h ../../include/walb/super.h \
- ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
- ../../include/walb/log_record.h ../walblog_format.h \
- ../../include/walb/walb.h aio_util.hpp ../../include/walb/common.h \
- ../random.h ../check_userland.h ../../include/walb/userland.h
-wlgen.o: wlgen.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
- ../../include/walb/walb.h ../../include/walb/common.h \
- ../../include/walb/userland.h ../../include/walb/disk_name.h \
- ../../include/walb/sector.h ../../include/walb/checksum.h \
- ../../include/walb/block_size.h ../../include/walb/util.h \
- ../../include/walb/log_device.h ../../include/walb/log_record.h \
- ../../include/walb/u32bits.h ../../include/walb/super.h \
- ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
- ../../include/walb/log_record.h ../walblog_format.h \
- ../../include/walb/walb.h
-wlrestore.o: wlrestore.cpp util.hpp walb_util.hpp \
- ../../include/walb/super.h ../../include/walb/walb.h \
- ../../include/walb/common.h ../../include/walb/userland.h \
- ../../include/walb/disk_name.h ../../include/walb/sector.h \
- ../../include/walb/checksum.h ../../include/walb/block_size.h \
- ../../include/walb/util.h ../../include/walb/log_device.h \
- ../../include/walb/log_record.h ../../include/walb/u32bits.h \
- ../../include/walb/super.h ../../include/walb/snapshot.h \
- ../../include/walb/u64bits.h ../../include/walb/log_record.h \
- ../walblog_format.h ../../include/walb/walb.h
-wlinfo.o: wlinfo.cpp util.hpp walb_util.hpp ../../include/walb/super.h \
- ../../include/walb/walb.h ../../include/walb/common.h \
- ../../include/walb/userland.h ../../include/walb/disk_name.h \
- ../../include/walb/sector.h ../../include/walb/checksum.h \
- ../../include/walb/block_size.h ../../include/walb/util.h \
- ../../include/walb/log_device.h ../../include/walb/log_record.h \
- ../../include/walb/u32bits.h ../../include/walb/super.h \
- ../../include/walb/snapshot.h ../../include/walb/u64bits.h \
- ../../include/walb/log_record.h ../walblog_format.h \
- ../../include/walb/walb.h aio_util.hpp ../../include/walb/common.h \
- ../random.h ../check_userland.h ../../include/walb/userland.h
-wlanalyze.o: wlanalyze.cpp util.hpp walb_util.hpp \
+wlog-cat.o: wlog-cat.cpp util.hpp walb_util.hpp \
  ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
@@ -141,7 +91,63 @@ wlanalyze.o: wlanalyze.cpp util.hpp walb_util.hpp \
  ../walblog_format.h ../../include/walb/walb.h aio_util.hpp \
  ../../include/walb/common.h ../random.h ../check_userland.h \
  ../../include/walb/userland.h
-wlupdate.o: wlupdate.cpp util.hpp walb_util.hpp \
+wlog-redo.o: wlog-redo.cpp util.hpp walb_util.hpp \
+ ../../include/walb/super.h ../../include/walb/walb.h \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/disk_name.h ../../include/walb/sector.h \
+ ../../include/walb/checksum.h ../../include/walb/block_size.h \
+ ../../include/walb/util.h ../../include/walb/log_device.h \
+ ../../include/walb/log_record.h ../../include/walb/u32bits.h \
+ ../../include/walb/super.h ../../include/walb/snapshot.h \
+ ../../include/walb/u64bits.h ../../include/walb/log_record.h \
+ ../walblog_format.h ../../include/walb/walb.h aio_util.hpp \
+ ../../include/walb/common.h ../random.h ../check_userland.h \
+ ../../include/walb/userland.h
+wlog-analyze.o: wlog-analyze.cpp util.hpp walb_util.hpp \
+ ../../include/walb/super.h ../../include/walb/walb.h \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/disk_name.h ../../include/walb/sector.h \
+ ../../include/walb/checksum.h ../../include/walb/block_size.h \
+ ../../include/walb/util.h ../../include/walb/log_device.h \
+ ../../include/walb/log_record.h ../../include/walb/u32bits.h \
+ ../../include/walb/super.h ../../include/walb/snapshot.h \
+ ../../include/walb/u64bits.h ../../include/walb/log_record.h \
+ ../walblog_format.h ../../include/walb/walb.h aio_util.hpp \
+ ../../include/walb/common.h ../random.h ../check_userland.h \
+ ../../include/walb/userland.h
+wlog-gen.o: wlog-gen.cpp util.hpp walb_util.hpp \
+ ../../include/walb/super.h ../../include/walb/walb.h \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/disk_name.h ../../include/walb/sector.h \
+ ../../include/walb/checksum.h ../../include/walb/block_size.h \
+ ../../include/walb/util.h ../../include/walb/log_device.h \
+ ../../include/walb/log_record.h ../../include/walb/u32bits.h \
+ ../../include/walb/super.h ../../include/walb/snapshot.h \
+ ../../include/walb/u64bits.h ../../include/walb/log_record.h \
+ ../walblog_format.h ../../include/walb/walb.h
+wlog-restore.o: wlog-restore.cpp util.hpp walb_util.hpp \
+ ../../include/walb/super.h ../../include/walb/walb.h \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/disk_name.h ../../include/walb/sector.h \
+ ../../include/walb/checksum.h ../../include/walb/block_size.h \
+ ../../include/walb/util.h ../../include/walb/log_device.h \
+ ../../include/walb/log_record.h ../../include/walb/u32bits.h \
+ ../../include/walb/super.h ../../include/walb/snapshot.h \
+ ../../include/walb/u64bits.h ../../include/walb/log_record.h \
+ ../walblog_format.h ../../include/walb/walb.h
+wlog-update.o: wlog-update.cpp util.hpp walb_util.hpp \
+ ../../include/walb/super.h ../../include/walb/walb.h \
+ ../../include/walb/common.h ../../include/walb/userland.h \
+ ../../include/walb/disk_name.h ../../include/walb/sector.h \
+ ../../include/walb/checksum.h ../../include/walb/block_size.h \
+ ../../include/walb/util.h ../../include/walb/log_device.h \
+ ../../include/walb/log_record.h ../../include/walb/u32bits.h \
+ ../../include/walb/super.h ../../include/walb/snapshot.h \
+ ../../include/walb/u64bits.h ../../include/walb/log_record.h \
+ ../walblog_format.h ../../include/walb/walb.h aio_util.hpp \
+ ../../include/walb/common.h ../random.h ../check_userland.h \
+ ../../include/walb/userland.h
+wldev-info.o: wldev-info.cpp util.hpp walb_util.hpp \
  ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \

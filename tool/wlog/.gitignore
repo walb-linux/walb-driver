@@ -1,10 +1,10 @@
-wlcat
-wlredo
-wlgen
-wlrestore
-wlinfo
-wlanalyze
-wlupdate
+wlog-cat
+wlog-redo
+wlog-analyze
+wlog-gen
+wlog-restore
+wlog-update
+wldev-info
 bdiff
 write_random_data
 verify_written_data
