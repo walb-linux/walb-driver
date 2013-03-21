@@ -422,9 +422,9 @@ bool discard_whole_area(int fd)
  *
  * @uuid result uuid is stored. it must be u8[UUID_SIZE].
  */
-void generate_uuid(u8* uuid)
+bool generate_uuid(u8* uuid)
 {
-	memset_random(uuid, UUID_SIZE);
+	return read_urandom(uuid, UUID_SIZE);
 }
 
 /**

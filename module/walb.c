@@ -183,6 +183,9 @@ static bool get_lsid_range_from_ctl(
 	u64 *lsid0, u64 *lsid1, const struct walb_ctl *ctl);
 static bool get_snapshot_record_from_ctl_u2k(
 	struct walb_snapshot_record *srec, const struct walb_ctl *ctl);
+static void set_chunk_sectors(
+	unsigned int *chunk_sectors, unsigned int pbs,
+	const struct request_queue *q);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -483,20 +486,16 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
- *   0 in success, or -EFAULT.
+ *   0.
  */
 static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	u64 oldest_lsid;
-
 	LOGn("WALB_IOCTL_GET_OLDEST_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_OLDEST_LSID);
 
 	spin_lock(&wdev->lsid_lock);
-	oldest_lsid = wdev->lsids.oldest;
+	ctl->val_u64 = wdev->lsids.oldest;
 	spin_unlock(&wdev->lsid_lock);
-
-	ctl->val_u64 = oldest_lsid;
 	return 0;
 }
 
@@ -861,7 +860,7 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
- *   0 in success, or -EFAULT.
+ *   0.
  */
 static int ioctl_wdev_get_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
@@ -902,7 +901,7 @@ static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
- *   0 in success, or -EFAULT.
+ *   0.
  */
 static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
@@ -919,7 +918,7 @@ static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *c
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
- *   0 in success, or -EFAULT.
+ *   0.
  */
 static int ioctl_wdev_get_permanent_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
@@ -936,7 +935,7 @@ static int ioctl_wdev_get_permanent_lsid(struct walb_dev *wdev, struct walb_ctl 
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
- *   0 in success, or -EFAULT.
+ *   0.
  */
 static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
@@ -1212,7 +1211,7 @@ error0:
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
- *   0 in success, or -EFAULT.
+ *   0.
  */
 static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
@@ -1260,19 +1259,16 @@ static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
  * @wdev walb dev.
  * @ctl ioctl data.
  * RETURN:
- *   0 in success, or -EFAULT.
+ *   0.
  */
 static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	int is_frozen = 0;
 	ASSERT(ctl->command == WALB_IOCTL_IS_FROZEN);
 	LOGn("WALB_IOCTL_IS_FROZEN\n");
 
 	mutex_lock(&wdev->freeze_lock);
-	is_frozen = (wdev->freeze_state == FRZ_MELTED) ? 0 : 1;
+	ctl->val_int = (wdev->freeze_state == FRZ_MELTED) ? 0 : 1;
 	mutex_unlock(&wdev->freeze_lock);
-
-	ctl->val_int = is_frozen;
 
 	return 0;
 }
@@ -1850,6 +1846,26 @@ static bool get_snapshot_record_from_ctl_u2k(
 	}
 	*srec = *(struct walb_snapshot_record *)ctl->u2k.__buf;
 	return true;
+}
+
+/**
+ * Set chunk sectors.
+ *
+ * @chunk_sectors variable to be set.
+ * @pbs physical block size.
+ * @q request queue to see io_min parameter.
+ */
+static void set_chunk_sectors(
+	unsigned int *chunk_sectors, unsigned int pbs,
+	const struct request_queue *q)
+{
+	unsigned int io_min = queue_io_min((struct request_queue *)q);
+	ASSERT(io_min % LOGICAL_BLOCK_SIZE == 0);
+	if (pbs < io_min) {
+		*chunk_sectors = io_min / LOGICAL_BLOCK_SIZE;
+	} else {
+		*chunk_sectors = 0;
+	}
 }
 
 /**
@@ -2483,16 +2499,8 @@ struct walb_dev* prepare_wdev(
 	lq = bdev_get_queue(wdev->ldev);
 	dq = bdev_get_queue(wdev->ddev);
 	/* Set chunk size. */
-	if (queue_io_min(lq) > wdev->physical_bs) {
-		wdev->ldev_chunk_sectors = queue_io_min(lq) / LOGICAL_BLOCK_SIZE;
-	} else {
-		wdev->ldev_chunk_sectors = 0;
-	}
-	if (queue_io_min(dq) > wdev->physical_bs) {
-		wdev->ddev_chunk_sectors = queue_io_min(dq) / LOGICAL_BLOCK_SIZE;
-	} else {
-		wdev->ddev_chunk_sectors = 0;
-	}
+	set_chunk_sectors(&wdev->ldev_chunk_sectors, wdev->physical_bs, lq);
+	set_chunk_sectors(&wdev->ddev_chunk_sectors, wdev->physical_bs, dq);
 	LOGn("chunk_sectors ldev %u ddev %u.\n",
 		wdev->ldev_chunk_sectors, wdev->ddev_chunk_sectors);
 

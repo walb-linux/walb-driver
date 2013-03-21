@@ -12,6 +12,46 @@
 #include "random.h"
 
 /**
+ * Read a specified size of data.
+ */
+static bool pread_all(int fd, void *buf, size_t count, off_t offset)
+{
+	char *c = (char *)buf;
+	size_t r = 0;
+
+	while (r < count) {
+		ssize_t s = pread(fd, c + r, count - r, offset + r);
+		if (s <= 0) {
+			perror("pread error");
+			return false;
+		}
+		r += s;
+	}
+	ASSERT(r == count);
+	return true;
+}
+
+/**
+ * Write a specified size of data.
+ */
+static bool pwrite_all(int fd, const void *buf, size_t count, off_t offset)
+{
+	const char *c = (char *)buf;
+	size_t w = 0;
+
+	while (w < count) {
+		ssize_t s = pwrite(fd, c + w, count - w, offset + w);
+		if (0 <= s) {
+			perror("pwrite error.");
+			return false;
+		}
+		w += s;
+	}
+	ASSERT(w == count);
+	return true;
+}
+
+/**
  * Read sector data from the offset.
  *
  * @fd file descriptor to read.
@@ -23,25 +63,10 @@
  */
 bool sector_read(int fd, u64 offset, struct sector_data *sect)
 {
-	const int sect_size = sect->size;
-	ssize_t r = 0;
-
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA(sect);
 
-	while (r < sect_size) {
-		ssize_t s = pread(fd, sect->data + r,
-				sect_size - r,
-				offset * sect_size + r);
-		if (s > 0) {
-			r += s;
-		} else {
-			perror("read sector error.");
-			return false;
-		}
-	}
-	ASSERT(r == sect_size);
-	return true;
+	return pread_all(fd, sect->data, sect->size, offset * sect->size);
 }
 
 /**
@@ -56,26 +81,10 @@ bool sector_read(int fd, u64 offset, struct sector_data *sect)
  */
 bool sector_write(int fd, u64 offset, const struct sector_data *sect)
 {
-	const int sect_size = sect->size;
-	ssize_t w = 0;
-
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA(sect);
 
-	while (w < sect_size) {
-		ssize_t s = pwrite(fd, sect->data + w,
-				sect_size - w,
-				offset * sect_size + w);
-		if (s > 0) {
-			w += s;
-		} else {
-			perror("write sector error.");
-			return false;
-		}
-
-	}
-	ASSERT(w == sect_size);
-	return true;
+	return pwrite_all(fd, sect->data, sect->size, offset * sect->size);
 }
 
 /**
@@ -95,28 +104,15 @@ bool sector_read_lb(
 	int fd,  u64 offset_lb, struct sector_data *sect,
 	unsigned int idx_lb, unsigned int n_lb)
 {
-	const ssize_t read_size = n_lb * LOGICAL_BLOCK_SIZE;
-	const ssize_t off = idx_lb * LOGICAL_BLOCK_SIZE;
-	ssize_t r = 0;
+	const size_t count = n_lb * LOGICAL_BLOCK_SIZE;
+	const off_t buf_off = idx_lb * LOGICAL_BLOCK_SIZE;
+	const off_t file_off = offset_lb * LOGICAL_BLOCK_SIZE;
 
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA(sect);
 	ASSERT(capacity_pb(sect->size, idx_lb + n_lb) == 1);
 
-	while (r < read_size) {
-		ssize_t s = pread(
-			fd, sect->data + off + r,
-			read_size - r,
-			offset_lb * LOGICAL_BLOCK_SIZE + r);
-		if (s > 0) {
-			r += s;
-		} else {
-			perror("read sector error.");
-			return false;
-		}
-	}
-	ASSERT(r == read_size);
-	return true;
+	return pread_all(fd, sect->data + buf_off, count, file_off);
 }
 
 /**
@@ -133,32 +129,18 @@ bool sector_read_lb(
  *   true in success, or false.
  */
 bool sector_write_lb(
-	int fd,
-	u64 offset_lb, const struct sector_data *sect,
+	int fd, u64 offset_lb, const struct sector_data *sect,
 	unsigned int idx_lb, unsigned int n_lb)
 {
-	const ssize_t write_size = n_lb * LOGICAL_BLOCK_SIZE;
-	const ssize_t off = idx_lb * LOGICAL_BLOCK_SIZE;
-	ssize_t w = 0;
+	const ssize_t count = n_lb * LOGICAL_BLOCK_SIZE;
+	const off_t buf_off = idx_lb * LOGICAL_BLOCK_SIZE;
+	const off_t file_off = offset_lb * LOGICAL_BLOCK_SIZE;
 
 	ASSERT(fd > 0);
 	ASSERT_SECTOR_DATA(sect);
 	ASSERT(capacity_pb(sect->size, idx_lb + n_lb) == 1);
 
-	while (w < write_size) {
-		ssize_t s = pwrite(
-			fd, sect->data + off + w,
-			write_size - w,
-			offset_lb * LOGICAL_BLOCK_SIZE + w);
-		if (s > 0) {
-			w += s;
-		} else {
-			perror("write sector error.");
-			return false;
-		}
-	}
-	ASSERT(w == write_size);
-	return true;
+	return pwrite_all(fd, sect->data + buf_off, count, file_off);
 }
 
 /**
@@ -388,8 +370,11 @@ bool sector_array_write(
  * @ldev_lb log device size [logical block]
  * @n_snapshots number of snapshots to keep.
  * @name name of the walb device, or NULL.
+ *
+ * RETURN:
+ *   true in success.
  */
-void init_super_sector_raw(
+bool init_super_sector_raw(
 	struct walb_super_sector* super_sect,
 	unsigned int lbs, unsigned int pbs,
 	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
@@ -399,6 +384,7 @@ void init_super_sector_raw(
 	int t;
 	u32 salt;
 	char *rname;
+	bool ret;
 
 	ASSERT(super_sect);
 	ASSERT(lbs > 0);
@@ -423,7 +409,8 @@ void init_super_sector_raw(
 	super_sect->logical_bs = lbs;
 	super_sect->physical_bs = pbs;
 	super_sect->snapshot_metadata_size = n_sectors;
-	generate_uuid(super_sect->uuid);
+	ret = generate_uuid(super_sect->uuid);
+	if (!ret) { return false; }
 	memset_random((u8 *)&salt, sizeof(salt));
 	LOGn("salt: %"PRIu32"\n", salt);
 	super_sect->log_checksum_salt = salt;
@@ -439,12 +426,13 @@ void init_super_sector_raw(
 	}
 
 	ASSERT(is_valid_super_sector_raw(super_sect, pbs));
+	return true;
 }
 
 /**
  * Initialize super sector image.
  */
-void init_super_sector(
+bool init_super_sector(
 	struct sector_data *sect,
 	unsigned int lbs, unsigned int pbs,
 	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
@@ -453,7 +441,7 @@ void init_super_sector(
 	ASSERT_SECTOR_DATA(sect);
 	ASSERT(pbs == sect->size);
 
-	init_super_sector_raw(
+	return init_super_sector_raw(
 		sect->data, lbs, pbs, ddev_lb, ldev_lb, n_snapshots, name);
 }
 

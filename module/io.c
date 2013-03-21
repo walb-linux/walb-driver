@@ -65,7 +65,7 @@ static struct treemap_memory_manager mmgr_;
 /**
  * Check read-only mode.
  */
-static inline bool is_read_only_mode(struct iocore_data *iocored)
+static inline bool is_read_only_mode(const struct iocore_data *iocored)
 {
 	ASSERT(iocored);
 	return test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
@@ -271,7 +271,7 @@ static void pack_cache_put(void);
 static void bio_entry_end_io(struct bio *bio, int error)
 {
 	struct bio_entry *bioe = bio->bi_private;
-	UNUSED int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
+	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	int bi_cnt;
 	ASSERT(bioe);
 	ASSERT(bio->bi_bdev);

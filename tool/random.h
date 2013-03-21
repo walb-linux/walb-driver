@@ -24,40 +24,45 @@ extern "C" {
 #endif
 
 /**
- * Read /dev/urandom to generate random value.
+ * Read /dev/urandom and fill a buffer.
+ *
+ * @data data buffer.
+ * @size filling size in bytes.
+ *
  * RETURN:
- *   random value in success, or 0.
+ *   true in success.
  */
-static inline u32 read_urandom()
+static inline bool read_urandom(void *data, size_t size)
 {
-	int fd, val;
+	int fd;
+	ssize_t read_size;
 	fd = open("/dev/urandom", O_RDONLY);
 	if (fd < 0) {
-		perror("open /dev/urandom failed\n");
-		return 0;
+		perror("open /dev/urandom failed.");
+		return false;
 	}
-	if (read(fd, (void *)&val, sizeof(u32)) != sizeof(u32)) {
-		perror("read /dev/urandom failed\n");
-		return 0;
+	read_size = 0;
+	while (read_size < (ssize_t)size) {
+		int r = read(fd, data + read_size, size - read_size);
+		if (read_size <= 0) {
+			perror("read /dev/urandom failed.");
+			return false;
+		}
+		read_size += r;
 	}
 	if (close(fd)) {
-		perror("close failed");
-		/* no return. */
+		perror("close failed.");
+		return false;
 	}
-	return val;
+	return true;
 }
 
 /**
  * Initialize random seed.
  */
-static inline void init_random()
+static inline void init_random(void)
 {
-	u32 r;
-	r = read_urandom();
-	if (r == 0) {
-		r = time(0);
-	}
-	srand(r);
+	srand(time(0));
 }
 
 /**
@@ -87,7 +92,7 @@ static inline void memset_random(u8 *data, size_t size)
 {
 	size_t i;
 	for (i = 0; i < size; i++) {
-		data[i] = (u8)get_random(255);
+		data[i] = (u8)rand();
 	}
 }
 
