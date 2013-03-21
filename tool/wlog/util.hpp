@@ -33,6 +33,8 @@
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 
+#define UNUSED __attribute__((unused))
+
 #define RT_ERR(fmt, args...)                                    \
     std::runtime_error(walb::util::formatString(fmt, ##args))
 
@@ -752,6 +754,9 @@ private:
 
 /**
  * Allocate an aligned memory block.
+ *
+ * @alignment alighment size [byte].
+ * @size allocation size [byte].
  */
 template<typename T>
 static inline
@@ -922,17 +927,17 @@ public:
 private:
     void ins(size_t off, size_t size) {
         assert(off + size <= size_);
-        std::pair<SetIterator, bool> p0 =
+        UNUSED std::pair<SetIterator, bool> p0 =
             set_.insert(std::make_pair(off, 1));
-        std::pair<SetIterator, bool> p1 =
+        UNUSED std::pair<SetIterator, bool> p1 =
             set_.insert(std::make_pair(off + size, 0));
         assert(p0.second && p1.second);
     }
 
     void del(size_t off, size_t size) {
         assert(off + size <= size_);
-        size_t n0 = set_.erase(std::make_pair(off, 1));
-        size_t n1 = set_.erase(std::make_pair(off + size, 0));
+        UNUSED size_t n0 = set_.erase(std::make_pair(off, 1));
+        UNUSED size_t n1 = set_.erase(std::make_pair(off + size, 0));
         assert(n0 == 1 && n1 == 1);
     }
 

@@ -21,7 +21,7 @@ endif
 ifeq ($(STATIC),1)
 LDFLAGS = -static -laio -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
 else
-LDFLAGS = -laio -lpthread
+LDFLAGS = -Wl,-R,'$$ORIGIN' -laio -lpthread
 endif
 
 BINARIES = wlcat wlredo wlgen wlrestore wlinfo wlanalyze wlupdate bdiff \
