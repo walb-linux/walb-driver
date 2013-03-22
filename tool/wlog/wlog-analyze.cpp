@@ -183,7 +183,9 @@ public:
         u8 uuid[UUID_SIZE];
         if (config_.isFromStdin()) {
             while (true) {
-                lsid = analyzeWlog(0, lsid, uuid);
+                uint64_t nextLsid = analyzeWlog(0, lsid, uuid);
+                if (nextLsid == lsid) { break; }
+                lsid = nextLsid;
             }
         } else {
             for (size_t i = 0; i < config_.numWlogs(); i++) {
