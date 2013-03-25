@@ -20,6 +20,10 @@ clean:
 	rm -f *.gcov *.gcda *.gcno # coverage files.
 	rm -rf tmp # test files.
 
+rebuild:
+	$(MAKE) clean
+	$(MAKE) binaries
+
 WALBCTL_OBJS = walbctl.o util.o walb_util.o logpack.o snapshot.o
 walbctl: $(WALBCTL_OBJS)
 	$(CC) -o $@ $(CFLAGS) $(WALBCTL_OBJS)
