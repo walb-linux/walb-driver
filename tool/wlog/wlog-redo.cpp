@@ -1040,7 +1040,6 @@ private:
 
 int main(int argc, char* argv[])
 {
-    int ret = 0;
     const size_t BUFFER_SIZE = 4 * 1024 * 1024; /* 4MB. */
 
     try {
@@ -1059,22 +1058,19 @@ int main(int argc, char* argv[])
             wlApp.readAndApply(fo.fd());
             fo.close();
         }
+        return 0;
+
     } catch (Config::Error& e) {
         ::printf("Command line error: %s\n\n", e.what());
         Config::printHelp();
-        ret = 1;
     } catch (std::runtime_error& e) {
         LOGe("Error: %s\n", e.what());
-        ret = 1;
     } catch (std::exception& e) {
         LOGe("Exception: %s\n", e.what());
-        ret = 1;
     } catch (...) {
         LOGe("Caught other error.\n");
-        ret = 1;
     }
-
-    return ret;
+    return 1;
 }
 
 /* end of file. */
