@@ -71,6 +71,10 @@ verify_wldev: verify_wldev.o
 clean:
 	rm -f $(BINARIES) *.o
 
+rebuild:
+	$(MAKE) clean
+	$(MAKE) all
+
 depend: Makefile
 	sed -e '/^# DO NOT DELETE/,$$d' Makefile > Makefile.new
 	echo '# DO NOT DELETE' >> Makefile.new
