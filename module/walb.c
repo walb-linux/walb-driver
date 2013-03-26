@@ -2537,18 +2537,11 @@ struct walb_dev* prepare_wdev(
 		wdev->min_pending_sectors,
 		wdev->queue_stop_timeout_jiffies);
 #endif
-	if (param->n_pack_bulk > 0) {
-		wdev->n_pack_bulk = param->n_pack_bulk;
-	} else {
-		wdev->n_pack_bulk = 128; /* default value. */
-	}
-	if (param->n_io_bulk > 0) {
-		wdev->n_io_bulk = param->n_io_bulk;
-	} else {
-		wdev->n_io_bulk = 1024; /* default value. */
-	}
-	LOGn("n_pack_bulk: %u\n"
-		"n_io_bulk: %u\n",
+	wdev->n_pack_bulk = 128; /* default value. */
+	if (param->n_pack_bulk > 0) { wdev->n_pack_bulk = param->n_pack_bulk; }
+	wdev->n_io_bulk = 1024; /* default value. */
+	if (param->n_io_bulk > 0) { wdev->n_io_bulk = param->n_io_bulk; }
+	LOGn("n_pack_bulk: %u\n""n_io_bulk: %u\n",
 		wdev->n_pack_bulk, wdev->n_io_bulk);
 
 	lq = bdev_get_queue(wdev->ldev);
