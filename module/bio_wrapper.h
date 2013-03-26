@@ -11,6 +11,7 @@
 #include <linux/blkdev.h>
 #include <linux/list.h>
 #include <linux/completion.h>
+#include <linux/time.h>
 
 #include "walb/common.h"
 
@@ -55,7 +56,23 @@ struct bio_wrapper
 #ifdef WALB_DEBUG
 	atomic_t state;
 #endif
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	struct timespec ts[6];
+#endif
 };
+
+#ifdef WALB_PERFORMANCE_ANALYSIS
+enum
+{
+	WALB_TIME_BEGIN,
+	WALB_TIME_LOG_SUBMITTED,
+	WALB_TIME_LOG_COMPLETED,
+	WALB_TIME_DATA_SUBMITTED,
+	WALB_TIME_DATA_COMPLETED,
+	WALB_TIME_END,
+	WALB_TIME_MAX,
+};
+#endif
 
 /**
  * bio_wrapper.flags.
@@ -99,6 +116,10 @@ enum
 #ifdef WALB_OVERLAPPED_SERIALIZE
 #define bio_wrapper_state_is_delayed(biow) \
 	test_bit(BIO_WRAPPER_DELAYED, &(biow)->flags)
+#endif
+
+#ifdef WALB_PERFORMANCE_ANALYSIS
+void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow);
 #endif
 
 UNUSED void print_bio_wrapper(const char *level, struct bio_wrapper *biow);

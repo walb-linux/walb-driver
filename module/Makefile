@@ -5,6 +5,7 @@ DYNAMIC_DEBUG = 0
 OVERLAP = 1 #overlapped writes serialization.
 FAST_ALG = 1 # use fast algorithm instead of easy.
 ASSERT = 0 # enable ASSERT even with relase build.
+PERF = 0 # enable performacne analysis of each bio wrapper.
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DYNAMIC_DEBUG),1)
@@ -25,6 +26,10 @@ endif
 
 ifeq ($(FAST_ALG),1)
   DEBFLAGS += -DWALB_FAST_ALGORITHM
+endif
+
+ifeq ($(PERF),1)
+  DEBFLAGS += -DWALB_PERFORMANCE_ANALYSIS
 endif
 
 EXTRA_CFLAGS += $(DEBFLAGS)

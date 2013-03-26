@@ -8,6 +8,7 @@
 #include <linux/delay.h>
 #include <linux/ratelimit.h>
 #include <linux/printk.h>
+#include <linux/time.h>
 #include "kern.h"
 #include "io.h"
 #include "bio_wrapper.h"
@@ -1132,6 +1133,9 @@ static void task_wait_for_bio_wrapper_list(struct work_struct *work)
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
 			list_del(&biow->list2);
 			wait_for_write_bio_wrapper(wdev, biow);
+#ifdef WALB_PERFORMANCE_ANALYSIS
+			getnstimeofday(&biow->ts[WALB_TIME_DATA_COMPLETED]);
+#endif
 			complete(&biow->done);
 		}
 	}
@@ -1403,6 +1407,9 @@ static void submit_logpack(
 			rec = &logh->record[i];
 			/* The biow must be for the next record. */
 		}
+#ifdef WALB_PERFORMANCE_ANALYSIS
+		getnstimeofday(&biow->ts[WALB_TIME_LOG_SUBMITTED]);
+#endif
 		if (test_bit_u32(LOG_RECORD_DISCARD, &rec->flags)) {
 			/* No need to execute IO to the log device. */
 			ASSERT(bio_wrapper_state_is_discard(biow));
@@ -1748,6 +1755,10 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 				LOGe("data IO error. to be read-only mode.\n");
 				set_read_only_mode(iocored);
 			}
+#ifdef WALB_PERFORMANCE_ANALYSIS
+			getnstimeofday(&biow->ts[WALB_TIME_END]);
+			print_bio_wrapper_performance(KERN_NOTICE, biow);
+#endif
 			destroy_bio_wrapper_dec(wdev, biow);
 		}
 		ASSERT(list_empty(&wpack->biow_list));
@@ -2318,6 +2329,9 @@ static void wait_for_logpack_and_submit_datapack(
 		bio_error = wait_for_bio_entry_list(&biow->bioe_list);
 		if (is_failed || bio_error) { goto error_io; }
 
+#ifdef WALB_PERFORMANCE_ANALYSIS
+		getnstimeofday(&biow->ts[WALB_TIME_LOG_COMPLETED]);
+#endif
 		if (biow->len == 0) {
 			/* Zero-flush. */
 			ASSERT(wpack->is_zero_flush_only);
@@ -2688,6 +2702,10 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 	if (is_plugging) { blk_start_plug(&plug); }
 	submit_bio_entry_list(&biow->bioe_list);
 	if (is_plugging) { blk_finish_plug(&plug); }
+
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	getnstimeofday(&biow->ts[WALB_TIME_DATA_SUBMITTED]);
+#endif
 }
 
 /**
@@ -3555,6 +3573,9 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	biow->private_data = wdev;
 
 	if (is_write) {
+#ifdef WALB_PERFORMANCE_ANALYSIS
+		getnstimeofday(&biow->ts[WALB_TIME_BEGIN]);
+#endif
 		/* Calculate checksum. */
 		biow->csum = bio_calc_checksum(
 			biow->bio, wdev->log_checksum_salt);
