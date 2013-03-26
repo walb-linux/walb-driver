@@ -186,6 +186,9 @@ static bool get_snapshot_record_from_ctl_u2k(
 static void set_chunk_sectors(
 	unsigned int *chunk_sectors, unsigned int pbs,
 	const struct request_queue *q);
+static void print_queue_limits(
+	const char *level, const char *msg,
+	const struct queue_limits *limits);
 
 /* Workqueues. */
 static bool initialize_workqueues(void);
@@ -1869,6 +1872,50 @@ static void set_chunk_sectors(
 }
 
 /**
+ * Print queue limits parameters.
+ *
+ * @level KERN_ERR, KERN_NOTICE, etc.
+ * @msg message.
+ * @limits queue limits to print.
+ */
+static void print_queue_limits(
+	const char *level, const char *msg,
+	const struct queue_limits *limits)
+{
+	printk("%s"
+		"queue limits of %s:\n"
+		"    max_hw_sectors: %u\n"
+		"    max_sectors: %u\n"
+		"    max_segment_size: %u\n"
+		"    physical_block_size: %u\n"
+		"    alignment_offset: %u\n"
+		"    io_min: %u\n"
+		"    io_opt: %u\n"
+		"    max_discard_sectors: %u\n"
+		"    max_write_same_sectors: %u\n"
+		"    discard_granularity: %u\n"
+		"    discard_alignment: %u\n"
+		"    logical_block_size: %u\n"
+		"    max_segments: %u\n"
+		"    max_integrity_segments: %u\n"
+		, level, msg
+		, limits->max_sectors
+		, limits->max_hw_sectors
+		, limits->max_segment_size
+		, limits->physical_block_size
+		, limits->alignment_offset
+		, limits->io_min
+		, limits->io_opt
+		, limits->max_discard_sectors
+		, limits->max_write_same_sectors
+		, limits->discard_granularity
+		, limits->discard_alignment
+		, limits->logical_block_size
+		, limits->max_segments
+		, limits->max_integrity_segments);
+}
+
+/**
  * Initialize workqueues.
  *
  * RETURN:
@@ -1959,6 +2006,9 @@ static int walb_prepare_device(
 	dq = bdev_get_queue(wdev->ddev);
 	blk_queue_stack_limits(wdev->queue, lq);
 	blk_queue_stack_limits(wdev->queue, dq);
+	print_queue_limits(KERN_NOTICE, "lq", &lq->limits);
+	print_queue_limits(KERN_NOTICE, "dq", &dq->limits);
+	print_queue_limits(KERN_NOTICE, "wdev", &wdev->queue->limits);
 
 	/* Allocate a gendisk and set parameters. */
 	wdev->gd = alloc_disk(1);
