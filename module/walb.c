@@ -22,6 +22,7 @@
 #include <linux/bio.h>
 #include <linux/spinlock.h>
 #include <linux/rwsem.h>
+#include <linux/version.h>
 #include <asm/atomic.h>
 
 #include "kern.h"
@@ -1999,7 +2000,11 @@ static int walb_prepare_device(
 	wdev->queue->queuedata = wdev;
 
 	/* Queue limits. */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)
 	blk_set_default_limits(&wdev->queue->limits);
+#else
+	blk_set_stacking_limits(&wdev->queue->limits);
+#endif
 	blk_queue_logical_block_size(wdev->queue, LOGICAL_BLOCK_SIZE);
 	blk_queue_physical_block_size(wdev->queue, wdev->physical_bs);
 	lq = bdev_get_queue(wdev->ldev);
