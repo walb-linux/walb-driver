@@ -18,8 +18,7 @@
 #include "walb/super.h"
 #include "walb/log_device.h"
 #include "walb/log_record.h"
-#include "../walblog_format.h"
-
+#include "walb_log.h"
 
 namespace walb {
 namespace util {
