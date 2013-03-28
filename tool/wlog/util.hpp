@@ -202,8 +202,11 @@ uint64_t fromUnitIntString(const std::string &valStr)
             throw RT_ERR("Not numeric charactor.");
         }
     }
-    uint64_t val = atoll(s.c_str());
-    uint64_t mask = (1ULL << (64 - shift)) - 1;
+    uint64_t val = ::atoll(s.c_str());
+    uint64_t mask = uint64_t(-1);
+    if (0 < shift) {
+        mask = (1ULL << (64 - shift)) - 1;
+    }
     if ((val & mask) != val) {
         throw RT_ERR("fromUnitIntString: overflow.");
     }
