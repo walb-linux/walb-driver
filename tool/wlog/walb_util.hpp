@@ -14,10 +14,12 @@
 #include <functional>
 
 #include "util.hpp"
+#include "fileio.hpp"
 #include "walb/super.h"
 #include "walb/log_device.h"
 #include "walb/log_record.h"
 #include "../walblog_format.h"
+
 
 namespace walb {
 namespace util {
@@ -29,7 +31,7 @@ class WalbSuperBlock
 {
 private:
     /* Log device. */
-    BlockDevice& bd_;
+    cybozu::util::BlockDevice& bd_;
     /* Physical block size */
     const unsigned int pbs_;
     /* Super block offset in the log device [physical block]. */
@@ -42,7 +44,7 @@ private:
     std::unique_ptr<u8, FreeDeleter> data_;
 
 public:
-    WalbSuperBlock(BlockDevice& bd)
+    WalbSuperBlock(cybozu::util::BlockDevice& bd)
         : bd_(bd)
         , pbs_(bd.getPhysicalBlockSize())
         , offset_(get1stSuperBlockOffsetStatic(pbs_))
@@ -449,14 +451,14 @@ public:
      * Write the logpack header block.
      */
     void write(int fd) {
-        util::FdWriter fdw(fd);
+        cybozu::util::FdWriter fdw(fd);
         write(fdw);
     }
 
     /**
      * Write the logpack header block.
      */
-    void write(util::FdWriter &fdw) {
+    void write(cybozu::util::FdWriter &fdw) {
         updateChecksum();
         if (!isValid(true)) {
             throw RT_ERR("logpack header invalid.");
@@ -772,7 +774,7 @@ public:
                       record().checksum, calcIoChecksum());
             for (size_t i = 0; i < ioSizePb(); i++) {
                 ::fprintf(fp, "----------block %zu----------\n", i);
-                util::printByteArray(fp, data_[i].get(), pbs());
+                cybozu::util::printByteArray(fp, data_[i].get(), pbs());
             }
         }
     }
@@ -842,20 +844,20 @@ public:
     }
 
     void read(int fd) {
-        FdReader fdr(fd);
+        cybozu::util::FdReader fdr(fd);
         read(fdr);
     }
 
-    void read(FdReader& fdr) {
+    void read(cybozu::util::FdReader& fdr) {
         fdr.read(ptr<char>(), WALBLOG_HEADER_SIZE);
     }
 
     void write(int fd) {
-        FdWriter fdw(fd);
+        cybozu::util::FdWriter fdw(fd);
         write(fdw);
     }
 
-    void write(util::FdWriter& fdw) {
+    void write(cybozu::util::FdWriter& fdw) {
         updateChecksum();
         fdw.write(ptr<char>(), WALBLOG_HEADER_SIZE);
     }

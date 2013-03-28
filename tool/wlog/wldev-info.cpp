@@ -87,7 +87,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -127,7 +127,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "Wlinfo: show superblock information of a log device.\n"
             "Usage: wlinfo [options] LOG_DEVICE_PATH\n"
             "Options:\n"
@@ -143,7 +143,7 @@ class WalbLogInfo
 {
 private:
     const Config& config_;
-    walb::util::BlockDevice bd_;
+    cybozu::util::BlockDevice bd_;
     walb::util::WalbSuperBlock super_;
     const size_t blockSize_;
 

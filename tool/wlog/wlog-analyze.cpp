@@ -18,6 +18,8 @@
 #include <getopt.h>
 
 #include "util.hpp"
+#include "fileio.hpp"
+#include "memory_buffer.hpp"
 #include "walb_util.hpp"
 #include "aio_util.hpp"
 
@@ -99,7 +101,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -120,7 +122,7 @@ private:
             switch (c) {
             case Opt::BLK_SIZE:
             case 'b':
-                blockSize_ = walb::util::fromUnitIntString(optarg);
+                blockSize_ = cybozu::util::fromUnitIntString(optarg);
                 break;
             case Opt::VERBOSE:
             case 'v':
@@ -144,7 +146,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "Wlanalyze: analyze wlog.\n"
             "Usage: wlanalyze [options] WLOG_PATH [WLOG_PATH...]\n"
             "  WLOG_PATH: walb log path. '-' for stdin. (default: '-')\n"
@@ -189,7 +191,7 @@ public:
             }
         } else {
             for (size_t i = 0; i < config_.numWlogs(); i++) {
-                walb::util::FileOpener fo(config_.inWlogPath(i), O_RDONLY);
+                cybozu::util::FileOpener fo(config_.inWlogPath(i), O_RDONLY);
                 lsid = analyzeWlog(fo.fd(), lsid, uuid);
                 fo.close();
             }
@@ -217,12 +219,12 @@ private:
         if (inFd < 0) {
             throw RT_ERR("inFd is not valid");
         }
-        walb::util::FdReader fdr(inFd);
+        cybozu::util::FdReader fdr(inFd);
 
         walb::util::WalbLogFileHeader wh;
         try {
             wh.read(fdr);
-        } catch (walb::util::EofError &e) {
+        } catch (cybozu::util::EofError &e) {
             return beginLsid;
         }
         if (!wh.isValid(true)) {
@@ -243,7 +245,7 @@ private:
 
         const unsigned int pbs = wh.pbs();
         const unsigned int bufferSize = 16 * 1024 * 1024;
-        walb::util::BlockAllocator<u8> ba(bufferSize / pbs, pbs, pbs);
+        cybozu::util::BlockAllocator<u8> ba(bufferSize / pbs, pbs, pbs);
 
         uint64_t lsid = wh.beginLsid();
         if (beginLsid != uint64_t(-1) && lsid != beginLsid) {
@@ -260,7 +262,7 @@ private:
                 updateBitmap(logh);
                 lsid = logh.nextLogpackLsid();
             }
-        } catch (walb::util::EofError &e) {
+        } catch (cybozu::util::EofError &e) {
         }
         if (lsid != wh.endLsid()) {
             throw RT_ERR("the wlog lacks logs from %" PRIu64 ". endLsid is %" PRIu64 "",
@@ -270,7 +272,7 @@ private:
     }
 
     Block readBlock(
-        walb::util::FdReader &fdr, walb::util::BlockAllocator<u8> &ba) {
+        cybozu::util::FdReader &fdr, cybozu::util::BlockAllocator<u8> &ba) {
         Block b = ba.alloc();
         unsigned int bs = ba.blockSize();
         fdr.read(reinterpret_cast<char *>(b.get()), bs);
@@ -278,7 +280,7 @@ private:
     }
 
     LogpackHeaderPtr readLogpackHeader(
-        walb::util::FdReader &fdr, walb::util::BlockAllocator<u8> &ba,
+        cybozu::util::FdReader &fdr, cybozu::util::BlockAllocator<u8> &ba,
         uint32_t salt) {
         Block b = readBlock(fdr, ba);
         return LogpackHeaderPtr(new LogpackHeader(b, ba.blockSize(), salt));
@@ -288,8 +290,8 @@ private:
      * Read, validate, and throw away logpack data.
      */
     void readLogpackData(
-        LogpackHeader &logh, walb::util::FdReader &fdr,
-        walb::util::BlockAllocator<u8> &ba) {
+        LogpackHeader &logh, cybozu::util::FdReader &fdr,
+        cybozu::util::BlockAllocator<u8> &ba) {
         for (size_t i = 0; i < logh.nRecords(); i++) {
             walb::util::WalbLogpackData logd(logh, i);
             if (!logd.hasData()) { continue; }

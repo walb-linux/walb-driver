@@ -22,10 +22,14 @@
 #include <linux/fs.h>
 #include <getopt.h>
 
+#include "checksum.hpp"
 #include "util.hpp"
+#include "fileio.hpp"
+#include "memory_buffer.hpp"
+#include "io_recipe.hpp"
+
 #include "walb/common.h"
 #include "walb/block_size.h"
-#include "io_recipe.hpp"
 
 /**
  * Command line configuration.
@@ -113,7 +117,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -121,7 +125,7 @@ private:
 
     template <typename IntType>
     IntType str2int(const char *str) const {
-        return static_cast<IntType>(walb::util::fromUnitIntString(str));
+        return static_cast<IntType>(cybozu::util::fromUnitIntString(str));
     }
 
     void parse(int argc, char* argv[]) {
@@ -169,7 +173,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "verify_written_data: verify data written by write_random_data.\n"
             "Usage: verify_written_data [options] [DEVICE|FILE]\n"
             "Options:\n"
@@ -185,7 +189,7 @@ class IoDataVerifier
 {
 private:
     const Config &config_;
-    walb::util::BlockDevice bd_;
+    cybozu::util::BlockDevice bd_;
     size_t bufSizeB_; /* buffer size [block]. */
     std::shared_ptr<char> buf_;
 
@@ -202,9 +206,9 @@ public:
         const unsigned int bs = config_.blockSize();
 
         /* Get IO recipe parser. */
-        std::shared_ptr<walb::util::FileOpener> fop;
+        std::shared_ptr<cybozu::util::FileOpener> fop;
         if (config_.recipePath() != "-") {
-            fop.reset(new walb::util::FileOpener(config_.recipePath(), O_RDONLY));
+            fop.reset(new cybozu::util::FileOpener(config_.recipePath(), O_RDONLY));
         }
         int fd = 0;
         if (fop) { fd = fop->fd(); }
@@ -215,7 +219,7 @@ public:
             walb::util::IoRecipe r = recipeParser.get();
             resizeBufferIfneed(r.ioSizeB());
             bd_.read(r.offsetB() * bs, r.ioSizeB() * bs, buf_.get());
-            uint32_t csum = walb::util::calcChecksum(buf_.get(), r.ioSizeB() * bs, 0);
+            uint32_t csum = cybozu::util::calcChecksum(buf_.get(), r.ioSizeB() * bs, 0);
             ::printf("%s\t%s\t%08x\n",
                      (csum == r.csum() ? "OK" : "NG"), r.toString().c_str(), csum);
         }
@@ -226,7 +230,7 @@ private:
         assert(0 < blockSize);
         assert(0 < sizeB);
         if (isDirect) {
-            return walb::util::allocateBlock<char>(blockSize, blockSize * sizeB);
+            return cybozu::util::allocateBlocks<char>(blockSize, blockSize * sizeB);
         } else {
             return std::shared_ptr<char>(reinterpret_cast<char *>(::malloc(blockSize * sizeB)));
         }
@@ -236,7 +240,7 @@ private:
         if (newSizeB <= bufSizeB_) { return; }
         const unsigned int bs = config_.blockSize();
         if (config_.isDirect()) {
-            buf_ = walb::util::allocateBlock<char>(bs, bs * newSizeB);
+            buf_ = cybozu::util::allocateBlocks<char>(bs, bs * newSizeB);
         } else {
             buf_.reset(reinterpret_cast<char *>(::malloc(bs * newSizeB)));
         }

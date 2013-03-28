@@ -22,8 +22,11 @@
 #include <linux/fs.h>
 #include <getopt.h>
 
+#include "checksum.hpp"
 #include "util.hpp"
+#include "fileio.hpp"
 #include "io_recipe.hpp"
+#include "memory_buffer.hpp"
 #include "walb/common.h"
 #include "walb/block_size.h"
 
@@ -137,7 +140,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -145,7 +148,7 @@ private:
 
     template <typename IntType>
     IntType str2int(const char *str) const {
-        return static_cast<IntType>(walb::util::fromUnitIntString(str));
+        return static_cast<IntType>(cybozu::util::fromUnitIntString(str));
     }
 
     void parse(int argc, char* argv[]) {
@@ -208,7 +211,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "write_random_data: generate random data and write them.\n"
             "Usage: write_random_data [options] [DEVICE|FILE]\n"
             "Options:\n"
@@ -227,8 +230,8 @@ class RandomDataWriter
 {
 private:
     const Config &config_;
-    walb::util::BlockDevice bd_;
-    walb::util::Rand<unsigned int> randUint_;
+    cybozu::util::BlockDevice bd_;
+    cybozu::util::Rand<unsigned int> randUint_;
     std::shared_ptr<char> buf_;
 
 public:
@@ -249,7 +252,7 @@ public:
             const unsigned int bs = config_.blockSize();
             unsigned int ioSize = decideIoSize(totalSize - written);
             fillBufferRandomly(ioSize);
-            uint32_t csum = walb::util::calcChecksum(buf_.get(), bs * ioSize, 0);
+            uint32_t csum = cybozu::util::calcChecksum(buf_.get(), bs * ioSize, 0);
             bd_.write(offset * bs, bs * ioSize, buf_.get());
             walb::util::IoRecipe r(offset, ioSize, csum);
             r.print();
@@ -293,7 +296,7 @@ private:
         assert(0 < blockSize);
         assert(0 < maxIoB);
         if (isDirect) {
-            return walb::util::allocateBlock<char>(blockSize, blockSize * maxIoB);
+            return cybozu::util::allocateBlocks<char>(blockSize, blockSize * maxIoB);
         } else {
             return std::shared_ptr<char>(reinterpret_cast<char *>(::malloc(blockSize * maxIoB)));
         }

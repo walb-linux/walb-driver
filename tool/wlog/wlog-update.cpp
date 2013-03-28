@@ -150,7 +150,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -211,7 +211,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "Wlupdate: update wlog file header.\n"
             "Usage: wlupdate [options] WLOG_PATH\n"
             "  WLOG_PATH: walb log path. must be seekable.\n"
@@ -240,11 +240,11 @@ public:
         : config_(config) {}
 
     void update() {
-        walb::util::FileOpener fo(config_.inWlogPath(), O_RDWR);
+        cybozu::util::FileOpener fo(config_.inWlogPath(), O_RDWR);
         walb::util::WalbLogFileHeader wh;
 
         /* Read header. */
-        walb::util::FdReader fdr(fo.fd());
+        cybozu::util::FdReader fdr(fo.fd());
         fdr.lseek(0, SEEK_SET);
         wh.read(fdr);
         if (!wh.isValid(true)) {
@@ -276,7 +276,7 @@ public:
             if (!wh.isValid(false)) {
                 throw RT_ERR("Updated header is invalid.");
             }
-            walb::util::FdWriter fdw(fo.fd());
+            cybozu::util::FdWriter fdw(fo.fd());
             fdw.lseek(0, SEEK_SET);
             wh.write(fdw);
             fo.close();

@@ -34,9 +34,9 @@
 
 #include "walb/common.h"
 #include "util.hpp"
-#include "../random.h"
+#include "fileio.hpp"
 
-namespace walb {
+namespace cybozu {
 namespace aio {
 
 enum IoType
@@ -75,29 +75,15 @@ class AioDataAllocator
 {
 private:
     unsigned int key_;
-    walb::util::DataBuffer<AioData> buf_;
 
 public:
     AioDataAllocator()
-        : key_(1)
-        , buf_(16384) {}
-
-    explicit AioDataAllocator(size_t size)
-        : key_(1)
-        , buf_(size) {}
+        : key_(1) {}
 
     AioDataPtr alloc() {
-        AioData *p = buf_.alloc();
-        if (p != nullptr) {
-            p->key = getKey();
-            return AioDataPtr(p, [&](AioData *p) {
-                    buf_.free(p);
-                });
-        } else {
-            AioDataPtr p(new AioData());
-            p->key = getKey();
-            return p;
-        }
+        AioDataPtr p(new AioData());
+        p->key = getKey();
+        return p;
     }
 private:
     /**
@@ -127,9 +113,11 @@ static void testAioDataAllocator()
         //::printf("add %u\n", p->key);
     }
 
+    util::Rand<size_t> rand;
+
     double bTime = util::getTime();
     for (size_t i = 0; i < nTrials; i++) {
-        int nr = ::get_random(10);
+        int nr = rand.get() % 10;
         for (int j = 0; j < nr; j++) {
             AioDataPtr p = queue.front();
             queue.pop();
@@ -218,7 +206,7 @@ public:
     Aio(int fd, size_t queueSize)
         : fd_(fd)
         , queueSize_(queueSize)
-        , allocator_(queueSize * 2)
+        , allocator_()
         , submitQueue_()
         , pendingIOs_()
         , completedIOs_()

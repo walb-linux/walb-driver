@@ -20,6 +20,7 @@
 #include "util.hpp"
 #include "walb_util.hpp"
 #include "aio_util.hpp"
+#include "memory_buffer.hpp"
 
 #include "walb/walb.h"
 
@@ -110,7 +111,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -165,7 +166,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "Wlcat: extract wlog from a log device.\n"
             "Usage: wlcat [options] LOG_DEVICE_PATH\n"
             "Options:\n"
@@ -184,12 +185,12 @@ class WalbLogReader
 {
 private:
     const Config& config_;
-    walb::util::BlockDevice bd_;
+    cybozu::util::BlockDevice bd_;
     walb::util::WalbSuperBlock super_;
     const size_t blockSize_;
     const size_t queueSize_;
-    walb::aio::Aio aio_;
-    walb::util::BlockAllocator<u8> ba_;
+    cybozu::aio::Aio aio_;
+    cybozu::util::BlockAllocator<u8> ba_;
 
     struct Block {
         const u64 lsid;
@@ -388,7 +389,7 @@ public:
         if (outFd <= 0) {
             throw RT_ERR("outFd is not valid.");
         }
-        walb::util::FdWriter fdw(outFd);
+        cybozu::util::FdWriter fdw(outFd);
 
         /* Set lsids. */
         u64 beginLsid = config_.beginLsid();
@@ -477,7 +478,7 @@ private:
      * Write a logpack.
      */
     void writeLogpack(
-        walb::util::FdWriter &fdw, PackHeader &logh,
+        cybozu::util::FdWriter &fdw, PackHeader &logh,
         std::queue<PackDataPtr> &q) {
         if (logh.nRecords() == 0) {
             return;
@@ -515,7 +516,7 @@ private:
         }
         if (logh->header().logpack_lsid != block.lsid) {
             throw InvalidLogpackHeader(
-                walb::util::formatString(
+                cybozu::util::formatString(
                     "logpack %" PRIu64 " is not the expected one %" PRIu64 ".",
                     logh->header().logpack_lsid, block.lsid));
         }
@@ -621,12 +622,12 @@ int main(int argc, char* argv[])
         if (config.isOutStdout()) {
             wlReader.catLog(1);
         } else {
-            walb::util::FileOpener fo(
+            cybozu::util::FileOpener fo(
                 config.outPath(),
                 O_WRONLY | O_CREAT | O_TRUNC,
                 S_IRWXU | S_IRGRP | S_IROTH);
             wlReader.catLog(fo.fd());
-            walb::util::FdWriter(fo.fd()).fdatasync();
+            cybozu::util::FdWriter(fo.fd()).fdatasync();
             fo.close();
         }
     } catch (Config::Error& e) {

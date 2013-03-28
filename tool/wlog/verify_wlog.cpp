@@ -23,6 +23,9 @@
 #include <getopt.h>
 
 #include "util.hpp"
+#include "memory_buffer.hpp"
+#include "fileio.hpp"
+
 #include "walb_util.hpp"
 #include "io_recipe.hpp"
 #include "walb/common.h"
@@ -99,7 +102,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -107,7 +110,7 @@ private:
 
     template <typename IntType>
     IntType str2int(const char *str) const {
-        return static_cast<IntType>(walb::util::fromUnitIntString(str));
+        return static_cast<IntType>(cybozu::util::fromUnitIntString(str));
     }
 
     void parse(int argc, char* argv[]) {
@@ -151,7 +154,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "verify_wlog: verify a walb log with an IO recipe.\n"
             "Usage: verify_wlog [options]\n"
             "Options:\n"
@@ -178,22 +181,22 @@ public:
 
     void run() {
         /* Get IO recipe parser. */
-        std::shared_ptr<walb::util::FileOpener> rFop;
+        std::shared_ptr<cybozu::util::FileOpener> rFop;
         if (config_.recipePath() != "-") {
-            rFop.reset(new walb::util::FileOpener(config_.recipePath(), O_RDONLY));
+            rFop.reset(new cybozu::util::FileOpener(config_.recipePath(), O_RDONLY));
         }
         int rFd = 0;
         if (rFop) { rFd = rFop->fd(); }
         walb::util::IoRecipeParser recipeParser(rFd);
 
         /* Get wlog file descriptor. */
-        std::shared_ptr<walb::util::FileOpener> wlFop;
+        std::shared_ptr<cybozu::util::FileOpener> wlFop;
         if (config_.wlogPath() != "-") {
-            wlFop.reset(new walb::util::FileOpener(config_.wlogPath(), O_RDONLY));
+            wlFop.reset(new cybozu::util::FileOpener(config_.wlogPath(), O_RDONLY));
         }
         int wlFd = 0;
         if (wlFop) { wlFd = wlFop->fd(); }
-        walb::util::FdReader wlFdr(wlFd);
+        cybozu::util::FdReader wlFdr(wlFd);
 
         /* Read wlog header. */
         walb::util::WalbLogFileHeader wh;
@@ -204,7 +207,7 @@ public:
 
         const unsigned int pbs = wh.pbs();
         const unsigned int bufferSize = 16 * 1024 * 1024;
-        walb::util::BlockAllocator<uint8_t> ba(bufferSize / pbs, pbs, pbs);
+        cybozu::util::BlockAllocator<uint8_t> ba(bufferSize / pbs, pbs, pbs);
         const uint32_t salt = wh.salt();
 
         uint64_t beginLsid = wh.beginLsid();
@@ -257,7 +260,7 @@ private:
     using Block = std::shared_ptr<uint8_t>;
 
     Block readBlock(
-        walb::util::FdReader &fdr, walb::util::BlockAllocator<u8> &ba) {
+        cybozu::util::FdReader &fdr, cybozu::util::BlockAllocator<u8> &ba) {
         Block b = ba.alloc();
         unsigned int bs = ba.blockSize();
         fdr.read(reinterpret_cast<char *>(b.get()), bs);
@@ -265,14 +268,14 @@ private:
     }
 
     PackHeaderPtr readPackHeader(
-        walb::util::FdReader &fdr, walb::util::BlockAllocator<u8> &ba, uint32_t salt) {
+        cybozu::util::FdReader &fdr, cybozu::util::BlockAllocator<u8> &ba, uint32_t salt) {
         Block b = readBlock(fdr, ba);
         return PackHeaderPtr(new PackHeader(b, ba.blockSize(), salt));
     }
 
     void readPackData(
-        PackHeader &logh, walb::util::FdReader &fdr,
-        walb::util::BlockAllocator<u8> &ba, std::queue<PackDataPtr> &queue) {
+        PackHeader &logh, cybozu::util::FdReader &fdr,
+        cybozu::util::BlockAllocator<u8> &ba, std::queue<PackDataPtr> &queue) {
         for (size_t i = 0; i < logh.nRecords(); i++) {
             PackDataPtr logdp(new PackData(logh, i));
             PackData &logd = *logdp;

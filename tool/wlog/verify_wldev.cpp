@@ -23,6 +23,7 @@
 #include <getopt.h>
 
 #include "util.hpp"
+#include "memory_buffer.hpp"
 #include "walb_util.hpp"
 #include "io_recipe.hpp"
 #include "walb/common.h"
@@ -109,7 +110,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -117,7 +118,7 @@ private:
 
     template <typename IntType>
     IntType str2int(const char *str) const {
-        return static_cast<IntType>(walb::util::fromUnitIntString(str));
+        return static_cast<IntType>(cybozu::util::fromUnitIntString(str));
     }
 
     void parse(int argc, char* argv[]) {
@@ -169,7 +170,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "verify_wldev: verify logs on a walb log device with an IO recipe.\n"
             "Usage: verify_wldev [options] WALB_LOG_DEVICE\n"
             "Options:\n"
@@ -190,12 +191,12 @@ private:
     using PackDataPtr = std::shared_ptr<PackData>;
 
     const Config &config_;
-    walb::util::BlockDevice wlDev_;
+    cybozu::util::BlockDevice wlDev_;
     walb::util::WalbSuperBlock super_;
     const unsigned int pbs_;
     const uint32_t salt_;
     const unsigned int BUFFER_SIZE_;
-    walb::util::BlockAllocator<uint8_t> ba_;
+    cybozu::util::BlockAllocator<uint8_t> ba_;
 
 public:
     WldevVerifier(const Config &config)
@@ -209,9 +210,9 @@ public:
 
     void run() {
         /* Get IO recipe parser. */
-        std::shared_ptr<walb::util::FileOpener> rFop;
+        std::shared_ptr<cybozu::util::FileOpener> rFop;
         if (config_.recipePath() != "-") {
-            rFop.reset(new walb::util::FileOpener(config_.recipePath(), O_RDONLY));
+            rFop.reset(new cybozu::util::FileOpener(config_.recipePath(), O_RDONLY));
         }
         int rFd = 0;
         if (rFop) { rFd = rFop->fd(); }

@@ -21,6 +21,8 @@
 #include <getopt.h>
 
 #include "util.hpp"
+#include "fileio.hpp"
+#include "memory_buffer.hpp"
 #include "walb_util.hpp"
 #include "aio_util.hpp"
 
@@ -113,7 +115,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -169,7 +171,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "Wlredo: redo wlog on a block device.\n"
             "Usage: wlcat [options] DEVICE_PATH\n"
             "Options:\n"
@@ -556,11 +558,11 @@ class WalbLogApplyer
 {
 private:
     const Config& config_;
-    walb::util::BlockDevice bd_;
+    cybozu::util::BlockDevice bd_;
     const size_t blockSize_;
     const size_t queueSize_;
-    walb::aio::Aio aio_;
-    walb::util::BlockAllocator<u8> ba_;
+    cybozu::aio::Aio aio_;
+    cybozu::util::BlockAllocator<u8> ba_;
     walb::util::WalbLogFileHeader wh_;
 
     std::queue<IoPtr> ioQ_; /* serialized by lsid. */
@@ -627,7 +629,7 @@ public:
         if (inFd < 0) {
             throw RT_ERR("inFd is not valid.");
         }
-        walb::util::FdReader fdr(inFd);
+        cybozu::util::FdReader fdr(inFd);
 
         /* Read walblog header. */
         wh_.read(inFd);
@@ -657,7 +659,7 @@ public:
                     redoLsid = logd.lsid();
                 }
             }
-        } catch (walb::util::EofError &e) {
+        } catch (cybozu::util::EofError &e) {
             ::printf("Reach input EOF.\n");
         } catch (walb::util::InvalidLogpackData &e) {
             throw RT_ERR("InalidLogpackData");
@@ -699,7 +701,7 @@ private:
     /**
      * Read a logpack data.
      */
-    void readLogpackData(PackData &logd, walb::util::FdReader &fdr) {
+    void readLogpackData(PackData &logd, cybozu::util::FdReader &fdr) {
         if (!logd.hasData()) { return; }
         //::printf("ioSizePb: %u\n", logd.ioSizePb()); //debug
         for (size_t i = 0; i < logd.ioSizePb(); i++) {
@@ -713,7 +715,7 @@ private:
     /**
      * Read a block data from a fd reader.
      */
-    Block readBlock(walb::util::FdReader& fdr) {
+    Block readBlock(cybozu::util::FdReader& fdr) {
         Block b = ba_.alloc();
         if (b.get() == nullptr) {
             throw RT_ERR("allocate failed.");
@@ -1054,7 +1056,7 @@ int main(int argc, char* argv[])
         if (config.isFromStdin()) {
             wlApp.readAndApply(0);
         } else {
-            walb::util::FileOpener fo(config.inWlogPath(), O_RDONLY);
+            cybozu::util::FileOpener fo(config.inWlogPath(), O_RDONLY);
             wlApp.readAndApply(fo.fd());
             fo.close();
         }

@@ -10,7 +10,9 @@
 #include <vector>
 #include <stdexcept>
 #include <getopt.h>
+
 #include "util.hpp"
+#include "fileio.hpp"
 
 /**
  * Command line configuration.
@@ -69,7 +71,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -111,7 +113,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "bdiff: Show block diff.\n"
             "Usage: bdiff [options] FILE1 FILE2\n"
             "Options:\n"
@@ -127,10 +129,10 @@ private:
  */
 uint64_t checkBlockDiff(Config& config)
 {
-    walb::util::FileOpener f1(config.filePath1(), O_RDONLY);
-    walb::util::FileOpener f2(config.filePath2(), O_RDONLY);
-    walb::util::FdReader fdr1(f1.fd());
-    walb::util::FdReader fdr2(f2.fd());
+    cybozu::util::FileOpener f1(config.filePath1(), O_RDONLY);
+    cybozu::util::FileOpener f2(config.filePath2(), O_RDONLY);
+    cybozu::util::FdReader fdr1(f1.fd());
+    cybozu::util::FdReader fdr2(f2.fd());
 
     const unsigned int bs = config.blockSize();
     std::unique_ptr<char> p1(new char[bs]);
@@ -149,13 +151,13 @@ uint64_t checkBlockDiff(Config& config)
                 nDiffer++;
                 if (config.isVerbose()) {
                     ::printf("block %" PRIu64 " differ\n", nChecked);
-                    walb::util::printByteArray(p1.get(), bs);
-                    walb::util::printByteArray(p2.get(), bs);
+                    cybozu::util::printByteArray(p1.get(), bs);
+                    cybozu::util::printByteArray(p2.get(), bs);
                 }
             }
             nChecked++;
         }
-    } catch (walb::util::EofError& e) {
+    } catch (cybozu::util::EofError& e) {
     }
 
     f1.close();

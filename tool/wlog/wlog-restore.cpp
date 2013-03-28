@@ -23,6 +23,7 @@
 #include <getopt.h>
 
 #include "util.hpp"
+#include "memory_buffer.hpp"
 #include "walb_util.hpp"
 
 #include "walb/walb.h"
@@ -126,7 +127,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -168,7 +169,7 @@ private:
                 break;
             case Opt::DDEV_SIZE:
             case 's':
-                ddevLb_ = walb::util::fromUnitIntString(optarg);
+                ddevLb_ = cybozu::util::fromUnitIntString(optarg);
                 break;
             case Opt::VERIFY:
                 isVerify_ = true;
@@ -195,7 +196,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "Wlresotre: restore walb log to a log device.\n"
             "Usage: wlrestore [options] LOG_DEVICE_PATH < WLOG_FILE\n"
             "Options:\n"
@@ -220,12 +221,12 @@ private:
     int64_t lsidDiff_;
 
     using Block = std::shared_ptr<u8>;
-    using BlockA = walb::util::BlockAllocator<u8>;
-    using BlockDev = walb::util::BlockDevice;
+    using BlockA = cybozu::util::BlockAllocator<u8>;
+    using BlockDev = cybozu::util::BlockDevice;
     using WlogHeader = walb::util::WalbLogFileHeader;
     using PackHeader = walb::util::WalbLogpackHeader;
     using PackData = walb::util::WalbLogpackData;
-    using FdReader = walb::util::FdReader;
+    using FdReader = cybozu::util::FdReader;
     using SuperBlock = walb::util::WalbSuperBlock;
 
 public:
@@ -281,7 +282,7 @@ public:
         try {
             while (readLogpackAndRestore(
                        fdr, blkdev, super, ba, wlHead, restoredLsid)) {}
-        } catch (walb::util::EofError &e) {
+        } catch (cybozu::util::EofError &e) {
             ::printf("Reached input EOF.\n");
         } catch (walb::util::InvalidLogpackData &e) {
             throw RT_ERR("InvalidLogpackData");

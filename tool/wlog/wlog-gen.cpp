@@ -23,6 +23,7 @@
 #include <getopt.h>
 
 #include "util.hpp"
+#include "memory_buffer.hpp"
 #include "walb_util.hpp"
 
 #include "walb/walb.h"
@@ -157,7 +158,7 @@ private:
         std::string msg;
         va_start(args, format);
         try {
-            msg = walb::util::formatStringV(format, args);
+            msg = cybozu::util::formatStringV(format, args);
         } catch (...) {}
         va_end(args);
         throw Error(msg);
@@ -165,7 +166,7 @@ private:
 
     template <typename IntType>
     IntType str2int(const char *str) const {
-        return static_cast<IntType>(walb::util::fromUnitIntString(str));
+        return static_cast<IntType>(cybozu::util::fromUnitIntString(str));
     }
 
     void parse(int argc, char* argv[]) {
@@ -192,7 +193,7 @@ private:
             switch (c) {
             case Opt::DEVSIZE:
             case 's':
-                devSize_ = walb::util::fromUnitIntString(optarg);
+                devSize_ = cybozu::util::fromUnitIntString(optarg);
                 break;
             case Opt::MINIOSIZE:
                 minIoSize_ = str2int<unsigned int>(optarg);
@@ -243,7 +244,7 @@ private:
     }
 
     static std::string generateHelpString() {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "Wlgen: generate walb log randomly.\n"
             "Usage: wlgen [options]\n"
             "Options:\n"
@@ -301,7 +302,7 @@ public:
         if (config_.outPath() == "-") {
             generateAndWrite(1);
         } else {
-            walb::util::FileOpener f(
+            cybozu::util::FileOpener f(
                 config_.outPath(),
                 O_WRONLY | O_CREAT | O_TRUNC, S_IREAD | S_IWRITE);
             generateAndWrite(f.fd());
@@ -333,8 +334,8 @@ private:
         const uint32_t salt = rand.get32();
         const unsigned int pbs = config_.pbs();
         uint64_t lsid = config_.lsid();
-        Block hBlock = walb::util::allocateBlock<u8>(pbs, pbs);
-        walb::util::BlockAllocator<u8> ba(config_.maxPackPb(), pbs, pbs);
+        Block hBlock = cybozu::util::allocateBlocks<u8>(pbs, pbs);
+        cybozu::util::BlockAllocator<u8> ba(config_.maxPackPb(), pbs, pbs);
 
         /* Generate and write walb log header. */
         wlHead.init(pbs, salt, &uuid[0], lsid, uint64_t(-1));
@@ -375,7 +376,7 @@ private:
             assert(blocks.size() == logh.totalIoSize());
 
             /* Calculate header checksum and write. */
-            walb::util::FdWriter fdw(fd);
+            cybozu::util::FdWriter fdw(fd);
             logh.write(fdw);
 
             /* Write each IO data. */

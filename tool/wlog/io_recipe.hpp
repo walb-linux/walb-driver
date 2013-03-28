@@ -8,6 +8,8 @@
 #ifndef IO_RECIPE_HPP
 #define IO_RECIPE_HPP
 
+#include "util.hpp"
+
 namespace walb {
 namespace util {
 
@@ -27,7 +29,7 @@ public:
     uint32_t csum() const { return csum_; }
 
     std::string toString() const {
-        return walb::util::formatString(
+        return cybozu::util::formatString(
             "%" PRIu64 "\t%u\t%08x", offsetB(), ioSizeB(), csum());
     }
 
