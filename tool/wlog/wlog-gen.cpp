@@ -43,6 +43,7 @@ private:
     uint64_t lsid_; /* start lsid [physical block]. */
     bool isPadding_;
     bool isDiscard_;
+    bool isAllZero_;
     bool isVerbose_;
     bool isHelp_;
     std::string outPath_;
@@ -59,6 +60,7 @@ public:
         , lsid_(0)
         , isPadding_(true)
         , isDiscard_(true)
+        , isAllZero_(true)
         , isVerbose_(false)
         , isHelp_(false)
         , outPath_()
@@ -75,6 +77,7 @@ public:
     uint64_t lsid() const { return lsid_; }
     bool isPadding() const { return isPadding_; }
     bool isDiscard() const { return isDiscard_; }
+    bool isAllZero() const { return isAllZero_; }
     bool isVerbose() const { return isVerbose_; }
     bool isHelp() const { return isHelp_; }
     const std::string& outPath() const { return outPath_; }
@@ -148,6 +151,7 @@ private:
         LSID,
         NOPADDING,
         NODISCARD,
+        NOALLZERO,
         OUTPATH,
         VERBOSE,
         HELP,
@@ -181,6 +185,7 @@ private:
                 {"lsid", 1, 0, Opt::LSID},
                 {"nopadding", 0, 0, Opt::NOPADDING},
                 {"nodiscard", 0, 0, Opt::NODISCARD},
+                {"noallzero", 0, 0, Opt::NOALLZERO},
                 {"outPath", 1, 0, Opt::OUTPATH},
                 {"verbose", 0, 0, Opt::VERBOSE},
                 {"help", 0, 0, Opt::HELP},
@@ -221,6 +226,9 @@ private:
             case Opt::NODISCARD:
                 isDiscard_ = false;
                 break;
+            case Opt::NOALLZERO:
+                isAllZero_ = false;
+                break;
             case Opt::OUTPATH:
             case 'o':
                 outPath_ = std::string(optarg);
@@ -245,8 +253,8 @@ private:
 
     static std::string generateHelpString() {
         return cybozu::util::formatString(
-            "Wlgen: generate walb log randomly.\n"
-            "Usage: wlgen [options]\n"
+            "Wlog-gen: generate walb log randomly.\n"
+            "Usage: wlog-gen [options]\n"
             "Options:\n"
             "  -o, --outPath PATH:    output file path or '-' for stdout.\n"
             "  -b, --pbs SIZE:        physical block size [byte]. (default: %u)\n"
@@ -258,6 +266,7 @@ private:
             "  --lsid LSID:           lsid of the first log. (default: 0)\n"
             "  --nopadding:           no padding. (default: randomly inserted)\n"
             "  --nodiscard:           no discard. (default: randomly inserted)\n"
+            "  --noallzero:           no all-zero. (default: randomly inserted)\n"
             "  -v, --verbose:         verbose messages to stderr.\n"
             "  -h, --help:            show this message.\n",
             LOGICAL_BLOCK_SIZE);
@@ -359,10 +368,16 @@ private:
             for (unsigned int i = 0; i < logh.nRecords(); i++) {
                 walb::util::WalbLogpackData logd(logh, i);
                 if (logd.hasData()) {
+                    bool isAllZero = false;
+                    if (config_.isAllZero()) {
+                        isAllZero = rand.get32() % 100 < 10;
+                    }
                     for (unsigned int j = 0; j < logd.ioSizePb(); j++) {
                         Block b = ba.alloc();
                         ::memset(b.get(), 0, pbs);
-                        *reinterpret_cast<uint64_t *>(b.get()) = tmpLsid++;
+                        if (!isAllZero) {
+                            *reinterpret_cast<uint64_t *>(b.get()) = tmpLsid++;
+                        }
                         logd.addBlock(b);
                         blocks.push_back(b);
                     }
