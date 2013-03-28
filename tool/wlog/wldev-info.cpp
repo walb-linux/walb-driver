@@ -18,7 +18,7 @@
 #include <getopt.h>
 
 #include "util.hpp"
-#include "walb_util.hpp"
+#include "walb_log.hpp"
 #include "aio_util.hpp"
 
 #include "walb/walb.h"
@@ -144,7 +144,7 @@ class WalbLogInfo
 private:
     const Config& config_;
     cybozu::util::BlockDevice bd_;
-    walb::util::WalbSuperBlock super_;
+    walb::log::WalbSuperBlock super_;
     const size_t blockSize_;
 
 public:

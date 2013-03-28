@@ -24,7 +24,7 @@
 
 #include "util.hpp"
 #include "memory_buffer.hpp"
-#include "walb_util.hpp"
+#include "walb_log.hpp"
 
 #include "walb/walb.h"
 
@@ -223,11 +223,11 @@ private:
     using Block = std::shared_ptr<u8>;
     using BlockA = cybozu::util::BlockAllocator<u8>;
     using BlockDev = cybozu::util::BlockDevice;
-    using WlogHeader = walb::util::WalbLogFileHeader;
-    using PackHeader = walb::util::WalbLogpackHeader;
-    using PackData = walb::util::WalbLogpackData;
+    using WlogHeader = walb::log::WalbLogFileHeader;
+    using PackHeader = walb::log::WalbLogpackHeader;
+    using PackData = walb::log::WalbLogpackData;
     using FdReader = cybozu::util::FdReader;
-    using SuperBlock = walb::util::WalbSuperBlock;
+    using SuperBlock = walb::log::WalbSuperBlock;
 
 public:
     WalbLogRestorer(const Config& config)
@@ -284,7 +284,7 @@ public:
                        fdr, blkdev, super, ba, wlHead, restoredLsid)) {}
         } catch (cybozu::util::EofError &e) {
             ::printf("Reached input EOF.\n");
-        } catch (walb::util::InvalidLogpackData &e) {
+        } catch (walb::log::InvalidLogpackData &e) {
             throw RT_ERR("InvalidLogpackData");
         }
 
@@ -346,7 +346,7 @@ private:
             logd.addBlock(readBlock(fdr, ba, logd.pbs()));
         }
         if (!logd.isValid()) {
-            throw walb::util::InvalidLogpackData();
+            throw walb::log::InvalidLogpackData();
         }
     }
 

@@ -23,7 +23,7 @@
 #include "util.hpp"
 #include "fileio.hpp"
 #include "memory_buffer.hpp"
-#include "walb_util.hpp"
+#include "walb_log.hpp"
 #include "aio_util.hpp"
 
 #include "walb/walb.h"
@@ -563,7 +563,7 @@ private:
     const size_t queueSize_;
     cybozu::aio::Aio aio_;
     cybozu::util::BlockAllocator<u8> ba_;
-    walb::util::WalbLogFileHeader wh_;
+    walb::log::WalbLogFileHeader wh_;
 
     std::queue<IoPtr> ioQ_; /* serialized by lsid. */
     std::deque<IoPtr> readyIoQ_; /* ready to submit. */
@@ -585,8 +585,8 @@ private:
     size_t nDiscard_;
     size_t nPadding_;
 
-    using PackHeader = walb::util::WalbLogpackHeader;
-    using PackData = walb::util::WalbLogpackData;
+    using PackHeader = walb::log::WalbLogpackHeader;
+    using PackData = walb::log::WalbLogpackData;
     using PackDataPtr = std::shared_ptr<PackData>;
 
 public:
@@ -661,7 +661,7 @@ public:
             }
         } catch (cybozu::util::EofError &e) {
             ::printf("Reach input EOF.\n");
-        } catch (walb::util::InvalidLogpackData &e) {
+        } catch (walb::log::InvalidLogpackData &e) {
             throw RT_ERR("InalidLogpackData");
         }
 
@@ -708,7 +708,7 @@ private:
             logd.addBlock(readBlock(fdr));
         }
         if (!logd.isValid()) {
-            throw walb::util::InvalidLogpackData();
+            throw walb::log::InvalidLogpackData();
         }
     }
 

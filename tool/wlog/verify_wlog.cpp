@@ -26,7 +26,7 @@
 #include "memory_buffer.hpp"
 #include "fileio.hpp"
 
-#include "walb_util.hpp"
+#include "walb_log.hpp"
 #include "io_recipe.hpp"
 #include "walb/common.h"
 #include "walb/block_size.h"
@@ -168,9 +168,9 @@ private:
 class WlogVerifier
 {
 private:
-    using PackHeader = walb::util::WalbLogpackHeader;
+    using PackHeader = walb::log::WalbLogpackHeader;
     using PackHeaderPtr = std::shared_ptr<PackHeader>;
-    using PackData = walb::util::WalbLogpackData;
+    using PackData = walb::log::WalbLogpackData;
     using PackDataPtr = std::shared_ptr<PackData>;
 
     const Config &config_;
@@ -199,7 +199,7 @@ public:
         cybozu::util::FdReader wlFdr(wlFd);
 
         /* Read wlog header. */
-        walb::util::WalbLogFileHeader wh;
+        walb::log::WalbLogFileHeader wh;
         wh.read(wlFdr);
         if (!wh.isValid(true)) {
             throw RT_ERR("invalid wlog header.");

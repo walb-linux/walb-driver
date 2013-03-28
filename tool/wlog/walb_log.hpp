@@ -1,12 +1,12 @@
 /**
  * @file
- * @brief Utilities.
+ * @brief Walb log utilities.
  * @author HOSHINO Takashi
  *
  * (C) 2012 Cybozu Labs, Inc.
  */
-#ifndef WALB_UTIL_HPP
-#define WALB_UTIL_HPP
+#ifndef WALB_LOG_HPP
+#define WALB_LOG_HPP
 
 #include <cassert>
 #include <memory>
@@ -21,7 +21,7 @@
 #include "walb_log.h"
 
 namespace walb {
-namespace util {
+namespace log {
 
 /**
  * WalB super sector.
@@ -938,7 +938,6 @@ private:
     const T *ptr() const { return reinterpret_cast<const T *>(&data_[0]); }
 };
 
-} //namespace util
-} //namespace walb
+}} //namespace walb::log
 
-#endif /* WALB_UTIL_HPP */
+#endif /* WALB_LOG_HPP */

@@ -18,7 +18,7 @@
 #include <getopt.h>
 
 #include "util.hpp"
-#include "walb_util.hpp"
+#include "walb_log.hpp"
 #include "aio_util.hpp"
 
 #include "walb/walb.h"
@@ -230,9 +230,9 @@ class WalbLogUpdater
 private:
     const Config &config_;
 
-    using LogpackHeader = walb::util::WalbLogpackHeader;
+    using LogpackHeader = walb::log::WalbLogpackHeader;
     using LogpackHeaderPtr = std::shared_ptr<LogpackHeader>;
-    using LogpackData = walb::util::WalbLogpackData;
+    using LogpackData = walb::log::WalbLogpackData;
     using Block = std::shared_ptr<u8>;
 
 public:
@@ -241,7 +241,7 @@ public:
 
     void update() {
         cybozu::util::FileOpener fo(config_.inWlogPath(), O_RDWR);
-        walb::util::WalbLogFileHeader wh;
+        walb::log::WalbLogFileHeader wh;
 
         /* Read header. */
         cybozu::util::FdReader fdr(fo.fd());

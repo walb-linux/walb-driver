@@ -24,7 +24,7 @@
 
 #include "util.hpp"
 #include "memory_buffer.hpp"
-#include "walb_util.hpp"
+#include "walb_log.hpp"
 
 #include "walb/walb.h"
 
@@ -336,7 +336,7 @@ private:
     void generateAndWrite(int fd) {
         Rand rand;
         uint64_t writtenPb = 0;
-        walb::util::WalbLogFileHeader wlHead;
+        walb::log::WalbLogFileHeader wlHead;
         std::vector<u8> uuid(UUID_SIZE);
         setUuid(rand, uuid);
 
@@ -358,7 +358,7 @@ private:
 
         uint64_t nPack = 0;
         while (writtenPb < config_.outLogPb()) {
-            walb::util::WalbLogpackHeader logh(hBlock, pbs, salt);
+            walb::log::WalbLogpackHeader logh(hBlock, pbs, salt);
             generateLogpackHeader(rand, logh, lsid);
             assert(::is_valid_logpack_header_and_records(&logh.header()));
             uint64_t tmpLsid = lsid + 1;
@@ -366,7 +366,7 @@ private:
             /* Prepare blocks and calc checksum if necessary. */
             std::vector<Block> blocks;
             for (unsigned int i = 0; i < logh.nRecords(); i++) {
-                walb::util::WalbLogpackData logd(logh, i);
+                walb::log::WalbLogpackData logd(logh, i);
                 if (logd.hasData()) {
                     bool isAllZero = false;
                     if (config_.isAllZero()) {
@@ -430,7 +430,7 @@ private:
      * Generate logpack header randomly.
      */
     void generateLogpackHeader(
-        Rand &rand, walb::util::WalbLogpackHeader &logh, uint64_t lsid) {
+        Rand &rand, walb::log::WalbLogpackHeader &logh, uint64_t lsid) {
         logh.init(lsid);
         const unsigned int pbs = config_.pbs();
         const unsigned int maxNumRecords = ::max_n_log_record_in_sector(pbs);

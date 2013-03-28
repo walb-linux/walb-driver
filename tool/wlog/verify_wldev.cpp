@@ -24,7 +24,7 @@
 
 #include "util.hpp"
 #include "memory_buffer.hpp"
-#include "walb_util.hpp"
+#include "walb_log.hpp"
 #include "io_recipe.hpp"
 #include "walb/common.h"
 #include "walb/block_size.h"
@@ -185,14 +185,14 @@ private:
 class WldevVerifier
 {
 private:
-    using PackHeader = walb::util::WalbLogpackHeader;
+    using PackHeader = walb::log::WalbLogpackHeader;
     using PackHeaderPtr = std::shared_ptr<PackHeader>;
-    using PackData = walb::util::WalbLogpackData;
+    using PackData = walb::log::WalbLogpackData;
     using PackDataPtr = std::shared_ptr<PackData>;
 
     const Config &config_;
     cybozu::util::BlockDevice wlDev_;
-    walb::util::WalbSuperBlock super_;
+    walb::log::WalbSuperBlock super_;
     const unsigned int pbs_;
     const uint32_t salt_;
     const unsigned int BUFFER_SIZE_;

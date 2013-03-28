@@ -18,7 +18,7 @@
 #include <getopt.h>
 
 #include "util.hpp"
-#include "walb_util.hpp"
+#include "walb_log.hpp"
 #include "aio_util.hpp"
 #include "memory_buffer.hpp"
 
@@ -186,7 +186,7 @@ class WalbLogReader
 private:
     const Config& config_;
     cybozu::util::BlockDevice bd_;
-    walb::util::WalbSuperBlock super_;
+    walb::log::WalbSuperBlock super_;
     const size_t blockSize_;
     const size_t queueSize_;
     cybozu::aio::Aio aio_;
@@ -253,12 +253,12 @@ private:
     class IoQueue {
     private:
         std::deque<IoPtr> ioQ_;
-        const walb::util::WalbSuperBlock& super_;
+        const walb::log::WalbSuperBlock& super_;
         const size_t blockSize_;
         static const size_t maxIoSize_ = 1024 * 1024;
 
     public:
-        explicit IoQueue(const walb::util::WalbSuperBlock& super,
+        explicit IoQueue(const walb::log::WalbSuperBlock& super,
                          size_t blockSize)
             : ioQ_(), super_(super), blockSize_(blockSize) {}
 
@@ -355,8 +355,8 @@ private:
         }
     };
 
-    using PackHeader = walb::util::WalbLogpackHeader;
-    using PackData = walb::util::WalbLogpackData;
+    using PackHeader = walb::log::WalbLogpackHeader;
+    using PackData = walb::log::WalbLogpackData;
     using PackDataPtr = std::shared_ptr<PackData>;
 
 public:
@@ -399,7 +399,7 @@ public:
         aheadLsid_ = beginLsid;
 
         /* Create and write walblog header. */
-        walb::util::WalbLogFileHeader wh;
+        walb::log::WalbLogFileHeader wh;
         wh.init(super_.getPhysicalBlockSize(), super_.getLogChecksumSalt(),
                 super_.getUuid(), beginLsid, config_.endLsid());
         wh.write(outFd);
@@ -502,10 +502,10 @@ private:
     /**
      * Read a logpack header.
      */
-    std::unique_ptr<walb::util::WalbLogpackHeader> readLogpackHeader() {
+    std::unique_ptr<walb::log::WalbLogpackHeader> readLogpackHeader() {
         Block block = readBlock();
-        std::unique_ptr<walb::util::WalbLogpackHeader> logh(
-            new walb::util::WalbLogpackHeader(
+        std::unique_ptr<walb::log::WalbLogpackHeader> logh(
+            new walb::log::WalbLogpackHeader(
                 block.ptr, super_.getPhysicalBlockSize(),
                 super_.getLogChecksumSalt()));
 #if 0
@@ -526,7 +526,7 @@ private:
     /**
      * Read a logpack data.
      */
-    void readLogpackData(walb::util::WalbLogpackData& logd) {
+    void readLogpackData(walb::log::WalbLogpackData& logd) {
         if (!logd.hasData()) { return; }
         //::printf("ioSizePb: %u\n", logd.ioSizePb()); //debug
         for (size_t i = 0; i < logd.ioSizePb(); i++) {

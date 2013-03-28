@@ -89,7 +89,7 @@ depend: Makefile
 	mv Makefile.new Makefile
 
 # DO NOT DELETE
-wlog-cat.o: wlog-cat.cpp util.hpp walb_util.hpp fileio.hpp \
+wlog-cat.o: wlog-cat.cpp util.hpp walb_log.hpp fileio.hpp \
  ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
@@ -101,7 +101,7 @@ wlog-cat.o: wlog-cat.cpp util.hpp walb_util.hpp fileio.hpp \
  ../walb_log.h ../../include/walb/walb.h aio_util.hpp \
  ../../include/walb/common.h memory_buffer.hpp
 wlog-redo.o: wlog-redo.cpp util.hpp fileio.hpp memory_buffer.hpp \
- walb_util.hpp ../../include/walb/super.h ../../include/walb/walb.h \
+ walb_log.hpp ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
  ../../include/walb/checksum.h ../../include/walb/block_size.h \
@@ -112,7 +112,7 @@ wlog-redo.o: wlog-redo.cpp util.hpp fileio.hpp memory_buffer.hpp \
  ../walb_log.h ../../include/walb/walb.h aio_util.hpp \
  ../../include/walb/common.h
 wlog-analyze.o: wlog-analyze.cpp util.hpp fileio.hpp memory_buffer.hpp \
- walb_util.hpp ../../include/walb/super.h ../../include/walb/walb.h \
+ walb_log.hpp ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
  ../../include/walb/checksum.h ../../include/walb/block_size.h \
@@ -122,7 +122,7 @@ wlog-analyze.o: wlog-analyze.cpp util.hpp fileio.hpp memory_buffer.hpp \
  ../../include/walb/u64bits.h ../../include/walb/log_record.h \
  ../walb_log.h ../../include/walb/walb.h aio_util.hpp \
  ../../include/walb/common.h
-wlog-gen.o: wlog-gen.cpp util.hpp memory_buffer.hpp walb_util.hpp \
+wlog-gen.o: wlog-gen.cpp util.hpp memory_buffer.hpp walb_log.hpp \
  fileio.hpp ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
@@ -132,7 +132,7 @@ wlog-gen.o: wlog-gen.cpp util.hpp memory_buffer.hpp walb_util.hpp \
  ../../include/walb/super.h ../../include/walb/snapshot.h \
  ../../include/walb/u64bits.h ../../include/walb/log_record.h \
  ../walb_log.h ../../include/walb/walb.h
-wlog-restore.o: wlog-restore.cpp util.hpp memory_buffer.hpp walb_util.hpp \
+wlog-restore.o: wlog-restore.cpp util.hpp memory_buffer.hpp walb_log.hpp \
  fileio.hpp ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
@@ -142,7 +142,7 @@ wlog-restore.o: wlog-restore.cpp util.hpp memory_buffer.hpp walb_util.hpp \
  ../../include/walb/super.h ../../include/walb/snapshot.h \
  ../../include/walb/u64bits.h ../../include/walb/log_record.h \
  ../walb_log.h ../../include/walb/walb.h
-wlog-update.o: wlog-update.cpp util.hpp walb_util.hpp fileio.hpp \
+wlog-update.o: wlog-update.cpp util.hpp walb_log.hpp fileio.hpp \
  ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
@@ -153,7 +153,7 @@ wlog-update.o: wlog-update.cpp util.hpp walb_util.hpp fileio.hpp \
  ../../include/walb/u64bits.h ../../include/walb/log_record.h \
  ../walb_log.h ../../include/walb/walb.h aio_util.hpp \
  ../../include/walb/common.h
-wldev-info.o: wldev-info.cpp util.hpp walb_util.hpp fileio.hpp \
+wldev-info.o: wldev-info.cpp util.hpp walb_log.hpp fileio.hpp \
  ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
@@ -174,7 +174,7 @@ verify_written_data.o: verify_written_data.cpp checksum.hpp util.hpp \
  ../../include/walb/userland.h ../../include/walb/block_size.h \
  ../../include/walb/common.h
 verify_wlog.o: verify_wlog.cpp util.hpp memory_buffer.hpp fileio.hpp \
- walb_util.hpp ../../include/walb/super.h ../../include/walb/walb.h \
+ walb_log.hpp ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
  ../../include/walb/checksum.h ../../include/walb/block_size.h \
@@ -184,7 +184,7 @@ verify_wlog.o: verify_wlog.cpp util.hpp memory_buffer.hpp fileio.hpp \
  ../../include/walb/u64bits.h ../../include/walb/log_record.h \
  ../walb_log.h ../../include/walb/walb.h io_recipe.hpp \
  ../../include/walb/common.h ../../include/walb/block_size.h
-verify_wldev.o: verify_wldev.cpp util.hpp memory_buffer.hpp walb_util.hpp \
+verify_wldev.o: verify_wldev.cpp util.hpp memory_buffer.hpp walb_log.hpp \
  fileio.hpp ../../include/walb/super.h ../../include/walb/walb.h \
  ../../include/walb/common.h ../../include/walb/userland.h \
  ../../include/walb/disk_name.h ../../include/walb/sector.h \
