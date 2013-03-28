@@ -27,7 +27,7 @@
 #include "walb_util.h"
 #include "logpack.h"
 #include "snapshot.h"
-#include "walblog_format.h"
+#include "walb_log.h"
 
 /*******************************************************************************
  * Macros.
