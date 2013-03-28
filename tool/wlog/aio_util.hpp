@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief Aio Utilities.
+ * @brief Linux Aio Utilities.
  * @author HOSHINO Takashi
  *
  * (C) 2012 Cybozu Labs, Inc.
@@ -159,7 +159,7 @@ static void testAioDataAllocator()
  * Thrown EofError and LibcError in waitFor()/waitOne()/wait(),
  * you can use the Aio instance continuously,
  * however, thrown other error(s),
- * the Aio instance will be not operational.
+ * the Aio instance will be no more operational.
  */
 class Aio
 {
@@ -221,7 +221,7 @@ public:
         }
     }
 
-    ~Aio() {
+    ~Aio() noexcept {
         try {
             release();
         } catch (...) {
@@ -343,9 +343,8 @@ public:
             int err = ::io_submit(ctx_, nr - done, &iocbs_[done]);
             if (err < 0) {
                 throw util::LibcError(-err);
-            } else {
-                done += err;
             }
+            done += err;
         }
     }
 
