@@ -56,14 +56,14 @@ static long walb_ctl_compat_ioctl(
  *	    lmajor, lminor,
  *	    dmajor, dminor,
  *	    buf_size (sizeof(struct walb_start_param)),
- *	    (struct walb_start_param *)__buf
+ *	    (struct walb_start_param *)kbuf
  *            Parameters to start a walb device.
  *	Output:
  *	  error: 0 in success.
  *	  k2u
  *	    wmajor, wminor
  *	    buf_size (sizeof(struct walb_start_param)),
- *	    (struct walb_start_param *)__buf
+ *	    (struct walb_start_param *)kbuf
  *            Parameters set really.
  *
  * @return 0 in success, or -EFAULT.
@@ -95,8 +95,8 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 		ctl->error = -2;
 		goto error0;
 	}
-	param0 = (struct walb_start_param *)ctl->u2k.__buf;
-	param1 = (struct walb_start_param *)ctl->k2u.__buf;
+	param0 = (struct walb_start_param *)ctl->u2k.kbuf;
+	param1 = (struct walb_start_param *)ctl->k2u.kbuf;
 	ASSERT(param0);
 	ASSERT(param1);
 	if (!is_walb_start_param_valid(param0)) {
@@ -248,13 +248,13 @@ static int ioctl_list_dev(struct walb_ctl *ctl)
 		LOGe("Buffer size is too small.\n");
 		return -EFAULT;
 	}
-	minor = (unsigned int *)ctl->u2k.__buf;
+	minor = (unsigned int *)ctl->u2k.kbuf;
 	ASSERT(minor);
 	if (minor[0] >= minor[1]) {
 		LOGe("minor[0] must be < minor[1].\n");
 		return -EFAULT;
 	}
-	ddata = (struct walb_disk_data *)ctl->k2u.__buf;
+	ddata = (struct walb_disk_data *)ctl->k2u.kbuf;
 	if (ddata) {
 		n = ctl->k2u.buf_size / sizeof(struct walb_disk_data);
 	} else {
@@ -490,19 +490,19 @@ struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
 		goto error1;
 	}
 
-	/* Allocate and copy ctl->u2k.__buf. */
+	/* Allocate and copy ctl->u2k.kbuf. */
 	if (ctl->u2k.buf_size > 0) {
-		ctl->u2k.__buf = walb_alloc_and_copy_from_user
+		ctl->u2k.kbuf = walb_alloc_and_copy_from_user
 			((void __user *)ctl->u2k.buf,
 				ctl->u2k.buf_size, gfp_mask);
-		if (!ctl->u2k.__buf) {
+		if (!ctl->u2k.kbuf) {
 			goto error1;
 		}
 	}
-	/* Allocate ctl->k2u.__buf. */
+	/* Allocate ctl->k2u.kbuf. */
 	if (ctl->k2u.buf_size > 0) {
-		ctl->k2u.__buf = kzalloc(ctl->k2u.buf_size, gfp_mask);
-		if (!ctl->k2u.__buf) {
+		ctl->k2u.kbuf = kzalloc(ctl->k2u.buf_size, gfp_mask);
+		if (!ctl->k2u.kbuf) {
 			goto error2;
 		}
 	}
@@ -511,12 +511,12 @@ struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
 #if 0
 error3:
 	if (ctl->k2u.buf_size > 0) {
-		kfree(ctl->k2u.__buf);
+		kfree(ctl->k2u.kbuf);
 	}
 #endif
 error2:
 	if (ctl->u2k.buf_size > 0) {
-		kfree(ctl->u2k.__buf);
+		kfree(ctl->u2k.kbuf);
 	}
 error1:
 	kfree(ctl);
@@ -534,14 +534,14 @@ error0:
  */
 int walb_put_ctl(void __user *userctl, struct walb_ctl *ctl)
 {
-	/* Free ctl->u2k.__buf. */
+	/* Free ctl->u2k.kbuf. */
 	if (ctl->u2k.buf_size > 0) {
-		kfree(ctl->u2k.__buf);
+		kfree(ctl->u2k.kbuf);
 	}
 
-	/* Copy and free ctl->k2u.__buf. */
+	/* Copy and free ctl->k2u.kbuf. */
 	if (ctl->k2u.buf_size > 0 && walb_copy_to_user_and_free(
-			ctl->k2u.buf, ctl->k2u.__buf, ctl->k2u.buf_size) != 0) {
+			ctl->k2u.buf, ctl->k2u.kbuf, ctl->k2u.buf_size) != 0) {
 		goto error0;
 	}
 

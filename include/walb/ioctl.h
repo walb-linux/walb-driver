@@ -45,7 +45,7 @@ struct walb_ctl_data {
 #else
 	void *buf; /* buffer pointer if data_size > 0. */
 #endif
-	void *__buf; /* used inside kernel. */
+	void *kbuf; /* used inside kernel. */
 } __attribute__((packed));
 
 /**

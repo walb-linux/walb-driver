@@ -697,7 +697,7 @@ static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
 		LOGe("buffer size too small.\n");
 		return -EFAULT;
 	}
-	srec1 = (struct walb_snapshot_record *)ctl->k2u.__buf; /* assign pointer. */
+	srec1 = (struct walb_snapshot_record *)ctl->k2u.kbuf; /* assign pointer. */
 	if (!srec1) {
 		LOGe("You must specify buffers for an output snapshot record.\n");
 		return -EFAULT;
@@ -762,7 +762,7 @@ static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl
 	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
 		return -EFAULT;
 	}
-	srec = (struct walb_snapshot_record *)ctl->k2u.__buf;
+	srec = (struct walb_snapshot_record *)ctl->k2u.kbuf;
 	size = ctl->k2u.buf_size / sizeof(struct walb_snapshot_record);
 	if (size == 0) {
 		LOGe("Buffer is to small for results.\n");
@@ -804,7 +804,7 @@ static int ioctl_wdev_list_snapshot_from(struct walb_dev *wdev, struct walb_ctl 
 	ASSERT(ctl->command == WALB_IOCTL_LIST_SNAPSHOT_FROM);
 
 	sid = ctl->val_u32;
-	srec = (struct walb_snapshot_record *)ctl->k2u.__buf;
+	srec = (struct walb_snapshot_record *)ctl->k2u.kbuf;
 	size = ctl->k2u.buf_size / sizeof(struct walb_snapshot_record);
 	if (size == 0) {
 		LOGe("Buffer is to small for results.\n");
@@ -1818,8 +1818,8 @@ static bool get_lsid_range_from_ctl(
 		LOGe("Buffer is too small for u64 * 2.\n");
 		return false;
 	}
-	*lsid0 = ((const u64 *)ctl->u2k.__buf)[0];
-	*lsid1 = ((const u64 *)ctl->u2k.__buf)[1];
+	*lsid0 = ((const u64 *)ctl->u2k.kbuf)[0];
+	*lsid1 = ((const u64 *)ctl->u2k.kbuf)[1];
 	if (!is_lsid_range_valid(*lsid0, *lsid1)) {
 		LOGe("Specify valid lsid range.\n");
 		return false;
@@ -1844,11 +1844,11 @@ static bool get_snapshot_record_from_ctl_u2k(
 		LOGe("Buffer is too small for walb_snapshot_record.\n");
 		return false;
 	}
-	if (!ctl->u2k.__buf) {
+	if (!ctl->u2k.kbuf) {
 		LOGe("Buffer must not be NULL, be walb_snapshot_record data.\n");
 		return false;
 	}
-	*srec = *(struct walb_snapshot_record *)ctl->u2k.__buf;
+	*srec = *(struct walb_snapshot_record *)ctl->u2k.kbuf;
 	return true;
 }
 
