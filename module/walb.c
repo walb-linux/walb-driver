@@ -1496,7 +1496,8 @@ static int walb_set_name(struct walb_dev *wdev,
  */
 static void walb_decide_flush_support(struct walb_dev *wdev)
 {
-	struct request_queue *q, *lq, *dq;
+	struct request_queue *q;
+	const struct request_queue *lq, *dq;
 	bool lq_flush, dq_flush, lq_fua, dq_fua;
 	ASSERT(wdev);
 
@@ -2398,7 +2399,7 @@ struct walb_dev* prepare_wdev(
 {
 	struct walb_dev *wdev;
 	u16 ldev_lbs, ldev_pbs, ddev_lbs, ddev_pbs;
-	char *dev_name;
+	const char *dev_name;
 	struct walb_super_sector *super;
 	struct request_queue *lq, *dq;
 	bool retb;
