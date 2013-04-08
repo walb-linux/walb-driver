@@ -32,15 +32,15 @@ struct pack
 	struct list_head list; /* list entry. */
 	struct list_head biow_list; /* list head of bio_wrapper. */
 
-	bool is_zero_flush_only; /* true if req_ent_list contains only a zero-size flush. */
-	bool is_flush_contained; /* true if one or more bio(s) are flush request. */
-	bool is_flush_header; /* true if the header IO must flush request. */
 	struct sector_data *logpack_header_sector;
 	struct list_head bioe_list; /* list head for zero_flush bio
 				       or logpack header bio. */
-
+	bool is_zero_flush_only; /* true if req_ent_list contains only a zero-size flush. */
+	bool is_flush_contained; /* true if one or more bio(s) are flush request. */
+	bool is_flush_header; /* true if the header IO must flush request. */
 	bool is_logpack_failed; /* true if submittion failed. */
 };
+
 static atomic_t n_users_of_pack_cache_ = ATOMIC_INIT(0);
 #define KMEM_CACHE_PACK_NAME "pack_cache"
 struct kmem_cache *pack_cache_ = NULL;
