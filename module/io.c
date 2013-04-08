@@ -137,6 +137,9 @@ UNUSED static void print_pack(
 UNUSED static void print_pack_list(
 	const char *level, struct list_head *wpack_list);
 UNUSED static bool pack_contains_flush(const struct pack *pack);
+static void get_wdev_and_iocored_from_work(
+	struct walb_dev **pwdev, struct iocore_data **piocored,
+	struct work_struct *work);
 
 /* Workqueue tasks. */
 static void task_submit_logpack_list(struct work_struct *work);
@@ -781,6 +784,19 @@ static bool pack_contains_flush(const struct pack *pack)
 }
 
 /**
+ * Get pointer of wdev and iocored from the work struct in a pwork.
+ * The pwork will be destroyed.
+ */
+static void get_wdev_and_iocored_from_work(
+	struct walb_dev **pwdev, struct iocore_data **piocored,
+	struct work_struct *work)
+{
+	struct pack_work *pwork = container_of(work, struct pack_work, work);
+	*pwdev = pwork->data;
+	*piocored = get_iocored_from_wdev(*pwdev);
+	destroy_pack_work(pwork);
+}
+/**
  * Submit all logpacks generated from bio_wrapper list.
  *
  * (1) Create logpack list.
@@ -798,15 +814,13 @@ static bool pack_contains_flush(const struct pack *pack)
  */
 static void task_submit_logpack_list(struct work_struct *work)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct walb_dev *wdev = pwork->data;
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct walb_dev *wdev;
+	struct iocore_data *iocored;
 	struct list_head wpack_list;
 	struct list_head biow_list;
 
+	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
 	LOGd_("begin\n");
-	destroy_pack_work(pwork);
-	pwork = NULL;
 
 	INIT_LIST_HEAD(&biow_list);
 	INIT_LIST_HEAD(&wpack_list);
@@ -882,14 +896,12 @@ static void task_submit_logpack_list(struct work_struct *work)
  */
 static void task_wait_for_logpack_list(struct work_struct *work)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct walb_dev *wdev = pwork->data;
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct walb_dev *wdev;
+	struct iocore_data *iocored;
 	struct list_head wpack_list;
 
+	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
 	LOGd_("begin\n");
-	destroy_pack_work(pwork);
-	pwork = NULL;
 
 	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
@@ -959,14 +971,12 @@ static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
  */
 static void task_submit_bio_wrapper_list(struct work_struct *work)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct walb_dev *wdev = pwork->data;
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct walb_dev *wdev;
+	struct iocore_data *iocored;
 	struct list_head biow_list, biow_list_sorted;
 
-	LOGd_("begin.\n");
-	destroy_pack_work(pwork);
-	pwork = NULL;
+	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
+	LOGd_("begin\n");
 
 	INIT_LIST_HEAD(&biow_list);
 	INIT_LIST_HEAD(&biow_list_sorted);
@@ -1091,14 +1101,12 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
  */
 static void task_wait_for_bio_wrapper_list(struct work_struct *work)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct walb_dev *wdev = pwork->data;
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct walb_dev *wdev;
+	struct iocore_data *iocored;
 	struct list_head biow_list;
 
+	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
 	LOGd_("begin.\n");
-	destroy_pack_work(pwork);
-	pwork = NULL;
 
 	INIT_LIST_HEAD(&biow_list);
 	while (true) {
