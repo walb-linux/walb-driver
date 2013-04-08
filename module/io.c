@@ -1280,7 +1280,6 @@ static void submit_logpack_list(
 	struct iocore_data *iocored;
 	struct pack *wpack;
 	struct blk_plug plug;
-	struct walb_logpack_header *logh;
 	ASSERT(wpack_list);
 	ASSERT(wdev);
 	iocored = get_iocored_from_wdev(wdev);
@@ -1288,6 +1287,7 @@ static void submit_logpack_list(
 
 	blk_start_plug(&plug);
 	list_for_each_entry(wpack, wpack_list, list) {
+		struct walb_logpack_header *logh;
 
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		logh = get_logpack_header(wpack->logpack_header_sector);
@@ -1784,9 +1784,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 static void dequeue_and_gc_logpack_list(struct walb_dev *wdev)
 {
 	struct pack *wpack, *wpack_next;
-	bool is_empty;
 	struct list_head wpack_list;
-	int n_pack;
 	struct iocore_data *iocored;
 
 	ASSERT(wdev);
@@ -1795,10 +1793,11 @@ static void dequeue_and_gc_logpack_list(struct walb_dev *wdev)
 
 	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
+		bool is_empty;
+		int n_pack = 0;
 		/* Dequeue logpack list */
 		spin_lock(&iocored->logpack_gc_queue_lock);
 		is_empty = list_empty(&iocored->logpack_gc_queue);
-		n_pack = 0;
 		list_for_each_entry_safe(wpack, wpack_next,
 					&iocored->logpack_gc_queue, list) {
 			list_move_tail(&wpack->list, &wpack_list);
@@ -3049,8 +3048,6 @@ static void pending_delete_fully_overwritten(
 {
 	struct multimap_cursor cur;
 	u64 start_pos, end_pos;
-	struct bio_wrapper *biow_tmp;
-	int ret;
 
 	ASSERT(pending_data);
 	ASSERT(biow);
@@ -3068,6 +3065,8 @@ static void pending_delete_fully_overwritten(
 
 	/* Search and delete overwritten biow(s). */
 	while (multimap_cursor_key(&cur) < end_pos) {
+		struct bio_wrapper *biow_tmp;
+		int ret;
 		ASSERT(multimap_cursor_is_valid(&cur));
 		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
 		ASSERT(biow_tmp);
