@@ -88,7 +88,7 @@ void random_io(unsigned int id, enum io_mode mode)
 	u32 addr;
 	bool is_write = false;
 
-	ASSERT((u32)mdata_->capacity < (u32)UINT_MAX);
+	ASSERT(mdata_->capacity < UINT_MAX);
 	addr = get_random_u32_max((u32)mdata_->capacity);
 
 	switch (mode) {
