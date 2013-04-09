@@ -609,7 +609,8 @@ static u32 get_id_by_name(
 
 	val = hashtbl_lookup(snapd->name_idx, name, len);
 	if (val != HASHTBL_INVALID_VAL) {
-		sid = (u32)val;
+		ASSERT(val <= UINT_MAX);
+		sid = val;
 	}
 fin:
 	return sid;
@@ -1052,7 +1053,8 @@ static int get_n_snapshot_in_name_idx(
 	while (hashtbl_cursor_next(cur)) {
 		val = hashtbl_cursor_val(cur);
 		ASSERT(val != HASHTBL_INVALID_VAL);
-		if (snapshot_id == (u32)val) {
+		ASSERT(val <= UINT_MAX);
+		if (snapshot_id == val) {
 			count++;
 		}
 	}
@@ -1087,7 +1089,8 @@ static int get_n_snapshot_in_lsid_idx(
 	while (multimap_cursor_next(cur)) {
 		val = multimap_cursor_val(cur);
 		ASSERT(val != TREEMAP_INVALID_VAL);
-		if (snapshot_id == (u32)val) {
+		ASSERT(val <= UINT_MAX);
+		if (snapshot_id == val) {
 			count++;
 		}
 	}
@@ -1125,7 +1128,8 @@ static bool is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
 
 		val = hashtbl_cursor_val(cur);
 		ASSERT(val != HASHTBL_INVALID_VAL);
-		snapshot_id = (u32)val;
+		ASSERT(val <= UINT_MAX);
+		snapshot_id = val;
 
 		ret = map_add(smap, snapshot_id, 0, GFP_KERNEL);
 		if (ret == -EEXIST) {
@@ -1175,7 +1179,8 @@ static bool is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
 
 		val = multimap_cursor_val(cur);
 		ASSERT(val != TREEMAP_INVALID_VAL);
-		snapshot_id = (u32)val;
+		ASSERT(val <= UINT_MAX);
+		snapshot_id = val;
 
 		ret = map_add(smap, snapshot_id, 0, GFP_KERNEL);
 		if (ret == -EEXIST) {
@@ -1608,8 +1613,6 @@ int snapshot_del(struct snapshot_data *snapd, const char *name)
  */
 int snapshot_del_range_nolock(struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
 {
-	u64 lsid;
-	u32 sid;
 	struct walb_snapshot_record *rec;
 	bool retb;
 	int ret;
@@ -1622,9 +1625,12 @@ int snapshot_del_range_nolock(struct snapshot_data *snapd, u64 lsid0, u64 lsid1)
 	multimap_cursor_init(snapd->lsid_idx, &cur);
 	ret = multimap_cursor_search(&cur, lsid0, MAP_SEARCH_GE, 0);
 	while (ret && multimap_cursor_key(&cur) < lsid1) {
-		/* Get the record. */
-		lsid = multimap_cursor_key(&cur);
+		u32 sid;
+#ifdef WALB_DEBUG
+		u64 lsid = multimap_cursor_key(&cur);
 		ASSERT(lsid != INVALID_LSID);
+#endif
+		/* Get the record. */
 		sid = (u32)multimap_cursor_val(&cur);
 		ASSERT(sid != INVALID_SNAPSHOT_ID);
 		rec = get_record_by_id(snapd, sid);
@@ -1791,8 +1797,6 @@ int snapshot_list_range_nolock(struct snapshot_data *snapd,
 	int idx = 0;
 	struct multimap_cursor cur;
 	int ret;
-	u32 sid;
-	struct walb_snapshot_record *rec;
 
 	ASSERT(snapd);
 	ASSERT(buf);
@@ -1802,8 +1806,10 @@ int snapshot_list_range_nolock(struct snapshot_data *snapd,
 	multimap_cursor_init(snapd->lsid_idx, &cur);
 	ret = multimap_cursor_search(&cur, lsid0, MAP_SEARCH_GE, 0);
 	while (ret && idx < buf_size && multimap_cursor_key(&cur) < lsid1) {
+		struct walb_snapshot_record *rec;
+
 		/* Get the record. */
-		sid = (u32)multimap_cursor_val(&cur);
+		u32 sid = (u32)multimap_cursor_val(&cur);
 		ASSERT(sid != INVALID_SNAPSHOT_ID);
 		rec = get_record_by_id(snapd, sid);
 		if (!rec) { return -1; }
@@ -1865,8 +1871,6 @@ int snapshot_list_from_nolock(
 	int idx = 0;
 	struct map_cursor cur;
 	int ret;
-	u32 sid;
-	struct walb_snapshot_record *rec;
 
 	ASSERT(snapd);
 	ASSERT(buf);
@@ -1876,8 +1880,10 @@ int snapshot_list_from_nolock(
 	map_cursor_init(snapd->id_idx, &cur);
 	ret = map_cursor_search(&cur, snapshot_id, MAP_SEARCH_GE);
 	while (ret && idx < buf_size) {
+		struct walb_snapshot_record *rec;
+
 		/* Get the record. */
-		sid = (u32)map_cursor_key(&cur);
+		u32 sid = (u32)map_cursor_key(&cur);
 		ASSERT(sid != INVALID_SNAPSHOT_ID);
 		rec = get_record_by_id(snapd, sid);
 		if (!rec) { return -1; }

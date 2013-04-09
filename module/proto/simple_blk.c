@@ -291,7 +291,6 @@ static bool add_to_devices(struct simple_blk_dev *sdev)
 	spin_lock(&devices_.lock);
 	devices_.sdev[sdev->minor] = sdev;
 	devices_.n_active_devices++;
-	ASSERT(devices_.n_active_devices >= 0);
 	spin_unlock(&devices_.lock);
 	return true;
 }
@@ -309,8 +308,8 @@ static struct simple_blk_dev* del_from_devices(unsigned int minor)
 	sdev = devices_.sdev[minor];
 	if (sdev) {
 		devices_.sdev[minor] = NULL;
+		ASSERT(0 < devices_.n_active_devices);
 		devices_.n_active_devices--;
-		ASSERT(devices_.n_active_devices >= 0);
 	}
 	spin_unlock(&devices_.lock);
 	return sdev;

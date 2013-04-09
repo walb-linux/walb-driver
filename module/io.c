@@ -32,15 +32,15 @@ struct pack
 	struct list_head list; /* list entry. */
 	struct list_head biow_list; /* list head of bio_wrapper. */
 
-	bool is_zero_flush_only; /* true if req_ent_list contains only a zero-size flush. */
-	bool is_flush_contained; /* true if one or more bio(s) are flush request. */
-	bool is_flush_header; /* true if the header IO must flush request. */
 	struct sector_data *logpack_header_sector;
 	struct list_head bioe_list; /* list head for zero_flush bio
 				       or logpack header bio. */
-
+	bool is_zero_flush_only; /* true if req_ent_list contains only a zero-size flush. */
+	bool is_flush_contained; /* true if one or more bio(s) are flush request. */
+	bool is_flush_header; /* true if the header IO must flush request. */
 	bool is_logpack_failed; /* true if submittion failed. */
 };
+
 static atomic_t n_users_of_pack_cache_ = ATOMIC_INIT(0);
 #define KMEM_CACHE_PACK_NAME "pack_cache"
 struct kmem_cache *pack_cache_ = NULL;
@@ -137,6 +137,9 @@ UNUSED static void print_pack(
 UNUSED static void print_pack_list(
 	const char *level, struct list_head *wpack_list);
 UNUSED static bool pack_contains_flush(const struct pack *pack);
+static void get_wdev_and_iocored_from_work(
+	struct walb_dev **pwdev, struct iocore_data **piocored,
+	struct work_struct *work);
 
 /* Workqueue tasks. */
 static void task_submit_logpack_list(struct work_struct *work);
@@ -705,7 +708,7 @@ static bool is_pack_size_too_large(
 	}
 
 	pb = (unsigned int)capacity_pb(pbs, biow->len);
-	return pb + (unsigned int)lhead->total_io_size > max_logpack_pb;
+	return pb + lhead->total_io_size > max_logpack_pb;
 }
 
 /**
@@ -781,6 +784,19 @@ static bool pack_contains_flush(const struct pack *pack)
 }
 
 /**
+ * Get pointer of wdev and iocored from the work struct in a pwork.
+ * The pwork will be destroyed.
+ */
+static void get_wdev_and_iocored_from_work(
+	struct walb_dev **pwdev, struct iocore_data **piocored,
+	struct work_struct *work)
+{
+	struct pack_work *pwork = container_of(work, struct pack_work, work);
+	*pwdev = pwork->data;
+	*piocored = get_iocored_from_wdev(*pwdev);
+	destroy_pack_work(pwork);
+}
+/**
  * Submit all logpacks generated from bio_wrapper list.
  *
  * (1) Create logpack list.
@@ -798,15 +814,13 @@ static bool pack_contains_flush(const struct pack *pack)
  */
 static void task_submit_logpack_list(struct work_struct *work)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct walb_dev *wdev = pwork->data;
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct walb_dev *wdev;
+	struct iocore_data *iocored;
 	struct list_head wpack_list;
 	struct list_head biow_list;
 
+	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
 	LOGd_("begin\n");
-	destroy_pack_work(pwork);
-	pwork = NULL;
 
 	INIT_LIST_HEAD(&biow_list);
 	INIT_LIST_HEAD(&wpack_list);
@@ -882,14 +896,12 @@ static void task_submit_logpack_list(struct work_struct *work)
  */
 static void task_wait_for_logpack_list(struct work_struct *work)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct walb_dev *wdev = pwork->data;
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct walb_dev *wdev;
+	struct iocore_data *iocored;
 	struct list_head wpack_list;
 
+	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
 	LOGd_("begin\n");
-	destroy_pack_work(pwork);
-	pwork = NULL;
 
 	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
@@ -959,14 +971,12 @@ static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
  */
 static void task_submit_bio_wrapper_list(struct work_struct *work)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct walb_dev *wdev = pwork->data;
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct walb_dev *wdev;
+	struct iocore_data *iocored;
 	struct list_head biow_list, biow_list_sorted;
 
-	LOGd_("begin.\n");
-	destroy_pack_work(pwork);
-	pwork = NULL;
+	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
+	LOGd_("begin\n");
 
 	INIT_LIST_HEAD(&biow_list);
 	INIT_LIST_HEAD(&biow_list_sorted);
@@ -1091,14 +1101,12 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
  */
 static void task_wait_for_bio_wrapper_list(struct work_struct *work)
 {
-	struct pack_work *pwork = container_of(work, struct pack_work, work);
-	struct walb_dev *wdev = pwork->data;
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct walb_dev *wdev;
+	struct iocore_data *iocored;
 	struct list_head biow_list;
 
+	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
 	LOGd_("begin.\n");
-	destroy_pack_work(pwork);
-	pwork = NULL;
 
 	INIT_LIST_HEAD(&biow_list);
 	while (true) {
@@ -1280,7 +1288,6 @@ static void submit_logpack_list(
 	struct iocore_data *iocored;
 	struct pack *wpack;
 	struct blk_plug plug;
-	struct walb_logpack_header *logh;
 	ASSERT(wpack_list);
 	ASSERT(wdev);
 	iocored = get_iocored_from_wdev(wdev);
@@ -1288,6 +1295,7 @@ static void submit_logpack_list(
 
 	blk_start_plug(&plug);
 	list_for_each_entry(wpack, wpack_list, list) {
+		struct walb_logpack_header *logh;
 
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		logh = get_logpack_header(wpack->logpack_header_sector);
@@ -1784,9 +1792,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 static void dequeue_and_gc_logpack_list(struct walb_dev *wdev)
 {
 	struct pack *wpack, *wpack_next;
-	bool is_empty;
 	struct list_head wpack_list;
-	int n_pack;
 	struct iocore_data *iocored;
 
 	ASSERT(wdev);
@@ -1795,10 +1801,11 @@ static void dequeue_and_gc_logpack_list(struct walb_dev *wdev)
 
 	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
+		bool is_empty;
+		int n_pack = 0;
 		/* Dequeue logpack list */
 		spin_lock(&iocored->logpack_gc_queue_lock);
 		is_empty = list_empty(&iocored->logpack_gc_queue);
-		n_pack = 0;
 		list_for_each_entry_safe(wpack, wpack_next,
 					&iocored->logpack_gc_queue, list) {
 			list_move_tail(&wpack->list, &wpack_list);
@@ -3049,8 +3056,6 @@ static void pending_delete_fully_overwritten(
 {
 	struct multimap_cursor cur;
 	u64 start_pos, end_pos;
-	struct bio_wrapper *biow_tmp;
-	int ret;
 
 	ASSERT(pending_data);
 	ASSERT(biow);
@@ -3068,6 +3073,8 @@ static void pending_delete_fully_overwritten(
 
 	/* Search and delete overwritten biow(s). */
 	while (multimap_cursor_key(&cur) < end_pos) {
+		struct bio_wrapper *biow_tmp;
+		int ret;
 		ASSERT(multimap_cursor_is_valid(&cur));
 		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
 		ASSERT(biow_tmp);
