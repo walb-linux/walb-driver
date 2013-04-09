@@ -2699,7 +2699,7 @@ static bool logpack_submit_lhead(
 	if (len != pbs) { goto error2; }
 
 	init_bio_entry(bioe, bio);
-	ASSERT(bioe->len << 9 == pbs);
+	ASSERT((bioe->len << 9) == pbs);
 
 	ASSERT(bio_ent_list);
 	list_add_tail(&bioe->list, bio_ent_list);
