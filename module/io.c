@@ -708,7 +708,7 @@ static bool is_pack_size_too_large(
 	}
 
 	pb = (unsigned int)capacity_pb(pbs, biow->len);
-	return pb + (unsigned int)lhead->total_io_size > max_logpack_pb;
+	return pb + lhead->total_io_size > max_logpack_pb;
 }
 
 /**
