@@ -609,7 +609,8 @@ static u32 get_id_by_name(
 
 	val = hashtbl_lookup(snapd->name_idx, name, len);
 	if (val != HASHTBL_INVALID_VAL) {
-		sid = (u32)val;
+		ASSERT(val <= UINT_MAX);
+		sid = val;
 	}
 fin:
 	return sid;
@@ -1052,7 +1053,8 @@ static int get_n_snapshot_in_name_idx(
 	while (hashtbl_cursor_next(cur)) {
 		val = hashtbl_cursor_val(cur);
 		ASSERT(val != HASHTBL_INVALID_VAL);
-		if (snapshot_id == (u32)val) {
+		ASSERT(val <= UINT_MAX);
+		if (snapshot_id == val) {
 			count++;
 		}
 	}
@@ -1087,7 +1089,8 @@ static int get_n_snapshot_in_lsid_idx(
 	while (multimap_cursor_next(cur)) {
 		val = multimap_cursor_val(cur);
 		ASSERT(val != TREEMAP_INVALID_VAL);
-		if (snapshot_id == (u32)val) {
+		ASSERT(val <= UINT_MAX);
+		if (snapshot_id == val) {
 			count++;
 		}
 	}
@@ -1125,7 +1128,8 @@ static bool is_valid_snapshot_name_idx(const struct snapshot_data *snapd)
 
 		val = hashtbl_cursor_val(cur);
 		ASSERT(val != HASHTBL_INVALID_VAL);
-		snapshot_id = (u32)val;
+		ASSERT(val <= UINT_MAX);
+		snapshot_id = val;
 
 		ret = map_add(smap, snapshot_id, 0, GFP_KERNEL);
 		if (ret == -EEXIST) {
@@ -1175,7 +1179,8 @@ static bool is_valid_snapshot_lsid_idx(const struct snapshot_data *snapd)
 
 		val = multimap_cursor_val(cur);
 		ASSERT(val != TREEMAP_INVALID_VAL);
-		snapshot_id = (u32)val;
+		ASSERT(val <= UINT_MAX);
+		snapshot_id = val;
 
 		ret = map_add(smap, snapshot_id, 0, GFP_KERNEL);
 		if (ret == -EEXIST) {
