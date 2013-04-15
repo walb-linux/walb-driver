@@ -36,6 +36,7 @@
 #include "super.h"
 #include "io.h"
 #include "redo.h"
+#include "sysfs.h"
 
 #include "walb/ioctl.h"
 #include "walb/log_device.h"
@@ -101,13 +102,6 @@ enum {
 	FRZ_FREEZED,
 	FRZ_FREEZED_WITH_TIMEOUT,
 };
-
-/*******************************************************************************
- * Macro definition.
- *******************************************************************************/
-
-/* (struct gendisk *) --> (struct walb_dev *) */
-#define get_wdev_from_gd(gd) ((struct walb_dev *)(gd)->private_data)
 
 /*******************************************************************************
  * Prototypes of local functions.
@@ -307,7 +301,7 @@ error0:
  */
 static int walb_open(struct block_device *bdev, fmode_t mode)
 {
-	struct walb_dev *wdev = get_wdev_from_gd(bdev->bd_disk);
+	struct walb_dev *wdev = get_wdev_from_disk(bdev->bd_disk);
 	int n_users;
 
 	n_users = atomic_inc_return(&wdev->n_users);
@@ -327,7 +321,7 @@ static int walb_open(struct block_device *bdev, fmode_t mode)
  */
 static int walb_release(struct gendisk *gd, fmode_t mode)
 {
-	struct walb_dev *wdev = get_wdev_from_gd(gd);
+	struct walb_dev *wdev = get_wdev_from_disk(gd);
 	int n_users;
 
 	n_users = atomic_dec_return(&wdev->n_users);
@@ -1312,7 +1306,7 @@ static struct block_device_operations walb_ops = {
  */
 static int walblog_open(struct block_device *bdev, fmode_t mode)
 {
-	struct walb_dev *wdev = get_wdev_from_gd(bdev->bd_disk);
+	struct walb_dev *wdev = get_wdev_from_disk(bdev->bd_disk);
 	int n_users;
 
 	n_users = atomic_inc_return(&wdev->log_n_users);
@@ -1332,7 +1326,7 @@ static int walblog_open(struct block_device *bdev, fmode_t mode)
  */
 static int walblog_release(struct gendisk *gd, fmode_t mode)
 {
-	struct walb_dev *wdev = get_wdev_from_gd(gd);
+	struct walb_dev *wdev = get_wdev_from_disk(gd);
 	int n_users;
 
 	n_users = atomic_dec_return(&wdev->log_n_users);
@@ -2678,7 +2672,7 @@ void destroy_wdev(struct walb_dev *wdev)
  * Register wdev.
  * You must call @prepare_wdev() before calling this.
  */
-void register_wdev(struct walb_dev *wdev)
+bool register_wdev(struct walb_dev *wdev)
 {
 	ASSERT(wdev);
 	ASSERT(wdev->gd);
@@ -2688,6 +2682,18 @@ void register_wdev(struct walb_dev *wdev)
 
 	walblog_register_device(wdev);
 	walb_register_device(wdev);
+
+	if (walb_sysfs_init(wdev)) {
+		LOGe("walb_sysfs_init failed.\n");
+		goto error;
+	}
+	return true;
+
+error:
+	walb_unregister_device(wdev);
+	walblog_unregister_device(wdev);
+	stop_checkpointing(&wdev->cpd);
+	return false;
 }
 
 /**
@@ -2699,6 +2705,7 @@ void unregister_wdev(struct walb_dev *wdev)
 	ASSERT(wdev);
 
 	stop_checkpointing(&wdev->cpd);
+	walb_sysfs_exit(wdev);
 
 	walblog_unregister_device(wdev);
 	walb_unregister_device(wdev);

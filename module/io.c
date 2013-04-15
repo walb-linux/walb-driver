@@ -19,6 +19,7 @@
 #include "pack_work.h"
 #include "logpack.h"
 #include "super.h"
+#include "sysfs.h"
 
 /*******************************************************************************
  * Static data definition.
@@ -2323,12 +2324,17 @@ static void wait_for_logpack_and_submit_datapack(
 	if (!is_failed && wpack->is_flush_header) {
 		struct walb_logpack_header *logh =
 			get_logpack_header(wpack->logpack_header_sector);
+		bool should_notice = false;
 		spin_lock(&wdev->lsid_lock);
 		if (wdev->lsids.permanent < logh->logpack_lsid) {
+			should_notice = is_permanent_log_empty(&wdev->lsids);
 			wdev->lsids.permanent = logh->logpack_lsid;
 			LOGd_("log_flush_completed_header\n");
 		}
 		spin_unlock(&wdev->lsid_lock);
+		if (should_notice) {
+			walb_sysfs_notify(wdev, "lsids");
+		}
 	}
 
 	list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
@@ -2463,21 +2469,27 @@ static void wait_for_logpack_and_submit_datapack(
 	if (!is_failed) {
 		struct walb_logpack_header *logh =
 			get_logpack_header(wpack->logpack_header_sector);
+		bool should_notice = false;
 		spin_lock(&wdev->lsid_lock);
 #ifdef WALB_FAST_ALGORITHM
 		wdev->lsids.completed = get_next_lsid(logh);
 #endif
 		if (wpack->is_flush_contained &&
 			wdev->lsids.permanent < logh->logpack_lsid) {
+			should_notice = is_permanent_log_empty(&wdev->lsids);
 			wdev->lsids.permanent = logh->logpack_lsid;
 			LOGd_("log_flush_completed_io\n");
 		}
 		if (!(wdev->queue->flush_flags & REQ_FLUSH)) {
 			/* For flush-not-supportted device. */
+			should_notice = is_permanent_log_empty(&wdev->lsids);
 			wdev->lsids.flush = get_next_lsid(logh);
 			wdev->lsids.permanent = wdev->lsids.flush;
 		}
 		spin_unlock(&wdev->lsid_lock);
+		if (should_notice) {
+			walb_sysfs_notify(wdev, "lsids");
+		}
 	}
 }
 
@@ -3247,6 +3259,7 @@ static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
 	u64 permanent_lsid, flush_lsid, latest_lsid;
 	unsigned long log_flush_jiffies, timeout_jiffies;
 	int err;
+	bool should_notice = false;
 
 	if (wdev->log_flush_interval_jiffies == 0) {
 		return;
@@ -3303,11 +3316,15 @@ retry:
 	/* Update permanent_lsid. */
 	spin_lock(&wdev->lsid_lock);
 	if (wdev->lsids.permanent < latest_lsid) {
+		should_notice = is_permanent_log_empty(&wdev->lsids);
 		wdev->lsids.permanent = latest_lsid;
 		LOGd_("log_flush_completed_data\n");
 	}
 	ASSERT(lsid <= wdev->lsids.permanent);
 	spin_unlock(&wdev->lsid_lock);
+	if (should_notice) {
+		walb_sysfs_notify(wdev, "lsids");
+	}
 }
 
 /**

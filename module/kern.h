@@ -235,10 +235,22 @@ struct walb_dev
 	struct delayed_work freeze_dwork;
 
 	/*
+	 * Sysfs entry.
+	 */
+	struct kobject kobj;
+
+	/*
 	 * For IOcore.
 	 */
 	void *private_data;
 };
+
+/*******************************************************************************
+ * Macro definition.
+ *******************************************************************************/
+
+/* (struct gendisk *) --> (struct walb_dev *) */
+#define get_wdev_from_disk(disk) ((struct walb_dev *)(disk)->private_data)
 
 /*******************************************************************************
  * Static inline functions.
@@ -268,6 +280,18 @@ static inline struct walb_dev* get_wdev_from_checkpoint_data(
 	return wdev;
 }
 
+/**
+ * Check there is no permanent log or not.
+ *
+ * wdev->lsid_lock must be held.
+ */
+static inline bool is_permanent_log_empty(struct lsid_set *lsids)
+{
+	ASSERT(lsids);
+	ASSERT(lsids->oldest <= lsids->permanent);
+	return lsids->oldest == lsids->permanent;
+}
+
 /*******************************************************************************
  * Prototypes defined in walb.c
  *******************************************************************************/
@@ -276,7 +300,7 @@ struct walb_dev* prepare_wdev(
 	unsigned int minor, dev_t ldevt, dev_t ddevt,
 	struct walb_start_param *param);
 void destroy_wdev(struct walb_dev *wdev);
-void register_wdev(struct walb_dev *wdev);
+bool register_wdev(struct walb_dev *wdev);
 void unregister_wdev(struct walb_dev *wdev);
 
 

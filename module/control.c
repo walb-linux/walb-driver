@@ -131,7 +131,10 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 		goto error1;
 	}
 
-	register_wdev(wdev);
+	if (!register_wdev(wdev)) {
+		ctl->error = -6;
+		goto error2;
+	}
 
 	/* Unlock */
 	alldevs_write_unlock();
@@ -145,10 +148,8 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	print_walb_ctl(ctl); /* debug */
 	return 0;
 
-#if 0
 error2:
-	alldevs_dell(wdev);
-#endif
+	alldevs_del(wdev);
 error1:
 	destroy_wdev(wdev);
 error0:
