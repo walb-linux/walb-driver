@@ -9,6 +9,7 @@
 #include <linux/ratelimit.h>
 #include <linux/printk.h>
 #include <linux/time.h>
+#include <linux/kmod.h>
 #include "kern.h"
 #include "io.h"
 #include "bio_wrapper.h"
@@ -80,24 +81,6 @@ static inline void set_read_only_mode(struct iocore_data *iocored)
 {
 	ASSERT(iocored);
 	set_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
-}
-
-/**
- * Clear read-only mode.
- */
-static inline void clear_read_only_mode(struct iocore_data *iocored)
-{
-	ASSERT(iocored);
-	clear_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
-}
-
-/**
- * Set log overflow flag.
- */
-static inline void set_log_overflow(struct iocore_data *iocored)
-{
-	ASSERT(iocored);
-	set_bit(IOCORE_STATE_LOG_OVERFLOW, &iocored->flags);
 }
 
 /*******************************************************************************
@@ -235,6 +218,7 @@ static void wait_for_all_pending_gc_done(struct walb_dev *wdev);
 static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid);
 static void flush_all_wq(void);
 static void clear_working_flag(int working_bit, unsigned long *flag_p);
+static void invoke_userland_exec(struct walb_dev *wdev, const char *event);
 
 /* Pending data functions. */
 #ifdef WALB_FAST_ALGORITHM
@@ -1265,10 +1249,12 @@ static void create_logpack_list(
 	/* Check ring buffer overflow. */
 	ASSERT(latest_lsid >= oldest_lsid);
 	if (latest_lsid - oldest_lsid > wdev->ring_buffer_size) {
-		set_log_overflow(iocored);
-		pr_warn_ratelimited(
-			"Ring buffer for log has been overflowed."
-			" reset_wal is required.\n");
+		if (test_and_set_bit(IOCORE_STATE_LOG_OVERFLOW, &iocored->flags) == 0) {
+			pr_warn_ratelimited(
+				"Ring buffer for log has been overflowed."
+				" reset_wal is required.\n");
+			invoke_userland_exec(wdev, "overflow");
+		}
 	}
 
 	/* Check consistency. */
@@ -3345,6 +3331,44 @@ static void clear_working_flag(int working_bit, unsigned long *flag_p)
 	int ret;
 	ret = test_and_clear_bit(working_bit, flag_p);
 	ASSERT(ret);
+}
+
+/**
+ * Invoke the userland executable binary.
+ * @event_str event string. It must be zero-terminatd.
+ */
+static void invoke_userland_exec(struct walb_dev *wdev, const char *event_str)
+{
+	size_t len;
+	int ret;
+	/* uint max is "4294967295\0" so size 11 is enough. */
+	const int UINT_STR_LEN = 11;
+	char major_str[UINT_STR_LEN];
+	char minor_str[UINT_STR_LEN];
+	char *argv[] = { exec_path_on_error_, NULL, NULL, NULL, NULL };
+	char *envp[] = { "HOME=/", "TERM=linux", "PATH=/bin:/usr/bin:/sbin:/usr/sbin", NULL };
+
+	len = strnlen(exec_path_on_error_, EXEC_PATH_ON_ERROR_LEN);
+	if (len == 0 || len == EXEC_PATH_ON_ERROR_LEN) { return; }
+
+	ASSERT(wdev);
+	ret = snprintf(major_str, UINT_STR_LEN, "%u", MAJOR(wdev->devt));
+	ASSERT(ret < UINT_STR_LEN);
+	ret = snprintf(minor_str, UINT_STR_LEN, "%u", MINOR(wdev->devt));
+	ASSERT(ret < UINT_STR_LEN);
+
+	argv[1] = major_str;
+	argv[2] = minor_str;
+	argv[3] = (char *)event_str;
+
+	ret = call_usermodehelper(exec_path_on_error_, argv, envp, UMH_WAIT_EXEC);
+	if (ret) {
+		LOGe("Execute userland command failed: %s %s %s %s\n"
+			, exec_path_on_error_
+			, major_str
+			, minor_str
+			, event_str);
+	}
 }
 
 /**

@@ -68,6 +68,15 @@ module_param_named(is_sync_superblock, is_sync_superblock_, int, S_IRUGO|S_IWUSR
 unsigned int is_sort_data_io_ = 1;
 module_param_named(is_sort_data_io, is_sort_data_io_, uint, S_IRUGO|S_IWUSR);
 
+/**
+ * An executable binary for error notification.
+ * When an error ocurred, the exec will be invoked with arguments.
+ * argv[1] is minor id of the walb device.
+ * argv[2] is event name.
+ */
+char exec_path_on_error_[EXEC_PATH_ON_ERROR_LEN] = "";
+module_param_string(exec_path_on_error, exec_path_on_error_, sizeof(exec_path_on_error_), S_IRUGO|S_IWUSR);
+
 /*******************************************************************************
  * Shared data definition.
  *******************************************************************************/

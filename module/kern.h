@@ -39,6 +39,12 @@ extern struct workqueue_struct *wq_misc_;
  */
 extern unsigned int is_sort_data_io_;
 
+/**
+ * Executable binary path for error notification.
+ */
+#define EXEC_PATH_ON_ERROR_LEN 256
+extern char exec_path_on_error_[];
+
 /*
  * Minor number and partition management.
  */
@@ -302,6 +308,5 @@ struct walb_dev* prepare_wdev(
 void destroy_wdev(struct walb_dev *wdev);
 bool register_wdev(struct walb_dev *wdev);
 void unregister_wdev(struct walb_dev *wdev);
-
 
 #endif /* WALB_KERN_H_KERNEL */

@@ -62,6 +62,9 @@ unsigned int n_io_bulk_ = 1024;
 /* If non-zero, iocore will sort data IOs. */
 unsigned int is_sort_data_io_ = 1;
 
+/* Userland executable binary path for error handling. */
+char exec_path_on_error_[EXEC_PATH_ON_ERROR_LEN] = "";
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/
