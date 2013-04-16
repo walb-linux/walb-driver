@@ -21,6 +21,8 @@
 #include "logpack.h"
 #include "super.h"
 #include "sysfs.h"
+#include "pending_io.h"
+#include "overlapped_io.h"
 
 /*******************************************************************************
  * Static data definition.
@@ -189,10 +191,6 @@ static bool writepack_add_bio_wrapper(
 	u64 ring_buffer_size, unsigned int max_logpack_pb,
 	u64 *latest_lsidp, u64 *flush_lsidp, unsigned long *log_flush_jiffiesp,
 	struct walb_dev *wdev, gfp_t gfp_mask);
-#ifdef WALB_FAST_ALGORITHM
-static void insert_to_sorted_bio_wrapper_list_by_lsid(
-	struct bio_wrapper *biow, struct list_head *biow_list);
-#endif
 static void insert_to_sorted_bio_wrapper_list_by_pos(
 	struct bio_wrapper *biow, struct list_head *biow_list);
 static void writepack_check_and_set_flush(struct pack *wpack);
@@ -220,25 +218,11 @@ static void flush_all_wq(void);
 static void clear_working_flag(int working_bit, unsigned long *flag_p);
 static void invoke_userland_exec(struct walb_dev *wdev, const char *event);
 
-/* Pending data functions. */
+/* Stop/start queue for fast algorithm. */
 #ifdef WALB_FAST_ALGORITHM
-static bool pending_insert(
-	struct multimap *pending_data, unsigned int *max_sectors_p,
-	struct bio_wrapper *biow, gfp_t gfp_mask);
-static void pending_delete(
-	struct multimap *pending_data, unsigned int *max_sectors_p,
-	struct bio_wrapper *biow);
-static bool pending_check_and_copy(
-	struct multimap *pending_data, unsigned int max_sectors,
-	struct bio_wrapper *biow, gfp_t gfp_mask);
-static void pending_delete_fully_overwritten(
-	struct multimap *pending_data, const struct bio_wrapper *biow);
-static bool pending_insert_and_delete_fully_overwritten(
-	struct multimap *pending_data, unsigned int *max_sectors_p,
-	struct bio_wrapper *biow, gfp_t gfp_mask);
-static inline bool should_stop_queue(
+static bool should_stop_queue(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
-static inline bool should_start_queue(
+static bool should_start_queue(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 #endif
 
@@ -2146,60 +2130,6 @@ error0:
  * Insert a bio wrapper to a sorted bio wrapper list.
  * using insertion sort.
  *
- * They are sorted by biow->lsid.
- * Use biow->list3 for list operations.
- *
- * @biow (struct bio_wrapper *)
- * @biow_list (struct list_head *)
- */
-#ifdef WALB_FAST_ALGORITHM
-static void insert_to_sorted_bio_wrapper_list_by_lsid(
-	struct bio_wrapper *biow, struct list_head *biow_list)
-{
-	struct bio_wrapper *biow_tmp, *biow_next;
-	bool moved;
-#ifdef WALB_DEBUG
-	u64 lsid;
-#endif
-
-	ASSERT(biow);
-	ASSERT(biow_list);
-
-	if (!list_empty(biow_list)) {
-		biow_tmp = list_first_entry(
-			biow_list, struct bio_wrapper, list3);
-		ASSERT(biow_tmp);
-		if (biow->lsid < biow_tmp->lsid) {
-			list_add(&biow->list3, biow_list);
-			return;
-		}
-	}
-	moved = false;
-	list_for_each_entry_safe(biow_tmp, biow_next, biow_list, list3) {
-		if (biow->lsid < biow_tmp->lsid) {
-			list_add_tail(&biow->list3, &biow_tmp->list3);
-			moved = true;
-			break;
-		}
-	}
-	if (!moved) {
-		list_add_tail(&biow->list3, biow_list);
-	}
-
-#ifdef WALB_DEBUG
-	lsid = 0;
-	list_for_each_entry_safe(biow_tmp, biow_next, biow_list, list3) {
-		ASSERT(lsid <= biow_tmp->lsid);
-		lsid = biow_tmp->lsid;
-	}
-#endif
-}
-#endif
-
-/**
- * Insert a bio wrapper to a sorted bio wrapper list.
- * using insertion sort.
- *
  * They are sorted by biow->pos.
  * Use biow->list4 for list operations.
  *
@@ -2874,329 +2804,6 @@ static void start_write_bio_wrapper(
 }
 
 /**
- * Insert a req_entry from a pending data.
- *
- * CONTEXT:
- *   pending_data lock must be held.
- */
-#ifdef WALB_FAST_ALGORITHM
-static bool pending_insert(
-	struct multimap *pending_data,
-	unsigned int *max_sectors_p,
-	struct bio_wrapper *biow, gfp_t gfp_mask)
-{
-	int ret;
-
-	ASSERT(pending_data);
-	ASSERT(max_sectors_p);
-	ASSERT(biow);
-	ASSERT(biow->bio);
-	ASSERT(biow->bio->bi_rw & REQ_WRITE);
-	ASSERT(biow->len > 0);
-
-	/* Insert the entry. */
-	ret = multimap_add(pending_data, biow->pos,
-			(unsigned long)biow, gfp_mask);
-	ASSERT(ret != EEXIST);
-	ASSERT(ret != EINVAL);
-	if (ret) {
-		ASSERT(ret == ENOMEM);
-		LOGe("pending_insert failed.\n");
-		return false;
-	}
-	*max_sectors_p = max(*max_sectors_p, biow->len);
-	return true;
-}
-#endif
-
-/**
- * Delete a req_entry from a pending data.
- *
- * CONTEXT:
- *   pending_data lock must be held.
- */
-#ifdef WALB_FAST_ALGORITHM
-static void pending_delete(
-	struct multimap *pending_data,
-	unsigned int *max_sectors_p,
-	struct bio_wrapper *biow)
-{
-	struct bio_wrapper *biow_tmp;
-
-	ASSERT(pending_data);
-	ASSERT(max_sectors_p);
-	ASSERT(biow);
-
-	/* Delete the entry. */
-	biow_tmp = (struct bio_wrapper *)multimap_del(
-		pending_data, biow->pos, (unsigned long)biow);
-	LOGd_("biow_tmp %p biow %p\n", biow_tmp, biow);
-	ASSERT(biow_tmp == biow);
-	if (multimap_is_empty(pending_data)) {
-		*max_sectors_p = 0;
-	}
-}
-#endif
-
-/**
- * Check overlapped writes and copy from them.
- *
- * RETURN:
- *   true in success, or false due to data copy failed.
- *
- * CONTEXT:
- *   pending_data lock must be held.
- */
-#ifdef WALB_FAST_ALGORITHM
-static bool pending_check_and_copy(
-	struct multimap *pending_data, unsigned int max_sectors,
-	struct bio_wrapper *biow, gfp_t gfp_mask)
-{
-	struct multimap_cursor cur;
-	u64 max_io_size, start_pos;
-	struct bio_wrapper *biow_tmp;
-	struct list_head biow_list;
-	unsigned int n_overlapped_bios;
-#ifdef WALB_DEBUG
-	u64 lsid;
-#endif
-
-	ASSERT(pending_data);
-	ASSERT(biow);
-
-	/* Decide search start position. */
-	max_io_size = max_sectors;
-	if (biow->pos > max_io_size) {
-		start_pos = biow->pos - max_io_size;
-	} else {
-		start_pos = 0;
-	}
-
-	/* Search the smallest candidate. */
-	multimap_cursor_init(pending_data, &cur);
-	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
-		/* No overlapped requests. */
-		return true;
-	}
-	/* Copy data from pending and overlapped write requests. */
-#if 0
-	while (multimap_cursor_key(&cur) < biow->pos + biow->len) {
-
-		ASSERT(multimap_cursor_is_valid(&cur));
-
-		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
-		ASSERT(biow_tmp);
-		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
-			if (!data_copy_bio_wrapper(biow, biow_tmp, gfp_mask)) {
-				return false;
-			}
-		}
-		if (!multimap_cursor_next(&cur)) {
-			break;
-		}
-	}
-#else
-	INIT_LIST_HEAD(&biow_list);
-	n_overlapped_bios = 0;
-	while (multimap_cursor_key(&cur) < biow->pos + biow->len) {
-
-		ASSERT(multimap_cursor_is_valid(&cur));
-
-		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
-		ASSERT(biow_tmp);
-		if (!bio_wrapper_state_is_discard(biow_tmp) &&
-			bio_wrapper_is_overlap(biow, biow_tmp)) {
-			n_overlapped_bios++;
-			insert_to_sorted_bio_wrapper_list_by_lsid(
-				biow_tmp, &biow_list);
-		}
-		if (!multimap_cursor_next(&cur)) {
-			break;
-		}
-	}
-	if (n_overlapped_bios > 64) {
-		pr_warn_ratelimited("Too many overlapped bio(s): %u\n",
-				n_overlapped_bios);
-	}
-	/* Copy overlapped pending bio(s) in the order of lsid. */
-	list_for_each_entry(biow_tmp, &biow_list, list3) {
-		if (!data_copy_bio_wrapper(biow, biow_tmp, gfp_mask)) {
-			return false;
-		}
-	}
-#ifdef WALB_DEBUG
-	LOGd_("lsid begin\n");
-	lsid = 0;
-	list_for_each_entry(biow_tmp, &biow_list, list3) {
-		LOGd_("lsid %"PRIu64"\n", biow_tmp->lsid);
-		ASSERT(lsid <= biow_tmp->lsid);
-		lsid = biow_tmp->lsid;
-	}
-	LOGd_("lsid end\n");
-#endif
-#endif
-	return true;
-}
-#endif
-
-/**
- * Delete fully overwritten biow(s) by a specified biow
- * from a pending data.
- *
- * The is_overwritten field of all deleted biows will be true.
- *
- * @pending_data pending data.
- * @biow bio wrapper as a target for comparison.
- */
-#ifdef WALB_FAST_ALGORITHM
-static void pending_delete_fully_overwritten(
-	struct multimap *pending_data, const struct bio_wrapper *biow)
-{
-	struct multimap_cursor cur;
-	u64 start_pos, end_pos;
-
-	ASSERT(pending_data);
-	ASSERT(biow);
-	ASSERT(biow->len > 0);
-
-	start_pos = biow->pos;
-	end_pos = start_pos + biow->len;
-
-	/* Search the smallest candidate. */
-	multimap_cursor_init(pending_data, &cur);
-	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
-		/* No overlapped requests. */
-		return;
-	}
-
-	/* Search and delete overwritten biow(s). */
-	while (multimap_cursor_key(&cur) < end_pos) {
-		struct bio_wrapper *biow_tmp;
-		int ret;
-		ASSERT(multimap_cursor_is_valid(&cur));
-		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
-		ASSERT(biow_tmp);
-		ret = biow_tmp != biow &&
-			bio_wrapper_is_overwritten_by(biow_tmp, biow);
-		if (ret) {
-			set_bit(BIO_WRAPPER_OVERWRITTEN, &biow_tmp->flags);
-			ret = multimap_cursor_del(&cur);
-			ASSERT(ret);
-			ret = multimap_cursor_is_data(&cur);
-		} else {
-			ret = multimap_cursor_next(&cur);
-		}
-		if (!ret) { break; }
-	}
-}
-#endif
-
-/**
- * Insert a biow to and
- * delete fully overwritten (not overlapped) biow(s) by the biow from
- * a pending data.
- *
- * RETURN:
- *   true in success, or false.
- */
-#ifdef WALB_FAST_ALGORITHM
-static bool pending_insert_and_delete_fully_overwritten(
-	struct multimap *pending_data, unsigned int *max_sectors_p,
-	struct bio_wrapper *biow, gfp_t gfp_mask)
-{
-	bool ret;
-
-	ASSERT(pending_data);
-	ASSERT(max_sectors_p);
-	ASSERT(biow);
-
-	ret = pending_insert(pending_data, max_sectors_p, biow, gfp_mask);
-	if (!ret) { return false; }
-	pending_delete_fully_overwritten(pending_data, biow);
-	return true;
-}
-#endif
-
-/**
- * Check whether walb should stop the queue
- * due to too much pending data.
- *
- * CONTEXT:
- *   pending_data_lock must be held.
- */
-#ifdef WALB_FAST_ALGORITHM
-static inline bool should_stop_queue(
-	struct walb_dev *wdev, struct bio_wrapper *biow)
-{
-	bool should_stop;
-	struct iocore_data *iocored;
-
-	ASSERT(wdev);
-	ASSERT(biow);
-	iocored = get_iocored_from_wdev(wdev);
-	ASSERT(iocored);
-
-	if (iocored->is_under_throttling) {
-		return false;
-	}
-
-	should_stop = iocored->pending_sectors + biow->len
-		> wdev->max_pending_sectors;
-
-	if (should_stop) {
-		iocored->queue_restart_jiffies =
-			jiffies + wdev->queue_stop_timeout_jiffies;
-		iocored->is_under_throttling = true;
-		return true;
-	} else {
-		return false;
-	}
-}
-#endif
-
-/**
- * Check whether walb should restart the queue
- * because pending data is not too much now.
- *
- * CONTEXT:
- *   pending_data_lock must be held.
- */
-#ifdef WALB_FAST_ALGORITHM
-static inline bool should_start_queue(
-	struct walb_dev *wdev, struct bio_wrapper *biow)
-{
-	bool is_size;
-	bool is_timeout;
-	struct iocore_data *iocored;
-
-	ASSERT(wdev);
-	ASSERT(biow);
-	iocored = get_iocored_from_wdev(wdev);
-	ASSERT(iocored);
-
-	if (!iocored->is_under_throttling) {
-		return false;
-	}
-
-	if (iocored->pending_sectors >= biow->len) {
-		is_size = iocored->pending_sectors - biow->len
-			< wdev->min_pending_sectors;
-	} else {
-		is_size = true;
-	}
-
-	is_timeout = time_is_before_jiffies(iocored->queue_restart_jiffies);
-
-	if (is_size || is_timeout) {
-		iocored->is_under_throttling = false;
-		return true;
-	} else {
-		return false;
-	}
-}
-#endif
-
-/**
  * Wait for all data write IO(s) done.
  */
 static void wait_for_all_started_write_io_done(struct walb_dev *wdev)
@@ -3370,6 +2977,85 @@ static void invoke_userland_exec(struct walb_dev *wdev, const char *event_str)
 			, event_str);
 	}
 }
+
+/**
+ * Check whether walb should stop the queue
+ * due to too much pending data.
+ *
+ * CONTEXT:
+ *   pending_data_lock must be held.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static bool should_stop_queue(
+	struct walb_dev *wdev, struct bio_wrapper *biow)
+{
+	bool should_stop;
+	struct iocore_data *iocored;
+
+	ASSERT(wdev);
+	ASSERT(biow);
+	iocored = get_iocored_from_wdev(wdev);
+	ASSERT(iocored);
+
+	if (iocored->is_under_throttling) {
+		return false;
+	}
+
+	should_stop = iocored->pending_sectors + biow->len
+		> wdev->max_pending_sectors;
+
+	if (should_stop) {
+		iocored->queue_restart_jiffies =
+			jiffies + wdev->queue_stop_timeout_jiffies;
+		iocored->is_under_throttling = true;
+		return true;
+	} else {
+		return false;
+	}
+}
+#endif
+
+/**
+ * Check whether walb should restart the queue
+ * because pending data is not too much now.
+ *
+ * CONTEXT:
+ *   pending_data_lock must be held.
+ */
+#ifdef WALB_FAST_ALGORITHM
+static bool should_start_queue(
+	struct walb_dev *wdev, struct bio_wrapper *biow)
+{
+	bool is_size;
+	bool is_timeout;
+	struct iocore_data *iocored;
+
+	ASSERT(wdev);
+	ASSERT(biow);
+	iocored = get_iocored_from_wdev(wdev);
+	ASSERT(iocored);
+
+	if (!iocored->is_under_throttling) {
+		return false;
+	}
+
+	if (iocored->pending_sectors >= biow->len) {
+		is_size = iocored->pending_sectors - biow->len
+			< wdev->min_pending_sectors;
+	} else {
+		is_size = true;
+	}
+
+	is_timeout = time_is_before_jiffies(iocored->queue_restart_jiffies);
+
+	if (is_size || is_timeout) {
+		iocored->is_under_throttling = false;
+		return true;
+	} else {
+		return false;
+	}
+}
+#endif
 
 /**
  * Increment n_users of treemap memory manager and
@@ -3722,182 +3408,6 @@ bool iocore_is_log_overflow(struct walb_dev *wdev)
 
 	return test_bit(IOCORE_STATE_LOG_OVERFLOW, &iocored->flags);
 }
-
-/**
- * Overlapped check and insert.
- *
- * CONTEXT:
- *   overlapped_data lock must be held.
- * RETURN:
- *   true in success, or false (memory allocation failure).
- */
-#ifdef WALB_OVERLAPPED_SERIALIZE
-bool overlapped_check_and_insert(
-	struct multimap *overlapped_data,
-	unsigned int *max_sectors_p,
-	struct bio_wrapper *biow, gfp_t gfp_mask
-#ifdef WALB_DEBUG
-	, u64 *overlapped_in_id
-#endif
-	)
-{
-	struct multimap_cursor cur;
-	u64 max_io_size, start_pos;
-	int ret;
-	struct bio_wrapper *biow_tmp;
-
-	ASSERT(overlapped_data);
-	ASSERT(max_sectors_p);
-	ASSERT(biow);
-	ASSERT(biow->len > 0);
-
-	/* Decide search start position. */
-	max_io_size = *max_sectors_p;
-	if (biow->pos > max_io_size) {
-		start_pos = biow->pos - max_io_size;
-	} else {
-		start_pos = 0;
-	}
-
-	multimap_cursor_init(overlapped_data, &cur);
-	biow->n_overlapped = 0;
-
-	/* Search the smallest candidate. */
-	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
-		goto fin;
-	}
-
-	/* Count overlapped requests previously. */
-	while (multimap_cursor_key(&cur) < biow->pos + biow->len) {
-
-		ASSERT(multimap_cursor_is_valid(&cur));
-
-		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
-		ASSERT(biow_tmp);
-		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
-			biow->n_overlapped++;
-		}
-		if (!multimap_cursor_next(&cur)) {
-			break;
-		}
-	}
-#if 0
-	/* debug */
-	if (biow->n_overlapped > 0) {
-		LOGn("n_overlapped %u\n", biow->n_overlapped);
-	}
-#endif
-	if (biow->n_overlapped > 0) {
-		ret = test_and_set_bit(BIO_WRAPPER_DELAYED, &biow->flags);
-		ASSERT(!ret);
-	}
-fin:
-	ret = multimap_add(overlapped_data, biow->pos, (unsigned long)biow, gfp_mask);
-	ASSERT(ret != -EEXIST);
-	ASSERT(ret != -EINVAL);
-	if (ret) {
-		ASSERT(ret == -ENOMEM);
-		LOGe("overlapped_check_and_insert failed.\n");
-		return false;
-	}
-	*max_sectors_p = max(*max_sectors_p, biow->len);
-#ifdef WALB_DEBUG
-	{
-		biow->ol_id = *overlapped_in_id;
-		(*overlapped_in_id)++;
-	}
-#endif
-	return true;
-}
-#endif
-
-/**
- * Delete a bio_wrapper from the overlapped data,
- * and waiting overlapped requests
- *
- * @overlapped_data overlapped data.
- * @max_sectors_p pointer to max_sectors value.
- * @should_submit_list bio wrapper(s) which n_overlapped became 0
- *     will be added.
- *     using biow->list4 for list operations.
- * @biow biow to be deleted.
- *
- * CONTEXT:
- *   overlapped_data lock must be held.
- */
-#ifdef WALB_OVERLAPPED_SERIALIZE
-unsigned int overlapped_delete_and_notify(
-	struct multimap *overlapped_data,
-	unsigned int *max_sectors_p,
-	struct list_head *should_submit_list,
-	struct bio_wrapper *biow
-#ifdef WALB_DEBUG
-	, u64 *overlapped_out_id
-#endif
-	)
-{
-	struct multimap_cursor cur;
-	u64 max_io_size, start_pos;
-	struct bio_wrapper *biow_tmp;
-	unsigned int n_should_submit = 0;
-
-	ASSERT(overlapped_data);
-	ASSERT(max_sectors_p);
-	ASSERT(biow);
-	ASSERT(biow->n_overlapped == 0);
-
-	max_io_size = *max_sectors_p;
-	if (biow->pos > max_io_size) {
-		start_pos = biow->pos - max_io_size;
-	} else {
-		start_pos = 0;
-	}
-
-	/* Delete from the overlapped data. */
-	biow_tmp = (struct bio_wrapper *)multimap_del(
-		overlapped_data, biow->pos, (unsigned long)biow);
-	LOGd_("biow_tmp %p biow %p\n", biow_tmp, biow); /* debug */
-	ASSERT(biow_tmp == biow);
-
-#ifdef WALB_DEBUG
-	{
-		ASSERT(biow->ol_id == *overlapped_out_id);
-		(*overlapped_out_id)++;
-	}
-#endif
-	/* Initialize max_sectors. */
-	if (multimap_is_empty(overlapped_data)) {
-		*max_sectors_p = 0;
-	}
-
-	/* Search the smallest candidate. */
-	multimap_cursor_init(overlapped_data, &cur);
-	if (!multimap_cursor_search(&cur, start_pos, MAP_SEARCH_GE, 0)) {
-		return 0;
-	}
-	/* Decrement count of overlapped requests afterward and notify if need. */
-	while (multimap_cursor_key(&cur) < biow->pos + biow->len) {
-
-		ASSERT(multimap_cursor_is_valid(&cur));
-
-		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
-		ASSERT(biow_tmp);
-		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
-			biow_tmp->n_overlapped--;
-			if (biow_tmp->n_overlapped == 0) {
-				/* There is no overlapped request before it. */
-				list_add_tail(
-					&biow_tmp->list4, should_submit_list);
-				n_should_submit++;
-			}
-		}
-		if (!multimap_cursor_next(&cur)) {
-			break;
-		}
-	}
-	return n_should_submit;
-}
-#endif
 
 /**
  * Wait for all pending IO(s) done.

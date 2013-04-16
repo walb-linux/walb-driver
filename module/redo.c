@@ -16,7 +16,7 @@
 #include "pack_work.h"
 #include "logpack.h"
 #include "super.h"
-#include "io.h"
+#include "overlapped_io.h"
 #include "redo.h"
 
 /*******************************************************************************

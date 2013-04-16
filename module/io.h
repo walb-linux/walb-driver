@@ -1,6 +1,7 @@
 /**
  * io.h - IO processing core of WalB.
  *
+ * (C) 2012 Cybozu Labs, Inc.
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #ifndef WALB_IO_H_KERNEL
@@ -164,24 +165,6 @@ void iocore_set_readonly(struct walb_dev *wdev);
 bool iocore_is_readonly(struct walb_dev *wdev);
 void iocore_clear_log_overflow(struct walb_dev *wdev);
 bool iocore_is_log_overflow(struct walb_dev *wdev);
-
-/* Overlapped data functions. */
-#ifdef WALB_OVERLAPPED_SERIALIZE
-bool overlapped_check_and_insert(
-	struct multimap *overlapped_data, unsigned int *max_sectors_p,
-	struct bio_wrapper *biow, gfp_t gfp_mask
-#ifdef WALB_DEBUG
-	, u64 *overlapped_in_id
-#endif
-	);
-unsigned int overlapped_delete_and_notify(
-	struct multimap *overlapped_data, unsigned int *max_sectors_p,
-	struct list_head *should_submit_list, struct bio_wrapper *biow
-#ifdef WALB_DEBUG
-	, u64 *overlapped_out_id
-#endif
-	);
-#endif
 
 /* Iocore utilities. */
 void wait_for_all_pending_io_done(struct walb_dev *wdev);
