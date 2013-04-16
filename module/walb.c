@@ -168,8 +168,6 @@ static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 static u64 get_written_lsid(struct walb_dev *wdev);
 static u64 get_permanent_lsid(struct walb_dev *wdev);
 static u64 get_completed_lsid(struct walb_dev *wdev);
-static u64 get_log_usage(struct walb_dev *wdev);
-static u64 get_log_capacity(struct walb_dev *wdev);
 static int walb_set_name(struct walb_dev *wdev, unsigned int minor,
 			const char *name);
 static void walb_decide_flush_support(struct walb_dev *wdev);
@@ -966,7 +964,7 @@ static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl)
 	LOGn("WALB_IOCTL_GET_LOG_USAGE\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_LOG_USAGE);
 
-	ctl->val_u64 = get_log_usage(wdev);
+	ctl->val_u64 = walb_get_log_usage(wdev);
 	return 0;
 }
 
@@ -983,7 +981,7 @@ static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *c
 	LOGn("WALB_IOCTL_GET_LOG_CAPACITY\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_LOG_CAPACITY);
 
-	ctl->val_u64 = get_log_capacity(wdev);
+	ctl->val_u64 = walb_get_log_capacity(wdev);
 	return 0;
 }
 
@@ -1420,37 +1418,6 @@ static u64 get_completed_lsid(struct walb_dev *wdev)
 #else /* WALB_FAST_ALGORITHM */
 	return get_written_lsid(wdev);
 #endif /* WALB_FAST_ALGORITHM */
-}
-
-/**
- * Get log usage.
- *
- * RETURN:
- *   Log usage [physical block].
- */
-static u64 get_log_usage(struct walb_dev *wdev)
-{
-	u64 latest_lsid, oldest_lsid;
-
-	spin_lock(&wdev->lsid_lock);
-	latest_lsid = wdev->lsids.latest;
-	oldest_lsid = wdev->lsids.oldest;
-	spin_unlock(&wdev->lsid_lock);
-
-	ASSERT(latest_lsid >= oldest_lsid);
-	return latest_lsid - oldest_lsid;
-}
-
-/**
- * Get log capacity of a walb device.
- *
- * @return ring_buffer_size of the walb device.
- */
-static u64 get_log_capacity(struct walb_dev *wdev)
-{
-	ASSERT(wdev);
-
-	return wdev->ring_buffer_size;
 }
 
 /**
@@ -2718,6 +2685,37 @@ void unregister_wdev(struct walb_dev *wdev)
 
 	walblog_unregister_device(wdev);
 	walb_unregister_device(wdev);
+}
+
+/**
+ * Get log usage.
+ *
+ * RETURN:
+ *   Log usage [physical block].
+ */
+u64 walb_get_log_usage(struct walb_dev *wdev)
+{
+	u64 latest_lsid, oldest_lsid;
+
+	spin_lock(&wdev->lsid_lock);
+	latest_lsid = wdev->lsids.latest;
+	oldest_lsid = wdev->lsids.oldest;
+	spin_unlock(&wdev->lsid_lock);
+
+	ASSERT(latest_lsid >= oldest_lsid);
+	return latest_lsid - oldest_lsid;
+}
+
+/**
+ * Get log capacity of a walb device.
+ *
+ * @return ring_buffer_size of the walb device.
+ */
+u64 walb_get_log_capacity(struct walb_dev *wdev)
+{
+	ASSERT(wdev);
+
+	return wdev->ring_buffer_size;
 }
 
 /*******************************************************************************
