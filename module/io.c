@@ -138,7 +138,7 @@ static void task_wait_for_bio_wrapper_list(struct work_struct *work);
 static void run_gc_logpack_list(void *data);
 
 /* Logpack related functions. */
-static void create_logpack_list(
+static bool create_logpack_list(
 	struct walb_dev *wdev, struct list_head *biow_list,
 	struct list_head *pack_list);
 static void submit_logpack_list(
@@ -217,6 +217,8 @@ static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid);
 static void flush_all_wq(void);
 static void clear_working_flag(int working_bit, unsigned long *flag_p);
 static void invoke_userland_exec(struct walb_dev *wdev, const char *event);
+static void fail_and_destroy_bio_wrapper_list(
+	struct walb_dev *wdev, struct list_head *biow_list);
 
 /* Stop/start queue for fast algorithm. */
 #ifdef WALB_FAST_ALGORITHM
@@ -822,17 +824,14 @@ static void task_submit_logpack_list(struct work_struct *work)
 
 		/* Failure mode. */
 		if (test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags)) {
-			list_for_each_entry_safe(
-				biow, biow_next, &biow_list, list) {
-				bio_endio(biow->bio, -EIO);
-				list_del(&biow->list);
-				destroy_bio_wrapper_dec(wdev, biow);
-			}
+			fail_and_destroy_bio_wrapper_list(wdev, &biow_list);
 			continue;
 		}
 
 		/* Create and submit. */
-		create_logpack_list(wdev, &biow_list, &wpack_list);
+		if (!create_logpack_list(wdev, &biow_list, &wpack_list)) {
+			continue;
+		}
 		submit_logpack_list(wdev, &wpack_list);
 
 		/* Enqueue logpack list to the wait queue. */
@@ -1145,7 +1144,7 @@ static void run_gc_logpack_list(void *data)
  *   Finally all biow(s) in the biow_list will be
  *   moved to pack(s) in the wpack_list.
  */
-static void create_logpack_list(
+static bool create_logpack_list(
 	struct walb_dev *wdev, struct list_head *biow_list,
 	struct list_head *wpack_list)
 {
@@ -1218,6 +1217,25 @@ static void create_logpack_list(
 	ASSERT(!list_empty(wpack_list));
 	ASSERT(list_empty(biow_list));
 
+	/* Check whether we must avoid ring buffer overflow. */
+	if (is_error_before_overflow_ && wdev->ring_buffer_size < latest_lsid - oldest_lsid) {
+		struct pack *wpack_next;
+		/* We must fail the IOs to avoid ring buffer overflow. */
+		list_for_each_entry_safe(wpack, wpack_next, wpack_list, list) {
+			list_del(&wpack->list);
+			fail_and_destroy_bio_wrapper_list(wdev, &wpack->biow_list);
+#ifdef DEBUG
+			if (wpack->is_flush_header) {
+				atomic_dec(&iocored->n_flush_logpack);
+			}
+#endif
+			ASSERT(list_empty(&wpack->bioe_list));
+			destroy_pack(wpack);
+		}
+		ASSERT(list_empty(wpack_list));
+		return false;
+	}
+
 	/* Store lsids. */
 	ASSERT(latest_lsid >= latest_lsid_old);
 	spin_lock(&wdev->lsid_lock);
@@ -1248,6 +1266,8 @@ static void create_logpack_list(
 			"Ring buffer size is too small to keep consistency. "
 			"!!!PLEASE GROW THE LOG DEVICE SIZE.!!!\n");
 	}
+
+	return true;
 }
 
 /**
@@ -2976,6 +2996,21 @@ static void invoke_userland_exec(struct walb_dev *wdev, const char *event_str)
 			, minor_str
 			, event_str);
 	}
+}
+
+/**
+ * Fail all bios in specified bio wrapper list and destroy them.
+ */
+static void fail_and_destroy_bio_wrapper_list(
+	struct walb_dev *wdev, struct list_head *biow_list)
+{
+	struct bio_wrapper *biow, *biow_next;
+	list_for_each_entry_safe(biow, biow_next, biow_list, list) {
+		bio_endio(biow->bio, -EIO);
+		list_del(&biow->list);
+		destroy_bio_wrapper_dec(wdev, biow);
+	}
+	ASSERT(list_empty(biow_list));
 }
 
 /**

@@ -79,6 +79,13 @@ module_param_named(is_sort_data_io, is_sort_data_io_, uint, S_IRUGO|S_IWUSR);
 char exec_path_on_error_[EXEC_PATH_ON_ERROR_LEN] = "";
 module_param_string(exec_path_on_error, exec_path_on_error_, sizeof(exec_path_on_error_), S_IRUGO|S_IWUSR);
 
+/**
+ * Set non-zero if you want walb devices to transit the read-only state
+ * where write IO will fail not to overflow ring buffer.
+ */
+unsigned int is_error_before_overflow_ = 0;
+module_param_named(is_error_before_overflow, is_error_before_overflow_, uint, S_IRUGO);
+
 /*******************************************************************************
  * Shared data definition.
  *******************************************************************************/

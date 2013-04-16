@@ -65,6 +65,8 @@ unsigned int is_sort_data_io_ = 1;
 /* Userland executable binary path for error handling. */
 char exec_path_on_error_[EXEC_PATH_ON_ERROR_LEN] = "";
 
+unsigned int is_error_before_overflow_ = 0;
+
 /*******************************************************************************
  * Module parameters definition.
  *******************************************************************************/

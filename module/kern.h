@@ -45,6 +45,12 @@ extern unsigned int is_sort_data_io_;
 #define EXEC_PATH_ON_ERROR_LEN 256
 extern char exec_path_on_error_[];
 
+/**
+ * Non-zero if you want write IOs to fail in order not to
+ * overflow the ring buffer.
+ */
+extern unsigned int is_error_before_overflow_;
+
 /*
  * Minor number and partition management.
  */
