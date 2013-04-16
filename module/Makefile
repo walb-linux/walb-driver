@@ -39,7 +39,7 @@ ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 
 walb-mod-objs := \
-walb.o sysfs.o control.o alldevs.o snapshot.o checkpoint.o \
+walb.o wdev_util.o wdev_ioctl.o sysfs.o control.o alldevs.o snapshot.o checkpoint.o \
 super.o logpack.o io.o redo.o \
 sector_io.o bio_entry.o bio_wrapper.o worker.o pack_work.o \
 hashtbl.o treemap.o
@@ -78,7 +78,7 @@ WALB_PROTO_REQ_OBJS = proto/walb_proto_req.o \
 sector_io.o bio_entry.o proto/req_entry.o logpack.o treemap.o worker.o pack_work.o
 walb-proto-req-mod-objs := $(WALB_PROTO_REQ_OBJS)
 WALB_PROTO_BIO_OBJS = \
-proto/walb_proto_bio.o io.o sysfs.o checkpoint.o super.o \
+proto/walb_proto_bio.o wdev_util.o io.o sysfs.o checkpoint.o super.o \
 sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o worker.o pack_work.o
 walb-proto-bio-mod-objs := $(WALB_PROTO_BIO_OBJS)
 

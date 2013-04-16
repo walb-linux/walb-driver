@@ -8,6 +8,7 @@
 #include <linux/spinlock.h>
 #include "kern.h"
 #include "io.h"
+#include "wdev_util.h"
 
 /*******************************************************************************
  * Utiltities.

@@ -309,7 +309,4 @@ void destroy_wdev(struct walb_dev *wdev);
 bool register_wdev(struct walb_dev *wdev);
 void unregister_wdev(struct walb_dev *wdev);
 
-u64 walb_get_log_usage(struct walb_dev *wdev);
-u64 walb_get_log_capacity(struct walb_dev *wdev);
-
 #endif /* WALB_KERN_H_KERNEL */
