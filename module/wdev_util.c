@@ -36,7 +36,9 @@ int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
 	ASSERT(is_same_size_sector(sect, wdev->lsuper0));
 	logh = get_logpack_header(sect);
 
+	spin_lock(&wdev->lsuper0_lock);
 	off = get_offset_of_lsid_2(get_super_sector(wdev->lsuper0), lsid);
+	spin_unlock(&wdev->lsuper0_lock);
 	if (!sector_io(READ, wdev->ldev, off, sect)) {
 		LOGe("walb_check_lsid_valid: read sector failed.\n");
 		goto error1;

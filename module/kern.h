@@ -161,7 +161,10 @@ struct walb_dev
 	unsigned int ldev_chunk_sectors;
 	unsigned int ddev_chunk_sectors;
 
-	/* Super sector of log device. */
+	/*
+	 * Super sector of log device.
+	 * The lock must be held to access the lsuper0 while the device is online.
+	 */
 	spinlock_t lsuper0_lock;
 	struct sector_data *lsuper0;
 
