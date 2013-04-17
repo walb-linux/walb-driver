@@ -21,7 +21,7 @@
 /* Ioctl details. */
 static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_search_lsid(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
+static int ioctl_wdev_search_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_status(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
 static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_delete_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl);
@@ -112,7 +112,7 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 }
 
 /**
- * Search lsid.
+ * Search a valid lsid which indicates a logpack header block.
  *
  * @wdev walb dev.
  * @ctl ioctl data.
@@ -121,9 +121,28 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
  */
 static int ioctl_wdev_search_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	/* not yet implemented */
-	LOGn("WALB_IOCTL_SEARCH_LSID is not supported currently.\n");
-	return -EFAULT;
+	u64 lsid, lsid0, lsid1;
+	u32 n_pb;
+	bool found = false;
+
+	LOGn("WALB_IOCTL_SEARCH_LSID\n");
+	ASSERT(ctl->command == WALB_IOCTL_SEARCH_LSID);
+
+	lsid0 = ctl->val_u64;
+	if (lsid0 == INVALID_LSID) { return -EFAULT; }
+	n_pb = ctl->val_u32;
+	if ((1 << 16) <= n_pb) { return -EFAULT; }
+	if (n_pb == 0) { n_pb = 1 << 16; }
+	lsid1 = lsid0 + n_pb;
+
+	for (lsid = lsid0; lsid < lsid1; lsid++) {
+		if (walb_check_lsid_valid(wdev, lsid)) {
+			found = true;
+			break;
+		}
+	}
+	ctl->val_u64 = found ? lsid : INVALID_LSID;
+	return 0;
 }
 
 /**
