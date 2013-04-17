@@ -23,11 +23,8 @@ bool get_datetime_str(time_t t, char* buf, size_t n);
 
 /* Block device operations. */
 bool is_valid_bdev(const char* path);
-int get_bdev_logical_block_size(const char* devpath);
-int get_bdev_physical_block_size(const char* devpath);
-bool is_same_bdev_block_size(
-	const char* devpath, unsigned int lbs, unsigned int pbs);
-bool is_same_two_bdev_block_size(const char* devpath1, const char* devpath2);
+unsigned int get_bdev_logical_block_size(const char* devpath);
+unsigned int get_bdev_physical_block_size(const char* devpath);
 u64 get_bdev_size(const char* devpath);
 dev_t get_bdev_devt(const char *devpath);
 bool is_discard_supported(int fd);

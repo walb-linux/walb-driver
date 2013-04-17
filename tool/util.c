@@ -203,9 +203,9 @@ error1:
  *
  * @devpath device file path.
  * RETURN:
- *   sector size in succeeded, or -1.
+ *   sector size in succeeded, or 0.
  */
-int get_bdev_logical_block_size(const char* devpath)
+unsigned int get_bdev_logical_block_size(const char* devpath)
 {
 	int fd;
 	unsigned int lbs;
@@ -213,7 +213,7 @@ int get_bdev_logical_block_size(const char* devpath)
 	fd = open_blk_dev(devpath);
 	if (fd < 0) {
 		perror("open failed.");
-		return -1;
+		return 0;
 	}
 	if (ioctl(fd, BLKSSZGET, &lbs) < 0) {
 		perror("ioctl failed");
@@ -221,13 +221,13 @@ int get_bdev_logical_block_size(const char* devpath)
 	}
 	if (close(fd)) {
 		perror("close failed.");
-		return -1;
+		return 0;
 	}
-	return (int)lbs;
+	return lbs;
 
 error1:
 	close(fd);
-	return -1;
+	return 0;
 }
 
 /**
@@ -235,9 +235,9 @@ error1:
  *
  * @devpath device file path.
  * RETURN:
- *   sector size in succeeded, or -1.
+ *   sector size in succeeded, or 0.
  */
-int get_bdev_physical_block_size(const char* devpath)
+unsigned int get_bdev_physical_block_size(const char* devpath)
 {
 	int fd;
 	unsigned int pbs;
@@ -245,7 +245,7 @@ int get_bdev_physical_block_size(const char* devpath)
 	fd = open_blk_dev(devpath);
 	if (fd < 0) {
 		perror("open failed.");
-		return -1;
+		return 0;
 	}
 	if (ioctl(fd, BLKPBSZGET, &pbs) < 0) {
 		perror("ioctl failed");
@@ -253,47 +253,13 @@ int get_bdev_physical_block_size(const char* devpath)
 	}
 	if (close(fd)) {
 		perror("close failed.");
-		return -1;
+		return 0;
 	}
-	return (int)pbs;
+	return pbs;
 
 error1:
 	close(fd);
-	return -1;
-}
-
-/**
- * RETURN:
- *   true if the devpath block device has
- *   specified logical/physical block size.
- */
-bool is_same_bdev_block_size(
-	const char* devpath, unsigned int lbs, unsigned int pbs)
-{
-	int lbs2 = get_bdev_logical_block_size(devpath);
-	int pbs2 = get_bdev_physical_block_size(devpath);
-	if (lbs2 < 0 || pbs2 < 0) { return false; }
-	return (int)lbs == lbs2 && (int)pbs == pbs2;
-}
-
-/**
- * Check block size of two devices.
- *
- * RETURN:
- *   true when two devices has compatible block sizes, or false.
- */
-bool is_same_two_bdev_block_size(const char* devpath1, const char* devpath2)
-{
-	int lbs1, lbs2, pbs1, pbs2;
-
-	ASSERT(is_valid_bdev(devpath1) && is_valid_bdev(devpath2));
-
-	lbs1 = get_bdev_logical_block_size(devpath1);
-	lbs2 = get_bdev_logical_block_size(devpath2);
-	pbs1 = get_bdev_physical_block_size(devpath1);
-	pbs2 = get_bdev_physical_block_size(devpath2);
-	return lbs1 > 0 && lbs2 > 0 && pbs1 > 0 && pbs2 > 0 &&
-		lbs1 == lbs2 && pbs1 == pbs2;
+	return 0;
 }
 
 /**
