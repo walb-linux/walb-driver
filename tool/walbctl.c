@@ -186,6 +186,8 @@ static struct cmdhelp cmdhelps_[] = {
 	  "Get permanent_lsid in the device." },
 	{ "get_completed_lsid WDEV",
 	  "Get completed_lsid in the device." },
+	{ "search_valid_lsid WLDEV LSID SIZE",
+	  "Search valid lsid which indicates a logpack header block." },
 	{ "get_log_usage WDEV",
 	  "Get log usage in the log device." },
 	{ "get_log_capacity WDEV",
@@ -275,6 +277,9 @@ static void decide_lsid_range(const struct config *cfg, u64 lsid[2]);
 static struct walblog_header *create_and_read_wlog_header(int inFd);
 static struct walb_super_sector *create_and_read_super_sector(
 	struct sector_data **sectdp, int fd, unsigned int pbs);
+static bool check_and_open_bdev(
+	const char *bdev_path, unsigned int *lbs_p, unsigned int *pbs_p,
+	int *fd_p, int flags);
 
 /* commands. */
 static bool do_format_ldev(const struct config *cfg);
@@ -300,6 +305,7 @@ static bool do_get_oldest_lsid(const struct config *cfg);
 static bool do_get_written_lsid(const struct config *cfg);
 static bool do_get_permanent_lsid(const struct config *cfg);
 static bool do_get_completed_lsid(const struct config *cfg);
+static bool do_search_valid_lsid(const struct config *cfg);
 static bool do_get_log_usage(const struct config *cfg);
 static bool do_get_log_capacity(const struct config *cfg);
 static bool do_is_flush_capable(const struct config *cfg);
@@ -340,6 +346,7 @@ const struct map_str_to_fn cmd_map_[] = {
 	{ "get_written_lsid", do_get_written_lsid },
 	{ "get_permanent_lsid", do_get_permanent_lsid },
 	{ "get_completed_lsid", do_get_completed_lsid },
+	{ "search_valid_lsid", do_search_valid_lsid },
 	{ "get_log_usage", do_get_log_usage },
 	{ "get_log_capacity", do_get_log_capacity },
 	{ "is_flush_capable", do_is_flush_capable },
@@ -438,6 +445,7 @@ static void init_config(struct config* cfg)
 
 	cfg->nodiscard = false;
 
+	cfg->lsid = (u64)(-1);
 	cfg->lsid0 = (u64)(-1);
 	cfg->lsid1 = (u64)(-1);
 
@@ -1218,6 +1226,46 @@ static struct walb_super_sector *create_and_read_super_sector(
 error1:
 	sector_free(sectd);
 	return NULL;
+}
+
+/**
+ * Check/get logical/physical block size a block device,
+ * then open it.
+ *
+ * @bdev_path block device path.
+ * @lbs_p pointer to store logical block size.
+ * @pbs_p pointer to store physical block size.
+ * @fd_p pointer to store file descriptor.
+ * @flags open flags.
+ *
+ * RETURN:
+ *   true if successfully opened, or false.
+ */
+static bool check_and_open_bdev(
+	const char *bdev_path, unsigned int *lbs_p, unsigned int *pbs_p,
+	int *fd_p, int flags)
+{
+	/*
+	 * Check the block device.
+	 */
+	if (!is_valid_bdev(bdev_path)) {
+		LOGe("check the block device failed: %s.\n", bdev_path);
+		return false;
+	}
+	/* Check logical/physical block size. */
+	*lbs_p = get_bdev_logical_block_size(bdev_path);
+	*pbs_p = get_bdev_physical_block_size(bdev_path);
+	if (!(*lbs_p == LOGICAL_BLOCK_SIZE && is_valid_pbs(*pbs_p))) {
+		return false;
+	}
+
+	/* Open the device. */
+	*fd_p = open(bdev_path, flags);
+	if (*fd_p < 0) {
+		LOGe("open failed: %s.\n", strerror(errno));
+		return false;
+	}
+	return true;
 }
 
 /*******************************************************************************
@@ -2533,6 +2581,83 @@ static bool do_get_completed_lsid(const struct config *cfg)
 	}
 	printf("%"PRIu64"\n", lsid);
 	return true;
+}
+
+/**
+ * Search valid lsid which indicates a logpack header block.
+ */
+static bool do_search_valid_lsid(const struct config *cfg)
+{
+	unsigned int lbs, pbs;
+	int fd;
+	struct sector_data *super_sectd;
+	struct walb_super_sector *super;
+	const size_t bufsize = 1024 * 1024; /* 1MB */
+	struct logpack *pack;
+	u64 lsid, begin_lsid, end_lsid;
+	u32 salt;
+	u64 n_pb;
+	bool found;
+
+	ASSERT(cfg->cmd_str);
+	ASSERT(strcmp(cfg->cmd_str, "search_valid_lsid") == 0);
+
+	if (cfg->lsid == (u64)(-1)) {
+		LOGe("specify valid lsid.\n");
+		return false;
+	}
+	n_pb = cfg->size;
+	if (n_pb == (u64)(-1)) { n_pb = 1 << 16; } /* default value */
+	if (n_pb == 0 || (1 << 16) < n_pb) {
+		LOGe("specify valid size.\n");
+		return false;
+	}
+
+	if (!check_and_open_bdev(cfg->wldev_name, &lbs, &pbs, &fd, O_RDONLY | O_DIRECT)) {
+		return false;
+	}
+
+	super = create_and_read_super_sector(&super_sectd, fd, pbs);
+	if (!super) { goto error1; }
+	salt = super->log_checksum_salt;
+
+	pack = alloc_logpack(pbs, bufsize / pbs);
+	if (!pack) { goto error2; }
+
+	begin_lsid = cfg->lsid;
+	if (begin_lsid < super->oldest_lsid) {
+		LOGe("Specify valid starting lsid (oldest_lsid <= lsid).\n");
+		goto error3;
+	}
+	end_lsid = begin_lsid + n_pb;
+	ASSERT(begin_lsid < end_lsid);
+
+	found = false;
+	for (lsid = begin_lsid; lsid < end_lsid; lsid++) {
+		bool retb = read_logpack_header_from_wldev(
+			fd, super, lsid, salt, pack->sectd);
+		if (retb) {
+			found = true;
+			break;
+		}
+	}
+	if (found) {
+		printf("%" PRIu64 "\n", lsid);
+	} else {
+		printf("NOT_FOUND\n");
+	}
+
+	free_logpack(pack);
+	sector_free(super_sectd);
+	return close_(fd) == 0;
+
+error3:
+	free_logpack(pack);
+error2:
+	sector_free(super_sectd);
+error1:
+	close_(fd);
+	return false;
 }
 
 /**
