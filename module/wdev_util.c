@@ -63,6 +63,24 @@ error0:
 }
 
 /**
+ * Get oldest lsid of a walb data device.
+ *
+ * @return written_lsid of the walb device.
+ */
+u64 get_oldest_lsid(struct walb_dev *wdev)
+{
+	u64 ret;
+
+	ASSERT(wdev);
+
+	spin_lock(&wdev->lsid_lock);
+	ret = wdev->lsids.oldest;
+	spin_unlock(&wdev->lsid_lock);
+
+	return ret;
+}
+
+/**
  * Get written lsid of a walb data device.
  *
  * @return written_lsid of the walb device.

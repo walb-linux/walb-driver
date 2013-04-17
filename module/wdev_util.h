@@ -36,6 +36,7 @@ enum {
 int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid);
 
 /* Utility functions for walb_dev. */
+u64 get_oldest_lsid(struct walb_dev *wdev);
 u64 get_written_lsid(struct walb_dev *wdev);
 u64 get_permanent_lsid(struct walb_dev *wdev);
 u64 get_completed_lsid(struct walb_dev *wdev);

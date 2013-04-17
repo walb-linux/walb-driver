@@ -21,7 +21,6 @@
 /* Ioctl details. */
 static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_search_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_status(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
 static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_delete_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl);
@@ -63,9 +62,7 @@ static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 	LOGn("WALB_IOCTL_GET_OLDEST_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_OLDEST_LSID);
 
-	spin_lock(&wdev->lsid_lock);
-	ctl->val_u64 = wdev->lsids.oldest;
-	spin_unlock(&wdev->lsid_lock);
+	ctl->val_u64 = get_oldest_lsid(wdev);
 	return 0;
 }
 
@@ -108,40 +105,6 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 		LOGe("sync super block failed.\n");
 		return -EFAULT;
 	}
-	return 0;
-}
-
-/**
- * Search a valid lsid which indicates a logpack header block.
- *
- * @wdev walb dev.
- * @ctl ioctl data.
- * RETURN:
- *   0 in success, or -EFAULT.
- */
-static int ioctl_wdev_search_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
-{
-	u64 lsid, lsid0, lsid1;
-	u32 n_pb;
-	bool found = false;
-
-	LOGn("WALB_IOCTL_SEARCH_LSID\n");
-	ASSERT(ctl->command == WALB_IOCTL_SEARCH_LSID);
-
-	lsid0 = ctl->val_u64;
-	if (lsid0 == INVALID_LSID) { return -EFAULT; }
-	n_pb = ctl->val_u32;
-	if ((1 << 16) <= n_pb) { return -EFAULT; }
-	if (n_pb == 0) { n_pb = 1 << 16; }
-	lsid1 = lsid0 + n_pb;
-
-	for (lsid = lsid0; lsid < lsid1; lsid++) {
-		if (walb_check_lsid_valid(wdev, lsid)) {
-			found = true;
-			break;
-		}
-	}
-	ctl->val_u64 = found ? lsid : INVALID_LSID;
 	return 0;
 }
 
@@ -958,9 +921,6 @@ int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		break;
 	case WALB_IOCTL_LIST_SNAPSHOT_FROM:
 		ret = ioctl_wdev_list_snapshot_from(wdev, ctl);
-		break;
-	case WALB_IOCTL_SEARCH_LSID:
-		ret = ioctl_wdev_search_lsid(wdev, ctl);
 		break;
 	case WALB_IOCTL_STATUS:
 		ret = ioctl_wdev_status(wdev, ctl);

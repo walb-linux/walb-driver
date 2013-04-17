@@ -249,15 +249,6 @@ enum {
 	 * INPUT:
 	 * OUTPUT:
 	 */
-	WALB_IOCTL_SEARCH_LSID,
-
-	/*
-	 * NOT YET IMPLEMENTED (NYI).
-	 * ???
-	 *
-	 * INPUT:
-	 * OUTPUT:
-	 */
 	WALB_IOCTL_STATUS,
 
 	/*
