@@ -187,23 +187,6 @@ bool pending_check_and_copy(
 		return true;
 	}
 	/* Copy data from pending and overlapped write requests. */
-#if 0
-	while (multimap_cursor_key(&cur) < biow->pos + biow->len) {
-
-		ASSERT(multimap_cursor_is_valid(&cur));
-
-		biow_tmp = (struct bio_wrapper *)multimap_cursor_val(&cur);
-		ASSERT(biow_tmp);
-		if (bio_wrapper_is_overlap(biow, biow_tmp)) {
-			if (!data_copy_bio_wrapper(biow, biow_tmp, gfp_mask)) {
-				return false;
-			}
-		}
-		if (!multimap_cursor_next(&cur)) {
-			break;
-		}
-	}
-#else
 	INIT_LIST_HEAD(&biow_list);
 	n_overlapped_bios = 0;
 	while (multimap_cursor_key(&cur) < biow->pos + biow->len) {
@@ -241,7 +224,6 @@ bool pending_check_and_copy(
 		lsid = biow_tmp->lsid;
 	}
 	LOGd_("lsid end\n");
-#endif
 #endif
 	return true;
 }

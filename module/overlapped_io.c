@@ -67,13 +67,9 @@ bool overlapped_check_and_insert(
 			break;
 		}
 	}
-#if 0
-	/* debug */
+
 	if (biow->n_overlapped > 0) {
-		LOGn("n_overlapped %u\n", biow->n_overlapped);
-	}
-#endif
-	if (biow->n_overlapped > 0) {
+		LOGd_("n_overlapped %u\n", biow->n_overlapped);
 		ret = test_and_set_bit(BIO_WRAPPER_DELAYED, &biow->flags);
 		ASSERT(!ret);
 	}

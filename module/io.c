@@ -2240,9 +2240,6 @@ static void wait_for_logpack_and_submit_datapack(
 #ifdef WALB_FAST_ALGORITHM
 	bool is_pending_insert_succeeded;
 	bool is_stop_queue = false;
-#if 0
-	struct pack_work *pwork;
-#endif
 #endif
 
 	ASSERT(wpack);
@@ -2357,19 +2354,6 @@ static void wait_for_logpack_and_submit_datapack(
 				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
 					LOGd_("iocore frozen.\n");
 				}
-#if 0
-			retry_pack_work:
-				pwork = create_pack_work(wdev, GFP_NOIO);
-				if (!pwork) {
-					LOGn("memory allocation failed.\n");
-					schedule();
-					goto retry_pack_work;
-				}
-				INIT_DELAYED_WORK(&pwork->dwork, task_restart_queue);
-				queue_delayed_work(
-					system_wq, &pwork->dwork,
-					wdev->queue_stop_timeout_jiffies);
-#endif
 			}
 
 			/* call endio here in fast algorithm,
@@ -3150,24 +3134,6 @@ static void pack_cache_put(void)
 }
 
 /*******************************************************************************
- * Interfaces.
- *******************************************************************************/
-
-#if 0
-/**
- * WalB operations.
- */
-static struct walb_iocore_operations iocore_ops_ = {
-	.initialize       = iocore_initialize,
-	.finalize         = iocore_finalize,
-	.make_request     = iocore_make_request,
-	.log_make_request = iocore_log_make_request,
-	.stop             = iocore_stop,
-	.start            = iocore_start,
-};
-#endif
-
-/*******************************************************************************
  * Global functions implementation.
  *******************************************************************************/
 
@@ -3507,31 +3473,11 @@ void destroy_bio_wrapper_dec(
 /**
  * Make request.
  */
-#if 0
-void walb_make_request(struct request_queue *q, struct bio *bio)
-{
-	UNUSED struct walb_dev *wdev = get_wdev_from_queue(q);
-
-	/* Set a clock ahead. */
-	spin_lock(&wdev->lsid_lock);
-	wdev->latest_lsid++;
-#ifdef WALB_FAST_ALGORITHM
-	wdev->completed_lsid++;
-#endif
-	wdev->written_lsid++;
-	spin_unlock(&wdev->lsid_lock);
-
-	/* not yet implemented. */
-	set_bit(BIO_UPTODATE, &bio->bi_flags);
-	bio_endio(bio, 0);
-}
-#else
 void walb_make_request(struct request_queue *q, struct bio *bio)
 {
 	struct walb_dev *wdev = get_wdev_from_queue(q);
 	iocore_make_request(wdev, bio);
 }
-#endif
 
 /**
  * Walblog device make request.

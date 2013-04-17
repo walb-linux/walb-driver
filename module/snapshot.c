@@ -1477,9 +1477,6 @@ int snapshot_add_nolock(struct snapshot_data *snapd,
 	struct walb_snapshot_record *rec;
 	u32 snapshot_id;
 	bool ret;
-#if 0
-	struct snapshot_sector_control *ctl;
-#endif
 
 	/* Check the name is unique. */
 	if (get_id_by_name(snapd, name) != INVALID_SNAPSHOT_ID) {
@@ -1506,18 +1503,7 @@ int snapshot_add_nolock(struct snapshot_data *snapd,
 	}
 
 	/* Currently sync/evict must be executed by the caller. */
-#if 0
-	/* Sync and evict all sectors. */
-	ctl = get_control_by_id(snapd, snapshot_id);
-	ASSERT(ctl);
-	ret = sector_sync(snapd, ctl->offset);
-	if (!ret) {
-		LOGe("Snapshot sector sync failed.\n");
-		goto error0;
-	}
-	ret = sector_evict(snapd, ctl->offset);
-	ASSERT(ret);
-#endif
+
 	return 0;
 
 error0:

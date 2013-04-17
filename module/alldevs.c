@@ -163,31 +163,6 @@ void alldevs_exit(void)
 }
 
 /**
- * Search wdev with device minor.
- * Traversing wdev list.
- * Read lock is required.
- */
-#if 0
-struct walb_dev* search_wdev_with_minor(unsigned int minor)
-{
-	struct walb_dev *wdev, *wdev_next;
-	dev_t wdevt;
-
-	/* odd -> even */
-	if (minor % 2 == 1) { minor--; }
-
-	wdevt = MKDEV(walb_major_, minor);
-
-	list_for_each_entry_safe(wdev, wdev_next, &all_wdevs_, list) {
-
-		if (wdev->devt == wdevt) { return wdev; }
-	}
-
-	return NULL; /* not found. */
-}
-#endif
-
-/**
  * Search wdev with device minor id.
  * Using map_minor_.
  *
