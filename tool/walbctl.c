@@ -43,7 +43,7 @@
 /**
  * For memory allocation failure message.
  */
-static char NOMEM_STR[] = "Memory allocation failed.\n";
+static const char NOMEM_STR[] = "Memory allocation failed.\n";
 
 /**
  * Command-line configuration.
@@ -463,11 +463,9 @@ static void init_config(struct config* cfg)
  */
 static int parse_opt(int argc, char* const argv[], struct config *cfg)
 {
-	int c;
-
 	while (1) {
 		int option_index = 0;
-		static struct option long_options[] = {
+		static const struct option long_options[] = {
 			{"ldev", 1, 0, OPT_LDEV}, /* log device */
 			{"ddev", 1, 0, OPT_DDEV}, /* data device */
 			{"n_snap", 1, 0, OPT_N_SNAP}, /* num of snapshots */
@@ -493,17 +491,17 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			{0, 0, 0, 0}
 		};
 
-		c = getopt_long(argc, argv, "", long_options, &option_index);
+		int c = getopt_long(argc, argv, "", long_options, &option_index);
 		if (c == -1) {
 			break;
 		}
 		switch (c) {
 		case OPT_LDEV:
-			cfg->ldev_name = strdup(optarg);
+			cfg->ldev_name = optarg;
 			LOGd("ldev: %s\n", optarg);
 			break;
 		case OPT_DDEV:
-			cfg->ddev_name = strdup(optarg);
+			cfg->ddev_name = optarg;
 			LOGd("ddev: %s\n", optarg);
 			break;
 		case OPT_N_SNAP:
@@ -513,10 +511,10 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			cfg->nodiscard = true;
 			break;
 		case OPT_WDEV:
-			cfg->wdev_name = strdup(optarg);
+			cfg->wdev_name = optarg;
 			break;
 		case OPT_WLDEV:
-			cfg->wldev_name = strdup(optarg);
+			cfg->wldev_name = optarg;
 			break;
 		case OPT_LSID:
 			cfg->lsid = atoll(optarg);
@@ -528,13 +526,13 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			cfg->lsid1 = atoll(optarg);
 			break;
 		case OPT_NAME:
-			cfg->name = strdup(optarg);
+			cfg->name = optarg;
 			break;
 		case OPT_SNAP0:
-			cfg->snap0 = strdup(optarg);
+			cfg->snap0 = optarg;
 			break;
 		case OPT_SNAP1:
-			cfg->snap1 = strdup(optarg);
+			cfg->snap1 = optarg;
 			break;
 		case OPT_SIZE:
 			cfg->size = atoll(optarg);
@@ -574,7 +572,7 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 	if (optind < argc) {
 		LOGd("command: ");
 		while (optind < argc) {
-			cfg->cmd_str = strdup(argv[optind]);
+			cfg->cmd_str = argv[optind];
 			LOGd("%s ", argv[optind]);
 			optind++;
 		}
