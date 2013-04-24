@@ -643,7 +643,7 @@ static bool init_walb_metadata(
 	print_super_sector(super_sect);
 #endif
 
-	if (fdatasync(fd)) {
+	if (fdatasync_(fd)) {
 		perror("fdatasync failed.\n");
 		goto error1;
 	}
