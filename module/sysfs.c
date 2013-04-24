@@ -27,15 +27,13 @@ static inline struct walb_dev *get_wdev_from_kobj(struct kobject *kobj)
 static ssize_t walb_attr_show_ldev(struct walb_dev *wdev, char *buf)
 {
 	dev_t ldevt = wdev->ldev->bd_dev;
-	sprintf(buf, "%u:%u\n", MAJOR(ldevt), MINOR(ldevt));
-	return strlen(buf);
+	return sprintf(buf, "%u:%u\n", MAJOR(ldevt), MINOR(ldevt));
 }
 
 static ssize_t walb_attr_show_ddev(struct walb_dev *wdev, char *buf)
 {
 	dev_t ddevt = wdev->ddev->bd_dev;
-	sprintf(buf, "%u:%u\n", MAJOR(ddevt), MINOR(ddevt));
-	return strlen(buf);
+	return sprintf(buf, "%u:%u\n", MAJOR(ddevt), MINOR(ddevt));
 }
 
 static ssize_t walb_attr_show_lsids(struct walb_dev *wdev, char *buf)
@@ -45,7 +43,7 @@ static ssize_t walb_attr_show_lsids(struct walb_dev *wdev, char *buf)
 	spin_lock(&wdev->lsid_lock);
 	lsids = wdev->lsids;
 	spin_unlock(&wdev->lsid_lock);
-	sprintf(buf,
+	return sprintf(buf,
 		"latest       %" PRIu64 "\n"
 		"flush        %" PRIu64 "\n"
 		"completed    %" PRIu64 "\n"
@@ -64,21 +62,19 @@ static ssize_t walb_attr_show_lsids(struct walb_dev *wdev, char *buf)
 		, lsids.written
 		, lsids.prev_written
 		, lsids.oldest);
-	return strlen(buf);
 }
 
 static ssize_t walb_attr_show_name(struct walb_dev *wdev, char *buf)
 {
+	int len = 0;
 	ASSERT(DISK_NAME_LEN <= PAGE_SIZE);
 	spin_lock(&wdev->lsuper0_lock);
 	if (wdev->lsuper0) {
-		snprintf(buf, DISK_NAME_LEN + 1, "%s\n",
+		len = snprintf(buf, DISK_NAME_LEN + 1, "%s\n",
 			get_super_sector_const(wdev->lsuper0)->name);
-	} else {
-		buf[0] = '\0';
 	}
 	spin_unlock(&wdev->lsuper0_lock);
-	return strlen(buf);
+	return len;
 }
 
 static ssize_t walb_attr_show_uuid(struct walb_dev *wdev, char *buf)
@@ -97,14 +93,12 @@ static ssize_t walb_attr_show_uuid(struct walb_dev *wdev, char *buf)
 
 static ssize_t walb_attr_show_log_capacity(struct walb_dev *wdev, char *buf)
 {
-	sprintf(buf, "%" PRIu64 "\n", walb_get_log_capacity(wdev));
-	return strlen(buf);
+	return sprintf(buf, "%" PRIu64 "\n", walb_get_log_capacity(wdev));
 }
 
 static ssize_t walb_attr_show_log_usage(struct walb_dev *wdev, char *buf)
 {
-	sprintf(buf, "%" PRIu64 "\n", walb_get_log_usage(wdev));
-	return strlen(buf);
+	return sprintf(buf, "%" PRIu64 "\n", walb_get_log_usage(wdev));
 }
 
 static ssize_t walb_attr_show_status(struct walb_dev *wdev, char *buf)
@@ -114,7 +108,7 @@ static ssize_t walb_attr_show_status(struct walb_dev *wdev, char *buf)
 
 	if (!iocored) { return 0; }
 	flags = iocored->flags;
-	snprintf(buf, PAGE_SIZE,
+	return snprintf(buf, PAGE_SIZE,
 		"failure                  %u\n"
 		"read_only                %u\n"
 		"log_overflow             %u\n"
@@ -129,7 +123,6 @@ static ssize_t walb_attr_show_status(struct walb_dev *wdev, char *buf)
 		, test_bit(IOCORE_STATE_WAIT_LOG_TASK_WORKING, &flags)
 		, test_bit(IOCORE_STATE_SUBMIT_DATA_TASK_WORKING, &flags)
 		, test_bit(IOCORE_STATE_WAIT_DATA_TASK_WORKING, &flags));
-	return strlen(buf);
 }
 
 /*******************************************************************************
