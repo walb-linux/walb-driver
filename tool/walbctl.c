@@ -248,8 +248,7 @@ enum
 static int close_(int fd);
 static int fdatasync_(int fd);
 static int fdatasync_and_close(int fd);
-static void show_shorthelp();
-static void show_help();
+static void show_help(bool isShort);
 static void init_config(struct config* cfg);
 static int parse_opt(int argc, char* const argv[], struct config *cfg);
 static bool init_walb_metadata(
@@ -398,7 +397,7 @@ static int fdatasync_and_close(int fd)
 	return close_(fd);
 }
 
-static void show_shorthelp()
+static void show_help(bool isShort)
 {
 	int size, i;
 
@@ -406,25 +405,14 @@ static void show_shorthelp()
 		"COMMAND:\n");
 	size = sizeof(cmdhelps_) / sizeof(struct cmdhelp);
 	for (i = 0; i < size; i++) {
-		printf("  %s\n", cmdhelps_[i].cmdline);
-	}
-	printf("%s"
-		"NIY: Not Implemented Yet.\n",
-		helpstr_options_);
-}
-
-static void show_help()
-{
-	int size, i;
-
-	printf("Usage: walbctl COMMAND OPTIONS\n"
-		"COMMAND:\n");
-	size = sizeof(cmdhelps_) / sizeof(struct cmdhelp);
-	for (i = 0; i < size; i++) {
-		printf("  %s\n"
-			"      %s\n",
-			cmdhelps_[i].cmdline,
-			cmdhelps_[i].description);
+		if (isShort) {
+			printf("  %s\n", cmdhelps_[i].cmdline);
+		} else {
+			printf("  %s\n"
+				"      %s\n"
+				, cmdhelps_[i].cmdline
+				, cmdhelps_[i].description);
+		}
 	}
 	printf("%s"
 		"NIY: Not Implemented Yet.\n",
@@ -578,7 +566,7 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 		}
 		LOGd("\n");
 	} else {
-		show_shorthelp();
+		show_help(true);
 		return -1;
 	}
 
@@ -2673,7 +2661,7 @@ static bool do_get_version(const struct config *cfg)
  */
 static bool do_help(UNUSED const struct config *cfg)
 {
-	show_help();
+	show_help(false);
 	return true;
 }
 
