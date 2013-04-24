@@ -594,11 +594,11 @@ static bool init_walb_metadata(
 {
 	struct sector_data *super_sect;
 
-	ASSERT(fd >= 0);
-	ASSERT(lbs > 0);
-	ASSERT(pbs > 0);
-	ASSERT(ddev_lb < (u64)(-1));
-	ASSERT(ldev_lb < (u64)(-1));
+	ASSERT(0 < fd);
+	ASSERT(0 < lbs);
+	ASSERT(0 < pbs);
+	ASSERT(0 < ddev_lb);
+	ASSERT(0 < ldev_lb);
 	/* name can be null. */
 
 	/* Alloc super sector. */
