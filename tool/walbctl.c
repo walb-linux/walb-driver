@@ -261,10 +261,7 @@ static bool init_snapshot_metadata(
 static bool invoke_ioctl(
 	const char *wdev_name, struct walb_ctl *ctl, int open_flag);
 static bool ioctl_and_print_bool(const char *wdev_name, int cmd);
-static u64 get_oldest_lsid(const char* wdev_name);
-static u64 get_written_lsid(const char* wdev_name);
-static u64 get_permanent_lsid(const char* wdev_name);
-static u64 get_completed_lsid(const char* wdev_name);
+static u64 get_ioctl_u64(const char* wdev_name, int command);
 static u64 get_log_usage(const char* wdev_name);
 static u64 get_log_capacity(const char* wdev_name);
 static bool dispatch(const struct config *cfg);
@@ -840,78 +837,15 @@ static bool ioctl_and_print_bool(const char *wdev_name, int cmd)
 }
 
 /**
- * Get oldest_lsid.
+ * Get u64 value using walb device ioctl.
  *
  * RETURN:
- *   oldest_lsid in success, or (u64)(-1).
+ *   The value in success, or (u64)(-1).
  */
-static u64 get_oldest_lsid(const char* wdev_name)
+static u64 get_ioctl_u64(const char* wdev_name, int command)
 {
 	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_GET_OLDEST_LSID,
-		.u2k = { .buf_size = 0 },
-		.k2u = { .buf_size = 0 },
-	};
-
-	if (invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
-		return ctl.val_u64;
-	} else {
-		return (u64)(-1);
-	}
-}
-
-/**
- * Get written_lsid.
- *
- * RETURN:
- *   written_lsid in success, or (u64)(-1).
- */
-static u64 get_written_lsid(const char* wdev_name)
-{
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_GET_WRITTEN_LSID,
-		.u2k = { .buf_size = 0 },
-		.k2u = { .buf_size = 0 },
-	};
-
-	if (invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
-		return ctl.val_u64;
-	} else {
-		return (u64)(-1);
-	}
-}
-
-/**
- * Get permanent_lsid.
- *
- * RETURN:
- *   permanent_lsid in success, or (u64)(-1).
- */
-static u64 get_permanent_lsid(const char* wdev_name)
-{
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_GET_PERMANENT_LSID,
-		.u2k = { .buf_size = 0 },
-		.k2u = { .buf_size = 0 },
-	};
-
-	if (invoke_ioctl(wdev_name, &ctl, O_RDONLY)) {
-		return ctl.val_u64;
-	} else {
-		return (u64)(-1);
-	}
-}
-
-/**
- * Get compelted_lsid.
- *
- * RETURN:
- *   completed_lsid in success, or (u64)(-1).
- */
-static u64 get_completed_lsid(const char* wdev_name)
-{
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_GET_COMPLETED_LSID,
+		.command = command,
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
@@ -2339,7 +2273,7 @@ static bool do_get_oldest_lsid(const struct config *cfg)
 
 	ASSERT(strcmp(cfg->cmd_str, "get_oldest_lsid") == 0);
 
-	oldest_lsid = get_oldest_lsid(cfg->wdev_name);
+	oldest_lsid = get_ioctl_u64(cfg->wdev_name, WALB_IOCTL_GET_OLDEST_LSID);
 	if (oldest_lsid == (u64)(-1)) {
 		return false;
 	}
@@ -2356,7 +2290,7 @@ static bool do_get_written_lsid(const struct config *cfg)
 
 	ASSERT(strcmp(cfg->cmd_str, "get_written_lsid") == 0);
 
-	written_lsid = get_written_lsid(cfg->wdev_name);
+	written_lsid = get_ioctl_u64(cfg->wdev_name, WALB_IOCTL_GET_WRITTEN_LSID);
 	if (written_lsid == (u64)(-1)) {
 		return false;
 	}
@@ -2373,7 +2307,7 @@ static bool do_get_permanent_lsid(const struct config *cfg)
 
 	ASSERT(strcmp(cfg->cmd_str, "get_permanent_lsid") == 0);
 
-	lsid = get_permanent_lsid(cfg->wdev_name);
+	lsid = get_ioctl_u64(cfg->wdev_name, WALB_IOCTL_GET_PERMANENT_LSID);
 	if (lsid == (u64)(-1)) {
 		return false;
 	}
@@ -2390,7 +2324,7 @@ static bool do_get_completed_lsid(const struct config *cfg)
 
 	ASSERT(strcmp(cfg->cmd_str, "get_completed_lsid") == 0);
 
-	lsid = get_completed_lsid(cfg->wdev_name);
+	lsid = get_ioctl_u64(cfg->wdev_name, WALB_IOCTL_GET_COMPLETED_LSID);
 	if (lsid == (u64)(-1)) {
 		return false;
 	}
