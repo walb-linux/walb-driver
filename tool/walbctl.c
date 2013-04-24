@@ -710,6 +710,7 @@ static bool check_snapshot_metadata(int fd, unsigned int pbs)
 		if (!is_valid_snapshot_sector(snap_sect)) {
 			LOGe("snapshot sector %d is invalid.\n", i);
 			ret = false;
+			/* try to check all snapshot sectors. */
 		}
 	}
 
