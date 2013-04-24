@@ -666,8 +666,8 @@ error1:
  */
 static bool check_snapshot_metadata(int fd, unsigned int pbs)
 {
-	bool ret = true;
-	struct sector_data *super_sect, *snap_sect;
+	bool ret = false;
+	struct sector_data *super_sect = NULL, *snap_sect = NULL;
 	struct walb_super_sector *super;
 	u64 off0;
 	int i, n_sectors;
@@ -713,16 +713,13 @@ static bool check_snapshot_metadata(int fd, unsigned int pbs)
 			/* try to check all snapshot sectors. */
 		}
 	}
-
-	sector_free(snap_sect);
-	sector_free(super_sect);
-	return ret;
+	ret = true;
 
 error2:
 	sector_free(snap_sect);
 error1:
 	sector_free(super_sect);
-	return false;
+	return ret;
 }
 
 /**
