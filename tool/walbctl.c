@@ -277,9 +277,6 @@ static void decide_lsid_range(const struct config *cfg, u64 lsid[2]);
 static struct walblog_header *create_and_read_wlog_header(int inFd);
 static struct walb_super_sector *create_and_read_super_sector(
 	struct sector_data **sectdp, int fd, unsigned int pbs);
-static bool check_and_open_bdev(
-	const char *bdev_path, unsigned int *lbs_p, unsigned int *pbs_p,
-	int *fd_p, int flags);
 
 /* commands. */
 static bool do_format_ldev(const struct config *cfg);
@@ -820,9 +817,9 @@ error1:
 static bool invoke_ioctl(const char *wdev_name, struct walb_ctl *ctl, int open_flag)
 {
 	int fd, ret;
-	unsigned int lbs, pbs;
+	struct bdev_info wdev_info;
 
-	if (!check_and_open_bdev(wdev_name, &lbs, &pbs, &fd, open_flag)) {
+	if (!open_bdev_and_get_info(wdev_name, &wdev_info, &fd, open_flag)) {
 		LOGe("check and open failed: %s.\n", wdev_name);
 		return false;
 	}
@@ -1218,47 +1215,6 @@ error1:
 	return NULL;
 }
 
-/**
- * Check/get logical/physical block size a block device,
- * then open it.
- *
- * @bdev_path block device path.
- * @lbs_p pointer to store logical block size.
- * @pbs_p pointer to store physical block size.
- * @fd_p pointer to store file descriptor.
- * @flags open flags.
- *
- * RETURN:
- *   true if successfully opened, or false.
- */
-static bool check_and_open_bdev(
-	const char *bdev_path, unsigned int *lbs_p, unsigned int *pbs_p,
-	int *fd_p, int flags)
-{
-	/*
-	 * Check the block device.
-	 */
-	if (!is_valid_bdev(bdev_path)) {
-		LOGe("check the block device failed: %s.\n", bdev_path);
-		return false;
-	}
-	/* Check logical/physical block size. */
-	*lbs_p = get_bdev_logical_block_size(bdev_path);
-	*pbs_p = get_bdev_physical_block_size(bdev_path);
-	if (*lbs_p != LOGICAL_BLOCK_SIZE || !is_valid_pbs(*pbs_p)) {
-		LOGe("Block size wrong (%u, %u).\n", *lbs_p, *pbs_p);
-		return false;
-	}
-
-	/* Open the device. */
-	*fd_p = open(bdev_path, flags);
-	if (*fd_p < 0) {
-		LOGe("open failed: %s.\n", strerror(errno));
-		return false;
-	}
-	return true;
-}
-
 /*******************************************************************************
  * Commands.
  *******************************************************************************/
@@ -1269,43 +1225,35 @@ static bool check_and_open_bdev(
 static bool do_format_ldev(const struct config *cfg)
 {
 	bool retb;
-	unsigned int lbs, pbs, lbs0, pbs0;
-	u64 ldev_size, ddev_size;
+	unsigned int lbs, pbs;
 	int fd;
+	struct bdev_info ldev_info, ddev_info;
 
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "format_ldev") == 0);
 
-	/* Check and open the log device. */
-	if (!check_and_open_bdev(cfg->ldev_name, &lbs, &pbs, &fd, O_RDWR | O_DIRECT)) {
+	/* Open the log device. */
+	if (!open_bdev_and_get_info(cfg->ldev_name, &ldev_info, &fd, O_RDWR | O_DIRECT)) {
 		LOGe("check and open failed: %s.\n", cfg->ldev_name);
 		return false;
 	}
 
-	/* Check the data device. */
-	if (!is_valid_bdev(cfg->ddev_name)) {
-		LOGe("format_ldev: check data device failed %s.\n",
-			cfg->ddev_name);
+	/* Get information of the data device. */
+	if (!get_bdev_info(cfg->ddev_name, &ddev_info)) {
+		LOGe("check and get info failed: %s.\n", cfg->ddev_name);
 		goto error1;
 	}
-	lbs0 = get_bdev_logical_block_size(cfg->ddev_name);
-	pbs0 = get_bdev_physical_block_size(cfg->ddev_name);
-	if (lbs != lbs0 || pbs != pbs0) {
-		LOGe("logical or physical block size is different.\n");
+	if (!is_block_size_same(&ldev_info, &ddev_info)) {
 		goto error1;
 	}
+	lbs = ldev_info.lbs;
+	pbs = ldev_info.pbs;
 
-	/* Device size. */
-	ldev_size = get_bdev_size(cfg->ldev_name);
-	ddev_size = get_bdev_size(cfg->ddev_name);
-	if (ldev_size == (u64)(-1) || ldev_size == (u64)(-1) ) {
-		LOGe("getting block device parameters failed.\n");
-		goto error1;
-	}
-	LOGd("logical_bs: %d\n" "physical_bs: %d\n"
-		"ddev_size: %zu\n" "ldev_size: %zu\n"
-		, lbs, pbs, ddev_size, ldev_size);
-	if (ldev_size % lbs != 0 || ddev_size % lbs != 0) {
+	/* Check logical/physical block sizes. */
+	LOGd("logical_bs: %u\n" "physical_bs: %u\n"
+		"ddev_size: %" PRIu64 "\n" "ldev_size: %" PRIu64 "\n"
+		, lbs, pbs, ddev_info.size, ldev_info.size);
+	if (ldev_info.size % lbs != 0 || ddev_info.size % lbs != 0) {
 		LOGe("device size is not multiple of lbs\n");
 		goto error1;
 	}
@@ -1313,8 +1261,7 @@ static bool do_format_ldev(const struct config *cfg)
 	/* Discard if necessary. */
 	if (!cfg->nodiscard && is_discard_supported(fd)) {
 		LOGn("Try to discard whole area of the log device...");
-		retb = discard_whole_area(fd);
-		if (!retb) {
+		if (!discard_whole_area(fd)) {
 			LOGe("Discard whole area failed.\n");
 			goto error1;
 		}
@@ -1324,8 +1271,8 @@ static bool do_format_ldev(const struct config *cfg)
 	/* Initialize metadata. */
 	retb = init_walb_metadata(
 		fd, lbs, pbs,
-		ddev_size / lbs,
-		ldev_size / lbs,
+		ddev_info.size / lbs,
+		ldev_info.size / lbs,
 		cfg->n_snapshots, cfg->name);
 	if (!retb) {
 		LOGe("initialize walb log device failed.\n");
@@ -1343,7 +1290,7 @@ error1:
  */
 static bool do_create_wdev(const struct config *cfg)
 {
-	dev_t ldevt, ddevt;
+	struct bdev_info ldev_info, ddev_info;
 	int fd, ret;
 	struct walb_start_param u2k_param;
 	struct walb_start_param k2u_param;
@@ -1366,20 +1313,16 @@ static bool do_create_wdev(const struct config *cfg)
 	}
 
 	/*
-	 * Check devices.
+	 * Get information of the block devices.
 	 */
-	if (!is_valid_bdev(cfg->ldev_name)) {
+	if (!get_bdev_info(cfg->ldev_name, &ldev_info)) {
 		LOGe("create_wdev: check log device failed.\n");
 		return false;
 	}
-	if (!is_valid_bdev(cfg->ddev_name)) {
+	if (!get_bdev_info(cfg->ddev_name, &ddev_info)) {
 		LOGe("create_wdev: check data device failed.\n");
 		return false;
 	}
-
-	ldevt = get_bdev_devt(cfg->ldev_name);
-	ddevt = get_bdev_devt(cfg->ddev_name);
-	ASSERT(ldevt != (dev_t)(-1) && ddevt != (dev_t)(-1));
 
 	/*
 	 * Open control device.
@@ -1400,11 +1343,10 @@ static bool do_create_wdev(const struct config *cfg)
 	} else {
 		u2k_param.name[0] = '\0';
 	}
-	ctl.u2k.lmajor = MAJOR(ldevt);
-	ctl.u2k.lminor = MINOR(ldevt);
-	ctl.u2k.dmajor = MAJOR(ddevt);
-	ctl.u2k.dminor = MINOR(ddevt);
-
+	ctl.u2k.lmajor = MAJOR(ldev_info.devt);
+	ctl.u2k.lminor = MINOR(ldev_info.devt);
+	ctl.u2k.dmajor = MAJOR(ddev_info.devt);
+	ctl.u2k.dminor = MINOR(ddev_info.devt);
 
 	print_walb_ctl(&ctl); /* debug */
 
@@ -1438,7 +1380,7 @@ error1:
  */
 static bool do_delete_wdev(const struct config *cfg)
 {
-	dev_t wdevt;
+	struct bdev_info wdev_info;
 	int fd, ret;
 	struct walb_ctl ctl = {
 		.command = WALB_IOCTL_STOP_DEV,
@@ -1450,12 +1392,10 @@ static bool do_delete_wdev(const struct config *cfg)
 	ASSERT(strcmp(cfg->cmd_str, "delete_wdev") == 0);
 
 	/* Check devices. */
-	if (!is_valid_bdev(cfg->wdev_name)) {
+	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
 		LOGe("Check target walb device failed.\n");
 		return false;
 	}
-	wdevt = get_bdev_devt(cfg->wdev_name);
-	ASSERT(wdevt != (dev_t)(-1));
 
 	/* Open control device. */
 	fd = open(WALB_CONTROL_PATH, O_RDWR);
@@ -1465,8 +1405,8 @@ static bool do_delete_wdev(const struct config *cfg)
 	}
 
 	/* Make ioctl data. */
-	ctl.u2k.wmajor = MAJOR(wdevt);
-	ctl.u2k.wminor = MINOR(wdevt);
+	ctl.u2k.wmajor = MAJOR(wdev_info.devt);
+	ctl.u2k.wminor = MINOR(wdev_info.devt);
 
 	/* Invoke ioctl. */
 	ret = ioctl(fd, WALB_IOCTL_CONTROL, &ctl);
@@ -1504,12 +1444,13 @@ static bool do_create_snapshot(const struct config *cfg)
 			 .buf = (u8 *)&record },
 		.k2u = { .buf_size = 0 },
 	};
+	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "create_snapshot") == 0);
 	name[0] = '\0';
 
 	/* Check block device. */
-	if (!is_valid_bdev(cfg->wdev_name)) {
+	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
 		LOGe("Check target walb device failed.\n");
 		return false;
 	}
@@ -1554,10 +1495,11 @@ static bool do_create_snapshot(const struct config *cfg)
 static bool do_delete_snapshot(const struct config *cfg)
 {
 	bool ret = false;
+	struct bdev_info wdev_info;
 	ASSERT(strcmp(cfg->cmd_str, "delete_snapshot") == 0);
 
 	/* Check config. */
-	if (!is_valid_bdev(cfg->wdev_name)) {
+	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
 		LOGe("Check target walb device failed.\n");
 		return false;
 	}
@@ -1588,11 +1530,12 @@ static bool do_num_snapshot(const struct config *cfg)
 			 .buf = (u8 *)&lsid[0] },
 		.k2u = { .buf_size = 0 },
 	};
+	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "num_snapshot") == 0);
 
 	/* Check config. */
-	if (!is_valid_bdev(cfg->wdev_name)) {
+	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
 		LOGe("Check target walb device failed.\n");
 		return false;
 	}
@@ -1626,11 +1569,12 @@ static bool do_list_snapshot(const struct config *cfg)
 	u8 buf[PAGE_SIZE];
 	struct walb_snapshot_record *srec =
 		(struct walb_snapshot_record *)buf;
+	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "list_snapshot") == 0);
 
 	/* Check the block device. */
-	if (!is_valid_bdev(cfg->wdev_name)) {
+	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
 		LOGe("Check target walb device failed.\n");
 		return false;
 	}
@@ -1670,11 +1614,12 @@ static bool do_list_snapshot_range(const struct config *cfg)
 	u8 buf[PAGE_SIZE];
 	struct walb_snapshot_record *srec =
 		(struct walb_snapshot_record *)buf;
+	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "list_snapshot_range") == 0);
 
 	/* Check config. */
-	if (!is_valid_bdev(cfg->wdev_name)) {
+	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
 		LOGe("Check target walb device failed.\n");
 		return false;
 	}
@@ -1717,18 +1662,17 @@ static bool do_list_snapshot_range(const struct config *cfg)
 static bool do_check_snapshot(const struct config *cfg)
 {
 	int fd;
-	unsigned int lbs, pbs;
+	struct bdev_info ldev_info;
 
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "check_snapshot") == 0);
-	ASSERT_PBS(pbs);
 
-	if (!check_and_open_bdev(cfg->ldev_name, &lbs, &pbs, &fd, O_RDONLY)) {
+	if (!open_bdev_and_get_info(cfg->ldev_name, &ldev_info, &fd, O_RDONLY)) {
 		LOGe("check and open failed: %s.\n", cfg->ldev_name);
 		return false;
 	}
 
-	if (!check_snapshot_metadata(fd, pbs)) {
+	if (!check_snapshot_metadata(fd, ldev_info.pbs)) {
 		LOGe("snapshot metadata invalid.\n");
 		close_(fd);
 		return false;
@@ -1744,21 +1688,20 @@ static bool do_check_snapshot(const struct config *cfg)
  */
 static bool do_clean_snapshot(const struct config *cfg)
 {
-	unsigned int lbs, pbs;
+	struct bdev_info ldev_info;
 	struct sector_data *super_sect;
 	int fd, ret;
 
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "clean_snapshot") == 0);
-	ASSERT_PBS(pbs);
 
-	if (!check_and_open_bdev(cfg->ldev_name, &lbs, &pbs, &fd, O_RDWR)) {
+	if (!open_bdev_and_get_info(cfg->ldev_name, &ldev_info, &fd, O_RDWR)) {
 		LOGe("check and open failed: %s.\n", cfg->ldev_name);
 		return false;
 	}
 
 	/* Allocate memory and read super block */
-	super_sect = sector_alloc(pbs);
+	super_sect = sector_alloc(ldev_info.pbs);
 	if (!super_sect) {
 		LOGe("%s", NOMEM_STR);
 		goto error1;
@@ -1859,8 +1802,9 @@ static bool do_get_checkpoint_interval(const struct config *cfg)
 static bool do_cat_wldev(const struct config *cfg)
 {
 	bool retb;
-	unsigned int lbs, pbs;
+	struct bdev_info wldev_info;
 	int fd;
+	unsigned int pbs;
 	struct sector_data *super_sectd;
 	struct walb_super_sector *super;
 	const size_t bufsize = 1024 * 1024; /* 1MB */
@@ -1873,9 +1817,10 @@ static bool do_cat_wldev(const struct config *cfg)
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "cat_wldev") == 0);
 
-	if (!check_and_open_bdev(cfg->wldev_name, &lbs, &pbs, &fd, O_RDONLY | O_DIRECT)) {
+	if (!open_bdev_and_get_info(cfg->wldev_name, &wldev_info, &fd, O_RDONLY | O_DIRECT)) {
 		return false;
 	}
+	pbs = wldev_info.pbs;
 
 	/* Create and read super sector. */
 	super = create_and_read_super_sector(&super_sectd, fd, pbs);
@@ -1916,7 +1861,7 @@ static bool do_cat_wldev(const struct config *cfg)
 	wh->checksum = 0;
 	wh->version = WALB_VERSION;
 	wh->log_checksum_salt = salt;
-	wh->logical_bs = lbs;
+	wh->logical_bs = wldev_info.lbs;
 	wh->physical_bs = pbs;
 	copy_uuid(wh->uuid, super->uuid);
 	wh->begin_lsid = begin_lsid;
@@ -2003,6 +1948,7 @@ static bool do_redo_wlog(const struct config *cfg)
 	int fd;
 	struct walblog_header *wh;
 	u32 salt;
+	struct bdev_info ddev_info;
 	unsigned int lbs, pbs;
 	u64 lsid, begin_lsid, end_lsid;
 	struct logpack *pack;
@@ -2012,9 +1958,11 @@ static bool do_redo_wlog(const struct config *cfg)
 	ASSERT(strcmp(cfg->cmd_str, "redo_wlog") == 0);
 
 	/* Check and open the data device. */
-	if (!check_and_open_bdev(cfg->ddev_name, &lbs, &pbs, &fd, O_RDWR | O_DIRECT)) {
+	if (!open_bdev_and_get_info(cfg->ddev_name, &ddev_info, &fd, O_RDWR | O_DIRECT)) {
 		return false;
 	}
+	lbs = ddev_info.lbs;
+	pbs = ddev_info.pbs;
 
 	/* Read wlog header. */
 	wh = create_and_read_wlog_header(0);
@@ -2106,7 +2054,8 @@ error1:
  */
 static bool do_redo(const struct config *cfg)
 {
-	unsigned int lbs, pbs, lbs0, pbs0;
+	unsigned int pbs;
+	struct bdev_info ldev_info, ddev_info;
 	int lfd, dfd;
 	struct sector_data *super_sectd;
 	struct walb_super_sector *super;
@@ -2119,16 +2068,16 @@ static bool do_redo(const struct config *cfg)
 	ASSERT(cfg->cmd_str);
 	ASSERT(strcmp(cfg->cmd_str, "redo") == 0);
 
-	if (!check_and_open_bdev(cfg->ldev_name, &lbs, &pbs, &lfd, O_RDWR | O_DIRECT)) {
+	if (!open_bdev_and_get_info(cfg->ldev_name, &ldev_info, &lfd, O_RDWR | O_DIRECT)) {
 		return false;
 	}
-	if (!check_and_open_bdev(cfg->ddev_name, &lbs0, &pbs0, &dfd, O_RDWR | O_DIRECT)) {
+	if (!open_bdev_and_get_info(cfg->ddev_name, &ddev_info, &dfd, O_RDWR | O_DIRECT)) {
 		goto error1;
 	}
-	if (lbs != lbs0 || pbs != pbs0) {
-		LOGe("block sizes are not the same.\n");
+	if (!is_block_size_same(&ldev_info, &ddev_info)) {
 		goto error1;
 	}
+	pbs = ldev_info.pbs;
 
 	/* Read super sector. */
 	super = create_and_read_super_sector(&super_sectd, lfd, pbs);
@@ -2299,7 +2248,8 @@ error1:
  */
 static bool do_show_wldev(const struct config *cfg)
 {
-	unsigned int lbs, pbs;
+	struct bdev_info wldev_info;
+	unsigned int pbs;
 	int fd;
 	struct sector_data *super_sectd;
 	struct walb_super_sector *super;
@@ -2310,10 +2260,11 @@ static bool do_show_wldev(const struct config *cfg)
 
 	ASSERT(strcmp(cfg->cmd_str, "show_wldev") == 0);
 
-	if (!check_and_open_bdev(cfg->wldev_name, &lbs, &pbs, &fd, O_RDONLY | O_DIRECT)) {
+	if (!open_bdev_and_get_info(cfg->wldev_name, &wldev_info, &fd, O_RDONLY | O_DIRECT)) {
 		LOGe("check and open failed %s.\n", cfg->wldev_name);
 		return false;
 	}
+	pbs = wldev_info.pbs;
 
 	/* Allocate memory and read super block */
 	super = create_and_read_super_sector(&super_sectd, fd, pbs);
@@ -2470,7 +2421,8 @@ static bool do_get_completed_lsid(const struct config *cfg)
  */
 static bool do_search_valid_lsid(const struct config *cfg)
 {
-	unsigned int lbs, pbs;
+	unsigned int pbs;
+	struct bdev_info wldev_info;
 	int fd;
 	struct sector_data *super_sectd;
 	struct walb_super_sector *super;
@@ -2495,9 +2447,10 @@ static bool do_search_valid_lsid(const struct config *cfg)
 		return false;
 	}
 
-	if (!check_and_open_bdev(cfg->wldev_name, &lbs, &pbs, &fd, O_RDONLY | O_DIRECT)) {
+	if (!open_bdev_and_get_info(cfg->wldev_name, &wldev_info, &fd, O_RDONLY | O_DIRECT)) {
 		return false;
 	}
+	pbs = wldev_info.pbs;
 
 	super = create_and_read_super_sector(&super_sectd, fd, pbs);
 	if (!super) { goto error1; }
@@ -2599,10 +2552,11 @@ static bool do_resize(const struct config *cfg)
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
+	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "resize") == 0);
 
-	if (!is_valid_bdev(cfg->wdev_name)) {
+	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
 		LOGe("device check failed.\n");
 		return false;
 	}
@@ -2619,10 +2573,11 @@ static bool do_reset_wal(const struct config *cfg)
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
+	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "reset_wal") == 0);
 
-	if (!is_valid_bdev(cfg->wdev_name)) {
+	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
 		LOGe("device check failed.\n");
 		return false;
 	}
@@ -2693,14 +2648,14 @@ static bool do_is_frozen(const struct config *cfg)
  */
 static bool do_get_version(const struct config *cfg)
 {
-	unsigned int lbs, pbs;
+	struct bdev_info wdev_info;
 	int fd;
 	u32 version;
 	int ret;
 
 	ASSERT(strcmp(cfg->cmd_str, "get_version") == 0);
 
-	if (!check_and_open_bdev(cfg->wdev_name, &lbs, &pbs, &fd, O_RDONLY)) {
+	if (!open_bdev_and_get_info(cfg->wdev_name, &wdev_info, &fd, O_RDONLY)) {
 		LOGe("check and open failed %s.\n", cfg->wdev_name);
 		return false;
 	}

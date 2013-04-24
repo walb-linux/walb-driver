@@ -19,9 +19,9 @@ int main(int argc, char *argv[])
 	char *dev_path;
 	u64 start_off = 0;
 	u64 end_off = -1;
-	u64 len;
 	u64 offsetAndSize[2];
 	int fd, ret;
+	struct bdev_info dev_info;
 
 	/* Get command line arguments. */
 	if (argc < 2) {
@@ -36,31 +36,21 @@ int main(int argc, char *argv[])
 		end_off *= 512;
 	}
 
-	if (!is_valid_bdev(dev_path)) {
-		LOGe("Check block device failed %s.\n", dev_path);
+	if (!open_bdev_and_get_info(dev_path, &dev_info, &fd, O_RDWR)) {
 		return 1;
 	}
-	len = get_bdev_size(dev_path);
-	if (len == (u64)(-1)) {
-		LOGe("Get device size failed.\n");
-		return 1;
-	}
-	ASSERT(len % 512 == 0);
-	if (end_off > len) {
-		end_off = len;
+
+	ASSERT(dev_info.size % 512 == 0);
+	if (end_off > dev_info.size) {
+		end_off = dev_info.size;
 	}
 	if (end_off <= start_off) {
 		LOGe("start offset must be < end offset.\n");
-		return 1;
+		goto error1;
 	}
 
 	offsetAndSize[0] = start_off;
 	offsetAndSize[1] = end_off - start_off;
-	fd = open(dev_path, O_RDWR);
-	if (fd < 0) {
-		perror("open failed.");
-		return 1;
-	}
 
 	/* discard */
 #if 1
