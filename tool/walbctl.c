@@ -734,8 +734,9 @@ error1:
 static bool init_snapshot_metadata(
 	int fd, const struct sector_data *super_sect)
 {
+	bool ret = false;
 	const struct walb_super_sector *super;
-	struct sector_data *snap_sect;
+	struct sector_data *snap_sect = NULL;
 	int i, n_sectors;
 
 	ASSERT(fd >= 0);
@@ -779,13 +780,10 @@ static bool init_snapshot_metadata(
 #endif
 	}
 #endif
-
-	sector_free(snap_sect);
-	return true;
-
+	ret = true;
 error1:
 	sector_free(snap_sect);
-	return false;
+	return ret;
 }
 
 /**
