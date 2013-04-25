@@ -1316,16 +1316,9 @@ static bool do_create_snapshot(const struct config *cfg)
 			 .buf = (u8 *)&record },
 		.k2u = { .buf_size = 0 },
 	};
-	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "create_snapshot") == 0);
 	name[0] = '\0';
-
-	/* Check block device. */
-	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
-		LOGe("Check target walb device failed.\n");
-		return false;
-	}
 
 	/* Decide snapshot name. */
 	if (cfg->name) {
@@ -1367,14 +1360,8 @@ static bool do_create_snapshot(const struct config *cfg)
 static bool do_delete_snapshot(const struct config *cfg)
 {
 	bool ret = false;
-	struct bdev_info wdev_info;
 	ASSERT(strcmp(cfg->cmd_str, "delete_snapshot") == 0);
 
-	/* Check config. */
-	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
-		LOGe("Check target walb device failed.\n");
-		return false;
-	}
 	if (cfg->name) {
 		ret = delete_snapshot_by_name(cfg);
 	} else if (is_lsid_range_valid(cfg->lsid0, cfg->lsid1)) {
@@ -1402,15 +1389,8 @@ static bool do_num_snapshot(const struct config *cfg)
 			 .buf = (u8 *)&lsid[0] },
 		.k2u = { .buf_size = 0 },
 	};
-	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "num_snapshot") == 0);
-
-	/* Check config. */
-	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
-		LOGe("Check target walb device failed.\n");
-		return false;
-	}
 
 	/* Decide lsid range. */
 	decide_lsid_range(cfg, lsid);
@@ -1441,15 +1421,8 @@ static bool do_list_snapshot(const struct config *cfg)
 	u8 buf[PAGE_SIZE];
 	struct walb_snapshot_record *srec =
 		(struct walb_snapshot_record *)buf;
-	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "list_snapshot") == 0);
-
-	/* Check the block device. */
-	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
-		LOGe("Check target walb device failed.\n");
-		return false;
-	}
 
 	n_rec = -1;
 	while (n_rec) {
@@ -1486,15 +1459,8 @@ static bool do_list_snapshot_range(const struct config *cfg)
 	u8 buf[PAGE_SIZE];
 	struct walb_snapshot_record *srec =
 		(struct walb_snapshot_record *)buf;
-	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "list_snapshot_range") == 0);
-
-	/* Check config. */
-	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
-		LOGe("Check target walb device failed.\n");
-		return false;
-	}
 
 	/* Decide lsid range. */
 	decide_lsid_range(cfg, lsid);
@@ -2424,14 +2390,9 @@ static bool do_resize(const struct config *cfg)
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
-	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "resize") == 0);
 
-	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
-		LOGe("device check failed.\n");
-		return false;
-	}
 	return invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR);
 }
 
@@ -2445,14 +2406,9 @@ static bool do_reset_wal(const struct config *cfg)
 		.u2k = { .buf_size = 0 },
 		.k2u = { .buf_size = 0 },
 	};
-	struct bdev_info wdev_info;
 
 	ASSERT(strcmp(cfg->cmd_str, "reset_wal") == 0);
 
-	if (!get_bdev_info(cfg->wdev_name, &wdev_info)) {
-		LOGe("device check failed.\n");
-		return false;
-	}
 	return invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR);
 }
 
