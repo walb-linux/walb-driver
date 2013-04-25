@@ -70,7 +70,7 @@ static ssize_t walb_attr_show_name(struct walb_dev *wdev, char *buf)
 	ASSERT(DISK_NAME_LEN <= PAGE_SIZE);
 	spin_lock(&wdev->lsuper0_lock);
 	if (wdev->lsuper0) {
-		len = snprintf(buf, DISK_NAME_LEN + 1, "%s\n",
+		len = sprintf(buf, "%s\n",
 			get_super_sector_const(wdev->lsuper0)->name);
 	}
 	spin_unlock(&wdev->lsuper0_lock);
@@ -79,16 +79,17 @@ static ssize_t walb_attr_show_name(struct walb_dev *wdev, char *buf)
 
 static ssize_t walb_attr_show_uuid(struct walb_dev *wdev, char *buf)
 {
+	int len = 0;
 	spin_lock(&wdev->lsuper0_lock);
 	if (wdev->lsuper0) {
-		sprint_uuid(buf, UUID_STR_SIZE, get_super_sector_const(wdev->lsuper0)->uuid);
-		ASSERT(buf[UUID_STR_SIZE - 1] == '\0');
-		strcat(buf, "\n");
-	} else {
-		buf[0] = '\0';
+		len = sprint_uuid(buf, UUID_STR_SIZE, get_super_sector_const(wdev->lsuper0)->uuid);
+		if (len > 0) {
+			strcat(buf, "\n");
+			len++;
+		}
 	}
 	spin_unlock(&wdev->lsuper0_lock);
-	return strlen(buf);
+	return len;
 }
 
 static ssize_t walb_attr_show_log_capacity(struct walb_dev *wdev, char *buf)
