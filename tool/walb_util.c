@@ -387,10 +387,10 @@ bool init_super_sector_raw(
 	bool ret;
 
 	ASSERT(super_sect);
-	ASSERT(lbs > 0);
-	ASSERT(pbs > 0);
-	ASSERT(ddev_lb < (u64)(-1));
-	ASSERT(ldev_lb < (u64)(-1));
+	ASSERT(0 < lbs);
+	ASSERT(0 < pbs);
+	ASSERT(0 < ddev_lb);
+	ASSERT(0 < ldev_lb);
 
 	ASSERT(sizeof(struct walb_super_sector) <= (size_t)pbs);
 

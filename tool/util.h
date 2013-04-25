@@ -17,16 +17,26 @@
 extern "C" {
 #endif
 
+/**
+ * Block device info.
+ */
+struct bdev_info
+{
+	u64 size; /* block device size [byte]. */
+	unsigned int lbs; /* logical block size [byte]. */
+	unsigned int pbs; /* physical block size [byte]. */
+	struct stat sb; /* fstat result. */
+	dev_t devt; /* device id. */
+};
+
 /* utility */
 void print_binary_hex(const u8* data, size_t size);
 bool get_datetime_str(time_t t, char* buf, size_t n);
 
 /* Block device operations. */
-bool is_valid_bdev(const char* path);
-unsigned int get_bdev_logical_block_size(const char* devpath);
-unsigned int get_bdev_physical_block_size(const char* devpath);
-u64 get_bdev_size(const char* devpath);
-dev_t get_bdev_devt(const char *devpath);
+bool open_bdev_and_get_info(const char *path, struct bdev_info *info_p, int *fd_p, int flags);
+bool get_bdev_info(const char *path, struct bdev_info *info_p);
+bool is_block_size_same(const struct bdev_info *info0, const struct bdev_info *info1);
 bool is_discard_supported(int fd);
 bool discard_whole_area(int fd);
 

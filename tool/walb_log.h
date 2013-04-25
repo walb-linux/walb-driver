@@ -96,7 +96,7 @@ struct walblog_header
 /**
  * Print walblog header.
  */
-static inline void print_wlog_header(struct walblog_header* wh)
+static inline void print_wlog_header(const struct walblog_header* wh)
 {
 	char uuidstr[UUID_STR_SIZE];
 
@@ -129,7 +129,7 @@ static inline void print_wlog_header(struct walblog_header* wh)
  *
  * @return true in valid, or false.
  */
-static inline bool is_valid_wlog_header(struct walblog_header* wh)
+static inline bool is_valid_wlog_header(const struct walblog_header* wh)
 {
 	if (checksum((const u8 *)wh, WALBLOG_HEADER_SIZE, 0) != 0) {
 		LOGe("wlog checksum is invalid.\n");

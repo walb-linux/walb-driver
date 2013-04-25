@@ -33,26 +33,22 @@ extern "C" {
  * @size size in bytes.
  * @buf buffer to store result.
  * @buf_size buffer size. size * 3 + 1 is required at least.
- * @return Non-zero if buf_size is enough, or 0.
+ * @return written size except the last '\0' in success, or 0.
  */
 static inline int sprint_hex(char *str, int str_size, const void* data, int size)
 {
 	int i;
-	char tmp[4];
 
 	ASSERT(data);
 	ASSERT(size >= 0);
 	ASSERT(str);
 	ASSERT(str_size > 0);
-	ASSERT(str_size >= size * 3 + 1);
+	if (str_size < size * 3 + 1) { return 0; }
 
-	str[0] = '\0';
 	for (i = 0; i < size; i++ ) {
-		if (str_size < (i + 1) * 3 + 1) { return 0; }
-		sprintf(tmp, "%02X ", ((u8 *)data)[i]);
-		strcat(str, tmp);
+		sprintf(&str[i * 3], "%02X ", ((u8 *)data)[i]);
 	}
-	return 1;
+	return size * 3;
 }
 
 /**

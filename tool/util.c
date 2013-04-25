@@ -57,43 +57,25 @@ void print_binary_hex(const u8* data, size_t size)
 bool get_datetime_str(time_t t, char* buf, size_t n)
 {
 	struct tm m;
-	int ret;
-	size_t len;
 
 	if (gmtime_r(&t, &m) == NULL) { return false; }
-
-	ret = snprintf(buf, n, "%d%02d%02d-%02d%02d%02d",
-		m.tm_year + 1900,
-		m.tm_mon + 1,
-		m.tm_mday,
-		m.tm_hour,
-		m.tm_min,
-		m.tm_sec);
-	if (ret < 0) { return false; }
-	len = (size_t)ret;
-
-	ASSERT(len <= n);
-	return len < n ? true : false;
+	return strftime(buf, n, "%Y%m%d-%H%M%S", &m) != 0;
 }
 
 /**
- * Check block device.
+ * Open a block device and get its information.
+ *
+ * @path block device path.
+ * @info_p pointer to store block device information.
+ * @fd_p pointer to store file descriptor.
+ * @flags open flags.
  *
  * RETURN:
- *   true in success, or false.
+ *   true if successfully opened and got its information, or false.
  */
-bool is_valid_bdev(const char* path)
+bool open_bdev_and_get_info(
+	const char *path, struct bdev_info *info_p, int *fd_p, int flags)
 {
-	struct stat sb;
-	UNUSED dev_t devt;
-	UNUSED size_t sector_size;
-	UNUSED size_t dev_size;
-	UNUSED size_t ssize;
-	int fd;
-	u64 isize;
-	int bs, ss;
-	unsigned int pbs;
-
 	if (!path) {
 		LOGe("path is null.\n");
 		return false;
@@ -102,218 +84,84 @@ bool is_valid_bdev(const char* path)
 		LOGe("path length is zero.\n");
 		return false;
 	}
-	if (stat(path, &sb) == -1) {
-		LOGe("stat failed: %s.\n", strerror(errno));
-		return false;
-	}
+	ASSERT(info_p);
+	ASSERT(fd_p);
 
-	if ((sb.st_mode & S_IFMT) != S_IFBLK) {
-		LOGe("%s is not block device.\n", path);
-		return false;
-	}
-
-	devt = sb.st_rdev;
-	sector_size = sb.st_blksize;
-	dev_size = sb.st_blocks;
-	ssize = sb.st_size;
-
-	LOGd("devname: %s\n"
-		"device: %d:%d\n"
-		"sector_size: %zu\n"
-		"device_size: %zu\n"
-		"size: %zu\n",
-		path,
-		MAJOR(devt), MINOR(devt),
-		sector_size, dev_size, ssize);
-
-	fd = open(path, O_RDONLY);
-	if (fd < 0) {
+	*fd_p = open(path, flags);
+	if (*fd_p < 0) {
 		LOGe("open failed\n");
 		return false;
 	}
-	/* soft block size */
-	if (ioctl(fd, BLKBSZGET, &bs) < 0) {
+
+	if (fstat(*fd_p, &info_p->sb) == -1) {
+		LOGe("fstat failed.\n");
+		goto error1;
+	}
+	if ((info_p->sb.st_mode & S_IFMT) != S_IFBLK) {
+		LOGe("%s is not block device.\n", path);
+		goto error1;
+	}
+	info_p->devt = info_p->sb.st_rdev;
+
+	/* size */
+	if (ioctl(*fd_p, BLKGETSIZE64, &info_p->size) < 0) {
+		LOGe("ioctl BLKGETSIZE64 failed.\n");
 		goto error1;
 	}
 	/* logical sector size */
-	if (ioctl(fd, BLKSSZGET, &ss) < 0) {
+	if (ioctl(*fd_p, BLKSSZGET, &info_p->lbs) < 0) {
+		LOGe("ioctl BLKSSZGET failed.\n");
 		goto error1;
 	}
 	/* physical sector size */
-	if (ioctl(fd, BLKPBSZGET, &pbs) < 0) {
+	if (ioctl(*fd_p, BLKPBSZGET, &info_p->pbs) < 0) {
+		LOGe("ioctl BLKPSZGET failed.\n");
 		goto error1;
 	}
-	/* size */
-	if (ioctl(fd, BLKGETSIZE64, &isize) < 0) {
+	/* Check lbs/pbs. */
+	if (info_p->lbs != LOGICAL_BLOCK_SIZE || !is_valid_pbs(info_p->pbs)) {
+		LOGe("Wong block size (%u, %u).\n", info_p->lbs, info_p->pbs);
 		goto error1;
 	}
-	if (close(fd)) {
-		LOGe("close failed\n");
-		return false;
-	}
-
-	LOGd("soft block size: %d\n"
-		"logical sector size: %d\n"
-		"physical sector size: %u\n"
-		"device size: %" PRIu64 "\n",
-		bs, ss, pbs, isize);
+	/* Do not close the device. */
 	return true;
 
 error1:
-	close(fd);
+	close(*fd_p);
 	return false;
 }
 
 /**
- * open file and confirm it is really block device.
- *
- * @devpath block device path.
- * RETURN:
- *   fd is succeeded, -1 else.
+ * Check and get information of a block device.
  */
-static int open_blk_dev(const char* devpath)
+bool get_bdev_info(const char *path, struct bdev_info *info_p)
 {
 	int fd;
-	struct stat sb;
-	ASSERT(devpath);
-
-	fd = open(devpath, O_RDONLY);
-	if (fd < 0) {
-		perror("open failed");
-		return -1;
+	if (!open_bdev_and_get_info(path, info_p, &fd, O_RDONLY)) {
+		return false;
 	}
-	if (fstat(fd, &sb) == -1) {
-		perror("fstat failed");
-		goto error1;
-	}
-	if ((sb.st_mode & S_IFMT) != S_IFBLK) {
-		LOGe("%s is not block device.\n", devpath);
-		goto error1;
-	}
-	return fd;
-
-error1:
+	ASSERT(0 < fd);
 	close(fd);
-	return -1;
-}
-
-
-/**
- * Get logical block size of the block device.
- *
- * @devpath device file path.
- * RETURN:
- *   sector size in succeeded, or 0.
- */
-unsigned int get_bdev_logical_block_size(const char* devpath)
-{
-	int fd;
-	unsigned int lbs;
-
-	fd = open_blk_dev(devpath);
-	if (fd < 0) {
-		perror("open failed.");
-		return 0;
-	}
-	if (ioctl(fd, BLKSSZGET, &lbs) < 0) {
-		perror("ioctl failed");
-		goto error1;
-	}
-	if (close(fd)) {
-		perror("close failed.");
-		return 0;
-	}
-	return lbs;
-
-error1:
-	close(fd);
-	return 0;
+	return true;
 }
 
 /**
- * Get physical block size of the block device.
- *
- * @devpath device file path.
- * RETURN:
- *   sector size in succeeded, or 0.
+ * Check block size equality of two block devices.
  */
-unsigned int get_bdev_physical_block_size(const char* devpath)
+bool is_block_size_same(const struct bdev_info *info0, const struct bdev_info *info1)
 {
-	int fd;
-	unsigned int pbs;
+	ASSERT(info0);
+	ASSERT(info1);
 
-	fd = open_blk_dev(devpath);
-	if (fd < 0) {
-		perror("open failed.");
-		return 0;
+	if (info0->lbs != info1->lbs) {
+		LOGe("Logical block size are not the same %u %u.\n", info0->lbs, info1->lbs);
+		return false;
 	}
-	if (ioctl(fd, BLKPBSZGET, &pbs) < 0) {
-		perror("ioctl failed");
-		goto error1;
+	if (info0->pbs != info1->pbs) {
+		LOGe("Physical block size are not the same %u %u.\n", info0->pbs, info1->pbs);
+		return false;
 	}
-	if (close(fd)) {
-		perror("close failed.");
-		return 0;
-	}
-	return pbs;
-
-error1:
-	close(fd);
-	return 0;
-}
-
-/**
- * Get block device size.
- *
- * @devpath device file path.
- * RETURN:
- *   size in bytes in success, or (u64)(-1).
- */
-u64 get_bdev_size(const char* devpath)
-{
-	int fd;
-	u64 size;
-	const u64 err_size = (u64)(-1);
-
-	fd = open_blk_dev(devpath);
-	if (fd < 0) {
-		return err_size;
-	}
-	if (ioctl(fd, BLKGETSIZE64, &size) < 0) {
-		goto error1;
-	}
-	if (close(fd)) {
-		return err_size;
-	}
-	return size;
-
-error1:
-	close(fd);
-	return err_size;
-}
-
-/**
- * Get device id from the device file path.
- *
- * @devpath device file path.
- * RETURN:
- *   device id.
- */
-dev_t get_bdev_devt(const char *devpath)
-{
-	struct stat sb;
-
-	ASSERT(devpath);
-
-	if (stat(devpath, &sb) == -1) {
-		LOGe("%s stat failed.\n", devpath);
-		return (dev_t)(-1);;
-	}
-	if ((sb.st_mode & S_IFMT) != S_IFBLK) {
-		LOGe("%s is not block device.\n", devpath);
-		return (dev_t)(-1);
-	}
-	return sb.st_rdev;
+	return true;
 }
 
 /**
