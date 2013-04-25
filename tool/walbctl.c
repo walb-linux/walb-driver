@@ -388,7 +388,10 @@ static int fdatasync_(int fd)
 static int fdatasync_and_close(int fd)
 {
 	int err = fdatasync_(fd);
-	if (err) { return err; }
+	if (err) {
+		close_(fd);
+		return err;
+	}
 	return close_(fd);
 }
 
