@@ -63,10 +63,12 @@ static inline int sprint_hex(char *str, int str_size, const void* data, int size
  * @str string buffer to store result.
  * @str_size Its size must be UUID_STR_SIZE or more.
  * @uuid uuid ary. Its size must be UUID_SIZE.
+ * RETURN:
+ *   written size except the last '\0' in success, or 0.
  */
-static inline void sprint_uuid(char *str, int str_size, const u8 *uuid)
+static inline int sprint_uuid(char *str, int str_size, const u8 *uuid)
 {
-	sprint_hex(str, str_size, uuid, UUID_SIZE);
+	return sprint_hex(str, str_size, uuid, UUID_SIZE);
 }
 
 /**
