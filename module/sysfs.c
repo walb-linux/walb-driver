@@ -70,7 +70,7 @@ static ssize_t walb_attr_show_name(struct walb_dev *wdev, char *buf)
 	ASSERT(DISK_NAME_LEN <= PAGE_SIZE);
 	spin_lock(&wdev->lsuper0_lock);
 	if (wdev->lsuper0) {
-		len = snprintf(buf, DISK_NAME_LEN + 1, "%s\n",
+		len = sprintf(buf, "%s\n",
 			get_super_sector_const(wdev->lsuper0)->name);
 	}
 	spin_unlock(&wdev->lsuper0_lock);
