@@ -1,8 +1,138 @@
-= Specification
+= WalB Specification
 
-Version 0.x
+This document describes specification for WalB version 1.0.
 
-== Log device format
-== WalB log file format
-== WalB diff file format
+== Device files
 
+* {{{/dev/walb/control}}}: control file for device creation/deletion.
+* {{{/dev/walb/NAME}}}: a walb device named NAME.
+** ex. {{{/dev/walb/0}}}
+* {{{/dev/walb/LNAME}}}: a walb log device of the NAME.
+** ex. {{{/dev/walb/L0}}}
+** Wlog device is a simple wrapper of the underlying log device.
+** Wlog extractor will read the device directly to extract wlog data.
+
+== WalB device naming
+
+You can name walb devices.
+See {{{walbctl create_wdev}}} {{--name}} option.
+
+The device name will be an integer value calculated from its minor id by default.
+
+== WalB device id
+
+* major: specified as kernel module parameter {{{walb_major}}}.
+* minor: specified as device creation ioctl parameter. See ioctl {{{WALB_IOCTL_START_DEV}}}.
+
+When the minor id of a walb device (wdev) is {{{wdev_minor}}},
+the minor id of its wlog device (wldev) is {{{wdev_minor + 1}}}.
+
+== Kernel module parameters
+
+|= Name |= Description |= Writable |= Default value |= Examples |
+| walb_major | Device major id (0 means auto assign). | No | 0 | --- |
+| is_sync_superblock | Flag for superblock sync at checkpointing (for test). | Yes | 1 | --- |
+| is_sort_data_io | Flag to sort write IOs for data device. | Yes | 1 | --- |
+| exec_path_on_error | Userland executable path called in errors. | Yes | empty string | /usr/sbin/walb_alert |
+| is_error_before_overflow | Write IOs will failed not to overflow the ring buffer if you specify 1. | No | 0 | --- |
+
+=== Command line arguments for exec_path_on_error
+
+When some error ocurrs, the walb module will invoke the userland executable with the following arguments.
+* argv[1]: is minor id of the walb device.
+* argv[2]: is the event name.
+
+If the parameter is empty string, the module does nothing.
+
+=== Events for exec_path_on_error
+
+* {{{overflow}}}: the ring buffer has been overflowed.
+
+More events may be added with later version.
+
+== Sysfs files
+
+See {{{/sys/modules/walb_mod/parameters/*}}} for kernel module parameters.\\
+Major id of the walb devices can be got from {{{walb_major}}} file.
+
+See {{{/sys/block/walb!NAME/walb/*}}} for each wdev information.
+
+|= name |= description |
+| ddev | major:minor ids of the underlying data device. |
+| ldev | major:minor ids of the underlying log device. |
+| log_capacity | log capacity [physical block]. |
+| log_usage | log usage [physical block]. |
+| lsids | important lsid indicators. |
+| name | walb device name. |
+| status | status bits. |
+| uuid | walb device uuid. |
+
+* If the ring buffer is overflown, log_usage will be bigger than log_capacity.
+Overflowed, the oldest logs has been overwritten.
+
+* See {{{struct lsid_set}}} defined in {{{module/kern.h}}} for lsid indicators detail.
+
+* {{{lsids}}} file is pollable.
+It will notified when {{{permanent_lsid - oldest_lsid}}} becames from 0 to positive,
+which means wlog has been generated.
+You must use edge-trigger and lseek(fd, 0, SEEK_SET) before every read.
+
+* The UUID will be set by log device format command, or WAL-reset command.
+Do not use the UUID to identify walb devices.
+
+== Ioctl commands
+
+See {{{include/walb/ioctl.h}}} header.
+You can use {{{walbctl}}} command to manage walb devices without invoke ioctl directly.
+
+== Data format
+
+**CAUSION**: the formats are not portable among different CPU architectures.
+Integers will be stored without any endian conversion.
+
+=== Log deivce superblock format
+
+* Superblock size is 512B or 4KiB.
+* It is the physical block size of the walb device which depends on the underlying devices.
+* See {{{include/walb/super.h}}} for contents detail.
+
+=== Log device metadata format
+
+This is **DEPRECATED**.
+
+=== Log record format
+
+* See {{{struct walb_log_record}}} definition in {{{include/walb/log_record.h}}}.
+* Each record size is {{{sizeof(struct walb_log_record)}}}.
+
+=== Log pack format
+
+See {{{struct walb_logpack_header}}} definition in {{{include/walb/log_record.h}}}.
+
+* A logpack consists a header block and contiguous IO data blocks.
+* The header block size is the physical block size.
+* The header block contains a {{{struct walb_logpack_header}}} instance and
+contiguous {{{struct walb_log_record}}} instances.
+
+=== Log device format
+
+Let PBS be the physical block size (512B or 4KiB).
+
+* The first 4KiB is not used.
+* Next PBS-sized block is the superblock0.
+* Next blocks are metadata.
+** Metadata size is {{{snapshot_metadata_size * PBS}}} bytes.
+** Metadata blocks are currently used for snapshot data (**DEPRECATED**).
+* Next PBS-sized block is the superblock1. Currently not used.
+* Remaining blocks are the ring buffer for logpack data.
+
+Logpack position in the ring buffer can be calculated directly
+by logpack lsid (log sequence id) and the ring buffer start offset and size.
+
+=== WalB log file format
+
+* The first 4KiB is the header data.
+** See {{{struct walblog_header}}} defined in {{{tool/walb_log.h}}}.
+* Remaining data are a number of logpacks.
+
+-----

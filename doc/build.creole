@@ -1,6 +1,28 @@
 = How to build WalB
 
-== Kernel module
+== Requirement
+
+=== Target system
+
+* Architecture: x86_64
+** Currently 32bit x86 is not supported.
+* Linux kernel version: 3.2 or later.
+** Tested with up to 3.8.
+
+Tested Linux distribution: Ubuntu Linux Server 12.04.
+
+=== Build tools
+
+* Tools required to build linux kernel.
+** gcc (tested with version 4.6.3 and 4.7.2)
+** make
+** ...
+
+== Build kernel module
+
+Prepare a build environment.
+* Linux kernel source or header.
+** Ubuntu: {{{apt-get install linux-headers-XXX}}}.
 
 {{{
 > cd walb.git/module
@@ -8,15 +30,16 @@
 }}}
 
 You will get {{{walb-mod.ko}}} file.
+Specify {{{KERNELDIR}}} option directly to specify kernel version.
 
 You can specify the following make options:
 * {{{DEBUG=1}}}: debug build. ASSERT() will be enabled (a wrapper of BUG_ON()).
 * {{{DYNAMIC_DEBUG=1}}}: for pr_debug().
-* {{{OVERLAP=0}}}: disable overlapped write IOs serialization.
+* {{{OVERLAP=0}}}: disable overlapped IO serialization.
 * {{{FAST_ALG=0}}}: use easy algorithm instead fast.
 * {{{ASSERT=1}}}: enable ASSERT() even with release build {{{DEBUG=0}}}.
 
-== Userland tools
+== Build userland tools
 
 {{{
 > cd walb.git/tool
@@ -38,5 +61,5 @@ You must build them with {{{DEBUG=1}}} before running tests.
 * {{{module/test/*}}}: test code for kernel land.
 * {{{module/proto/*}}}: prototype modules.
 * {{{tool/test/*}}}: test code for userland tools.
-* {{{tool/wlog/*}}}: userland prototypes written by C++.
 
+-----

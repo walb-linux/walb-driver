@@ -1,55 +1,111 @@
-= Algorithm details
+= WalB Algorithm in Detail
 
 == IO processing
 
-There are two IO processing algorithms: easy and fast.
+There are two IO processing algorithms: //easy// and //fast//.
+
+See {{{iocore_make_request}}} function defined in {{{module/io.c}}}
+to know the algorithm in detail.
+
+The important limitation of the algorithm is that
+it must not submit write IOs to the data device before they are permanent on the log device.
+Since the walb device do not have undo logs, it can execute redo but can not execute undo!
 
 === Easy algorithm
 
-It is very simple.
+It is very simple algorithm.
 
 Write IOs:
-(1) write to the log device
-(2) write to the data device
-(3) notify IO completion
+* (1) generate logpacks and write them to the log device
+* (2) write to the data device
+* (3) notify IO completion
 
 Read IOs:
-(1) Just forward IOs to the data device.
+* (1) Just forward IOs to the data device.
 
-== Fast algorithm
+Easy algorithm was developed just for test and benchmark.
+I **strongly** recommend to use fast algorithm instead.
+Especially, do not use easy algorithm on a block device
+where flush requests will take much time (like raw HDD).
+
+=== Fast algorithm
 
 Write IOs:
-(1) write to the log device
-(2) insert to the pending data on the main memory
-(3) notify IO completion
-(4) write to the data device
-(5) delete from the pending data
+* (1) generate logpacks and write them to the log device
+* (2) insert to the pending data on the main memory
+* (3) notify IO completion
+* (4) (sort and) write to the data device
+* (5) delete from the pending data
 
 Read IOs:
-(1) copy data from the pending data if the corresponding data exist.
-(2) forward IOs to the data device for remaining addresses.
+* (1) copy data from the pending data if the corresponding data exist.
+* (2) forward IOs to the data device for remaining addresses.
 
-Currently the choice is determined before building the WalB module.
+The choice of fast or easy is determined at module building.
 
-== Overlapped IOs serialization
+=== Pending data
 
-To keep strict write-after-write consistency,
-you can use the functionality called overlapped IOs serialization.
+Pending data is on-memory data structure, which contains write IOs data
+that has been written to the log device and has not been written to the data device.
+
+In order to satisfy //read-after-write// property,
+read IOs will use data in the pending data preferentially.
+
+Pending data consists a simple tree-based key-value structure.
+To reduce performance overhead due to sorting
+when there are a number of pending overlapped IOs,
+fully overwritten IOs will be deleted from the structure soon.
+See {{{module/pending_io.{c,h}}}} for details.
+
+== Overlapped IO serialization
+
+To keep write-after-write consistency,
+you can use the functionality called overlapped IO serialization.
 It will serialize overlapped IOs that have been written to the log device but
 have not been wirtten to the data device.
 It achieves seirializability for write IOs.
 
-Currently the choice is determined before building the WalB module.
+I have developed an algorithm to serialize overlapped IOs using
+simple tree-based key-value structure with FIFO limitation.
+See {{{module/overlapped_io.{c,h}}}} for details.
+
+The choice of this feature on/off is determined at module building.
+
+I **strongly** recommend to enable overlapped IO serialization feature.
+Even with SSDs, the overhead of the feature is ignorable.
 
 You can choose fast/easy and overlapped serialization on/off independently,
-which are named as 'easy', 'fast', 'easy-ol', 'fast-ol'.
-For normal usage, you should choose fast-ol.
+which are named as //easy//, //fast//, //easy-ol//, //fast-ol//.
+I recommend //fast-ol//.
 
-=== IO sorting
+== IO sorting
 
-With the fast algorithm, write IOs for the data device can be sorted by address.
-without additional overheads, for better performance.
+WalB devices do not sort requested IOs at all virtually.
+Submitted order will be kept for all write IOs.
+In addition, overlapped IO serialization feature **serializes** all write IOs.
+That is, when an write IO is permanented, all IOs submitted before the IO must be permanent.
+
+With the fast algorithm, write IOs for the data device can be sorted by address
+for better performance, with no effect to the response
+because the IO has been //completed// at that time.
 This feature will be useful for data devices that consist of
 a HDD or a raid device with HDDs.
 
-You can disable the functionality.
+== Checkpointing and redo
+
+Each walb device manages {{{written_lsid}}}, which means all logpacks
+where their lsid is less than {{{written_lsid}}} have been permanent on the data device and
+redo operation is never required for them.
+
+At a walb device starting, it //redo// the logs
+which lsid is greather than or equals to the {{{written_lsid}}},
+to keep consistency.
+//Redo// means to generate and execute write IOs to the data device
+
+{{{written_lsid}}} is always managed in main-memory, and
+made permanent as superblock sync periodically in order to reduce logs
+to be redo-ed at next starting after sudden shutdown.
+
+See {{{module/checkpoint.{c,h}}}} and {{{module/redo.{c,h}}}} for details.
+
+-----

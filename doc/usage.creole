@@ -10,11 +10,24 @@
 
 Under construction.
 
+== Get to start
 
-== Get start
+(1) Build the walb kernel module and userland tools. See [[build]] document.
+(2) Install the module.
 
-Under construction.
+Replace {{{KERNELDIR}}} to your kernel source/header directory like {{{/usr/src/linux-3.2.0}}}
+and {{{KERNELVER}}} to your kernel version like {{{3.2.0}}}.
 
+{{{
+> mkdir -p /lib/module/KERNELVER/kernel/drivers/block/walb
+> cp -p module/walb-mod.ko /lib/module/KERNELVER/kernel/drivers/block/walb/
+> depmod KERNELVER
+}}}
+
+Copy {{{walbctl}}} executable to a directory that are in the search path.
+{{{
+> cp -p tool/walbctl /usr/sbin/
+}}}
 
 == Initial setup
 
@@ -23,9 +36,11 @@ Under construction.
 Load the kernel module.
 
 {{{
-> insmod walb-mod.ko
+> modprobe walb
 }}}
+
 The control file {{{/dev/walb/control}}} will be created.
+See [[spec]] document for module parameters dertail.
 
 
 == Prepare a walb device
