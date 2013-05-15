@@ -98,14 +98,14 @@ static struct hash_cell* hashtbl_lookup_cell(
 	const u8* key, unsigned int key_size)
 {
 	u32 idx;
-	struct hlist_node *node, *next;
+	struct hlist_node *next;
 	struct hash_cell *cell;
 
 	ASSERT_HASHTBL(htbl);
 
 	idx = hashtbl_get_index(htbl, key, key_size);
 
-	hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[idx], list) {
+	hlist_for_each_entry_safe(cell, next, &htbl->bucket[idx], list) {
 
 		ASSERT_HASHCELL(cell);
 		if (cell->key_size == key_size &&
@@ -404,9 +404,9 @@ void hashtbl_empty(struct hash_tbl *htbl)
 	ASSERT_HASHTBL(htbl);
 
 	for (i = 0; i < htbl->bucket_size; i++) {
-		struct hlist_node *node, *next;
+		struct hlist_node *next;
 		struct hash_cell *cell;
-		hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
+		hlist_for_each_entry_safe(cell, next, &htbl->bucket[i], list) {
 			ASSERT_HASHCELL(cell);
 			free_hash_cell(cell);
 		}
@@ -540,9 +540,9 @@ int hashtbl_n_items(const struct hash_tbl *htbl)
 
 	for (i = 0; i < htbl->bucket_size; i++) {
 		int n_local = 0;
-		struct hlist_node *node, *next;
+		struct hlist_node *next;
 		struct hash_cell *cell;
-		hlist_for_each_entry_safe(cell, node, next, &htbl->bucket[i], list) {
+		hlist_for_each_entry_safe(cell, next, &htbl->bucket[i], list) {
 			ASSERT_HASHCELL(cell);
 			n_local++;
 			n++;

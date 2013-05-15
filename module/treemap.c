@@ -402,7 +402,7 @@ static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *n
 {
 	struct tree_cell *cell;
 	struct hlist_head *hlhead;
-	struct hlist_node *hlnode, *hlnext;
+	struct hlist_node *hlnext;
 	int found;
 
 	ASSERT(chead);
@@ -412,7 +412,7 @@ static int multimap_add_oldkey(struct tree_cell_head *chead, struct tree_cell *n
 	ASSERT(!hlist_empty(hlhead));
 
 	found = 0;
-	hlist_for_each_entry_safe(cell, hlnode, hlnext, hlhead, list) {
+	hlist_for_each_entry_safe(cell, hlnext, hlhead, list) {
 		ASSERT_TREECELL(cell);
 		if (cell->val == newcell->val) { found++; break; }
 	}
@@ -1622,7 +1622,7 @@ unsigned long multimap_del(struct multimap *tmap, u64 key, unsigned long val)
 	struct tree_node *t;
 	struct tree_cell *cell;
 	struct tree_cell_head *chead;
-	struct hlist_node *hlnode, *hlnext;
+	struct hlist_node *hlnext;
 	int found;
 	unsigned long retval = TREEMAP_INVALID_VAL;
 	UNUSED unsigned long ret;
@@ -1636,7 +1636,7 @@ unsigned long multimap_del(struct multimap *tmap, u64 key, unsigned long val)
 	ASSERT(!hlist_empty(&chead->head));
 
 	found = 0;
-	hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
+	hlist_for_each_entry_safe(cell, hlnext, &chead->head, list) {
 		ASSERT_TREECELL(cell);
 		if (cell->val == val) {
 			found++;
@@ -1667,7 +1667,7 @@ int multimap_del_key(struct multimap *tmap, u64 key)
 	unsigned long p;
 	struct tree_cell_head *chead;
 	struct tree_cell *cell;
-	struct hlist_node *hlnode, *hlnext;
+	struct hlist_node *hlnext;
 
 	p = map_del((struct map *)tmap, key);
 	if (p == TREEMAP_INVALID_VAL) { return 0; }
@@ -1676,7 +1676,7 @@ int multimap_del_key(struct multimap *tmap, u64 key)
 	ASSERT(chead);
 	ASSERT(!hlist_empty(&chead->head));
 
-	hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
+	hlist_for_each_entry_safe(cell, hlnext, &chead->head, list) {
 		ASSERT_TREECELL(cell);
 		found++;
 		hlist_del(&cell->list);
@@ -1696,7 +1696,7 @@ void multimap_empty(struct multimap *tmap)
 {
 	struct tree_node *t;
 	struct rb_node *node, *next;
-	struct hlist_node *hlnode, *hlnext;
+	struct hlist_node *hlnext;
 	struct tree_cell_head *chead;
 	struct tree_cell *cell;
 
@@ -1709,7 +1709,7 @@ void multimap_empty(struct multimap *tmap)
 		chead = (struct tree_cell_head *)(t->val);
 		ASSERT(chead);
 
-		hlist_for_each_entry_safe(cell, hlnode, hlnext, &chead->head, list) {
+		hlist_for_each_entry_safe(cell, hlnext, &chead->head, list) {
 			ASSERT_TREECELL(cell);
 			hlist_del(&cell->list);
 			free_cell(tmap->mmgr, cell);
@@ -1771,7 +1771,6 @@ int multimap_test(void)
 	int i, n, count;
 	u64 key;
 	unsigned long val;
-	struct hlist_node *node;
 	struct tree_cell_head *chead;
 	struct tree_cell *cell;
 	struct treemap_memory_manager mmgr;
@@ -1839,7 +1838,7 @@ int multimap_test(void)
 			chead = multimap_lookup(tm, key);
 			ASSERT(chead);
 			ASSERT(chead->key == key);
-			hlist_for_each_entry(cell, node, &chead->head, list) {
+			hlist_for_each_entry(cell, &chead->head, list) {
 				ASSERT_TREECELL(cell);
 				val = cell->val;
 				CHECKd(val == key + i || val == key + i + 1);
@@ -1852,7 +1851,7 @@ int multimap_test(void)
 			chead = multimap_lookup(tm, key);
 			ASSERT(chead);
 			ASSERT(chead->key == key);
-			hlist_for_each_entry(cell, node, &chead->head, list) {
+			hlist_for_each_entry(cell, &chead->head, list) {
 				ASSERT_TREECELL(cell);
 				val = cell->val;
 				CHECKd(val == key + i + 1);
