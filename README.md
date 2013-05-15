@@ -11,4 +11,5 @@ GPL version 2 or 3.
 * include: header files shared by kernel/userland code.
 * module: linux device driver source files.
 * tool: userland tools to control walb devices.
+* sim: simulators to check algorithm consistency (deprecated).
 * doc: documents.
