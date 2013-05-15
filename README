@@ -1,7 +1,0 @@
-Walb is block device with write-ahead log.
-
-include: shared header file.
-module: linux device driver module.
-library: library to access walb driver.
-tool: command-line tool to controll walb device.
-doc: documents.

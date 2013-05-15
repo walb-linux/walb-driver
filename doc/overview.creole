@@ -1,48 +1,116 @@
-= Overview
+= WalB Overview
 
 == What is WalB?
 
-WalB is a Linux kernel module and its realted userland tools
+WalB is a Linux kernel module and its related userland tools
 for incremental backup and asynchronous replication of storage devices.
 
-'WalB' was named after Block-level Write-Ahead Logging (WAL).
+WalB was named after Block-level Write-Ahead Logging (WAL).
 
 == Characteristics
 
 * Block-level solution.
-* Small overhead.
+* Small performance overhead.
+* Submitted order of write IOs will be preserved.
+
+== Functionalities
+
+* Online extraction of the logs, which you can be redone on other block devices.
+* Online resize of a walb device.
+* Online WAL reset with adjusting to new log device size.
+* **DEPRECATED**: Snapshot management (you can not access to snapshot images directly)
 
 == Architecture
 
-* A walb device is wrapper of two underlying block devices: log and data.
-* Write IOs will be stored in the log device as redo-logs and in the data device nomally.
-* Read IOs will be just forward to the data device in almost cases.
+* A walb device is wrapper of two underlying block devices, log and data.
+* A walb device behaves as a consistent block device.
+** Write IOs will be stored in the log device as redo-logs and in the data device with no change.
+** Read IOs will be just forward to the data device in almost cases.
+* Almost the all space of a log device is a ring buffer to store logs for write IOs.
+* Stored logs can be retrieved from the log device using sequential read.
 
 == Pros and Cons
 
 === Pros
 
-* Almost-zero overhead for read IOs.
+* Ignorable overhead for read IOs.
 * Small overhead for write IOs.
 ** Response time: almost the same as that of the underlying devices.
 ** Throughput: almost the same as that of the underlying devices, when the log and data devices are independent physically and the bandwidth of HBA is enough (2x + alpha or more).
 * You can use any filesystems on a walb device.
-* You can get portable diff files. You can store them for backup, compress and transfer them for remote replication, as you like.
+* You can get portable and consistent diff files from logs.
+You can store them for backup, compress and transfer them for remote replication, as you like.
 
 === Cons
 
 * WalB uses 2x bandwidth for writes.
-* A walb device requires a bit more storage space for logs additionally.
-* You can not access to past snapshot images with a walb device only.
+* A walb device requires additional storage space for logs.
+* You can not access to snapshot images with a walb device only.
 
-== Functionalities
+== Compared with similar solutions
 
-* Online extraction of the logs (called wlog).
-* Online WAL reset with auto log device resize.
-* Online resize of the device.
-* Snapshot management (you can not access to snapshot images directly)
+=== dm-snap
 
-== License
+* Snapshot management.
+** dm-snap supports snapshot management using COW (copy-on-write).
+** WalB does not support access to snapshot images.
+* Incremental backup
+** dm-snap does not support incremental backup. Full-scan will be required.
+** WalB supports incremental backup without full-scan of volumes.
 
-GPL v2 or v3.
+=== dm-thin
 
+* Thin-provisioning.
+** dm-thin supports thin-provisioning.
+** WalB does not support thin-provisioning.
+* Snapshot management.
+** dm-thin supports snapshot management using persistent address indexes.
+** WalB does not support access to snapshot images
+because it does not maintain persistent indexes.
+Walb devices do not suffer from performance overhead to maintain persistent indexes.
+* Diff extraction for incremental backup and asynchronous replication.
+** dm-thin supports retrieving changed blocks information to get diffs.
+** WalB supports direct extraction of logs (can be diffs) with sequential scan of log devices.
+* Fragmentation management.
+** Using dm-thin devices, fragmentation will occur in block level.
+Fragmentation causes performance degradation.
+A clever GC/reorganization algorithm will be required to solve the issue, for which
+extra IOs will be required of course.
+** A walb device stores logs in its ring buffer and the oldest logs will be overwritten
+automatically without extra IOs.
+In addition, walb does not need persistent address indexes,
+which is address space conversion maps between
+a walb device and its underlying data device,
+so block-level fragmentation does not occur.
+That is, walb devices do not need explicit GC/reorganization in block level.
+
+=== DRBD
+
+* Incremental backup.
+** DRBD does not support incremental backup.
+It does not have functionality to retrieve portable/consistent diff files.
+Full-scan of volumes will be required for backup.
+** WalB supports incremental backup without full-scan.
+* Replication.
+** DRBD supports both synchronous and asynchornous replication.
+** WalB enables asynchronous replication using logs.
+WalB does not support synchronous replication.
+* Long-distance replication.
+** A DRBD device uses limited-size socket buffer, so IO performance will decrease
+when the buffer is likely to be full in long-distance asynchronous replication.
+DRBD-proxy, for which another license is required, will solve the issue.
+** A walb device can store much IOs to be sent to a remote site in its ring buffer.
+Therefore IO performance will not decrease due to long distance.
+However, read IOs for logs extraction may affect performance.
+Currently walb does not have buffers for log extraction effectively,
+while underlying storage caches will help it.
+
+=== Log-structured file systems
+
+Ex. nilfs, btrfs, (or ZFS).
+
+* WalB is a block-level solution, not a file system one.
+* If you use whichever file system, you can backup your data incrementally
+and replicate them asynchronously using an underlying walb device.
+
+-----

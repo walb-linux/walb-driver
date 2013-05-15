@@ -1,161 +1,243 @@
 = WalB Usage
 
-== Introduction
+Table of contents:
+* Let's get started
+* Walbctl command
 
-* Get to start
-* Create/delete a device
-* Manage snapshots
-* Manage logs
-* Other functionalities
+See [[build.creole|build]] document to build and install walb.
 
-Under construction.
-
-
-== Get start
-
-Under construction.
-
-
-== Initial setup
+== Let's get started
 
 === Load the kernel module
 
-Load the kernel module.
-
 {{{
-> insmod walb-mod.ko
+> modprobe walb
 }}}
+
 The control file {{{/dev/walb/control}}} will be created.
+See [[spec.creole|specification]] document for module parameters detail.
 
+=== Prepare two block devices for data and log
 
-== Prepare a walb device
+* Let {{{$LDEV}}} be log device path, {{{$DDEV}}} be data device path.
+** Ex. {{{/dev/sdb}}}, {{{/dev/sdc1}}}, {{{/dev/vg/lv}}}.
 
-(1) Prepare two block devices for a walb device.
-{{{$LDEV}}} is log device path, {{{$DDEV}}} is data device path.
+* The data in the log device will be deleted.
+* The data in the data device will be preserved.
 
-(2) Format the log device:
+* What size is better for log devices?
+** It depends on your log extraction interval
+and how much write IOs will be executed during the interval.
+If you plan daily backup and 10GB writes will be executed on the system per 24 hours,
+the log device size must be 10GB or more.
+
+=== Format a log device
+
 {{{
 > walbctl format_ldev --ldev $LDEV --ddev $DDEV
 }}}
-See {{{walbctl --help}}} for more detailed options.
 
-The data on the data device is not lost.
+Detaild options of {{{format_wdev}}} command will be described later.
 
+=== Start a walb device
 
-== Create a walb device
-
-Create walb device:
 {{{
 > walbctl create_wdev --ldev $LDEV --ddev $DDEV
 }}}
-You will get {{{/dev/walb/$MINOR}}} as the wrapper device,
-and {{{/dev/walb/L$MINOR}}} as the device for log extraction.
-The device {{{/dev/walb/L$MINOR}}} is read-only.
 
-You can name the device with {{{--name}}} option instead of using minor number.
-In that case, you will get {{{/dev/walb/$NAME}}} and {{{/dev/walb/L$NAME}}} devices.
+You will get {{{/dev/walb/0}}} as the walb device,
+and {{{/dev/walb/L0}}} as the walb log device.
+Walb log devices are read-only.
+You can create multiple walb devices and the name of them will be different.
+Let {{{$WDEV}}} be walb device path and {{{$WLDEV}}} be walb log device path.
 
-Now you can use {{{/dev/walb/$MINOR}}} as always.
-Ex.:
+Detaild options of {{{create_wdev}}} command will be descritbed later.
+
+See lsid indicators of the devices.
+{{{
+> cat /sys/block/walb\!0/walb/lsids
+latest       0
+flush        0
+completed    0
+permanent    0
+written      0
+prev_written 0
+oldest       0
+}}}
+There exists no log.
+
+See [[spec.creole|specification]] document for sysfs files detail.
+
+=== Play with a walb device
+
+For example, create ext3 file system on the walb device.
+Then, issue some write IOs.
 {{{
 > mkfs.ext3 /dev/walb/0
+> mkdir /mnt/tmp
 > mount /dev/walb/0 /mnt/tmp
+> dd if=/dev/urandom of=/mnt/tmp/test.bin
+> sync
 }}}
 
-== Delete a walb device
-
-Delete walb device:
+See lsid indicators.
 {{{
-> walbctl delete_wdev --wdev $WDEV
+> cat /sys/block/walb\!0/walb/lsids
+latest       536193
+flush        536193
+completed    536193
+permanent    536193
+written      536193
+prev_written 536193
+oldest       0
 }}}
-{{{$WDEV}}} is walb device like {{{/dev/walb/0}}} or so.
 
-The data will not be deleted, you can re-assemble the device with
-{{{walbctl create_wdev}}} command.
+See log usage.
+{{{
+> cat /sys/block/walb\!0/walb/log_usage
+546193
+}}}
 
+The values may be different at your environment.
 
-== Control a walb device
+=== Extract logs
 
-=== Log capacity and usage
-* get_log_capacity WDEV
-* get_log_usage WDEV
+Get the generated logs.
+I recommend you to get logs of which lsid is less than permanent lsid.
+{{{
+> walbctl cat_wldev --wldev /dev/walb/L0 --lsid0 0 --lsid1 536193 > /tmp/0.wlog
+}}}
 
-=== Get/set log sequence ids.
-* set_oldest_lsid WDEV LSID
-* get_oldest_lsid WDEV
-* get_written_lsid WDEV
-* get_permanent_lsid WDEV
-* get_completed_lsid WDEV
+Delete the extracted logs from the log device.
+{{{
+> walbctl set_oldest_lsid --wdev /dev/walb/0 --lsid 536193
+}}}
 
-If (ring_buffer_size < completed_lsid - oldest_lsid) then
-the ring buffer has overflowed.
+See lsid indicators.
+{{{
+> cat /sys/block/walb\!0/walb/lsids
+latest       536193
+flush        536193
+completed    536193
+permanent    536193
+written      536193
+prev_written 536193
+oldest       536193
+}}}
 
-You can use {{{set_oldest_lsid}}} to delete old logs.
+See log usage.
+{{{
+> cat /sys/block/walb\!0/walb/log_usage
+0
+}}}
 
-When the ring buffer does not overflow, surely valid logs are
-lsids in the range oldest_range <= lsid < permanent_lsid.
+=== Redo logs
 
-=== Checkpointing
-* get_checkpoint_interval WDEV
-* set_checkpoint_interval WDEV SIZE
+Prepare another block device for redo test.
+Let the block device be {{{$RDEV}}}.
+Device size of {{{$RDEV}}} should be the same as {{{$DDEV}}}.
 
-Get/set checkpointing interval.
+Execute redo.
+{{{
+> walbctl redo_wlog --ddev $RDEV < /tmp/0.wlog
+}}}
 
-=== Resize
-* resize WDEV SIZE
+Mount the redone block device and compare two files.
+{{{
+> mkdir /mnt/tmp2
+> mount $RDEV /mnt/tmp2
+> sha1sum /mnt/tmp/test.bin /mnt/tmp2/test.bin
+7cf8832b5d53fa3af1358fcaa0c0efa77ec844d3  /mnt/tmp/test.bin
+7cf8832b5d53fa3af1358fcaa0c0efa77ec844d3  /mnt/tmp2/test.bin
+}}}
+They are the completely same!
+This wlog file is portable and consistent.
+While the redone device is not unmounted state of {{{/dev/walb/0}}},
+ext3 journal replay will make the file system normal state.
 
-Resize a walb device.
-You must grow the underlying data device before calling this.
-The option {{{--size 0}}} will fit the new size.
-Currently 'shrink' is not supported.
+Before stopping walb devices, umount the volumes.
+{{{
+> umount /mnt/tmp
+> umount /mnt/tmp2
+}}}
 
-=== Reset WAL
-* reset_wal WDEV
+=== Stop a walb device
+
+{{{
+> walbctl delete_wdev --wdev /dev/walb/0
+}}}
+
+You can restart the device with {{{walbctl create_wdev}}} command.
+
+=== Unload the kernel module
+
+{{{
+> modprobe -r walb
+}}}
+
+All active walb devices will be stopped and
+{{{/dev/walb}}} directory will be deleted.
+If some walb devices are being used by other modules such as file systems,
+this command will fail.
+
+== Walbctl command
+
+Command classification:
+* **Lsids**: set_oldest_lsid, get_oldest_lsid, get_written_lsid, get_permanent_lsid, get_completed_lsid
+** You can see sysfs file {{lsids}}} instead of using get_XXX_lsid.
+** Use {{{set_oldest_lsid}}} to delete old logs.
+* **Log capacity**: get_log_capacity, get_log_usage.
+* **Checkpointing**: get_checkpoint_interval, set_checkpoint_interval.
+* **Resize**: resize.
+* **Reset WAL**: reset_wal.
+* **Freeze**: freeze, melt, is_frozen
+** In order to stop write IOs temporally to the underlying devices online.
+* **Other status**: is_flush_capable, is_log_overflow, get_version.
+* **Logs**: show_wldev, show_wlog, cat_wldev, redo_wlog, redo.
+** These are just reference implementation and not fast.
+* **Snapshots**: create_snapshot, delete_snapshot, num_snapshot, list_snapshot, list_snapshot_range, check_snapshot, clean_snapshot.
+** These are **DEPRECATED**.
+
+See {{{walbctl --help}}} for detailed commands and options.
+
+=== Detailed options for log format
+
+|= Name |= Description |= Candidates |= Default |
+| --n_snap | Number of snapshot records. | Positive integer. | 10000 |
+| --name | Device name. | A string. | "" |
+| --nodiscard | Do not support discard requests. | --- | support discard requests. |
+
+If you use {{{--name $NAME}}},
+you will get {{{/dev/walb/$NAME}}} and {{{/dev/walb/L$NAME}}} devices.
+
+=== Detailed options for device start
+
+|= Name |= Description |= Candidates |= Default |
+| --name | Device name. | A string. | (Minor id / 2 value will be used.) |
+| --max_logpack_kb | Max lockpack size [KiB]. | 0<= | 0 |
+| --max_pending_mb | Max pending data size [MiB]. | 0< | 32 |
+| --min_pending_mb | Min pending data size [MiB]. | 0< | 16 |
+| --queue_stop_timeout_ms | Waiting period after pending data reaches max_pending_mb [ms]. | 0<= | 100 |
+| --flush_interval_mb | Flush interval in log size | 0<= | 16 |
+| --flush_interval_ms | Flush interval in period | 0<= | 100 |
+| --n_pack_bulk | Max number of logpacks in a bulk. | 0< | 128 |
+| --n_io_bulk | Max number of IOs in a bulk. | 0< | 1024 |
+
+* {{{--max_logpack_kb 0}}} means unlimited.
+* {{{--flush_interval_mb}}} parameter must be less than or equals to a half of {{{--max_pending_mb}}} parameter.
+* Specify {{{--flush_interval_mb 0 --flush_interval_mb 0}}} for systems
+which do not support flush requests, or for benchmark.
+** WalB do not promise data consistency
+if the underlying block devices do not support flush requests
+and they do not promise that completed IOs must be persistent.
+* {{{--n_io_bulk}}} parameter is used to bulk size for IO sorting.
+
+=== What does reset_wal command do?
 
 Remove all logs and snapshot data stored in the log device
-and re-format it adjusting to the new underlying block device size
-on-line.
+and re-format it adjusting to the new underlying block device size on-line.
 You must execute this when {{{walbctl is_log_overflow}}} returns 1.
 and also get full/diff image before restarting to use new logs
 for backup/replication.
 
-=== Freeze
-* freeze WDEV SIZE
-* melt WDEV
-* is_frozen WDEV
-
-Under construction
-
-
-=== Other status
-* is_flush_capable WDEV
-* is_log_overflow WDEV
-
-== Manage snapshots
-
-* create_snapshot WDEV NAME
-* delete_snapshot WDEV NAME | LRANGE
-* num_snapshot WDEV (LRANGE | TRANGE | SRANGE)
-* list_snapshot WDEV
-* list_snapshot_range WDEV (LRANGE | TRANGE | SRANGE)
-* check_snapshot LDEV
-* clean_snapshot LDEV
-
-Under construction
-
-== Manage logs
-
-=== Extract logs
-
-* cat_wldev WLDEV (LRANGE) > WLOG
-* show_wldev WLDEV (LRANGE)
-* show_wlog (LRANGE) < WLOG
-* redo_wlog DDEV (LRANGE) < WLOG
-* redo LDEV DDEV
-
-Under construction
-
-== Others (for debug, analysis etc.)
-
-* get_version
-
+-----
