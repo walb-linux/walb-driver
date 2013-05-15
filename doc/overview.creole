@@ -15,7 +15,7 @@ WalB was named after Block-level Write-Ahead Logging (WAL).
 
 == Functionalities
 
-* Online extraction of the logs, which you can be redo-ed on other block devices.
+* Online extraction of the logs, which you can be redone on other block devices.
 * Online resize of a walb device.
 * Online WAL reset with adjusting to new log device size.
 * **DEPRECATED**: Snapshot management (you can not access to snapshot images directly)
