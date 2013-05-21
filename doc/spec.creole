@@ -12,14 +12,14 @@ This document describes specification of WalB version 1.0.
 ** A wlog device is a simple wrapper of its underlying log device.
 ** Wlog extractor will read a wlog device directly to extract wlog data.
 
-== WalB device naming
+== Walb device naming
 
 You can name walb devices.
 See {{{walbctl create_wdev}}} {{--name}} option.
 
 The device name will be an integer value calculated from its minor id by default.
 
-== WalB device id
+== Walb device id
 
 * major: specified as the kernel module parameter {{{walb_major}}}.
 * minor: specified as a device creation ioctl parameter. See ioctl {{{WALB_IOCTL_START_DEV}}}.

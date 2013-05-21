@@ -67,7 +67,7 @@ You can store them for backup, compress and transfer them for remote replication
 ** dm-thin supports snapshot management using persistent address indexes.
 ** WalB does not support access to snapshot images
 because it does not maintain persistent indexes.
-WalB devices do not suffer from performance overhead to maintain persistent indexes.
+Walb devices do not suffer from performance overhead to maintain persistent indexes.
 * Diff extraction for incremental backup and asynchronous replication.
 ** dm-thin supports retrieving changed blocks information to get diffs.
 ** WalB supports direct extraction of logs (can be diffs) with a sequential scan of log devices.
