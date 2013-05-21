@@ -6,6 +6,9 @@ Table of contents:
 
 See [[build.creole|build]] document to build and install walb.
 
+While current command line interface is a bit complicated,
+we will fix it in the next version.
+
 == Let's get started
 
 === Load the kernel module
