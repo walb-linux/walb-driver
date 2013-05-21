@@ -71,7 +71,7 @@ You must build them with {{{DEBUG=1}}} before running tests.
 == Install
 
 Replace {{{KERNELDIR}}} to your kernel source/header directory.
-You can use your favorite kernel version directly like {{{3.2.0}}} instead of {{{`uname -r`}}}.
+You can specify any existing kernel version directly like {{{3.2.0}}} instead of {{{`uname -r`}}}.
 
 Install the module.
 {{{
