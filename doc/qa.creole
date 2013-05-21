@@ -4,7 +4,7 @@
 **Q.** Is a full-scan of volumes required after a sudden crash?
 
 **A.** No. A walb device keeps consistency using its logs.
-The logs that may not has been applied to its data device will be applied
+The logs that may not have been applied to its data device will be applied
 at the crash recovery phase in the next starting time.
 
 -----
