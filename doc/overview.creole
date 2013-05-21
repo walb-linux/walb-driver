@@ -18,7 +18,7 @@ WalB was named after Block-level Write-Ahead Logging (WAL).
 * Online extraction of the logs, which you can be redone on other block devices.
 * Online resize of a walb device.
 * Online WAL reset with adjusting to new log device size.
-* **DEPRECATED**: Snapshot management (you can not access to snapshot images directly)
+* **DEPRECATED**: Snapshot management (you cannot access to snapshot images directly)
 
 == Architecture
 
@@ -45,7 +45,7 @@ You can store them for backup, compress and transfer them for remote replication
 
 * WalB uses 2x bandwidth for writes.
 * A walb device requires additional storage space for logs.
-* You can not access to snapshot images with a walb device only.
+* You cannot access to snapshot images with a walb device only.
 
 == Compared with similar solutions
 
