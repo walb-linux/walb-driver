@@ -40,7 +40,7 @@ the log device size must be 10GB or more.
 > walbctl format_ldev --ldev $LDEV --ddev $DDEV
 }}}
 
-Detaild options of {{{format_wdev}}} command will be described later.
+Detailed options of {{{format_wdev}}} command will be described later.
 
 === Start a walb device
 
@@ -54,7 +54,7 @@ WalB log devices are read-only.
 You can create multiple walb devices and the name of them will be different.
 Let {{{$WDEV}}} be walb device path and {{{$WLDEV}}} be walb log device path.
 
-Detaild options of {{{create_wdev}}} command will be descritbed later.
+Detailed options of {{{create_wdev}}} command will be described later.
 
 See lsid indicators of the devices.
 {{{
@@ -217,7 +217,7 @@ you will get {{{/dev/walb/$NAME}}} and {{{/dev/walb/L$NAME}}} devices.
 
 |= Name |= Description |= Candidates |= Default |
 | --name | Device name. | A string. | (Minor id / 2 value will be used.) |
-| --max_logpack_kb | Max lockpack size [KiB]. | 0<= | 0 |
+| --max_logpack_kb | Max logpack size [KiB]. | 0<= | 0 |
 | --max_pending_mb | Max pending data size [MiB]. | 0< | 32 |
 | --min_pending_mb | Min pending data size [MiB]. | 0< | 16 |
 | --queue_stop_timeout_ms | Waiting period after pending data reaches max_pending_mb [ms]. | 0<= | 100 |

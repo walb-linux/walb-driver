@@ -13,7 +13,7 @@ Tested Linux distribution: Ubuntu Linux Server 12.04.
 
 === Build tools
 
-* Tools required to build linux kernel.
+* Tools required to build Linux kernel.
 ** gcc (tested with version 4.6.3 and 4.7.2)
 ** make
 ** ...

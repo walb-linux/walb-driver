@@ -73,7 +73,7 @@ See {{{/sys/block/walb!NAME/walb/*}}} for each wdev information.
 * See {{{struct lsid_set}}} defined in {{{module/kern.h}}} for lsid indicators detail.
 
 * {{{lsids}}} file is pollable.
-It will notified when {{{permanent_lsid - oldest_lsid}}} becames from 0 to positive,
+It will notified when {{{permanent_lsid - oldest_lsid}}} becomes from 0 to positive,
 which means wlog has been generated.
 You must use edge-trigger and call {{{lseek(fd, 0, SEEK_SET)}}} before every read.
 
@@ -90,7 +90,7 @@ You can use {{{walbctl}}} command to manage walb devices without invoking ioctl 
 **CAUSION**: the formats are not portable among different CPU architectures.
 Integers will be stored without any endian conversion.
 
-=== Log deivce superblock format
+=== Log device superblock format
 
 * Superblock size is 512B or 4KiB.
 * It is the physical block size of the walb device which depends on the underlying devices.

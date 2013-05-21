@@ -18,7 +18,7 @@ Userland tools can consolidate extracted logs by merging data of overlapped IOs.
 **Q.** What are concrete use cases of WalB?
 
 **A.** A use case is a system that must manage various kinds of persistent data, such as
-relational databases, blob files, and full-index-serch indexes.
+relational databases, blob files, and full-index-search indexes.
 The system can use walb devices and create ordinal file systems like ext3/ext4 on them.
 Accordingly the system can backup incrementally and replicate asynchronously all the data on them.
 

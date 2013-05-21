@@ -64,8 +64,8 @@ See {{{module/pending_io.{c,h}}}} for details.
 To keep //write-after-write// consistency,
 you can use the functionality called overlapped IO serialization.
 It will serialize overlapped IOs that have been written to the log device but
-have not been wirtten to the data device.
-It achieves seirializability for write IOs.
+have not been written to the data device.
+It achieves serializability for write IOs.
 
 I have developed an algorithm to serialize overlapped IOs using
 simple tree-based key-value structure with FIFO limitation.
@@ -102,7 +102,7 @@ of which lsid is less than {{{written_lsid}}} have been persistent on the data d
 redo operation is never required for them.
 
 At starting time, a walb device executes //redo// the logs
-of which lsid is greather than or equals to the {{{written_lsid}}},
+of which lsid is greater than or equals to the {{{written_lsid}}},
 to keep consistency.
 //Redo// means to generate and execute write IOs to the data device.
 
