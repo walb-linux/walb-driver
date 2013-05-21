@@ -70,14 +70,14 @@ You must build them with {{{DEBUG=1}}} before running tests.
 
 == Install
 
-Replace {{{KERNELDIR}}} to your kernel source/header directory
-and {{{KERNELVER}}} to your kernel version like {{{3.2.0}}}.
+Replace {{{KERNELDIR}}} to your kernel source/header directory.
+You can use your favorite kernel version directly like {{{3.2.0}}} instead of {{{`uname -r`}}}.
 
 Install the module.
 {{{
-> mkdir -p /lib/module/KERNELVER/kernel/drivers/block/walb
-> cp -p walb.git/module/walb-mod.ko /lib/module/KERNELVER/kernel/drivers/block/walb/
-> depmod KERNELVER
+> mkdir -p /lib/module/`uname -r`/kernel/drivers/block/walb
+> cp -p walb.git/module/walb-mod.ko /lib/module/`uname -r`/kernel/drivers/block/walb/
+> depmod `uname -r`
 }}}
 
 Install the tool.

@@ -47,7 +47,7 @@ Detaild options of {{{format_wdev}}} command will be described later.
 
 You will get {{{/dev/walb/0}}} as the walb device,
 and {{{/dev/walb/L0}}} as the walb log device.
-Walb log devices are read-only.
+WalB log devices are read-only.
 You can create multiple walb devices and the name of them will be different.
 Let {{{$WDEV}}} be walb device path and {{{$WLDEV}}} be walb log device path.
 
@@ -184,7 +184,7 @@ this command will fail.
 
 Command classification:
 * **Lsids**: set_oldest_lsid, get_oldest_lsid, get_written_lsid, get_permanent_lsid, get_completed_lsid
-** You can see sysfs file {{lsids}}} instead of using get_XXX_lsid.
+** You can see sysfs file {{{lsids}}} instead of using get_XXX_lsid.
 ** Use {{{set_oldest_lsid}}} to delete old logs.
 * **Log capacity**: get_log_capacity, get_log_usage.
 * **Checkpointing**: get_checkpoint_interval, set_checkpoint_interval.
