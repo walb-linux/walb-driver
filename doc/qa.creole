@@ -4,7 +4,7 @@
 **Q.** Is a full-scan of volumes required after a sudden crash?
 
 **A.** No. A walb device keeps consistency using its logs.
-The logs that may not be applied to its data device will be applied
+The logs that may not has been applied to its data device will be applied
 at the crash recovery phase in the next starting time.
 
 -----
@@ -17,8 +17,8 @@ Userland tools can consolidate extracted logs by merging data of overlapped IOs.
 -----
 **Q.** What are concrete use cases of WalB?
 
-**A.** A system manages various kinds of persistent data, such as
-records of databases, blob files, and full-index-serch indexes.
+**A.** A use case is a system that must manage various kinds of persistent data, such as
+relational databases, blob files, and full-index-serch indexes.
 The system can use walb devices and create ordinal file systems like ext3/ext4 on them.
 Accordingly the system can backup incrementally and replicate asynchronously all the data on them.
 
@@ -34,14 +34,14 @@ You can use any file system on walb devices.
 **A.** DRBD architecture is specialized to 'synchronize' volumes.
 I felt a difficulty to maintain the source code patch of DRBD
 that generates incremental diffs.
-In addition, WAL should be required to manage consistency of logs and data.
+In addition, WAL is required to manage consistency of logs and data.
 
 -----
 **Q.** How can I manage backup generations?
 
 **A.** WalB devices do not provide backup generation management functionalities.
 They only provide logs as diff data.
-You can manage raw file of full-image and logs as backup generations.
+You can manage a raw file of full-image and logs as backup generations.
 You can convert logs to diffs or reverse-diffs
 in order to manage backup generations more conveniently.
 Some experimental tools //walb-tools//, which is available at [[https://github.com/starpos/walb-tools/]],
