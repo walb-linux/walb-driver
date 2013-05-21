@@ -1,0 +1,50 @@
+= Questions and Answers
+
+-----
+**Q.** Is a full-scan of volumes required after a sudden crash?
+
+**A.** No. A walb device keeps consistency using its logs.
+The logs that may not has been applied to its data device will be applied
+at the crash recovery phase in the next starting time.
+
+-----
+**Q.** Do walb devices consolidate logs?
+
+**A.** The walb kernel module does not consolidate logs.
+The logs can be applied to another block device in units of IO.
+Userland tools can consolidate extracted logs by merging data of overlapped IOs.
+
+-----
+**Q.** What are concrete use cases of WalB?
+
+**A.** A use case is a system that must manage various kinds of persistent data, such as
+relational databases, blob files, and full-index-serch indexes.
+The system can use walb devices and create ordinal file systems like ext3/ext4 on them.
+Accordingly the system can backup incrementally and replicate asynchronously all the data on them.
+
+-----
+**Q.** What is the difference between WalB and log-structured file systems.
+
+**A.** WalB is a block-level solution, not a file system.
+You can use any file system on walb devices.
+
+-----
+**Q.** Why did not you modify DRBD to get diff data instead of developing WalB from scratch?
+
+**A.** DRBD architecture is specialized to 'synchronize' volumes.
+I felt a difficulty to maintain the source code patch of DRBD
+that generates incremental diffs.
+In addition, WAL is required to manage consistency of logs and data.
+
+-----
+**Q.** How can I manage backup generations?
+
+**A.** WalB devices do not provide backup generation management functionalities.
+They only provide logs as diff data.
+You can manage a raw file of full-image and logs as backup generations.
+You can convert logs to diffs or reverse-diffs
+in order to manage backup generations more conveniently.
+Some experimental tools //walb-tools//, which is available at [[https://github.com/starpos/walb-tools/]],
+may help you.
+
+-----

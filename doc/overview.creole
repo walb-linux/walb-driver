@@ -18,7 +18,7 @@ WalB was named after Block-level Write-Ahead Logging (WAL).
 * Online extraction of the logs, which you can be redone on other block devices.
 * Online resize of a walb device.
 * Online WAL reset with adjusting to new log device size.
-* **DEPRECATED**: Snapshot management (you can not access to snapshot images directly)
+* **DEPRECATED**: Snapshot management (you cannot access to snapshot images directly)
 
 == Architecture
 
@@ -26,14 +26,14 @@ WalB was named after Block-level Write-Ahead Logging (WAL).
 * A walb device behaves as a consistent block device.
 ** Write IOs will be stored in the log device as redo-logs and in the data device with no change.
 ** Read IOs will be just forward to the data device in almost cases.
-* Almost the all space of a log device is a ring buffer to store logs for write IOs.
+* Almost all space of a log device is a ring buffer to store logs for write IOs.
 * Stored logs can be retrieved from the log device using sequential read.
 
 == Pros and Cons
 
 === Pros
 
-* Ignorable overhead for read IOs.
+* Negligible overhead for read IOs.
 * Small overhead for write IOs.
 ** Response time: almost the same as that of the underlying devices.
 ** Throughput: almost the same as that of the underlying devices, when the log and data devices are independent physically and the bandwidth of HBA is enough (2x + alpha or more).
@@ -45,7 +45,7 @@ You can store them for backup, compress and transfer them for remote replication
 
 * WalB uses 2x bandwidth for writes.
 * A walb device requires additional storage space for logs.
-* You can not access to snapshot images with a walb device only.
+* You cannot access to snapshot images with a walb device only.
 
 == Compared with similar solutions
 
@@ -67,12 +67,12 @@ You can store them for backup, compress and transfer them for remote replication
 ** dm-thin supports snapshot management using persistent address indexes.
 ** WalB does not support access to snapshot images
 because it does not maintain persistent indexes.
-Walb devices do not suffer from performance overhead to maintain persistent indexes.
+WalB devices do not suffer from performance overhead to maintain persistent indexes.
 * Diff extraction for incremental backup and asynchronous replication.
 ** dm-thin supports retrieving changed blocks information to get diffs.
-** WalB supports direct extraction of logs (can be diffs) with sequential scan of log devices.
+** WalB supports direct extraction of logs (can be diffs) with a sequential scan of log devices.
 * Fragmentation management.
-** Using dm-thin devices, fragmentation will occur in block level.
+** Using dm-thin devices, fragmentation will occur at block level.
 Fragmentation causes performance degradation.
 A clever GC/reorganization algorithm will be required to solve the issue, for which
 extra IOs will be required of course.
@@ -82,7 +82,7 @@ In addition, walb does not need persistent address indexes,
 which is address space conversion maps between
 a walb device and its underlying data device,
 so block-level fragmentation does not occur.
-That is, walb devices do not need explicit GC/reorganization in block level.
+That is, walb devices do not need explicit GC/reorganization at block level.
 
 === DRBD
 
@@ -92,7 +92,7 @@ It does not have functionality to retrieve portable/consistent diff files.
 Full-scan of volumes will be required for backup.
 ** WalB supports incremental backup without full-scan.
 * Replication.
-** DRBD supports both synchronous and asynchornous replication.
+** DRBD supports both synchronous and asynchronous replication.
 ** WalB enables asynchronous replication using logs.
 WalB does not support synchronous replication.
 * Long-distance replication.

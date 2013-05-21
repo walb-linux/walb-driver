@@ -13,7 +13,7 @@ to know the algorithm in detail.
 
 The important limitation of the algorithm is that
 it must not submit write IOs to the data device before they are persistent on the log device.
-Since walb devices do not have undo logs, it can execute redo but can not execute undo!
+Since walb devices do not have undo logs, it can execute redo but cannot execute undo!
 
 === Easy algorithm
 
@@ -74,7 +74,7 @@ See {{{module/overlapped_io.{c,h}}}} for details.
 The choice of this feature on/off is determined at module building.
 
 I **strongly** recommend to enable overlapped IO serialization feature.
-Even with SSDs, the overhead of the feature is ignorable.
+Even with SSDs, the overhead of the feature is negligible.
 
 You can choose fast/easy and overlapped serialization on/off independently,
 which are named as //easy//, //fast//, //easy-ol//, //fast-ol//.
