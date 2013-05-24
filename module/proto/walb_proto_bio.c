@@ -15,6 +15,7 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/kthread.h>
+#include <linux/version.h>
 
 #include "walb/walb.h"
 #include "walb/block_size.h"
@@ -247,7 +248,11 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	}
 	wrdev->pbs = pbs;
 	wdev->physical_bs = wrdev->pbs;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)
 	blk_set_default_limits(&wrdev->queue->limits);
+#else
+	blk_set_stacking_limits(&wrdev->queue->limits);
+#endif
 	blk_queue_logical_block_size(wrdev->queue, lbs);
 	blk_queue_physical_block_size(wrdev->queue, pbs);
 	/* blk_queue_io_min(wrdev->queue, pbs); */
