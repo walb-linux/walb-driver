@@ -56,6 +56,10 @@ int queue_stop_timeout_ms_ = 100;
    (practically limited by physical block size for logpack header). */
 int max_logpack_size_kb_ = 256;
 
+/* Log-flush parameters. */
+unsigned int log_flush_interval_mb_ = 0;
+unsigned int log_flush_interval_ms_ = 0;
+
 /* Bulk parameters. */
 unsigned int n_pack_bulk_ = 128;
 unsigned int n_io_bulk_ = 1024;
@@ -80,6 +84,8 @@ module_param_named(max_pending_mb, max_pending_mb_, int, S_IRUGO);
 module_param_named(min_pending_mb, min_pending_mb_, int, S_IRUGO);
 module_param_named(queue_stop_timeout_ms, queue_stop_timeout_ms_, int, S_IRUGO);
 module_param_named(max_logpack_size_kb, max_logpack_size_kb_, int, S_IRUGO);
+module_param_named(log_flush_interval_mb_, log_flush_interval_mb_, uint, S_IRUGO);
+module_param_named(log_flush_interval_ms_, log_flush_interval_ms_, uint, S_IRUGO);
 module_param_named(n_pack_bulk, n_pack_bulk_, uint, S_IRUGO);
 module_param_named(n_io_bulk, n_io_bulk_, uint, S_IRUGO);
 module_param_named(is_sort_data_io, is_sort_data_io_, uint, S_IRUGO);
@@ -276,6 +282,10 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 #endif
 	wdev->n_pack_bulk = n_pack_bulk_;
 	wdev->n_io_bulk = n_io_bulk_;
+	wdev->log_flush_interval_pb =
+		log_flush_interval_mb_ * (1024 * 1024 / pbs);
+	wdev->log_flush_interval_jiffies =
+		msecs_to_jiffies(log_flush_interval_ms_);
 
 	/* Set underlying devices. */
 	wdev->ldev = ldev;
