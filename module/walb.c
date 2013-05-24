@@ -1058,10 +1058,11 @@ void destroy_wdev(struct walb_dev *wdev)
 
 	iocore_set_failure(wdev);
 	melt_if_frozen(wdev, false);
-	iocore_flush(wdev);
 
 	walblog_finalize_device(wdev);
 	walb_finalize_device(wdev);
+
+	iocore_flush(wdev);
 
 	snapshot_data_finalize(wdev->snapd);
 	walb_ldev_finalize(wdev);
