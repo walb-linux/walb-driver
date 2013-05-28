@@ -13,7 +13,10 @@
 extern "C" {
 #endif
 
-#define WALB_VERSION 1
+/**
+ * Walb log device format version.
+ */
+#define WALB_LOG_VERSION 1
 
 /**
  * Device name prefix/suffix.

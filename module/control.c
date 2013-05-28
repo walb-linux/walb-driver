@@ -16,6 +16,7 @@
 #include "hashtbl.h"
 #include "control.h"
 #include "alldevs.h"
+#include "version.h"
 
 #include "walb/ioctl.h"
 

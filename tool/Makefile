@@ -13,9 +13,9 @@ TEST_BINARIES = \
 	test/test_rbtree test/test_checksum test/test_u64bits \
 	test/test_sector test/test_super test/test_snapshot test/test_logpack
 
-binaries: $(BINARIES) $(TEST_BINARIES)
+binaries: version_h $(BINARIES) $(TEST_BINARIES)
 
-clean:
+clean: clean_version_h
 	rm -f $(BINARIES) $(TEST_BINARIES) *.o lib/*.o test/*.o
 	rm -f *.gcov *.gcda *.gcno # coverage files.
 	rm -rf tmp # test files.
@@ -65,6 +65,12 @@ SRCS= \
 
 .c.o:
 	$(CC) -c $< -o $@ $(CFLAGS)
+
+version_h:
+	$(shell ../make-ver.sh > version.h)
+
+clean_version_h:
+	rm -f version.h
 
 # Test
 test: $(TEST_BINARIES)

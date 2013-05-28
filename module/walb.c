@@ -39,6 +39,7 @@
 #include "sysfs.h"
 #include "wdev_ioctl.h"
 #include "wdev_util.h"
+#include "version.h"
 
 #include "walb/ioctl.h"
 #include "walb/log_device.h"
@@ -240,7 +241,6 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 		break;
 
 	case WALB_IOCTL_VERSION:
-
 		version = WALB_VERSION;
 		ret = __put_user(version, (int __user *)arg);
 		break;
@@ -706,6 +706,8 @@ static void walblog_unregister_device(struct walb_dev *wdev)
 
 static int __init walb_init(void)
 {
+	LOGn("WALB_VERSION %s\n", WALB_VERSION_STR);
+
 	/* DISK_NAME_LEN assersion */
 	ASSERT_DISK_NAME_LEN();
 

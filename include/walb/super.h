@@ -129,7 +129,7 @@ static inline int is_valid_super_sector_raw(
 	/* sector type */
 	CHECKd(sect->sector_type == SECTOR_TYPE_SUPER);
 	/* version */
-	CHECKd(sect->version == WALB_VERSION);
+	CHECKd(sect->version == WALB_LOG_VERSION);
 	/* block size */
 	CHECKd(sect->physical_bs == pbs);
 	CHECKd(sect->physical_bs >= sect->logical_bs);

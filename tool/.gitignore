@@ -13,3 +13,4 @@ test_rw
 trim
 walbctl
 tmp
+version.h

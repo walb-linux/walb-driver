@@ -28,6 +28,7 @@
 #include "logpack.h"
 #include "snapshot.h"
 #include "walb_log.h"
+#include "version.h"
 
 /*******************************************************************************
  * Macros.
@@ -142,9 +143,9 @@ static struct cmdhelp cmdhelps_[] = {
 	{ "create_wdev LDEV DDEV (NAME)"
 	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB)\n"
 	  "             "
-	  " (QUEUE_STOP_TIMEOUT_MS) (FLUSH_INTERVAL_MB) (FLUSH_INTERVAL_MB)"
+	  " (QUEUE_STOP_TIMEOUT_MS) (FLUSH_INTERVAL_MB) (FLUSH_INTERVAL_MB)\n"
 	  "             "
-	  " (N_PACK_BULK) (N_IO_BULK)\n",
+	  " (N_PACK_BULK) (N_IO_BULK)",
 	  "Make walb/walblog device." },
 	{ "delete_wdev WDEV",
 	  "Delete walb/walblog device." },
@@ -208,7 +209,9 @@ static struct cmdhelp cmdhelps_[] = {
 	{ "is_frozen WDEV",
 	  "Check the device is frozen or not." },
 	{ "get_version",
-	  "Get walb version."},
+	  "Get walb driver version."},
+	{ "version",
+	  "Show walb version."},
 };
 
 /**
@@ -307,6 +310,7 @@ static bool do_freeze(const struct config *cfg);
 static bool do_melt(const struct config *cfg);
 static bool do_is_frozen(const struct config *cfg);
 static bool do_get_version(const struct config *cfg);
+static bool do_version(const struct config *cfg);
 static bool do_help(const struct config *cfg);
 
 /*******************************************************************************
@@ -348,6 +352,7 @@ const struct map_str_to_fn cmd_map_[] = {
 	{ "melt", do_melt },
 	{ "is_frozen", do_is_frozen },
 	{ "get_version", do_get_version },
+	{ "version", do_version },
 	{ "help", do_help },
 };
 
@@ -1700,7 +1705,7 @@ static bool do_cat_wldev(const struct config *cfg)
 	wh->header_size = WALBLOG_HEADER_SIZE;
 	wh->sector_type = SECTOR_TYPE_WALBLOG_HEADER;
 	wh->checksum = 0;
-	wh->version = WALB_VERSION;
+	wh->version = WALB_LOG_VERSION;
 	wh->log_checksum_salt = salt;
 	wh->logical_bs = wldev_info.lbs;
 	wh->physical_bs = pbs;
@@ -2475,7 +2480,7 @@ static bool do_is_frozen(const struct config *cfg)
 }
 
 /**
- * Get walb version.
+ * Get walb driver version.
  */
 static bool do_get_version(const struct config *cfg)
 {
@@ -2497,8 +2502,21 @@ static bool do_get_version(const struct config *cfg)
 		close_(fd);
 		return false;
 	}
-	printf("walb version: %"PRIu32"\n", version);
+
+	printf("%u.%u.%u\n"
+		, (version & 0x00ff0000) >> 16
+		, (version & 0x0000ff00) >> 8
+		, (version & 0x000000ff));
 	return close_(fd) == 0;
+}
+
+/**
+ * Get walb version.
+ */
+static bool do_version(UNUSED const struct config *cfg)
+{
+	printf("%s\n", WALB_VERSION_STR);
+	return true;
 }
 
 /**

@@ -122,20 +122,26 @@ default:
 	$(MAKE) clean
 	$(MAKE) buildmodule
 
-buildmodule: build_date.h
+buildmodule: build_date_h version_h
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
-clean: clean_build_date
+clean: clean_build_date clean_version
 	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions
 
 depend .depend dep:
 	$(CC) $(CFLAGS) -M *.c > .depend
 
-build_date.h: build_date.h.template
-	cat $< | sed "s/XXXXX/`env LC_ALL=C date`/" > $@
+build_date_h: build_date.h.template
+	cat $< | sed "s/XXXXX/`env LC_ALL=C date`/" > build_date.h
 
 clean_build_date:
 	rm -f build_date.h
+
+version_h:
+	$(shell ../make-ver.sh > version.h)
+
+clean_version:
+	rm -f version.h
 
 endif
 

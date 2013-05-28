@@ -139,7 +139,7 @@ static inline bool is_valid_wlog_header(const struct walblog_header* wh)
 		LOGe("wlog header sector type is invalid.\n");
 		return false;
 	}
-	if (wh->version != WALB_VERSION) {
+	if (wh->version != WALB_LOG_VERSION) {
 		LOGe("wlog header version is invalid.\n");
 		return false;
 	}
