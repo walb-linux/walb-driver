@@ -151,7 +151,7 @@ walbctl.o: walbctl.c ../include/walb/walb.h ../include/walb/common.h \
  ../include/walb/log_record.h ../include/walb/ioctl.h random.h \
  check_userland.h ../include/walb/userland.h util.h \
  ../include/walb/common.h walb_util.h logpack.h snapshot.h \
- ../include/walb/snapshot.h walb_log.h
+ ../include/walb/snapshot.h walb_log.h version.h
 snapshot.o: snapshot.c util.h ../include/walb/common.h \
  ../include/walb/userland.h walb_util.h check_userland.h \
  ../include/walb/walb.h ../include/walb/common.h \
