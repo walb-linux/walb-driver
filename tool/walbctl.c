@@ -2482,17 +2482,17 @@ static bool do_is_frozen(const struct config *cfg)
 /**
  * Get walb driver version.
  */
-static bool do_get_version(const struct config *cfg)
+static bool do_get_version(UNUSED const struct config *cfg)
 {
-	struct bdev_info wdev_info;
 	int fd;
 	u32 version;
 	int ret;
 
 	ASSERT(strcmp(cfg->cmd_str, "get_version") == 0);
 
-	if (!open_bdev_and_get_info(cfg->wdev_name, &wdev_info, &fd, O_RDONLY)) {
-		LOGe("check and open failed %s.\n", cfg->wdev_name);
+	fd = open(WALB_CONTROL_PATH, O_RDONLY);
+	if (fd < 0) {
+		LOGe("open failed.");
 		return false;
 	}
 
