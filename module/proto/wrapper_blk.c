@@ -54,7 +54,7 @@ module_param_named(wrapper_blk_major, wrapper_blk_major_, int, S_IRUGO);
 
 /* Block device operations. */
 static int wrapper_blk_open(struct block_device *bdev, fmode_t mode);
-static int wrapper_blk_release(struct gendisk *gd, fmode_t mode);
+static void wrapper_blk_release(struct gendisk *gd, fmode_t mode);
 static int wrapper_blk_ioctl(struct block_device *bdev, fmode_t mode,
 			unsigned int cmd, unsigned long arg);
 
@@ -227,9 +227,8 @@ static int wrapper_blk_open(struct block_device *bdev, fmode_t mode)
 /**
  * Device operation.
  */
-static int wrapper_blk_release(struct gendisk *gd, fmode_t mode)
+static void wrapper_blk_release(struct gendisk *gd, fmode_t mode)
 {
-	return 0;
 }
 
 /**

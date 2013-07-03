@@ -114,13 +114,13 @@ static void walb_unlock_bdev(struct block_device *bdev);
 
 /* Walb device open/close/ioctl. */
 static int walb_open(struct block_device *bdev, fmode_t mode);
-static int walb_release(struct gendisk *gd, fmode_t mode);
+static void walb_release(struct gendisk *gd, fmode_t mode);
 static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 		unsigned int cmd, unsigned long arg);
 
 /* Walblog device open/close/ioctl. */
 static int walblog_open(struct block_device *bdev, fmode_t mode);
-static int walblog_release(struct gendisk *gd, fmode_t mode);
+static void walblog_release(struct gendisk *gd, fmode_t mode);
 static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 			unsigned int cmd, unsigned long arg);
 
@@ -209,14 +209,13 @@ static int walb_open(struct block_device *bdev, fmode_t mode)
 /**
  * Release a walb device.
  */
-static int walb_release(struct gendisk *gd, fmode_t mode)
+static void walb_release(struct gendisk *gd, fmode_t mode)
 {
 	struct walb_dev *wdev = get_wdev_from_disk(gd);
 	int n_users;
 
 	n_users = atomic_dec_return(&wdev->n_users);
 	ASSERT(n_users >= 0);
-	return 0;
 }
 
 /*
@@ -290,14 +289,13 @@ static int walblog_open(struct block_device *bdev, fmode_t mode)
 /**
  * Release a walblog device.
  */
-static int walblog_release(struct gendisk *gd, fmode_t mode)
+static void walblog_release(struct gendisk *gd, fmode_t mode)
 {
 	struct walb_dev *wdev = get_wdev_from_disk(gd);
 	int n_users;
 
 	n_users = atomic_dec_return(&wdev->log_n_users);
 	ASSERT(n_users >= 0);
-	return 0;
 }
 
 static int walblog_ioctl(struct block_device *bdev, fmode_t mode,

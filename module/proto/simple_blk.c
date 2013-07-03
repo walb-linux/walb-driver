@@ -55,7 +55,7 @@ module_param_named(simple_blk_major, simple_blk_major_, int, S_IRUGO);
 
 /* Block device operations. */
 static int simple_blk_open(struct block_device *bdev, fmode_t mode);
-static int simple_blk_release(struct gendisk *gd, fmode_t mode);
+static void simple_blk_release(struct gendisk *gd, fmode_t mode);
 static int simple_blk_ioctl(struct block_device *bdev, fmode_t mode,
 			unsigned int cmd, unsigned long arg);
 
@@ -250,9 +250,8 @@ static int simple_blk_open(struct block_device *bdev, fmode_t mode)
 /**
  * Device operation.
  */
-static int simple_blk_release(struct gendisk *gd, fmode_t mode)
+static void simple_blk_release(struct gendisk *gd, fmode_t mode)
 {
-	return 0;
 }
 
 /**
