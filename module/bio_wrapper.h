@@ -45,6 +45,8 @@ struct bio_wrapper
 
 	struct list_head bioe_list; /* list head of bio_entry */
 
+	unsigned long start_time; /* for diskstats. */
+
 	void *private_data;
 
 #ifdef WALB_OVERLAPPED_SERIALIZE

@@ -236,6 +236,10 @@ static void treemap_memory_manager_put(void);
 static bool pack_cache_get(void);
 static void pack_cache_put(void);
 
+/* For diskstats. */
+static void io_acct_start(struct bio_wrapper *biow);
+static void io_acct_end(struct bio_wrapper *biow);
+
 /*******************************************************************************
  * Static functions implementation.
  *******************************************************************************/
@@ -2358,6 +2362,7 @@ static void wait_for_logpack_and_submit_datapack(
 
 			/* call endio here in fast algorithm,
 			   while easy algorithm call it after data device IO. */
+			io_acct_end(biow);
 			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
 			bio_endio(biow->bio, 0);
 			biow->bio = NULL;
@@ -2597,6 +2602,7 @@ static void wait_for_bio_wrapper(
 		if (!biow->error) {
 			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
 		}
+		io_acct_end(biow);
 		bio_endio(biow->bio, biow->error);
 		biow->bio = NULL;
 	}
@@ -3133,6 +3139,38 @@ static void pack_cache_put(void)
 	}
 }
 
+static void io_acct_start(struct bio_wrapper *biow)
+{
+	int cpu;
+	int rw = bio_data_dir(biow->bio);
+	struct walb_dev *wdev = biow->private_data;
+	struct hd_struct *part0 = &wdev->gd->part0;
+
+	biow->start_time = jiffies;
+
+	cpu = part_stat_lock();
+	part_round_stats(cpu, part0);
+	part_stat_inc(cpu, part0, ios[rw]);
+	part_stat_add(cpu, part0, sectors[rw], biow->len);
+	part_inc_in_flight(part0, rw);
+	part_stat_unlock();
+}
+
+static void io_acct_end(struct bio_wrapper *biow)
+{
+	int cpu;
+	int rw = bio_data_dir(biow->bio);
+	struct walb_dev *wdev = biow->private_data;
+	struct hd_struct *part0 = &wdev->gd->part0;
+	unsigned long duration = jiffies - biow->start_time;
+
+	cpu = part_stat_lock();
+	part_round_stats(cpu, part0);
+	part_stat_add(cpu, part0, ticks[rw], duration);
+	part_dec_in_flight(part0, rw);
+	part_stat_unlock();
+}
+
 /*******************************************************************************
  * Global functions implementation.
  *******************************************************************************/
@@ -3311,6 +3349,9 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	}
 	init_bio_wrapper(biow, bio);
 	biow->private_data = wdev;
+
+	/* IO accounting for diskstats. */
+	io_acct_start(biow);
 
 	if (is_write) {
 #ifdef WALB_PERFORMANCE_ANALYSIS
