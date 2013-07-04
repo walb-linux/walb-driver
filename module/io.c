@@ -3217,6 +3217,13 @@ void iocore_finalize(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 
+#ifdef WALB_DEBUG
+	int n_flush_io, n_flush_logpack, n_flush_force;
+	n_flush_io = atomic_read(&iocored->n_flush_io);
+	n_flush_logpack = atomic_read(&iocored->n_flush_logpack);
+	n_flush_force = atomic_read(&iocored->n_flush_force);
+#endif
+
 	finalize_worker(&iocored->gc_worker_data);
 	destroy_iocore_data(iocored);
 	wdev->private_data = NULL;
@@ -3233,9 +3240,7 @@ void iocore_finalize(struct walb_dev *wdev)
 		"n_flush_logpack: %d\n"
 		"n_flush_force: %d\n",
 		bio_entry_get_n_allocated_pages(),
-		atomic_read(&iocored->n_flush_io),
-		atomic_read(&iocored->n_flush_logpack),
-		atomic_read(&iocored->n_flush_force));
+		n_flush_io, n_flush_logpack, n_flush_force);
 #endif
 }
 
