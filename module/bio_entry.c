@@ -818,7 +818,7 @@ static void copied_bio_put(struct bio *bio)
 	ASSERT(!(bio->bi_flags & (1 << BIO_CLONED)));
 	ASSERT(!(bio->bi_rw & REQ_DISCARD));
 
-	bio_for_each_segment(bvec, bio, i) {
+	__bio_for_each_segment(bvec, bio, i, 0) {
 		free_page_dec(bvec->bv_page);
 		bvec->bv_page = NULL;
 	}
@@ -1095,7 +1095,7 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 	}
 
 	/* Set bv_page to NULL for all bio_vec. */
-	bio_for_each_segment(bvec, clone, i) {
+	__bio_for_each_segment(bvec, clone, i, 0) {
 		if (bvec->bv_page) {
 			bvec->bv_page = NULL;
 		}
@@ -1128,7 +1128,7 @@ struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask)
 fin:
 	return clone;
 error1:
-	bio_for_each_segment(bvec, clone, i) {
+	__bio_for_each_segment(bvec, clone, i, 0) {
 		if (bvec->bv_page) {
 			free_page_dec(bvec->bv_page);
 			bvec->bv_page = NULL;
