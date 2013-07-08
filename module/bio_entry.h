@@ -28,6 +28,8 @@ struct bio_entry
 	sector_t pos; /* [logical block] */
 	unsigned int len; /* keep (bi_size * LOGICAL_BLOCK_SIZE) at initialization,
 			     because bio->bi_size will be 0 after endio. */
+	unsigned int bi_idx; /* keep bi_idx at initialization,
+				because bio->bi_idx will be advanced during IO execution. */
 	int error; /* bio error status. */
 	struct completion done; /* If is_splitted is true and bio_orig is NULL,
 				   this completion never be called. */

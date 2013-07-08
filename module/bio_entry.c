@@ -54,7 +54,10 @@ struct bio_cursor
 	struct bio_entry *bioe; /* Target bio entry.
 				   You must use bioe->len
 				   instead of (bioe->bio->bi_size / LOGICAL_BLOCK_SIZE),
-				   because it will be 0 in the end_request(). */
+				   because it will be 0 in the end_request().
+				   Also, you must use bioe->start_idx
+				   instead of (bioe->bio->bi_idx),
+				   because it will be changed during IO execution. */
 	unsigned int idx; /* bio io_vec index. */
 	unsigned int off; /* offset inside bio [bytes]. */
 	unsigned int off_in; /* offset inside io_vec [bytes]. */
@@ -216,7 +219,7 @@ UNUSED static bool bio_cursor_is_valid(const struct bio_cursor *cur)
 	}
 
 	CHECKd(cur->bioe->bio);
-	CHECKd(cur->idx >= cur->bioe->bio->bi_idx);
+	CHECKd(cur->idx >= cur->bioe->bi_idx);
 	CHECKd(cur->idx <= cur->bioe->bio->bi_vcnt);
 
 	if (cur->idx == cur->bioe->bio->bi_vcnt) {
@@ -228,7 +231,7 @@ UNUSED static bool bio_cursor_is_valid(const struct bio_cursor *cur)
 
 	bvec = NULL;
 	off = 0;
-	bio_for_each_segment(bvec, cur->bioe->bio, i) {
+	__bio_for_each_segment(bvec, cur->bioe->bio, i, cur->bioe->bi_idx) {
 		if (i == cur->idx) { break; }
 		off += bvec->bv_len;
 	}
@@ -255,7 +258,7 @@ static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe)
 		/* zero bio */
 		cur->idx = 0;
 	} else {
-		cur->idx = bioe->bio->bi_idx;
+		cur->idx = bioe->bi_idx;
 	}
 	cur->off = 0;
 	cur->off_in = 0;
@@ -365,7 +368,7 @@ static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
 /**
  * Get pointer to the buffer of the current io_vec of a bio_cursor.
  *
- * You must call bio_cursor_put_buf() after operations done.
+ * You must call bio_cursor_unmap() after operations done.
  */
 #ifdef WALB_FAST_ALGORITHM
 static char* bio_cursor_map(struct bio_cursor *cur)
@@ -636,6 +639,7 @@ static struct bio_entry* bio_entry_split(
 
 	bioe1->bio = bp->bio1;
 	bioe1->len = bp->bio1->bi_size / LOGICAL_BLOCK_SIZE;
+	ASSERT(bioe1->bi_idx == bp->bio1->bi_idx);
 	if (!bio_entry_state_is_splitted(bioe1)) {
 		ASSERT(!bioe1->bio_orig);
 		bioe1->bio_orig = bp->bio_orig;
@@ -914,7 +918,7 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 			level, (u64)bioe->pos,
 			MAJOR(bioe->bio->bi_bdev->bd_dev),
 			MINOR(bioe->bio->bi_bdev->bd_dev));
-		bio_for_each_segment(bvec, bioe->bio, i) {
+		__bio_for_each_segment(bvec, bioe->bio, i, bioe->bi_idx) {
 			printk("%s""segment %d off %u len %u\n",
 				level, i, bvec->bv_offset, bvec->bv_len);
 		}
@@ -924,7 +928,7 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 			level, (u64)bioe->bio_orig->bi_sector,
 			MAJOR(bioe->bio->bi_bdev->bd_dev),
 			MINOR(bioe->bio->bi_bdev->bd_dev));
-		bio_for_each_segment(bvec, bioe->bio_orig, i) {
+		__bio_for_each_segment(bvec, bioe->bio_orig, i, bioe->bi_idx) {
 			printk("%s""segment %d off %u len %u\n",
 				level, i, bvec->bv_offset, bvec->bv_len);
 		}
@@ -946,6 +950,7 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 		bioe->bio = bio;
 		bioe->pos = bio->bi_sector;
 		bioe->len = bio->bi_size / LOGICAL_BLOCK_SIZE;
+		bioe->bi_idx = bio->bi_idx;
 		if (bio->bi_rw & REQ_DISCARD) {
 			bio_entry_state_set_discard(bioe);
 		}
@@ -953,6 +958,7 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 		bioe->bio = NULL;
 		bioe->pos = 0;
 		bioe->len = 0;
+		bioe->bi_idx = 0;
 	}
 }
 
