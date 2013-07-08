@@ -54,8 +54,8 @@ struct bio_cursor
 	struct bio_entry *bioe; /* Target bio entry.
 				   You must use bioe->len
 				   instead of (bioe->bio->bi_size / LOGICAL_BLOCK_SIZE),
-				   because it will be 0 in the end_request().
-				   Also, you must use bioe->start_idx
+				   because it will be 0 in the bio_endio().
+				   Also, you must use bioe->bi_idx
 				   instead of (bioe->bio->bi_idx),
 				   because it will be changed during IO execution. */
 	unsigned int idx; /* bio io_vec index. */
