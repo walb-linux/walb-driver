@@ -6,8 +6,8 @@
 #ifndef WALBLOG_FORMAT_USER_H
 #define WALBLOG_FORMAT_USER_H
 
+#include <stdio.h>
 #include "walb/walb.h"
-#include "walb/logger.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,6 +15,13 @@ extern "C" {
 
 /* Header size of walblog file. */
 #define WALBLOG_HEADER_SIZE 4096
+
+/* Do not use walb/logger.h. */
+#ifdef DEBUG
+#define LOGx(fmt, args...) fprintf(stderr, fmt, ##args)
+#else
+#define LOGx(fmt, args...)
+#endif
 
 /**
  * For walblog_header.flags.
@@ -133,28 +140,28 @@ static inline void print_wlog_header(const struct walblog_header* wh)
 static inline bool is_valid_wlog_header(const struct walblog_header* wh)
 {
 	if (checksum((const u8 *)wh, WALBLOG_HEADER_SIZE, 0) != 0) {
-		LOGe("wlog checksum is invalid.\n");
+		LOGx("wlog checksum is invalid.\n");
 		return false;
 	}
 	if (wh->sector_type != SECTOR_TYPE_WALBLOG_HEADER) {
-		LOGe("wlog header sector type is invalid.\n");
+		LOGx("wlog header sector type is invalid.\n");
 		return false;
 	}
 	if (wh->version != WALB_LOG_VERSION) {
-		LOGe("wlog header version is invalid.\n");
+		LOGx("wlog header version is invalid.\n");
 		return false;
 	}
 	if (wh->end_lsid <= wh->begin_lsid) {
-		LOGe("wlog header does not satisfy begin_lsid < end_lsid.\n");
+		LOGx("wlog header does not satisfy begin_lsid < end_lsid.\n");
 		return false;
 	}
 	if (wh->logical_bs != LOGICAL_BLOCK_SIZE) {
-		LOGe("wlog header's logical_bs is invalid: %u\n",
+		LOGx("wlog header's logical_bs is invalid: %u\n",
 			wh->logical_bs);
 		return false;
 	}
 	if (!is_valid_pbs(wh->physical_bs)) {
-		LOGe("wlog header's physical_bs is invalid: %u\n",
+		LOGx("wlog header's physical_bs is invalid: %u\n",
 			wh->physical_bs);
 		return false;
 	}
