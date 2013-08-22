@@ -138,7 +138,7 @@ void pending_delete(
 	/* Delete the entry. */
 	biow_tmp = (struct bio_wrapper *)multimap_del(
 		pending_data, biow->pos, (unsigned long)biow);
-	LOGd_("biow_tmp %p biow %p\n", biow_tmp, biow);
+	LOG_("biow_tmp %p biow %p\n", biow_tmp, biow);
 	ASSERT(biow_tmp == biow);
 	if (multimap_is_empty(pending_data)) {
 		*max_sectors_p = 0;
@@ -216,14 +216,14 @@ bool pending_check_and_copy(
 		}
 	}
 #ifdef WALB_DEBUG
-	LOGd_("lsid begin\n");
+	LOG_("lsid begin\n");
 	lsid = 0;
 	list_for_each_entry(biow_tmp, &biow_list, list3) {
-		LOGd_("lsid %"PRIu64"\n", biow_tmp->lsid);
+		LOG_("lsid %"PRIu64"\n", biow_tmp->lsid);
 		ASSERT(lsid <= biow_tmp->lsid);
 		lsid = biow_tmp->lsid;
 	}
-	LOGd_("lsid end\n");
+	LOG_("lsid end\n");
 #endif
 	return true;
 }

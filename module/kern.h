@@ -15,6 +15,10 @@
 #include <linux/blkdev.h>
 #include <linux/mutex.h>
 
+#include "walb/common.h"
+#include "walb/print.h"
+#include "walb/logger.h"
+#include "walb/check.h"
 #include "walb/log_device.h"
 #include "walb/sector.h"
 #include "walb/ioctl.h"

@@ -9,6 +9,7 @@
 #include "walb.h"
 #include "sector.h"
 #include "block_size.h"
+#include "check.h"
 #include "util.h"
 
 #ifdef __cplusplus
@@ -148,7 +149,6 @@ static inline int is_valid_super_sector_raw(
 
 	return 1;
 error:
-	LOGd("super sector is not valid.\n");
 	return 0;
 }
 

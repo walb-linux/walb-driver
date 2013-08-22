@@ -11,6 +11,7 @@
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
 #include <linux/time.h>
+#include "walb/logger.h"
 #include "walb/util.h"
 #include "build_date.h"
 

@@ -10,6 +10,7 @@
 #include <linux/time.h>
 #include "bio_entry.h"
 #include "walb/common.h"
+#include "walb/logger.h"
 #include "walb/util.h"
 #include "walb/block_size.h"
 #include "bio_entry.h"
@@ -278,14 +279,14 @@ bool data_copy_bio_wrapper(
 
 	ASSERT(dst);
 	ASSERT(src);
-	LOGd_("begin dst %p src %p.\n", dst, src);
+	LOG_("begin dst %p src %p.\n", dst, src);
 
 	/* Get overlapped area. */
 	bio_wrapper_get_overlapped_pos_and_len(
 		dst, src, &ol_bio_pos, &ol_bio_len);
 	ASSERT(ol_bio_len > 0);
 
-	LOGd_("ol_bio_pos: %"PRIu64" ol_bio_len: %u\n",
+	LOG_("ol_bio_pos: %"PRIu64" ol_bio_len: %u\n",
 		ol_bio_pos, ol_bio_len);
 
 	/* Initialize cursors. */
@@ -314,7 +315,7 @@ bool data_copy_bio_wrapper(
 		return false;
 	}
 
-	LOGd_("end dst %p src %p.\n", dst, src);
+	LOG_("end dst %p src %p.\n", dst, src);
 	return true;
 }
 #endif

@@ -9,6 +9,7 @@
 #include <linux/init.h>
 
 #include "walb/block_size.h"
+#include "walb/logger.h"
 #include "size_list.h"
 #include "simple_blk.h"
 #include "base_bio.h"

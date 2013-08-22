@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/version.h>
 #include <linux/hdreg.h>
+#include "walb/logger.h"
 #include "wdev_util.h"
 #include "kern.h"
 #include "super.h"

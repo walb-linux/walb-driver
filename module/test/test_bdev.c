@@ -11,6 +11,7 @@
 #include <linux/mm.h>
 #include <linux/blkdev.h>
 #include "walb/util.h"
+#include "walb/logger.h"
 #include "build_date.h"
 
 unsigned int major_ = UINT_MAX;

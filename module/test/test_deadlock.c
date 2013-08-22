@@ -13,6 +13,7 @@
 #include <linux/wait.h>
 #include <linux/delay.h>
 #include "walb/util.h"
+#include "walb/logger.h"
 #include "build_date.h"
 #include "util.h"
 

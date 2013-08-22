@@ -11,6 +11,8 @@
 #include <linux/mempool.h>
 
 #include "walb/walb.h"
+#include "walb/logger.h"
+#include "walb/check.h"
 #include "treemap.h"
 #include "util.h" /* for debug */
 
@@ -842,32 +844,32 @@ int map_test(void)
 
 	/* Initialize memory manager. */
 	ret = initialize_treemap_memory_manager_kmalloc(&mmgr, 1);
-	WALB_CHECK(ret);
+	CHECKd(ret);
 
 	/* Create. */
 	tmap = map_create(GFP_KERNEL, &mmgr);
 
 	n = map_n_items(tmap);
-	WALB_CHECK(n == 0);
-	WALB_CHECK(map_is_empty(tmap));
+	CHECKd(n == 0);
+	CHECKd(map_is_empty(tmap));
 
 	/* Search in empty tree. */
-	WALB_CHECK(map_lookup(tmap, 0) == TREEMAP_INVALID_VAL);
+	CHECKd(map_lookup(tmap, 0) == TREEMAP_INVALID_VAL);
 
 	/* Returns error if val is TREEMAP_INVALID_VAL. */
-	WALB_CHECK(map_add(tmap, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) == -EINVAL);
+	CHECKd(map_add(tmap, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) == -EINVAL);
 
 	/* Insert records. */
 	for (i = 0; i < 10000; i++) {
 		key = (u64)i;
 		/* Succeed. */
-		WALB_CHECK(map_add(tmap, key, key + i, GFP_KERNEL) == 0);
+		CHECKd(map_add(tmap, key, key + i, GFP_KERNEL) == 0);
 		/* Fail due to key exists. */
-		WALB_CHECK(map_add(tmap, key, key + i, GFP_KERNEL) == -EEXIST);
+		CHECKd(map_add(tmap, key, key + i, GFP_KERNEL) == -EEXIST);
 	}
 	n = map_n_items(tmap);
-	WALB_CHECK(n == 10000);
-	WALB_CHECK(!map_is_empty(tmap));
+	CHECKd(n == 10000);
+	CHECKd(!map_is_empty(tmap));
 
 	/* Delete records. */
 	for (i = 0; i < 10000; i++) {
@@ -878,27 +880,27 @@ int map_test(void)
 		} else {
 			val = map_lookup(tmap, key);
 		}
-		WALB_CHECK(val != TREEMAP_INVALID_VAL);
-		WALB_CHECK(val == key + i);
+		CHECKd(val != TREEMAP_INVALID_VAL);
+		CHECKd(val == key + i);
 		if (i % 2 == 0) {
 			val = map_lookup(tmap, key);
-			WALB_CHECK(val == TREEMAP_INVALID_VAL);
+			CHECKd(val == TREEMAP_INVALID_VAL);
 		}
 	}
 	n = map_n_items(tmap);
-	WALB_CHECK(n == 5000);
+	CHECKd(n == 5000);
 
 	/* Make tree map empty. */
 	map_empty(tmap);
 	n = map_n_items(tmap);
-	WALB_CHECK(n == 0);
-	WALB_CHECK(map_is_empty(tmap));
+	CHECKd(n == 0);
+	CHECKd(map_is_empty(tmap));
 
 	/* 2cd empty. */
 	map_empty(tmap);
 	n = map_n_items(tmap);
-	WALB_CHECK(n == 0);
-	WALB_CHECK(map_is_empty(tmap));
+	CHECKd(n == 0);
+	CHECKd(map_is_empty(tmap));
 
 	/* Random insert. */
 	count = 0;
@@ -909,7 +911,7 @@ int map_test(void)
 		}
 	}
 	n = map_n_items(tmap);
-	WALB_CHECK(n == count);
+	CHECKd(n == count);
 
 	/* Empty and destroy. */
 	map_destroy(tmap);
@@ -1261,12 +1263,12 @@ int map_cursor_test(void)
 
 	/* Initialize memory manager. */
 	ret = initialize_treemap_memory_manager_kmalloc(&mmgr, 1);
-	WALB_CHECK(ret);
+	CHECKd(ret);
 
 	/* Create map. */
 	LOGd("Create map.\n");
 	map = map_create(GFP_KERNEL, &mmgr);
-	WALB_CHECK(map);
+	CHECKd(map);
 
 	/* Create and init cursor. */
 	LOGd("Create and init cursor.\n");
@@ -1276,18 +1278,18 @@ int map_cursor_test(void)
 	/* Begin -> end. */
 	LOGd("Begin -> end.\n");
 	map_cursor_begin(&curt);
-	WALB_CHECK(map_cursor_is_valid(&curt));
-	WALB_CHECK(!map_cursor_next(&curt));
-	WALB_CHECK(map_cursor_is_end(&curt));
-	WALB_CHECK(map_cursor_is_valid(&curt));
+	CHECKd(map_cursor_is_valid(&curt));
+	CHECKd(!map_cursor_next(&curt));
+	CHECKd(map_cursor_is_end(&curt));
+	CHECKd(map_cursor_is_valid(&curt));
 
 	/* End -> begin. */
 	LOGd("End -> begin.\n");
 	map_cursor_end(&curt);
-	WALB_CHECK(map_cursor_is_valid(&curt));
-	WALB_CHECK(!map_cursor_prev(&curt));
-	WALB_CHECK(map_cursor_is_begin(&curt));
-	WALB_CHECK(map_cursor_is_valid(&curt));
+	CHECKd(map_cursor_is_valid(&curt));
+	CHECKd(!map_cursor_prev(&curt));
+	CHECKd(map_cursor_is_begin(&curt));
+	CHECKd(map_cursor_is_valid(&curt));
 
 	/* Prepare map data. */
 	LOGd("Prepare map data.\n");
@@ -1299,82 +1301,82 @@ int map_cursor_test(void)
 	/* Begin to end. */
 	LOGd("Begin to end.\n");
 	map_cursor_search(cur, 0, MAP_SEARCH_BEGIN);
-	WALB_CHECK(map_cursor_is_valid(cur));
-	WALB_CHECK(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
-	WALB_CHECK(map_cursor_next(cur));
-	WALB_CHECK(map_cursor_val(cur) == 10);
-	WALB_CHECK(map_cursor_next(cur));
-	WALB_CHECK(map_cursor_val(cur) == 20);
-	WALB_CHECK(map_cursor_next(cur));
-	WALB_CHECK(map_cursor_val(cur) == 30);
-	WALB_CHECK(map_cursor_next(cur));
-	WALB_CHECK(map_cursor_val(cur) == 40);
-	WALB_CHECK(!map_cursor_next(cur));
-	WALB_CHECK(map_cursor_is_end(cur));
+	CHECKd(map_cursor_is_valid(cur));
+	CHECKd(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
+	CHECKd(map_cursor_next(cur));
+	CHECKd(map_cursor_val(cur) == 10);
+	CHECKd(map_cursor_next(cur));
+	CHECKd(map_cursor_val(cur) == 20);
+	CHECKd(map_cursor_next(cur));
+	CHECKd(map_cursor_val(cur) == 30);
+	CHECKd(map_cursor_next(cur));
+	CHECKd(map_cursor_val(cur) == 40);
+	CHECKd(!map_cursor_next(cur));
+	CHECKd(map_cursor_is_end(cur));
 
 	/* End to begin. */
 	LOGd("End to begin.\n");
 	map_cursor_search(cur, 0, MAP_SEARCH_END);
-	WALB_CHECK(map_cursor_is_valid(cur));
-	WALB_CHECK(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
-	WALB_CHECK(map_cursor_prev(cur));
-	WALB_CHECK(map_cursor_val(cur) == 40);
-	WALB_CHECK(map_cursor_prev(cur));
-	WALB_CHECK(map_cursor_val(cur) == 30);
-	WALB_CHECK(map_cursor_prev(cur));
-	WALB_CHECK(map_cursor_val(cur) == 20);
-	WALB_CHECK(map_cursor_prev(cur));
-	WALB_CHECK(map_cursor_val(cur) == 10);
-	WALB_CHECK(!map_cursor_prev(cur));
-	WALB_CHECK(map_cursor_is_begin(cur));
+	CHECKd(map_cursor_is_valid(cur));
+	CHECKd(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
+	CHECKd(map_cursor_prev(cur));
+	CHECKd(map_cursor_val(cur) == 40);
+	CHECKd(map_cursor_prev(cur));
+	CHECKd(map_cursor_val(cur) == 30);
+	CHECKd(map_cursor_prev(cur));
+	CHECKd(map_cursor_val(cur) == 20);
+	CHECKd(map_cursor_prev(cur));
+	CHECKd(map_cursor_val(cur) == 10);
+	CHECKd(!map_cursor_prev(cur));
+	CHECKd(map_cursor_is_begin(cur));
 
 	/* EQ */
 	LOGd("EQ test.\n");
 	map_cursor_search(cur, 20, MAP_SEARCH_EQ);
-	WALB_CHECK(map_cursor_val(cur) == 20);
+	CHECKd(map_cursor_val(cur) == 20);
 	map_cursor_search(cur, 25, MAP_SEARCH_EQ);
-	WALB_CHECK(!map_cursor_is_valid(cur));
-	WALB_CHECK(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
+	CHECKd(!map_cursor_is_valid(cur));
+	CHECKd(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
 
 	/* LE */
 	LOGd("LE test.\n");
 	map_cursor_search(cur, 20, MAP_SEARCH_LE);
-	WALB_CHECK(map_cursor_val(cur) == 20);
+	CHECKd(map_cursor_val(cur) == 20);
 	map_cursor_search(cur, 25, MAP_SEARCH_LE);
-	WALB_CHECK(map_cursor_val(cur) == 20);
+	CHECKd(map_cursor_val(cur) == 20);
 	map_cursor_search(cur, 10, MAP_SEARCH_LE);
-	WALB_CHECK(map_cursor_val(cur) == 10);
+	CHECKd(map_cursor_val(cur) == 10);
 	map_cursor_search(cur, 5, MAP_SEARCH_LE);
-	WALB_CHECK(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
+	CHECKd(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
 
 	/* LT */
 	LOGd("LT test.\n");
 	map_cursor_search(cur, 20, MAP_SEARCH_LT);
-	WALB_CHECK(map_cursor_val(cur) == 10);
+	CHECKd(map_cursor_val(cur) == 10);
 	map_cursor_search(cur, 25, MAP_SEARCH_LT);
-	WALB_CHECK(map_cursor_val(cur) == 20);
+	CHECKd(map_cursor_val(cur) == 20);
 	map_cursor_search(cur, 10, MAP_SEARCH_LT);
-	WALB_CHECK(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
+	CHECKd(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
 
 	/* GE */
 	LOGd("GE test.\n");
 	map_cursor_search(cur, 20, MAP_SEARCH_GE);
-	WALB_CHECK(map_cursor_val(cur) == 20);
+	CHECKd(map_cursor_val(cur) == 20);
 	map_cursor_search(cur, 25, MAP_SEARCH_GE);
-	WALB_CHECK(map_cursor_val(cur) == 30);
+	CHECKd(map_cursor_val(cur) == 30);
 	map_cursor_search(cur, 40, MAP_SEARCH_GE);
-	WALB_CHECK(map_cursor_val(cur) == 40);
+	CHECKd(map_cursor_val(cur) == 40);
 	map_cursor_search(cur, 45, MAP_SEARCH_GE);
-	WALB_CHECK(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
+	CHECKd(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
 
 	/* GT */
 	LOGd("GT test.\n");
 	map_cursor_search(cur, 20, MAP_SEARCH_GT);
-	WALB_CHECK(map_cursor_val(cur) == 30);
+	CHECKd(map_cursor_val(cur) == 30);
 	map_cursor_search(cur, 25, MAP_SEARCH_GT);
-	WALB_CHECK(map_cursor_val(cur) == 30);
+	CHECKd(map_cursor_val(cur) == 30);
 	map_cursor_search(cur, 40, MAP_SEARCH_GT);
-	WALB_CHECK(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
+	CHECKd(map_cursor_val(cur) == TREEMAP_INVALID_VAL);
 
 	/* Destroy cursor. */
 	LOGd("Destroy cursor.\n");
@@ -1387,7 +1389,7 @@ int map_cursor_test(void)
 	/* Create map. */
 	LOGd("Create map.\n");
 	map = map_create(GFP_KERNEL, &mmgr);
-	WALB_CHECK(map);
+	CHECKd(map);
 
 	/* Prepare map data. */
 	map_add(map, 10, 10, GFP_KERNEL);
@@ -1397,15 +1399,15 @@ int map_cursor_test(void)
 
 	/* Map delete continuously. */
 	map_cursor_search(&curt, 10, MAP_SEARCH_EQ);
-	WALB_CHECK(map_cursor_val(&curt) == 10);
+	CHECKd(map_cursor_val(&curt) == 10);
 	map_cursor_del(&curt);
-	WALB_CHECK(map_cursor_val(&curt) == 20);
+	CHECKd(map_cursor_val(&curt) == 20);
 	map_cursor_del(&curt);
-	WALB_CHECK(map_cursor_val(&curt) == 30);
+	CHECKd(map_cursor_val(&curt) == 30);
 	map_cursor_del(&curt);
-	WALB_CHECK(map_cursor_val(&curt) == 40);
+	CHECKd(map_cursor_val(&curt) == 40);
 	map_cursor_del(&curt);
-	WALB_CHECK(map_cursor_is_end(&curt));
+	CHECKd(map_cursor_is_end(&curt));
 
 	/* Prepare map data. */
 	map_add(map, 10, 10, GFP_KERNEL);
@@ -1415,27 +1417,27 @@ int map_cursor_test(void)
 
 	/* Delete middle and check. */
 	map_cursor_search(&curt, 20, MAP_SEARCH_EQ);
-	WALB_CHECK(map_cursor_val(&curt) == 20);
+	CHECKd(map_cursor_val(&curt) == 20);
 	map_cursor_del(&curt);
-	WALB_CHECK(map_cursor_val(&curt) == 30);
+	CHECKd(map_cursor_val(&curt) == 30);
 	map_cursor_prev(&curt);
-	WALB_CHECK(map_cursor_val(&curt) == 10);
+	CHECKd(map_cursor_val(&curt) == 10);
 
 	/* Delete last and check. */
 	map_cursor_search(&curt, 40, MAP_SEARCH_EQ);
-	WALB_CHECK(map_cursor_val(&curt) == 40);
+	CHECKd(map_cursor_val(&curt) == 40);
 	map_cursor_del(&curt);
-	WALB_CHECK(map_cursor_is_end(&curt));
+	CHECKd(map_cursor_is_end(&curt));
 	map_cursor_prev(&curt);
-	WALB_CHECK(map_cursor_val(&curt) == 30);
+	CHECKd(map_cursor_val(&curt) == 30);
 
 	/* Delete first and check. */
 	map_cursor_search(&curt, 10, MAP_SEARCH_EQ);
-	WALB_CHECK(map_cursor_val(&curt) == 10);
+	CHECKd(map_cursor_val(&curt) == 10);
 	map_cursor_del(&curt);
-	WALB_CHECK(map_cursor_val(&curt) == 30);
+	CHECKd(map_cursor_val(&curt) == 30);
 	map_cursor_prev(&curt);
-	WALB_CHECK(map_cursor_is_begin(&curt));
+	CHECKd(map_cursor_is_begin(&curt));
 
 	/* Destroy map. */
 	LOGd("Destroy map.\n");
@@ -1787,7 +1789,7 @@ int multimap_test(void)
 
 	/* Initialize memory manager. */
 	ret = initialize_treemap_memory_manager_kmalloc(&mmgr, 1);
-	WALB_CHECK(ret);
+	CHECKd(ret);
 
 	/* Create. */
 	LOGd("Create.\n");
@@ -1795,31 +1797,31 @@ int multimap_test(void)
 	ASSERT(tm);
 
 	n = multimap_n_items(tm);
-	WALB_CHECK(n == 0);
-	WALB_CHECK(multimap_is_empty(tm));
+	CHECKd(n == 0);
+	CHECKd(multimap_is_empty(tm));
 
 	/* Search in empty tree. */
 	LOGd("Search in empty tree.\n");
-	WALB_CHECK(!multimap_lookup(tm, 0));
+	CHECKd(!multimap_lookup(tm, 0));
 
 	/* Returns error if val is TREEMAP_INVALID_VAL. */
 	LOGd("Invalid value insert..\n");
-	WALB_CHECK(multimap_add(tm, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) == -EINVAL);
+	CHECKd(multimap_add(tm, 0, TREEMAP_INVALID_VAL, GFP_KERNEL) == -EINVAL);
 
 	/* Insert records. */
 	LOGd("Insert records.\n");
 	for (i = 0; i < 10000; i++) {
 		key = (u64) i;
 		/* Succeed. */
-		WALB_CHECK(multimap_add(tm, key, key + i, GFP_KERNEL) == 0);
+		CHECKd(multimap_add(tm, key, key + i, GFP_KERNEL) == 0);
 		/* Fail due to key exists. */
-		WALB_CHECK(multimap_add(tm, key, key + i, GFP_KERNEL) == -EEXIST);
+		CHECKd(multimap_add(tm, key, key + i, GFP_KERNEL) == -EEXIST);
 		/* Succeed due to value is different. */
-		WALB_CHECK(multimap_add(tm, key, key + i + 1, GFP_KERNEL) == 0);
+		CHECKd(multimap_add(tm, key, key + i + 1, GFP_KERNEL) == 0);
 	}
 	n = multimap_n_items(tm);
-	WALB_CHECK(n == 20000);
-	WALB_CHECK(!multimap_is_empty(tm));
+	CHECKd(n == 20000);
+	CHECKd(!multimap_is_empty(tm));
 
 	/* Delete records. */
 	LOGd("Delete records.\n");
@@ -1827,12 +1829,12 @@ int multimap_test(void)
 		key = (u64) i;
 
 		n = multimap_lookup_n(tm, key);
-		WALB_CHECK(n == 2);
+		CHECKd(n == 2);
 
 		if (i % 2 == 0) {
 			val = multimap_del(tm, key, key + i);
-			WALB_CHECK(val != TREEMAP_INVALID_VAL);
-			WALB_CHECK(val == key + i);
+			CHECKd(val != TREEMAP_INVALID_VAL);
+			CHECKd(val == key + i);
 		} else {
 			chead = multimap_lookup(tm, key);
 			ASSERT(chead);
@@ -1840,12 +1842,12 @@ int multimap_test(void)
 			hlist_for_each_entry(cell, node, &chead->head, list) {
 				ASSERT_TREECELL(cell);
 				val = cell->val;
-				WALB_CHECK(val == key + i || val == key + i + 1);
+				CHECKd(val == key + i || val == key + i + 1);
 			}
 		}
 		if (i % 2 == 0) {
 			val = multimap_lookup_any(tm, key);
-			WALB_CHECK(val == key + i + 1);
+			CHECKd(val == key + i + 1);
 
 			chead = multimap_lookup(tm, key);
 			ASSERT(chead);
@@ -1853,19 +1855,19 @@ int multimap_test(void)
 			hlist_for_each_entry(cell, node, &chead->head, list) {
 				ASSERT_TREECELL(cell);
 				val = cell->val;
-				WALB_CHECK(val == key + i + 1);
+				CHECKd(val == key + i + 1);
 			}
 			n = multimap_lookup_n(tm, key);
-			WALB_CHECK(n == 1);
+			CHECKd(n == 1);
 		} else {
 			val = multimap_lookup_any(tm, key);
-			WALB_CHECK(val == key + i || val == key + i + 1);
+			CHECKd(val == key + i || val == key + i + 1);
 			n = multimap_lookup_n(tm, key);
-			WALB_CHECK(n == 2);
+			CHECKd(n == 2);
 		}
 	}
 	n = multimap_n_items(tm);
-	WALB_CHECK(n == 15000);
+	CHECKd(n == 15000);
 
 	/* Delete multiple records. */
 	LOGd("Delete multiple records.\n");
@@ -1873,25 +1875,25 @@ int multimap_test(void)
 		key = (u64) i;
 		if (i % 2 != 0) {
 			n = multimap_del_key(tm, key);
-			WALB_CHECK(n == 2);
+			CHECKd(n == 2);
 		}
 	}
 	n = multimap_n_items(tm);
-	WALB_CHECK(n == 5000);
+	CHECKd(n == 5000);
 
 	/* Make tree map empty. */
 	LOGd("Make tree map empty.\n");
 	multimap_empty(tm);
 	n = multimap_n_items(tm);
-	WALB_CHECK(n == 0);
-	WALB_CHECK(multimap_is_empty(tm));
+	CHECKd(n == 0);
+	CHECKd(multimap_is_empty(tm));
 
 	/* 2cd empty. */
 	LOGd("2nd empty.\n");
 	multimap_empty(tm);
 	n = multimap_n_items(tm);
-	WALB_CHECK(n == 0);
-	WALB_CHECK(multimap_is_empty(tm));
+	CHECKd(n == 0);
+	CHECKd(multimap_is_empty(tm));
 
 	/* Random insert. */
 	LOGd("Random insert.\n");
@@ -1904,7 +1906,7 @@ int multimap_test(void)
 		}
 	}
 	n = multimap_n_items(tm);
-	WALB_CHECK(n == count);
+	CHECKd(n == count);
 	LOGn("count %d\n", n);
 
 	/* Empty and destroy. */
@@ -2321,12 +2323,12 @@ int __init multimap_cursor_test(void)
 
 	/* Initialize memory manager. */
 	ret = initialize_treemap_memory_manager_kmalloc(&mmgr, 1);
-	WALB_CHECK(ret);
+	CHECKd(ret);
 
 	/* Create multimap. */
 	LOGd("Create multimap.\n");
 	map = multimap_create(GFP_KERNEL, &mmgr);
-	WALB_CHECK(map);
+	CHECKd(map);
 
 	/* Initialize multimap cursor. */
 	multimap_cursor_init(map, &curt);
@@ -2334,20 +2336,20 @@ int __init multimap_cursor_test(void)
 	/* Begin -> end. */
 	LOGd("Begin -> end.\n");
 	multimap_cursor_begin(&curt);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
-	WALB_CHECK(multimap_cursor_is_begin(&curt));
-	WALB_CHECK(!multimap_cursor_next(&curt));
-	WALB_CHECK(multimap_cursor_is_end(&curt));
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_begin(&curt));
+	CHECKd(!multimap_cursor_next(&curt));
+	CHECKd(multimap_cursor_is_end(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 
 	/* End -> begin. */
 	LOGd("End -> begin.\n");
 	multimap_cursor_end(&curt);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
-	WALB_CHECK(multimap_cursor_is_end(&curt));
-	WALB_CHECK(!multimap_cursor_prev(&curt));
-	WALB_CHECK(multimap_cursor_is_begin(&curt));
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_end(&curt));
+	CHECKd(!multimap_cursor_prev(&curt));
+	CHECKd(multimap_cursor_is_begin(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 
 	/* Prepare multimap data. */
 	LOGd("Prepare multimap data.\n");
@@ -2365,52 +2367,52 @@ int __init multimap_cursor_test(void)
 	/* Begin to end. */
 	LOGd("Begin to end.\n");
 	multimap_cursor_search(&curt, 0, MAP_SEARCH_BEGIN, 0);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
-	WALB_CHECK(multimap_cursor_is_begin(&curt));
-	WALB_CHECK(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
+	CHECKd(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_begin(&curt));
+	CHECKd(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
 	for (i = 0; i < 10; i++) {
-		WALB_CHECK(multimap_cursor_next(&curt));
+		CHECKd(multimap_cursor_next(&curt));
 		key = multimap_cursor_key(&curt);
 		val = multimap_cursor_val(&curt);
 		LOGd("key, val: %"PRIu64", %lu\n", key, val);
 		keys[i] = key;
 		vals[i] = val;
-		WALB_CHECK(key != (u64)(-1));
-		WALB_CHECK(val != TREEMAP_INVALID_VAL);
+		CHECKd(key != (u64)(-1));
+		CHECKd(val != TREEMAP_INVALID_VAL);
 	}
-	WALB_CHECK(!multimap_cursor_next(&curt));
-	WALB_CHECK(multimap_cursor_is_end(&curt));
-	WALB_CHECK(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
+	CHECKd(!multimap_cursor_next(&curt));
+	CHECKd(multimap_cursor_is_end(&curt));
+	CHECKd(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
 
 	/* End to begin. */
 	LOGd("End to begin.\n");
 	multimap_cursor_search(&curt, 0, MAP_SEARCH_END, 0);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
-	WALB_CHECK(multimap_cursor_is_end(&curt));
-	WALB_CHECK(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
+	CHECKd(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_end(&curt));
+	CHECKd(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
 	for (i = 10 - 1; i >= 0; i--) {
-		WALB_CHECK(multimap_cursor_prev(&curt));
+		CHECKd(multimap_cursor_prev(&curt));
 		key = multimap_cursor_key(&curt);
 		val = multimap_cursor_val(&curt);
 		LOGd("key, val: %"PRIu64", %lu\n", key, val);
-		WALB_CHECK(key != (u64)(-1));
-		WALB_CHECK(key == keys[i]);
-		WALB_CHECK(val != TREEMAP_INVALID_VAL);
-		WALB_CHECK(val == vals[i]);
+		CHECKd(key != (u64)(-1));
+		CHECKd(key == keys[i]);
+		CHECKd(val != TREEMAP_INVALID_VAL);
+		CHECKd(val == vals[i]);
 	}
-	WALB_CHECK(!multimap_cursor_prev(&curt));
-	WALB_CHECK(multimap_cursor_is_begin(&curt));
-	WALB_CHECK(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
+	CHECKd(!multimap_cursor_prev(&curt));
+	CHECKd(multimap_cursor_is_begin(&curt));
+	CHECKd(multimap_cursor_val(&curt) == TREEMAP_INVALID_VAL);
 
 	/* Forward scan. */
 	multimap_cursor_search(&curt, 30, MAP_SEARCH_EQ, 0);
-	WALB_CHECK(multimap_cursor_key(&curt) == keys[6]);
-	WALB_CHECK(multimap_cursor_val(&curt) == vals[6]);
+	CHECKd(multimap_cursor_key(&curt) == keys[6]);
+	CHECKd(multimap_cursor_val(&curt) == vals[6]);
 
 	/* Backword scan. */
 	multimap_cursor_search(&curt, 10, MAP_SEARCH_EQ, 1);
-	WALB_CHECK(multimap_cursor_key(&curt) == keys[4]);
-	WALB_CHECK(multimap_cursor_val(&curt) == vals[4]);
+	CHECKd(multimap_cursor_key(&curt) == keys[4]);
+	CHECKd(multimap_cursor_val(&curt) == vals[4]);
 
 	/* Destroy multimap. */
 	LOGd("Destroy multimap.\n");
@@ -2419,7 +2421,7 @@ int __init multimap_cursor_test(void)
 	/* Create multimap. */
 	LOGd("Create multimap.\n");
 	map = multimap_create(GFP_KERNEL, &mmgr);
-	WALB_CHECK(map);
+	CHECKd(map);
 
 	/*
 	 * Cursor deletion test.
@@ -2431,33 +2433,33 @@ int __init multimap_cursor_test(void)
 	/* the order is (10,10), (10,11), (10,12) inside the hlist. */
 
 	multimap_cursor_search(&curt, 10, MAP_SEARCH_EQ, 0);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 10);
-	WALB_CHECK(multimap_cursor_val(&curt) == 10);
+	CHECKd(multimap_cursor_key(&curt) == 10);
+	CHECKd(multimap_cursor_val(&curt) == 10);
 	multimap_cursor_del(&curt);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 10);
-	WALB_CHECK(multimap_cursor_val(&curt) == 11);
+	CHECKd(multimap_cursor_key(&curt) == 10);
+	CHECKd(multimap_cursor_val(&curt) == 11);
 	multimap_cursor_prev(&curt);
-	WALB_CHECK(multimap_cursor_is_begin(&curt));
+	CHECKd(multimap_cursor_is_begin(&curt));
 
 	multimap_cursor_search(&curt, 10, MAP_SEARCH_EQ, 1);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 10);
-	WALB_CHECK(multimap_cursor_val(&curt) == 12);
+	CHECKd(multimap_cursor_key(&curt) == 10);
+	CHECKd(multimap_cursor_val(&curt) == 12);
 	multimap_cursor_del(&curt);
-	WALB_CHECK(multimap_cursor_is_end(&curt));
+	CHECKd(multimap_cursor_is_end(&curt));
 	multimap_cursor_prev(&curt);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 10);
-	WALB_CHECK(multimap_cursor_val(&curt) == 11);
+	CHECKd(multimap_cursor_key(&curt) == 10);
+	CHECKd(multimap_cursor_val(&curt) == 11);
 	multimap_cursor_del(&curt);
 
-	WALB_CHECK(multimap_is_empty(map));
+	CHECKd(multimap_is_empty(map));
 	LOGn("multimap cursor delete test 2.\n");
 
 	multimap_add(map,  0,  0, GFP_KERNEL);
@@ -2467,36 +2469,36 @@ int __init multimap_cursor_test(void)
 	multimap_add(map, 20, 20, GFP_KERNEL);
 
 	multimap_cursor_search(&curt, 10, MAP_SEARCH_EQ, 0);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 10);
-	WALB_CHECK(multimap_cursor_val(&curt) == 10);
+	CHECKd(multimap_cursor_key(&curt) == 10);
+	CHECKd(multimap_cursor_val(&curt) == 10);
 	multimap_cursor_del(&curt);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 10);
-	WALB_CHECK(multimap_cursor_val(&curt) == 11);
+	CHECKd(multimap_cursor_key(&curt) == 10);
+	CHECKd(multimap_cursor_val(&curt) == 11);
 	multimap_cursor_prev(&curt);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 0);
-	WALB_CHECK(multimap_cursor_val(&curt) == 0);
+	CHECKd(multimap_cursor_key(&curt) == 0);
+	CHECKd(multimap_cursor_val(&curt) == 0);
 
 	multimap_cursor_search(&curt, 10, MAP_SEARCH_EQ, 1);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 10);
-	WALB_CHECK(multimap_cursor_val(&curt) == 12);
+	CHECKd(multimap_cursor_key(&curt) == 10);
+	CHECKd(multimap_cursor_val(&curt) == 12);
 	multimap_cursor_del(&curt);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 20);
-	WALB_CHECK(multimap_cursor_val(&curt) == 20);
+	CHECKd(multimap_cursor_key(&curt) == 20);
+	CHECKd(multimap_cursor_val(&curt) == 20);
 	multimap_cursor_prev(&curt);
-	WALB_CHECK(multimap_cursor_is_valid(&curt));
+	CHECKd(multimap_cursor_is_valid(&curt));
 	LOGn("(%"PRIu64", %lu)\n", multimap_cursor_key(&curt), multimap_cursor_val(&curt));
-	WALB_CHECK(multimap_cursor_key(&curt) == 10);
-	WALB_CHECK(multimap_cursor_val(&curt) == 11);
+	CHECKd(multimap_cursor_key(&curt) == 10);
+	CHECKd(multimap_cursor_val(&curt) == 11);
 
 
 	/* Destroy multimap. */

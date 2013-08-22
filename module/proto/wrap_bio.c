@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 
 #include "walb/block_size.h"
+#include "walb/logger.h"
 #include "wrapper_blk.h"
 #include "bio_entry.h"
 
@@ -79,7 +80,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	struct bio_entry *bioe = bio->bi_private;
 	ASSERT(bioe);
 
-	LOGd_("bio rw %lu pos %"PRIu64" size %u error %d\n",
+	LOG_("bio rw %lu pos %"PRIu64" size %u error %d\n",
 		bio->bi_rw, (u64)bio->bi_sector, bio->bi_size, error);
 
 	bioe->error = error;
@@ -108,7 +109,7 @@ static void wrapper_blk_make_request_fn(struct request_queue *q, struct bio *bio
 	bdev = wrdev->private_data;
 	ASSERT(bdev);
 
-	LOGd_("bio rw %lu pos %"PRIu64" size %u\n",
+	LOG_("bio rw %lu pos %"PRIu64" size %u\n",
 		bio->bi_rw, (u64)bio->bi_sector, bio->bi_size);
 
 	if (io_should_fail_) { goto error0; }

@@ -10,6 +10,7 @@
 
 #include <linux/mm.h>
 #include <linux/scatterlist.h>
+#include "walb/logger.h"
 #include "walb/util.h"
 #include "sg_util.h"
 #include "build_date.h"

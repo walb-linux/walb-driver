@@ -12,6 +12,7 @@
 #include <errno.h>
 
 #include "walb/common.h"
+#include "walb/logger.h"
 #include "util.h"
 
 int main(int argc, char *argv[])

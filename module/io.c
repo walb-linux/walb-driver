@@ -10,6 +10,7 @@
 #include <linux/printk.h>
 #include <linux/time.h>
 #include <linux/kmod.h>
+#include "walb/logger.h"
 #include "kern.h"
 #include "io.h"
 #include "bio_wrapper.h"
@@ -295,7 +296,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 #else
 	ASSERT(bi_cnt == 1);
 #endif
-	LOGd_("complete bioe %p pos %"PRIu64" len %u\n",
+	LOG_("complete bioe %p pos %"PRIu64" len %u\n",
 		bioe, (u64)bioe->pos, bioe->len);
 	if (bi_cnt == 1) {
 		bioe->bio_orig = NULL;
@@ -462,19 +463,19 @@ static void submit_bio_entry_list(struct list_head *bioe_list)
 		}
 #endif /* WALB_DEBUG */
 		if (bio_entry_state_is_copied(bioe)) {
-			LOGd_("copied: rw %lu bioe %p pos %"PRIu64" len %u\n",
+			LOG_("copied: rw %lu bioe %p pos %"PRIu64" len %u\n",
 				bioe->bio->bi_rw,
 				bioe, (u64)bioe->pos, bioe->len);
 			set_bit(BIO_UPTODATE, &bioe->bio->bi_flags);
 			bio_endio(bioe->bio, 0);
 		} else {
-			LOGd_("submit_d: rw %lu bioe %p pos %"PRIu64" len %u\n",
+			LOG_("submit_d: rw %lu bioe %p pos %"PRIu64" len %u\n",
 				bioe->bio->bi_rw,
 				bioe, (u64)bioe->pos, bioe->len);
 			generic_make_request(bioe->bio);
 		}
 #else /* WALB_FAST_ALGORITHM */
-		LOGd_("submit_d: rw %lu bioe %p pos %"PRIu64" len %u\n",
+		LOG_("submit_d: rw %lu bioe %p pos %"PRIu64" len %u\n",
 			bioe->bio->bi_rw,
 			bioe, (u64)bioe->pos, bioe->len);
 		generic_make_request(bioe->bio);
@@ -795,7 +796,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 	struct list_head biow_list;
 
 	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
-	LOGd_("begin\n");
+	LOG_("begin\n");
 
 	INIT_LIST_HEAD(&biow_list);
 	INIT_LIST_HEAD(&wpack_list);
@@ -849,7 +850,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 		enqueue_wait_task_if_necessary(wdev);
 	}
 
-	LOGd_("end\n");
+	LOG_("end\n");
 }
 
 /**
@@ -873,7 +874,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 	struct list_head wpack_list;
 
 	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
-	LOGd_("begin\n");
+	LOG_("begin\n");
 
 	INIT_LIST_HEAD(&wpack_list);
 	while (true) {
@@ -917,7 +918,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		wakeup_worker(&iocored->gc_worker_data);
 	}
 
-	LOGd_("end\n");
+	LOG_("end\n");
 }
 
 /**
@@ -948,7 +949,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 	struct list_head biow_list, biow_list_sorted;
 
 	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
-	LOGd_("begin\n");
+	LOG_("begin\n");
 
 	INIT_LIST_HEAD(&biow_list);
 	INIT_LIST_HEAD(&biow_list_sorted);
@@ -1065,7 +1066,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		enqueue_wait_data_task_if_necessary(wdev);
 	}
 
-	LOGd_("end.\n");
+	LOG_("end.\n");
 }
 
 /**
@@ -1078,7 +1079,7 @@ static void task_wait_for_bio_wrapper_list(struct work_struct *work)
 	struct list_head biow_list;
 
 	get_wdev_and_iocored_from_work(&wdev, &iocored, work);
-	LOGd_("begin.\n");
+	LOG_("begin.\n");
 
 	INIT_LIST_HEAD(&biow_list);
 	while (true) {
@@ -1120,7 +1121,7 @@ static void task_wait_for_bio_wrapper_list(struct work_struct *work)
 		}
 	}
 
-	LOGd_("end.\n");
+	LOG_("end.\n");
 }
 
 /**
@@ -1297,7 +1298,7 @@ static void submit_logpack_list(
 
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
-			LOGd_("is_zero_flush_only\n");
+			LOG_("is_zero_flush_only\n");
 			logpack_submit_flush(wdev->ldev, &wpack->bioe_list);
 		} else {
 			ASSERT(logh->n_records > 0);
@@ -1554,7 +1555,7 @@ retry_bio_entry:
 
 	/* really submit. */
 	list_for_each_entry_safe(bioe, bioe_next, bioe_list, list) {
-		LOGd_("submit_lr: bioe %p pos %"PRIu64" len %u\n",
+		LOG_("submit_lr: bioe %p pos %"PRIu64" len %u\n",
 			bioe, (u64)bioe->pos, bioe->len);
 		generic_make_request(bioe->bio);
 	}
@@ -1623,7 +1624,7 @@ retry_bio_split:
 
 	/* really submit. */
 	list_for_each_entry_safe(bioe, bioe_next, bioe_list, list) {
-		LOGd_("submit_lr: bioe %p pos %"PRIu64" len %u\n",
+		LOG_("submit_lr: bioe %p pos %"PRIu64" len %u\n",
 			bioe, (u64)bioe->pos, bioe->len);
 		generic_make_request(bioe->bio);
 	}
@@ -1833,7 +1834,7 @@ static bool is_prepared_pack_valid(struct pack *pack)
 	u64 total_pb; /* total io size in physical block. */
 	unsigned int n_padding = 0;
 
-	LOGd_("is_prepared_pack_valid begin.\n");
+	LOG_("is_prepared_pack_valid begin.\n");
 
 	CHECKd(pack);
 	CHECKd(pack->logpack_header_sector);
@@ -1865,7 +1866,7 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		CHECKd(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 
 		if (test_bit_u32(LOG_RECORD_PADDING, &lrec->flags)) {
-			LOGd_("padding found.\n"); /* debug */
+			LOG_("padding found.\n"); /* debug */
 			total_pb += capacity_pb(pbs, lrec->io_size);
 			n_padding++;
 			i++;
@@ -1895,10 +1896,10 @@ static bool is_prepared_pack_valid(struct pack *pack)
 	if (lhead->n_records == 0) {
 		CHECKd(pack->is_zero_flush_only);
 	}
-	LOGd_("valid.\n");
+	LOG_("valid.\n");
 	return true;
 error:
-	LOGd_("not valid.\n");
+	LOG_("not valid.\n");
 	return false;
 }
 
@@ -2060,7 +2061,7 @@ static bool writepack_add_bio_wrapper(
 	unsigned int pbs;
 	struct walb_logpack_header *lhead = NULL;
 
-	LOGd_("begin\n");
+	LOG_("begin\n");
 
 	ASSERT(wpack_list);
 	ASSERT(wpackp);
@@ -2143,10 +2144,10 @@ fin:
 		atomic_inc(&get_iocored_from_wdev(wdev)->n_flush_io);
 #endif
 	}
-	LOGd_("normal end\n");
+	LOG_("normal end\n");
 	return true;
 error0:
-	LOGd_("failure end\n");
+	LOG_("failure end\n");
 	return false;
 }
 
@@ -2266,7 +2267,7 @@ static void wait_for_logpack_and_submit_datapack(
 		if (wdev->lsids.permanent < logh->logpack_lsid) {
 			should_notice = is_permanent_log_empty(&wdev->lsids);
 			wdev->lsids.permanent = logh->logpack_lsid;
-			LOGd_("log_flush_completed_header\n");
+			LOG_("log_flush_completed_header\n");
 		}
 		spin_unlock(&wdev->lsid_lock);
 		if (should_notice) {
@@ -2325,7 +2326,7 @@ static void wait_for_logpack_and_submit_datapack(
 			/* Try to insert pending data. */
 		retry_insert_pending:
 			spin_lock(&iocored->pending_data_lock);
-			LOGd_("pending_sectors %u\n", iocored->pending_sectors);
+			LOG_("pending_sectors %u\n", iocored->pending_sectors);
 			is_stop_queue = should_stop_queue(wdev, biow);
 			if (bio_wrapper_state_is_discard(biow)) {
 				/* Discard IO does not have buffer of biow->len bytes.
@@ -2356,7 +2357,7 @@ static void wait_for_logpack_and_submit_datapack(
 			/* Check pending data size and stop the queue if needed. */
 			if (is_stop_queue) {
 				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-					LOGd_("iocore frozen.\n");
+					LOG_("iocore frozen.\n");
 				}
 			}
 
@@ -2403,7 +2404,7 @@ static void wait_for_logpack_and_submit_datapack(
 			wdev->lsids.permanent < logh->logpack_lsid) {
 			should_notice = is_permanent_log_empty(&wdev->lsids);
 			wdev->lsids.permanent = logh->logpack_lsid;
-			LOGd_("log_flush_completed_io\n");
+			LOG_("log_flush_completed_io\n");
 		}
 		if (!(wdev->queue->flush_flags & REQ_FLUSH)) {
 			/* For flush-not-supportted device. */
@@ -2890,7 +2891,7 @@ retry:
 	}
 
 	/* We must flush log device. */
-	LOGd_("lsid %"PRIu64""
+	LOG_("lsid %"PRIu64""
 		" flush_lsid %"PRIu64""
 		" permanent_lsid %"PRIu64"\n",
 		lsid, flush_lsid, permanent_lsid);
@@ -2921,7 +2922,7 @@ retry:
 	if (wdev->lsids.permanent < latest_lsid) {
 		should_notice = is_permanent_log_empty(&wdev->lsids);
 		wdev->lsids.permanent = latest_lsid;
-		LOGd_("log_flush_completed_data\n");
+		LOG_("log_flush_completed_data\n");
 	}
 	ASSERT(lsid <= wdev->lsids.permanent);
 	spin_unlock(&wdev->lsid_lock);
@@ -3319,7 +3320,7 @@ void iocore_melt(struct walb_dev *wdev)
 	iocored = get_iocored_from_wdev(wdev);
 
 	if (atomic_dec_return(&iocored->n_stoppers) == 0) {
-		LOGd_("iocore melted.\n");
+		LOG_("iocore melted.\n");
 		enqueue_submit_task_if_necessary(wdev);
 	}
 }

@@ -18,6 +18,7 @@
 
 #include "walb/walb.h"
 #include "walb/block_size.h"
+#include "walb/logger.h"
 #include "walb/sector.h"
 #include "wrapper_blk.h"
 #include "sector_io.h"
@@ -1095,8 +1096,8 @@ static void bio_entry_end_io(struct bio *bio, int error)
 #else
 	ASSERT(bi_cnt == 1);
 #endif
-	LOGd_("complete bioe %p addr %"PRIu64" size %u\n",
-		bioe, (u64)bio->bi_sector, bioe->bi_size);
+	LOG_("complete bioe %p addr %"PRIu64" len %u\n",
+		bioe, (u64)bio->bi_sector, bioe->len);
 	if (bi_cnt == 1) {
 		bioe->bio_orig = NULL;
 		bioe->bio = NULL;
@@ -1369,7 +1370,7 @@ static bool writepack_add_req(
 	unsigned int pbs;
 	struct walb_logpack_header *lhead = NULL;
 
-	LOGd_("begin\n");
+	LOG_("begin\n");
 
 	ASSERT(wpack_list);
 	ASSERT(wpackp);
@@ -1421,7 +1422,7 @@ fin:
 	}
 	/* The request is just added to the pack. */
 	list_add_tail(&reqe->list, &pack->req_ent_list);
-	LOGd_("normal end\n");
+	LOG_("normal end\n");
 	return true;
 
 newpack:
@@ -1446,7 +1447,7 @@ newpack:
 error1:
 	destroy_req_entry_dec(reqe);
 error0:
-	LOGd_("failure end\n");
+	LOG_("failure end\n");
 	return false;
 }
 
@@ -1597,21 +1598,21 @@ static void submit_bio_entry_list(struct list_head *bio_ent_list)
 		}
 #endif /* WALB_DEBUG */
 		if (bio_entry_state_is_copied(bioe)) {
-			LOGd_("copied: rw %lu bioe %p addr %"PRIu64" size %u\n",
+			LOG_("copied: rw %lu bioe %p addr %"PRIu64" size %u\n",
 				bioe->bio->bi_rw,
 				bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 			set_bit(BIO_UPTODATE, &bioe->bio->bi_flags);
 			bio_endio(bioe->bio, 0);
 		} else {
-			LOGd_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",
+			LOG_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",
 				bioe->bio->bi_rw,
 				bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
 			generic_make_request(bioe->bio);
 		}
 #else /* WALB_FAST_ALGORITHM */
-		LOGd_("submit_d: rw %lu bioe %p addr %"PRIu64" size %u\n",
+		LOG_("submit_d: rw %lu bioe %p addr %"PRIu64" len %u\n",
 			bioe->bio->bi_rw,
-			bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
+			bioe, (u64)bioe->bio->bi_sector, bioe->len);
 		generic_make_request(bioe->bio);
 #endif /* WALB_FAST_ALGORITHM */
 	}
@@ -1904,7 +1905,7 @@ static void wait_logpack_and_enqueue_datapack_tasks_fast(
 
 			/* Try to insert pending data. */
 			spin_lock(&pdata->pending_data_lock);
-			LOGd_("pending_sectors %u\n", pdata->pending_sectors);
+			LOG_("pending_sectors %u\n", pdata->pending_sectors);
 			is_stop_queue = should_stop_queue(pdata, reqe);
 			pdata->pending_sectors += reqe->req_sectors;
 			is_pending_insert_succeeded =
@@ -2495,7 +2496,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	u64 total_pb; /* total io size in physical block. */
 	unsigned int n_padding = 0;
 
-	LOGd_("is_valid_prepared_pack begin.\n");
+	LOG_("is_valid_prepared_pack begin.\n");
 
 	CHECKd(pack);
 	CHECKd(pack->logpack_header_sector);
@@ -2524,7 +2525,7 @@ static bool is_valid_prepared_pack(struct pack *pack)
 		CHECKd(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 
 		if (test_bit_u32(LOG_RECORD_PADDING, &lrec->flags)) {
-			LOGd_("padding found.\n"); /* debug */
+			LOG_("padding found.\n"); /* debug */
 			total_pb += capacity_pb(pbs, lrec->io_size);
 			n_padding++;
 			i++;
@@ -2553,10 +2554,10 @@ static bool is_valid_prepared_pack(struct pack *pack)
 	if (lhead->n_records == 0) {
 		CHECKd(pack->is_zero_flush_only);
 	}
-	LOGd_("is_valid_prepared_pack succeeded.\n");
+	LOG_("is_valid_prepared_pack succeeded.\n");
 	return true;
 error:
-	LOGd_("is_valid_prepared_pack failed.\n");
+	LOG_("is_valid_prepared_pack failed.\n");
 	return false;
 }
 
@@ -2782,8 +2783,8 @@ static bool logpack_submit_req(
 #endif
 	/* really submit. */
 	list_for_each_entry_safe(bioe, bioe_next, bio_ent_list, list) {
-		LOGd_("submit_lr: bioe %p addr %"PRIu64" size %u\n",
-			bioe, (u64)bioe->bio->bi_sector, bioe->bi_size);
+		LOG_("submit_lr: bioe %p addr %"PRIu64" size %u\n",
+			bioe, (u64)bioe->bio->bi_sector, bioe->bio->bi_size);
 		generic_make_request(bioe->bio);
 	}
 	return true;
@@ -3092,7 +3093,7 @@ static void overlapped_delete_and_notify(
 	/* Delete from the overlapped data. */
 	reqe_tmp = (struct req_entry *)multimap_del(
 		overlapped_data, reqe->req_pos, (unsigned long)reqe);
-	LOGd_("reqe_tmp %p reqe %p\n", reqe_tmp, reqe); /* debug */
+	LOG_("reqe_tmp %p reqe %p\n", reqe_tmp, reqe); /* debug */
 	ASSERT(reqe_tmp == reqe);
 
 	/* Initialize max_req_sectors. */
@@ -3184,7 +3185,7 @@ static void pending_delete(
 	/* Delete the entry. */
 	reqe_tmp = (struct req_entry *)multimap_del(
 		pending_data, reqe->req_pos, (unsigned long)reqe);
-	LOGd_("reqe_tmp %p reqe %p\n", reqe_tmp, reqe);
+	LOG_("reqe_tmp %p reqe %p\n", reqe_tmp, reqe);
 	ASSERT(reqe_tmp == reqe);
 	if (multimap_is_empty(pending_data)) {
 		*max_req_sectors_p = 0;
@@ -3350,7 +3351,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	u64 latest_lsid, latest_lsid_old;
 	struct list_head wpack_list;
 
-	LOGd_("wrapper_blk_req_request_fn: begin.\n");
+	LOG_("wrapper_blk_req_request_fn: begin.\n");
 
 	if (!test_bit(0, &wrdev->is_started)) {
 		goto error0;
@@ -3379,7 +3380,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 			if (req->cmd_flags & REQ_FLUSH) {
 				LOGd("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
 			}
-			LOGd_("call writepack_add_req\n"); /* debug */
+			LOG_("call writepack_add_req\n"); /* debug */
 			ret = writepack_add_req(&wpack_list, &wpack, req,
 						pdata->ring_buffer_size,
 						pdata->max_logpack_pb,
@@ -3396,7 +3397,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	req_error:
 		__blk_end_request_all(req, -EIO);
 	}
-	LOGd_("latest_lsid: %"PRIu64"\n", latest_lsid);
+	LOG_("latest_lsid: %"PRIu64"\n", latest_lsid);
 	if (wpack) {
 		lhead = get_logpack_header(wpack->logpack_header_sector);
 		ASSERT(lhead);
@@ -3408,7 +3409,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 		ASSERT(is_valid_prepared_pack(wpack));
 		/* Update the latest lsid. */
 		latest_lsid = get_next_lsid_unsafe(lhead);
-		LOGd_("calculated latest_lsid: %"PRIu64"\n", latest_lsid);
+		LOG_("calculated latest_lsid: %"PRIu64"\n", latest_lsid);
 
 		/* Add the last writepack to the list. */
 		ASSERT(!list_empty(&wpack->req_ent_list));
@@ -3443,14 +3444,14 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 	}
 	ASSERT(list_empty(&wpack_list));
 
-	LOGd_("wrapper_blk_req_request_fn: end.\n");
+	LOG_("wrapper_blk_req_request_fn: end.\n");
 	return;
 
 error0:
 	while ((req = blk_fetch_request(q)) != NULL) {
 		__blk_end_request_all(req, -EIO);
 	}
-	LOGd_("wrapper_blk_req_request_fn: error.\n");
+	LOG_("wrapper_blk_req_request_fn: error.\n");
 }
 
 /* Called before register. */
@@ -3563,7 +3564,7 @@ static void pre_destroy_private_data(void)
 /* Called after unregister. */
 static void post_unregister(void)
 {
-	LOGd_("begin\n");
+	LOG_("begin\n");
 
 	pack_work_exit();
 	treemap_memory_manager_dec();
@@ -3582,7 +3583,7 @@ static void post_unregister(void)
 	pack_cache_ = NULL;
 	req_entry_exit();
 
-	LOGd_("end\n");
+	LOG_("end\n");
 }
 
 /**

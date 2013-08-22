@@ -10,6 +10,7 @@
 #include "bio_entry.h"
 #include "req_entry.h"
 #include "walb/common.h"
+#include "walb/logger.h"
 #include "walb/util.h"
 #include "walb/block_size.h"
 
@@ -203,14 +204,14 @@ bool data_copy_req_entry(
 	ASSERT(dst_reqe);
 	ASSERT(src_reqe);
 
-	LOGd_("begin dst %p src %p.\n", dst_reqe, src_reqe);
+	LOG_("begin dst %p src %p.\n", dst_reqe, src_reqe);
 
 	/* Get overlapped area. */
 	get_overlapped_pos_and_sectors(
 		dst_reqe, src_reqe, &ol_req_pos, &ol_req_sectors);
 	ASSERT(ol_req_sectors > 0);
 
-	LOGd_("ol_req_pos: %"PRIu64" ol_req_sectors: %u\n",
+	LOG_("ol_req_pos: %"PRIu64" ol_req_sectors: %u\n",
 		ol_req_pos, ol_req_sectors);
 
 	/* Initialize cursors. */
@@ -239,7 +240,7 @@ bool data_copy_req_entry(
 		goto error;
 	}
 
-	LOGd_("end dst %p src %p.\n", dst_reqe, src_reqe);
+	LOG_("end dst %p src %p.\n", dst_reqe, src_reqe);
 	return true;
 error:
 	LOGe("data_copy_req_entry failed.\n");

@@ -15,6 +15,7 @@
 #include "walb/common.h"
 #include "walb/disk_name.h"
 #include "walb/block_size.h"
+#include "walb/logger.h"
 #include "treemap.h"
 #include "hashtbl.h"
 #include "simple_blk.h"

@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "walb/block_size.h"
+#include "walb/logger.h"
 #include "util.h"
 #include "walb_util.h"
 #include "logpack.h"

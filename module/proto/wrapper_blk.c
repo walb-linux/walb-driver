@@ -13,6 +13,7 @@
 #include <linux/string.h>
 
 #include "walb/common.h"
+#include "walb/logger.h"
 #include "walb/disk_name.h"
 #include "walb/block_size.h"
 #include "pack_work.h"

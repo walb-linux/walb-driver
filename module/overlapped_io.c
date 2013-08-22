@@ -5,6 +5,7 @@
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #include <linux/module.h>
+#include "walb/logger.h"
 #include "overlapped_io.h"
 #include "treemap.h"
 #include "bio_wrapper.h"
@@ -69,7 +70,7 @@ bool overlapped_check_and_insert(
 	}
 
 	if (biow->n_overlapped > 0) {
-		LOGd_("n_overlapped %u\n", biow->n_overlapped);
+		LOG_("n_overlapped %u\n", biow->n_overlapped);
 		ret = test_and_set_bit(BIO_WRAPPER_DELAYED, &biow->flags);
 		ASSERT(!ret);
 	}
@@ -138,7 +139,7 @@ unsigned int overlapped_delete_and_notify(
 	/* Delete from the overlapped data. */
 	biow_tmp = (struct bio_wrapper *)multimap_del(
 		overlapped_data, biow->pos, (unsigned long)biow);
-	LOGd_("biow_tmp %p biow %p\n", biow_tmp, biow); /* debug */
+	LOG_("biow_tmp %p biow %p\n", biow_tmp, biow); /* debug */
 	ASSERT(biow_tmp == biow);
 
 #ifdef WALB_DEBUG

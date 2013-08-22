@@ -6,13 +6,17 @@
 #ifndef WALB_LOG_RECORD_H
 #define WALB_LOG_RECORD_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "walb.h"
+#include "check.h"
 #include "util.h"
 #include "u32bits.h"
 #include "checksum.h"
-
-#ifdef __cplusplus
-extern "C" {
+#if 0
+#include "logger.h"
 #endif
 
 /*******************************************************************************
@@ -209,10 +213,12 @@ static inline int is_valid_logpack_header(
 	}
 	return 1;
 error:
+#if 0
 	LOGd("log pack header is invalid "
 		"(n_records: %u total_io_size %u sector_type %u).\n",
 		lhead->n_records, lhead->total_io_size,
 		lhead->sector_type);
+#endif
 	return 0;
 }
 
@@ -228,16 +234,18 @@ error:
 static inline int is_valid_logpack_header_with_checksum(
 	const struct walb_logpack_header* lhead, unsigned int pbs, u32 salt)
 {
-	CHECKLd(error0, is_valid_logpack_header(lhead));
+	CHECKld(error0, is_valid_logpack_header(lhead));
 	if (lhead->n_records > 0) {
-		CHECKLd(error1, checksum((const u8 *)lhead, pbs, salt) == 0);
+		CHECKld(error1, checksum((const u8 *)lhead, pbs, salt) == 0);
 	}
 	return 1;
 error0:
 	return 0;
 error1:
+#if 0
 	LOGd("logpack header checksum is invalid (lsid %" PRIu64").\n",
 		lhead->logpack_lsid);
+#endif
 	return 0;
 }
 
@@ -250,19 +258,25 @@ static inline int is_valid_logpack_header_and_records(
 	unsigned int i;
 
 	if (!is_valid_logpack_header(lhead)) {
+#if 0
 		LOGd("header invalid.\n");
+#endif
 		return 0;
 	}
 	for (i = 0; i < lhead->n_records; i++) {
 		const struct walb_log_record *rec = &lhead->record[i];
 		if (!is_valid_log_record_const(rec)) {
+#if 0
 			LOGd("record %u invalid.\n", i);
+#endif
 			return 0;
 		}
 		if (rec->lsid - rec->lsid_local != lhead->logpack_lsid) {
+#if 0
 			LOGd("lsid(%" PRIu64 ") - lsid_local(%u)"
 				" != logpack_lsid(%" PRIu64 ")\n",
 				rec->lsid, rec->lsid_local, lhead->logpack_lsid);
+#endif
 			return 0;
 		}
 	}

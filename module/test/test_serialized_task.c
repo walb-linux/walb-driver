@@ -20,6 +20,7 @@
 #include <linux/mutex.h>
 
 #include "walb/common.h"
+#include "walb/logger.h"
 #include "walb/util.h"
 
 
@@ -133,7 +134,7 @@ static void run_benchmark(
 static void test_work_task_single(struct work_struct *work)
 {
 	struct test_work *w = container_of(work, struct test_work, work);
-	LOGd_("enqueue %u dequeue %u\n", w->cpuid, raw_smp_processor_id());
+	LOG_("enqueue %u dequeue %u\n", w->cpuid, raw_smp_processor_id());
 	(*w->countp)++;
 	destroy_test_work(w);
 }
@@ -158,7 +159,7 @@ static void test_work_task_normal_list(struct work_struct *work)
 			break;
 		}
 
-		LOGd_("enqueue %u dequeue %u\n", w->cpuid, raw_smp_processor_id());
+		LOG_("enqueue %u dequeue %u\n", w->cpuid, raw_smp_processor_id());
 #if 0
 		if (*w->countp % 100000 == 0) {
 			LOGn("count %u\n", *w->countp);
@@ -178,7 +179,7 @@ static void test_work_task_normal_mutex(struct work_struct *work)
 {
 	struct test_work *w = container_of(work, struct test_work, work);
 	mutex_lock(&mutex_);
-	LOGd_("enqueue %u dequeue %u\n", w->cpuid, raw_smp_processor_id());
+	LOG_("enqueue %u dequeue %u\n", w->cpuid, raw_smp_processor_id());
 	(*w->countp)++;
 	mutex_unlock(&mutex_);
 	destroy_test_work(w);

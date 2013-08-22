@@ -9,6 +9,7 @@
 #include <linux/slab.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>
+#include "walb/logger.h"
 #include "sector_io.h"
 
 /**
@@ -54,7 +55,7 @@ bool sector_io(
 	struct walb_bio_with_completion *bioc;
 	u8 *buf;
 
-	LOGd_("walb_sector_io begin\n");
+	LOG_("walb_sector_io begin\n");
 
 	ASSERT_SECTOR_DATA(sect);
 	buf = sect->data;
@@ -111,7 +112,7 @@ bool sector_io(
 	bio_put(bio);
 	kfree(bioc);
 
-	LOGd_("walb_sector_io end\n");
+	LOG_("walb_sector_io end\n");
 	return true;
 
 error2:

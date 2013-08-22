@@ -9,6 +9,7 @@
 #include <linux/blkdev.h>
 
 #include "walb/block_size.h"
+#include "walb/logger.h"
 #include "base_bio.h"
 #include "memblk_data.h"
 

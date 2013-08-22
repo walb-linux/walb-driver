@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/sched.h>
 #include "walb/common.h"
+#include "walb/logger.h"
 #include "pack_work.h"
 
 /*******************************************************************************
@@ -84,7 +85,7 @@ retry:
 			schedule();
 			goto retry;
 		}
-		LOGd_("enqueue task for %d\n", nr);
+		LOG_("enqueue task for %d\n", nr);
 		INIT_WORK(&pwork->work, task);
 		ret = queue_work(wq, &pwork->work);
 		if (!ret) {
@@ -128,7 +129,7 @@ retry:
 			schedule();
 			goto retry;
 		}
-		LOGd_("enqueue delayed task for %d\n", nr);
+		LOG_("enqueue delayed task for %d\n", nr);
 		INIT_DELAYED_WORK(&pwork->dwork, task);
 		ret = queue_delayed_work(wq, &pwork->dwork, delay);
 		if (!ret) {

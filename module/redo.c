@@ -6,6 +6,7 @@
  */
 #include <linux/module.h>
 #include <linux/delay.h>
+#include "walb/logger.h"
 #include "kern.h"
 #include "io.h"
 #include "bio_wrapper.h"
@@ -338,7 +339,7 @@ static struct bio_wrapper* create_log_bio_wrapper_for_redo(
 
 	bio->bi_bdev = wdev->ldev;
 	off_pb = lsid % wdev->ring_buffer_size + wdev->ring_buffer_off;
-	LOGd_("lsid: %"PRIu64" off_pb: %"PRIu64"\n", lsid, off_pb);
+	LOG_("lsid: %"PRIu64" off_pb: %"PRIu64"\n", lsid, off_pb);
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_sector = off_lb;
 	bio->bi_rw = READ;
@@ -484,7 +485,7 @@ static void bio_end_io_for_redo(struct bio *bio, int error)
 	biow = bio->bi_private;
 	ASSERT(biow);
 
-	LOGd_("pos %"PRIu64"\n", (u64)biow->pos);
+	LOG_("pos %"PRIu64"\n", (u64)biow->pos);
 #ifdef WALB_DEBUG
 	if (bio_wrapper_state_is_discard(biow)) {
 		ASSERT(!biow->private_data);
@@ -642,7 +643,7 @@ retry:
 	biow = list_first_entry(&biow_list, struct bio_wrapper, list);
 
 	/* Wait for completion */
-	LOGd_("wait_for_completion %"PRIu64"\n", written_lsid);
+	LOG_("wait_for_completion %"PRIu64"\n", written_lsid);
 	wait_for_completion(&biow->done);
 
 	/* Logpack header check. */
@@ -721,7 +722,7 @@ retry1:
 		logh->total_io_size - n_pb);
 	if (n_pb < logh->total_io_size) {
 		wakeup_worker(read_wd);
-		LOGd_("n_pb %u total_io_size %u\n", n_pb, logh->total_io_size);
+		LOG_("n_pb %u total_io_size %u\n", n_pb, logh->total_io_size);
 		schedule();
 		goto retry1;
 	}
@@ -809,7 +810,7 @@ retry1:
 	/* Submit ready biow(s). */
 	blk_start_plug(&plug);
 	list_for_each_entry(biow, &biow_list_ready, list) {
-		LOGd_("submit data bio pos %"PRIu64" len %u\n",
+		LOG_("submit data bio pos %"PRIu64" len %u\n",
 			(u64)biow->pos, biow->len);
 		submit_data_bio_for_redo(wdev, biow);
 	}
@@ -1066,7 +1067,7 @@ retry_insert_ol:
 	if (biow->n_overlapped == 0) {
 		generic_make_request(biow->bio);
 	} else {
-		LOGd_("n_overlapped %u\n", biow->n_overlapped);
+		LOG_("n_overlapped %u\n", biow->n_overlapped);
 	}
 #else /* WALB_OVERLAPPED_SERIALIZE */
 	generic_make_request(biow->bio);
@@ -1157,7 +1158,7 @@ bool execute_redo(struct walb_dev *wdev)
 		}
 
 		/* Try to redo the logpack. */
-		LOGd_("Try to redo (lsid %"PRIu64")\n", written_lsid);
+		LOG_("Try to redo (lsid %"PRIu64")\n", written_lsid);
 		if (!redo_logpack(read_wd, read_rd, gc_rd,
 					logh_biow, &written_lsid,
 					&should_terminate)) {

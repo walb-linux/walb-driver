@@ -9,6 +9,8 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include "walb/common.h"
+#include "walb/logger.h"
+#include "walb/check.h"
 #include "treemap.h"
 #include "memblk_data.h"
 #include "util.h" /* for debug */
@@ -324,7 +326,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 
 	LOGd("test_memblk_data start.\n");
 	strbuf = (char *)__get_free_page(GFP_KERNEL); CNT_INC();
-	WALB_CHECK(strbuf);
+	CHECKd(strbuf);
 
 	if (capacity == 0) {
 		capacity = get_random_capacity(block_size) + 4;
@@ -334,12 +336,12 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 	ASSERT(ret);
 
 	mdata = mdata_create(capacity, block_size, GFP_KERNEL, &mmgr);
-	WALB_CHECK(mdata);
+	CHECKd(mdata);
 
 	data1 = (u8 *)__get_free_page(GFP_KERNEL); CNT_INC();
-	WALB_CHECK(data1);
+	CHECKd(data1);
 	data2 = (u8 *)__get_free_page(GFP_KERNEL); CNT_INC();
-	WALB_CHECK(data2);
+	CHECKd(data2);
 
 	sprint_hex(strbuf, PAGE_SIZE, data1, 128);
 	/* LOGd("data1: %s\n", strbuf); */
@@ -357,14 +359,14 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 	sprint_hex(strbuf, PAGE_SIZE, data2, 128);
 	/* LOGd("data2: %s\n", strbuf); */
 
-	WALB_CHECK(memcmp(data1, data2, block_size) == 0);
+	CHECKd(memcmp(data1, data2, block_size) == 0);
 
 	/* Last block */
 	addr = capacity - 1;
 	get_random_bytes(data1, PAGE_SIZE);
 	mdata_write_block(mdata, addr, data1);
 	mdata_read_block(mdata, addr, data2);
-	WALB_CHECK(memcmp(data1, data2, block_size) == 0);
+	CHECKd(memcmp(data1, data2, block_size) == 0);
 
 	/* First two blocks */
 	if (block_size * 2 <= PAGE_SIZE) {
@@ -372,7 +374,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 		get_random_bytes(data1, PAGE_SIZE);
 		mdata_write_blocks(mdata, 0, 2, data1);
 		mdata_read_blocks(mdata, 0, 2, data2);
-		WALB_CHECK(memcmp(data1, data2, block_size * 2) == 0);
+		CHECKd(memcmp(data1, data2, block_size * 2) == 0);
 	}
 
 	/* Random area */
@@ -389,7 +391,7 @@ bool test_memblk_data(u64 capacity, const u32 block_size)
 		mdata_write_blocks(mdata, addr, size, data1);
 		mdata_read_blocks(mdata, addr, size, data2);
 
-		WALB_CHECK(memcmp(data1, data2, size * block_size) == 0);
+		CHECKd(memcmp(data1, data2, size * block_size) == 0);
 	}
 
 	free_page((unsigned long)strbuf); CNT_DEC();

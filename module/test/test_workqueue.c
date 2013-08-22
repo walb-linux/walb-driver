@@ -18,6 +18,7 @@
 #include <linux/mutex.h>
 
 #include "walb/common.h"
+#include "walb/logger.h"
 #include "walb/util.h"
 
 

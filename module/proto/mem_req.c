@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 #include <linux/list.h>
 #include "walb/block_size.h"
+#include "walb/logger.h"
 #include "base_req.h"
 #include "memblk_data.h"
 
@@ -333,14 +334,14 @@ void simple_blk_req_request_fn(struct request_queue *q)
 	struct req_list_work *rlwork;
 	struct req_entry *reqe;
 
-	LOGd_("in_interrupt(): %lu in_atomic(): %u\n", in_interrupt(), in_atomic());
+	LOG_("in_interrupt(): %lu in_atomic(): %u\n", in_interrupt(), in_atomic());
 
 	rlwork = create_req_list_work(sdev, GFP_ATOMIC);
 	if (!rlwork) {
 		goto error0;
 	}
 	while ((req = blk_fetch_request(q)) != NULL) {
-		LOGd_("REQ: %"PRIu64" (%u)\n", (u64)blk_rq_pos(req), blk_rq_bytes(req));
+		LOG_("REQ: %"PRIu64" (%u)\n", (u64)blk_rq_pos(req), blk_rq_bytes(req));
 
 		ASSERT(!(req->cmd_flags & REQ_FLUSH));
 		reqe = create_req_entry(req, GFP_ATOMIC);
@@ -354,7 +355,7 @@ void simple_blk_req_request_fn(struct request_queue *q)
 	INIT_WORK(&rlwork->work, normal_io_task);
 	queue_work(wq_io_, &rlwork->work);
 
-	LOGd_("end.\n");
+	LOG_("end.\n");
 	return;
 
 error0:

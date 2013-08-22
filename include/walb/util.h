@@ -13,20 +13,6 @@ extern "C" {
 #endif
 
 /**
- * Check macro for is_valid_* functions.
- */
-#define CHECK(label, cond, msg, level) do {   \
-	if (!(cond)) {			     \
-		LOG ## level("CHECK failed at %s line %d: %s", __func__, __LINE__, msg); \
-		goto label;							\
-	}								\
-} while (0)
-
-#define CHECKLd(label, cond) CHECK(label, cond, "", d)
-#define CHECKd(cond) CHECK(error, cond, "", d)
-#define CHECKe(cond) CHECK(error, cond, "", e)
-
-/**
  * Sprint byte array.
  *
  * @data pointer of the data to print.

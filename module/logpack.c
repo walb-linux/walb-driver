@@ -9,6 +9,7 @@
 
 #include "check_kernel.h"
 #include "logpack.h"
+#include "walb/logger.h"
 
 /**
  * Debug print of logpack header.
@@ -206,7 +207,7 @@ bool walb_logpack_header_add_bio(
 
 	ASSERT(lhead->n_records <= max_n_rec);
 	if (lhead->n_records == max_n_rec) {
-		LOGd_(no_more_bio_msg);
+		LOG_(no_more_bio_msg);
 		return false;
 	}
 
@@ -232,7 +233,7 @@ bool walb_logpack_header_add_bio(
 
 		if (lhead->total_io_size + padding_pb
 			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
-			LOGd_(no_more_bio_msg);
+			LOG_(no_more_bio_msg);
 			return false;
 		}
 
@@ -252,7 +253,7 @@ bool walb_logpack_header_add_bio(
 		ASSERT(bio_lsid == logpack_lsid + 1 + lhead->total_io_size);
 
 		if (lhead->n_records == max_n_rec) {
-			LOGd_(no_more_bio_msg);
+			LOG_(no_more_bio_msg);
 			return false;
 		}
 	}
@@ -260,7 +261,7 @@ bool walb_logpack_header_add_bio(
 	if (!is_discard &&
 		lhead->total_io_size + bio_pb
 		> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
-		LOGd_(no_more_bio_msg);
+		LOG_(no_more_bio_msg);
 		return false;
 	}
 

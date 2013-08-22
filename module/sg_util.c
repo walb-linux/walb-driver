@@ -8,6 +8,7 @@
 
 #include <linux/scatterlist.h>
 #include "walb/common.h"
+#include "walb/logger.h"
 #include "util.h"
 #include "sg_util.h"
 

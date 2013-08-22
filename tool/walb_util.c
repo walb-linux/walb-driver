@@ -7,6 +7,8 @@
  */
 #include "walb/walb.h"
 #include "walb/block_size.h"
+#include "walb/util.h"
+#include "walb/logger.h"
 #include "util.h"
 #include "walb_util.h"
 #include "random.h"

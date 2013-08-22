@@ -45,6 +45,7 @@
 #include "walb/log_device.h"
 #include "walb/sector.h"
 #include "walb/snapshot.h"
+#include "walb/logger.h"
 
 /*******************************************************************************
  * Module parameters definition.
@@ -162,7 +163,7 @@ static int walb_lock_bdev(struct block_device **bdevp, dev_t dev)
 {
 	int err = 0;
 	struct block_device *bdev;
-	char b[BDEVNAME_SIZE];
+	UNUSED char b[BDEVNAME_SIZE];
 
 	/* Currently the holder is the pointer to walb_lock_bdev(). */
 	bdev = blkdev_get_by_dev(dev, FMODE_READ|FMODE_WRITE|FMODE_EXCL, walb_lock_bdev);

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "walb/logger.h"
 #include "util.h"
 #include "walb_util.h"
 #include "snapshot.h"

@@ -13,6 +13,7 @@
 #include <linux/list.h>
 
 #include "walb/common.h"
+#include "walb/logger.h"
 #include "treemap.h"
 
 /* Module parameter. */

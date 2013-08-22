@@ -8,6 +8,7 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 
+#include "walb/logger.h"
 #include "walb/util.h"
 #include "build_date.h"
 #include "../proto/size_list.h"

@@ -18,6 +18,7 @@
 #include <linux/version.h>
 
 #include "walb/walb.h"
+#include "walb/logger.h"
 #include "walb/block_size.h"
 #include "walb/sector.h"
 #include "wrapper_blk.h"
@@ -633,7 +634,7 @@ error1:
 /* Called after unregister. */
 static void post_unregister(void)
 {
-	LOGd_("begin\n");
+	LOG_("begin\n");
 
 	/* finalize workqueue data. */
 	destroy_workqueue(wq_misc_);
@@ -649,7 +650,7 @@ static void post_unregister(void)
 	bio_entry_exit();
 	bio_wrapper_exit();
 
-	LOGd_("end\n");
+	LOG_("end\n");
 }
 
 /**

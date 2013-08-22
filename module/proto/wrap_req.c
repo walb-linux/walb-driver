@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 
 #include "walb/block_size.h"
+#include "walb/logger.h"
 #include "wrapper_blk.h"
 
 /*******************************************************************************
@@ -657,7 +658,7 @@ static void wrapper_blk_req_request_fn(struct request_queue *q)
 		}
 
 		if (req->cmd_flags & REQ_FLUSH) {
-			LOGd_("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
+			LOG_("REQ_FLUSH request with size %u.\n", blk_rq_bytes(req));
 
 			list_add_tail(&work->list, &listh);
 			work = create_req_list_work(req, wrdev, GFP_ATOMIC);

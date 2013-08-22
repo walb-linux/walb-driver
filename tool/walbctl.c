@@ -18,6 +18,7 @@
 #include <errno.h>
 
 #include "walb/walb.h"
+#include "walb/logger.h"
 #include "walb/log_device.h"
 #include "walb/log_record.h"
 #include "walb/ioctl.h"

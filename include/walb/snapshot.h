@@ -9,6 +9,7 @@
 #include "walb.h"
 #include "sector.h"
 #include "u64bits.h"
+#include "print.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -9,6 +9,8 @@
 #include <linux/list.h>
 #include "bio_entry.h"
 #include "walb/common.h"
+#include "walb/logger.h"
+#include "walb/check.h"
 #include "walb/util.h"
 #include "walb/block_size.h"
 
@@ -433,7 +435,7 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 	ASSERT(dst_buf);
 	ASSERT(src_buf);
 
-	LOGd_("copied %u\n", copied);
+	LOG_("copied %u\n", copied);
 	memcpy(dst_buf, src_buf, copied);
 
 	bio_cursor_unmap(src_buf);
@@ -484,9 +486,9 @@ static void get_bio_split_position(struct bio *bio, unsigned int first_sectors,
 
 static void bio_pair2_release(struct bio_pair2 *bp)
 {
-	LOGd_("bio_pair2 %p %u\n", bp, atomic_read(&bp->cnt));
+	LOG_("bio_pair2 %p %u\n", bp, atomic_read(&bp->cnt));
 	if (atomic_dec_and_test(&bp->cnt)) {
-		LOGd_("release bio_pair2 for %p\n", bp->bio_orig);
+		LOG_("release bio_pair2 for %p\n", bp->bio_orig);
 		bio_endio(bp->bio_orig, bp->error);
 		kfree(bp);
 	}
@@ -495,7 +497,7 @@ static void bio_pair2_release(struct bio_pair2 *bp)
 static void bio_pair2_end(struct bio *bio, int err)
 {
 	struct bio_pair2 *bp = bio->bi_private;
-	LOGd_("bio_pair %p err %d\n", bp, err);
+	LOG_("bio_pair %p err %d\n", bp, err);
 	if (err) {
 		bp->error = err;
 	}
@@ -518,7 +520,7 @@ static struct bio_pair2* bio_split2(
 	unsigned int idx;
 	unsigned int size;
 #endif
-	LOGd_("bio size %u\n", bio->bi_size);
+	LOG_("bio size %u\n", bio->bi_size);
 
 	bp = kmalloc(sizeof(struct bio_pair2), gfp_mask);
 	if (!bp) { goto error0; }
@@ -637,13 +639,13 @@ static struct bio_entry* bio_entry_split(
 	if (!bio_entry_state_is_splitted(bioe1)) {
 		ASSERT(!bioe1->bio_orig);
 		bioe1->bio_orig = bp->bio_orig;
-		LOGd_("bioe1->bio_orig->bi_cnt %d\n",
+		LOG_("bioe1->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe1->bio_orig->bi_cnt));
 		bio_entry_state_set_splitted(bioe1);
 	}
 	init_bio_entry(bioe2, bp->bio2);
 	bio_entry_state_set_splitted(bioe2);
-	LOGd_("is_splitted: %d\n"
+	LOG_("is_splitted: %d\n"
 		"bio_orig addr %"PRIu64" size %u\n"
 		"bioe1 %p addr %"PRIu64" size %u\n"
 		"bioe2 %p addr %"PRIu64" size %u\n",
@@ -980,14 +982,14 @@ void destroy_bio_entry(struct bio_entry *bioe)
 {
 	struct bio *bio = NULL;
 
-	LOGd_("destroy_bio_entry() begin.\n");
+	LOG_("destroy_bio_entry() begin.\n");
 
 	if (!bioe) {
 		return;
 	}
 	if (bioe->bio_orig) {
 		ASSERT(bio_entry_state_is_splitted(bioe));
-		LOGd_("bioe->bio_orig->bi_cnt %d\n",
+		LOG_("bioe->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe->bio_orig->bi_cnt));
 		bio = bioe->bio_orig;
 #ifdef WALB_FAST_ALGORITHM
@@ -1002,7 +1004,7 @@ void destroy_bio_entry(struct bio_entry *bioe)
 	}
 
 	if (bio) {
-		LOGd_("bio_put %p\n", bio);
+		LOG_("bio_put %p\n", bio);
 #ifdef WALB_FAST_ALGORITHM
 		if (bio_entry_state_is_own_pages(bioe)) {
 			copied_bio_put(bio);
@@ -1018,7 +1020,7 @@ void destroy_bio_entry(struct bio_entry *bioe)
 #endif
 	kmem_cache_free(bio_entry_cache_, bioe);
 
-	LOGd_("destroy_bio_entry() end.\n");
+	LOG_("destroy_bio_entry() end.\n");
 }
 
 /**
@@ -1358,7 +1360,7 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 	ASSERT(copied_sectors > 0);
 
 	/* Debug */
-	LOGd_("bio_data_copy: dst %u %u %u %u src %u %u %u %u copied_sectors %u\n",
+	LOG_("bio_data_copy: dst %u %u %u %u src %u %u %u %u copied_sectors %u\n",
 		dst->bioe->bio->bi_size,
 		dst->bioe->len * LOGICAL_BLOCK_SIZE,
 		dst->off_in,
@@ -1480,7 +1482,7 @@ bool split_bio_entry_list_for_chunk(
 		if (addr / chunk_sectors == (addr + sectors - 1) / chunk_sectors) {
 			/* no need to split for the bio. */
 			ret = bio_entry_cursor_proceed(&cur, sectors);
-			LOGd_("no need to split %"PRIu64" %u\n", addr, sectors);
+			LOG_("no need to split %"PRIu64" %u\n", addr, sectors);
 			ASSERT(ret);
 			continue;
 		}
@@ -1488,7 +1490,7 @@ bool split_bio_entry_list_for_chunk(
 		ret = bio_entry_cursor_proceed(&cur, chunk_sectors - addr % chunk_sectors);
 		ASSERT(ret);
 		ret = bio_entry_cursor_split(&cur, gfp_mask);
-		LOGd_("need to split %"PRIu64" %u\n", addr, sectors);
+		LOG_("need to split %"PRIu64" %u\n", addr, sectors);
 		if (!ret) {
 			LOGe("bio split failed.\n");
 			return false;

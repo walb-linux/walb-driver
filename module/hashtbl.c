@@ -12,6 +12,8 @@
 #include <linux/hash.h>
 
 #include "walb/walb.h"
+#include "walb/logger.h"
+#include "walb/check.h"
 #include "walb/util.h"
 #include "hashtbl.h"
 #include "util.h" /* for debug */
@@ -581,29 +583,29 @@ int hashtbl_test(void)
 
 	/* Create. */
 	htbl = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
-	WALB_CHECK(htbl);
+	CHECKd(htbl);
 	n = hashtbl_n_items(htbl);
-	WALB_CHECK(n == 0);
-	WALB_CHECK(hashtbl_is_empty(htbl));
+	CHECKd(n == 0);
+	CHECKd(hashtbl_is_empty(htbl));
 
 	/* Insert */
 	for (i = 0; i < 100000; i++) {
 		snprintf(buf, 10, "abcd%05d", i);
-		WALB_CHECK(hashtbl_add(htbl, buf, 9, i, GFP_KERNEL) == 0);
+		CHECKd(hashtbl_add(htbl, buf, 9, i, GFP_KERNEL) == 0);
 	}
 	n = hashtbl_n_items(htbl);
-	WALB_CHECK(n == 100000);
-	WALB_CHECK(!hashtbl_is_empty(htbl));
+	CHECKd(n == 100000);
+	CHECKd(!hashtbl_is_empty(htbl));
 
 	/* Lookup */
 	for (i = 0; i < 100000; i++) {
 		snprintf(buf, 10, "abcd%05d", i);
 		val = hashtbl_lookup(htbl, buf, 9);
-		WALB_CHECK(val ==  i);
+		CHECKd(val ==  i);
 	}
 	n = hashtbl_n_items(htbl);
-	WALB_CHECK(n == 100000);
-	WALB_CHECK(!hashtbl_is_empty(htbl));
+	CHECKd(n == 100000);
+	CHECKd(!hashtbl_is_empty(htbl));
 
 	/* Delete */
 	for (i = 0; i < 100000; i++) {
@@ -613,36 +615,36 @@ int hashtbl_test(void)
 		} else {
 			val = hashtbl_lookup(htbl, buf, 9);
 		}
-		WALB_CHECK(val != HASHTBL_INVALID_VAL && val == i);
+		CHECKd(val != HASHTBL_INVALID_VAL && val == i);
 		if (i % 2 == 0) {
 			val = hashtbl_lookup(htbl, buf, 9);
-			WALB_CHECK(val == HASHTBL_INVALID_VAL);
+			CHECKd(val == HASHTBL_INVALID_VAL);
 		}
 	}
 	n = hashtbl_n_items(htbl);
-	WALB_CHECK(n == 50000);
-	WALB_CHECK(!hashtbl_is_empty(htbl));
+	CHECKd(n == 50000);
+	CHECKd(!hashtbl_is_empty(htbl));
 
 	/* Empty */
 	hashtbl_empty(htbl);
 	n = hashtbl_n_items(htbl);
-	WALB_CHECK(n == 0);
-	WALB_CHECK(hashtbl_is_empty(htbl));
+	CHECKd(n == 0);
+	CHECKd(hashtbl_is_empty(htbl));
 
 	/* 2nd empty. */
 	hashtbl_empty(htbl);
 	n = hashtbl_n_items(htbl);
-	WALB_CHECK(n == 0);
-	WALB_CHECK(hashtbl_is_empty(htbl));
+	CHECKd(n == 0);
+	CHECKd(hashtbl_is_empty(htbl));
 
 	/* Insert */
 	for (i = 0; i < 100; i++) {
 		snprintf(buf, 10, "abcd%05d", i);
-		WALB_CHECK(hashtbl_add(htbl, buf, 9, i, GFP_KERNEL) == 0);
+		CHECKd(hashtbl_add(htbl, buf, 9, i, GFP_KERNEL) == 0);
 	}
 	n = hashtbl_n_items(htbl);
-	WALB_CHECK(n == 100);
-	WALB_CHECK(!hashtbl_is_empty(htbl));
+	CHECKd(n == 100);
+	CHECKd(!hashtbl_is_empty(htbl));
 
 	/* Empty and destroy. */
 	hashtbl_destroy(htbl);
@@ -970,11 +972,11 @@ int hashtbl_cursor_test(void)
 	/* Begin then end. */
 	LOGd("Begin then end.\n");
 	hashtbl_cursor_begin(&curt);
-	WALB_CHECK(hashtbl_cursor_is_valid(&curt));
-	WALB_CHECK(hashtbl_cursor_is_begin(&curt));
-	WALB_CHECK(!hashtbl_cursor_next(&curt));
-	WALB_CHECK(hashtbl_cursor_is_end(&curt));
-	WALB_CHECK(hashtbl_cursor_is_valid(&curt));
+	CHECKd(hashtbl_cursor_is_valid(&curt));
+	CHECKd(hashtbl_cursor_is_begin(&curt));
+	CHECKd(!hashtbl_cursor_next(&curt));
+	CHECKd(hashtbl_cursor_is_end(&curt));
+	CHECKd(hashtbl_cursor_is_valid(&curt));
 
 	/* Prepare hash table data. */
 	LOGd("Prepare hash table data.\n");
@@ -982,51 +984,51 @@ int hashtbl_cursor_test(void)
 		key = i;
 		val = i;
 		memcpy(buf, &key, sizeof(int));
-		WALB_CHECK(hashtbl_add(htbl, buf, sizeof(int),
+		CHECKd(hashtbl_add(htbl, buf, sizeof(int),
 					val, GFP_KERNEL) == 0);
 	}
-	WALB_CHECK(hashtbl_n_items(htbl) == 10);
+	CHECKd(hashtbl_n_items(htbl) == 10);
 
 	/* Begin to end. */
 	LOGd("Begin to end.\n");
 	hashtbl_cursor_begin(&curt);
 	i = 0;
 	while (hashtbl_cursor_next(&curt)) {
-		WALB_CHECK(hashtbl_cursor_is_valid(&curt));
+		CHECKd(hashtbl_cursor_is_valid(&curt));
 		print_hashtbl_cursor(&curt); /* debug */
 
-		WALB_CHECK(hashtbl_cursor_key_size(&curt) == sizeof(int));
+		CHECKd(hashtbl_cursor_key_size(&curt) == sizeof(int));
 		memcpy(&key, hashtbl_cursor_key(&curt), sizeof(int));
 		val = hashtbl_cursor_val(&curt);
-		WALB_CHECK(val != HASHTBL_INVALID_VAL);
+		CHECKd(val != HASHTBL_INVALID_VAL);
 		LOGd("i %d key %d val %lu\n", i, key, val);
 		i++;
 	}
 	LOGd("i: %d\n", i);
-	WALB_CHECK(i == 10);
-	WALB_CHECK(hashtbl_cursor_is_end(&curt));
+	CHECKd(i == 10);
+	CHECKd(hashtbl_cursor_is_end(&curt));
 
 	/* Begin to end with delete */
 	LOGd("Begin to end with delete.\n");
 	hashtbl_cursor_begin(&curt);
 	i = 0; j = 0;
 	while (hashtbl_cursor_next(&curt)) {
-		WALB_CHECK(hashtbl_cursor_is_valid(&curt));
+		CHECKd(hashtbl_cursor_is_valid(&curt));
 		print_hashtbl_cursor(&curt); /* debug */
 
 		val = hashtbl_cursor_val(&curt);
-		WALB_CHECK(val != HASHTBL_INVALID_VAL);
+		CHECKd(val != HASHTBL_INVALID_VAL);
 		if (val % 2 == 0) {
-			WALB_CHECK(hashtbl_cursor_del(&curt) == val);
+			CHECKd(hashtbl_cursor_del(&curt) == val);
 			j++;
-			WALB_CHECK(curt.state == HASHTBL_CURSOR_DELETED);
+			CHECKd(curt.state == HASHTBL_CURSOR_DELETED);
 		}
 		i++;
 	}
-	WALB_CHECK(i == 10);
-	WALB_CHECK(j == 5);
-	WALB_CHECK(hashtbl_cursor_is_end(&curt));
-	WALB_CHECK(hashtbl_n_items(htbl) == 5);
+	CHECKd(i == 10);
+	CHECKd(j == 5);
+	CHECKd(hashtbl_cursor_is_end(&curt));
+	CHECKd(hashtbl_n_items(htbl) == 5);
 
 	LOGd("Destroy hash table.\n");
 	hashtbl_destroy(htbl);
@@ -1051,48 +1053,48 @@ int hashtbl_cursor_test(void)
 		key = i;
 		val = i;
 		memcpy(buf, &key, sizeof(int));
-		WALB_CHECK(hashtbl_add(htbl, buf, sizeof(int),
+		CHECKd(hashtbl_add(htbl, buf, sizeof(int),
 					val, GFP_KERNEL) == 0);
 	}
-	WALB_CHECK(hashtbl_n_items(htbl) == 1000);
+	CHECKd(hashtbl_n_items(htbl) == 1000);
 
 	/* Begin to end. */
 	LOGd("Begin to end.\n");
 	hashtbl_cursor_begin(&curt);
 	i = 0;
 	while (hashtbl_cursor_next(&curt)) {
-		WALB_CHECK(hashtbl_cursor_is_valid(&curt));
+		CHECKd(hashtbl_cursor_is_valid(&curt));
 
-		WALB_CHECK(hashtbl_cursor_key_size(&curt) == sizeof(int));
+		CHECKd(hashtbl_cursor_key_size(&curt) == sizeof(int));
 		memcpy(&key, hashtbl_cursor_key(&curt), sizeof(int));
 		val = hashtbl_cursor_val(&curt);
-		WALB_CHECK(val != HASHTBL_INVALID_VAL);
+		CHECKd(val != HASHTBL_INVALID_VAL);
 		i++;
 	}
 	LOGd("i: %d\n", i);
-	WALB_CHECK(i == 1000);
-	WALB_CHECK(hashtbl_cursor_is_end(&curt));
+	CHECKd(i == 1000);
+	CHECKd(hashtbl_cursor_is_end(&curt));
 
 	/* Begin to end with delete */
 	LOGd("Begin to end with delete.\n");
 	hashtbl_cursor_begin(&curt);
 	i = 0; j = 0;
 	while (hashtbl_cursor_next(&curt)) {
-		WALB_CHECK(hashtbl_cursor_is_valid(&curt));
+		CHECKd(hashtbl_cursor_is_valid(&curt));
 
 		val = hashtbl_cursor_val(&curt);
-		WALB_CHECK(val != HASHTBL_INVALID_VAL);
+		CHECKd(val != HASHTBL_INVALID_VAL);
 		if (val % 2 == 0) {
-			WALB_CHECK(hashtbl_cursor_del(&curt) == val);
+			CHECKd(hashtbl_cursor_del(&curt) == val);
 			j++;
-			WALB_CHECK(curt.state == HASHTBL_CURSOR_DELETED);
+			CHECKd(curt.state == HASHTBL_CURSOR_DELETED);
 		}
 		i++;
 	}
-	WALB_CHECK(i == 1000);
-	WALB_CHECK(j == 500);
-	WALB_CHECK(hashtbl_cursor_is_end(&curt));
-	WALB_CHECK(hashtbl_n_items(htbl) == 500);
+	CHECKd(i == 1000);
+	CHECKd(j == 500);
+	CHECKd(hashtbl_cursor_is_end(&curt));
+	CHECKd(hashtbl_n_items(htbl) == 500);
 
 	LOGd("Destroy hash table.\n");
 	hashtbl_destroy(htbl);

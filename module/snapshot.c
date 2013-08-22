@@ -9,6 +9,7 @@
 #include <linux/rwsem.h>
 #include <linux/list.h>
 
+#include "walb/logger.h"
 #include "walb/log_device.h"
 #include "walb/sector.h"
 #include "util.h"
