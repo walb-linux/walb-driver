@@ -17,7 +17,12 @@ extern "C" {
 /**
  * Simple logger.
  */
-#define LOG_ PRINTV_D_
+#define LOG_ PRINT_
+#define LOGd_ PRINT_
+#define LOGi_ PRINT_
+#define LOGn_ PRINT_
+#define LOGw_ PRINT_
+#define LOGe_ PRINT_
 #ifdef USE_DYNAMIC_DEBUG
 #define LOGd pr_debug
 #else

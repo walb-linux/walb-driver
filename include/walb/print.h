@@ -38,7 +38,7 @@ extern "C" {
 #else /* __KERNEL__ */
 #include <stdio.h>
 #ifdef WALB_DEBUG
-#define PRINT_D(fmt, args...) printf(fmt, ##args)
+#define PRINT_D(fmt, args...) fprintf(stderr, fmt, ##args)
 #else
 #define PRINT_D(fmt, args...)
 #endif
@@ -46,7 +46,7 @@ extern "C" {
 #define PRINT_W PRINT_E
 #define PRINT_N PRINT_E
 #define PRINT_I PRINT_E
-#define PRINT(flag, fmt, args...) printf(fmt, ##args)
+#define PRINT(flag, fmt, args...) fprintf(stderr, fmt, ##args)
 #define PRINTV_E(fmt, args...) PRINT_E("ERROR(%s) " fmt, __func__, ##args)
 #define PRINTV_W(fmt, args...) PRINT_W("WARNING(%s) " fmt, __func__, ##args)
 #define PRINTV_N(fmt, args...) PRINT_N("NOTICE(%s) " fmt, __func__, ##args)
@@ -54,8 +54,7 @@ extern "C" {
 #define PRINTV_D(fmt, args...) PRINT_D(					\
 		"DEBUG(%s:%d:%s) " fmt, SRC_FILE, __LINE__, __func__, ##args)
 #endif /* __KERNEL__ */
-#define PRINT_D_(fmt, args...)
-#define PRINTV_D_(fmt, args...)
+#define PRINT_(fmt, args...)
 
 #ifdef __cplusplus
 }
