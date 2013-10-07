@@ -562,13 +562,26 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 	}
 
 	if (optind < argc) {
-		LOGd("command: ");
+		char buf0[1024];
+		sprintf(buf0, "command: ");
+		int w0 = strlen(buf0);
 		while (optind < argc) {
+			char buf1[64];
+			int w1 = snprintf(buf1, 64, "%s ", argv[optind]);
+			if (64 <= w1) {
+				show_help(true);
+				return -1;
+			}
 			cfg->cmd_str = argv[optind];
-			LOGd("%s ", argv[optind]);
+			if (1024 <= w0 + w1) {
+				show_help(true);
+				return -1;
+			}
+			strncat(buf0, buf1, 1024 - w0);
+			w0 += w1;
 			optind++;
 		}
-		LOGd("\n");
+		LOGd("%s\n", buf0);
 	} else {
 		show_help(true);
 		return -1;
@@ -1732,7 +1745,7 @@ static bool do_cat_wldev(const struct config *cfg)
 		retb = read_logpack_header_from_wldev(
 			fd, super, lsid, salt, pack->sectd);
 		if (!retb) { break; }
-		LOGd("logpack %"PRIu64"\n", logh->logpack_lsid);
+		LOGd_("logpack %"PRIu64"\n", logh->logpack_lsid);
 
 		/* Realloc buffer if buffer size is not enough. */
 		if (!resize_logpack_if_necessary(
@@ -1868,7 +1881,7 @@ static bool do_redo_wlog(const struct config *cfg)
 		lsid = logh->logpack_lsid;
 		if (lsid < begin_lsid) { continue; }
 		if (end_lsid <= lsid) { break; }
-		LOGd("logpack %"PRIu64"\n", lsid);
+		LOGd_("logpack %"PRIu64"\n", lsid);
 
 		/* Redo */
 		if (!redo_logpack(fd, logh, pack->sectd_ary)) {
@@ -1949,7 +1962,7 @@ static bool do_redo(const struct config *cfg)
 		bool should_break = false;
 		struct walb_logpack_header *logh = pack->header;
 
-		LOGd("logpack %"PRIu64"\n", logh->logpack_lsid);
+		LOGd_("logpack %"PRIu64"\n", logh->logpack_lsid);
 
 		/* Realloc buf if bufsize is not enough. */
 		if (!resize_logpack_if_necessary(pack, logh->total_io_size)) {

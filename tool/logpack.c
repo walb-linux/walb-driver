@@ -170,7 +170,7 @@ unsigned int read_logpack_data_from_wldev(
 		log_pb = capacity_pb(pbs, log_lb);
 		log_off = get_offset_of_lsid_2
 			(super, logh->record[i].lsid);
-		LOGd("lsid: %"PRIu64" log_off: %"PRIu64"\n",
+		LOGd_("lsid: %"PRIu64" log_off: %"PRIu64"\n",
 			logh->record[i].lsid,
 			log_off);
 
