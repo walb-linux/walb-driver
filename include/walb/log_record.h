@@ -188,8 +188,23 @@ static inline int is_valid_log_record_const(
 }
 
 /**
+ * Check a logpack header block is end.
+ *
+ * @return Non-zero if the block is end, or 0.
+ */
+static inline int is_end_logpack_header(
+	const struct walb_logpack_header *lhead)
+{
+	CHECKd(lhead);
+	return lhead->n_records == 0 && lhead->logpack_lsid == (u64)(-1);
+error:
+	return 0;
+}
+
+/**
  * Check validness of a logpack header.
  * This does not validate checksum.
+ * End header block is valid.
  *
  * @logpack logpack to be checked.
  *

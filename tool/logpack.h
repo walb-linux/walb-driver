@@ -44,6 +44,7 @@ bool redo_logpack(
 	const struct walb_logpack_header* logh,
 	const struct sector_data_array *sect_ary);
 
+bool write_end_logpack_header(int fd, unsigned int pbs, u32 salt);
 bool write_invalid_logpack_header(
 	int fd, const struct sector_data *super_sect, u64 lsid);
 

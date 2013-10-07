@@ -348,6 +348,29 @@ bool redo_logpack(
 }
 
 /**
+ * Write an end logpack header block.
+ */
+bool write_end_logpack_header(int fd, unsigned int pbs, u32 salt)
+{
+	bool ret = false;
+	struct walb_logpack_header *h;
+	struct sector_data *sect = sector_alloc(pbs);
+	if (!sect) return false;
+	h = get_logpack_header(sect);
+
+	memset(h, 0, pbs);
+	h->sector_type = SECTOR_TYPE_LOGPACK;
+	h->n_records = 0;
+	h->logpack_lsid = (u64)(-1);
+	h->checksum = 0;
+	h->checksum = checksum((const u8 *)h, pbs, salt);
+
+	ret = write_data(fd, (const u8 *)h, pbs);
+	sector_free(sect);
+	return ret;
+}
+
+/**
  * Write invalid logpack header.
  * This just fill zero.
  *

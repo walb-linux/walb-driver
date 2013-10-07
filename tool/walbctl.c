@@ -1781,9 +1781,12 @@ static bool do_cat_wldev(const struct config *cfg)
 		lsid += logh->total_io_size + 1;
 	}
 
+	/* Write termination block. */
+	retb = write_end_logpack_header(fd, pbs, salt);
+
 	free_logpack(pack);
 	sector_free(super_sectd);
-	return close_(fd) == 0;
+	return close_(fd) == 0 && retb;
 
 error3:
 	free_logpack(pack);
@@ -1863,6 +1866,9 @@ static bool do_redo_wlog(const struct config *cfg)
 
 		/* Read logpack header */
 		if (!read_logpack_header(0, pbs, salt, logh)) {
+			break;
+		}
+		if (is_end_logpack_header(logh)) {
 			break;
 		}
 
@@ -2061,6 +2067,9 @@ static bool do_show_wlog(const struct config *cfg)
 
 	/* Read, print and check each logpack */
 	while (read_logpack_header(0, pbs, salt, logh)) {
+		/* End block check. */
+		if (is_end_logpack_header(logh)) break;
+
 		/* Check range. */
 		lsid = logh->logpack_lsid;
 		if (lsid < begin_lsid) { continue; /* skip */ }
