@@ -1758,6 +1758,8 @@ static bool do_cat_wldev(const struct config *cfg)
 			fd, super, logh, salt, pack->sectd_ary);
 		if (invalid_idx == 0) { break; }
 		if (invalid_idx < logh->n_records) {
+			LOGn("shrinked from %u to %u records.\n"
+				, logh->n_records, invalid_idx);
 			shrink_logpack_header(
 				logh, invalid_idx, pbs, salt);
 			should_break = true;
@@ -1783,10 +1785,14 @@ static bool do_cat_wldev(const struct config *cfg)
 
 	/* Write termination block. */
 	retb = write_end_logpack_header(fd, pbs, salt);
+	if (!retb) {
+		LOGe("write end block failed.\n");
+		goto error3;
+	}
 
 	free_logpack(pack);
 	sector_free(super_sectd);
-	return close_(fd) == 0 && retb;
+	return close_(fd) == 0;
 
 error3:
 	free_logpack(pack);

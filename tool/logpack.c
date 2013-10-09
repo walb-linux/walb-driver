@@ -355,7 +355,10 @@ bool write_end_logpack_header(int fd, unsigned int pbs, u32 salt)
 	bool ret = false;
 	struct walb_logpack_header *h;
 	struct sector_data *sect = sector_alloc(pbs);
-	if (!sect) return false;
+	if (!sect) {
+		LOGe("sector_alloc failed.\n");
+		return false;
+	}
 	h = get_logpack_header(sect);
 
 	memset(h, 0, pbs);
@@ -366,6 +369,7 @@ bool write_end_logpack_header(int fd, unsigned int pbs, u32 salt)
 	h->checksum = checksum((const u8 *)h, pbs, salt);
 
 	ret = write_data(fd, (const u8 *)h, pbs);
+	if (!ret) LOGe("write_data failed.\n");
 	sector_free(sect);
 	return ret;
 }
