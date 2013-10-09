@@ -374,11 +374,9 @@ bool write_sectors_raw(
 bool read_data(int fd, u8* data, size_t size)
 {
 	size_t r = 0;
-	ssize_t tmp;
-
 	while (r < size) {
-		tmp = read(fd, data + r, size - r);
-		if (tmp <= 0) { return false; }
+		ssize_t tmp = read(fd, data + r, size - r);
+		if (tmp <= 0) return false;
 		r += tmp;
 	}
 	ASSERT(r == size);
@@ -399,11 +397,9 @@ bool read_data(int fd, u8* data, size_t size)
 bool write_data(int fd, const u8* data, size_t size)
 {
 	size_t w = 0;
-	ssize_t tmp;
-
 	while (w < size) {
-		tmp = write(fd, data + w, size - w);
-		if (tmp <= 0) { return false; }
+		ssize_t tmp = write(fd, data + w, size - w);
+		if (tmp <= 0) return false;
 		w += tmp;
 	}
 	ASSERT(w == size);
