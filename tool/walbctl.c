@@ -1784,7 +1784,7 @@ static bool do_cat_wldev(const struct config *cfg)
 	}
 
 	/* Write termination block. */
-	retb = write_end_logpack_header(fd, pbs, salt);
+	retb = write_end_logpack_header(1, pbs, salt);
 	if (!retb) {
 		LOGe("write end block failed.\n");
 		goto error3;
