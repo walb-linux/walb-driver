@@ -1,0 +1,5 @@
+* remove snapshotting features (just naming lsids)
+* remove easy and non-ol features.
+* remove deprecated prototypes and tests.
+* support blk-mq
+
