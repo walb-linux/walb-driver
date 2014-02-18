@@ -7,6 +7,8 @@
 #define WALB_IOCTL_H
 
 #include "walb.h"
+#include "print.h"
+#include "check.h"
 
 #ifdef __KERNEL__
 #include <linux/kernel.h>
