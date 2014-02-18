@@ -13,3 +13,8 @@ GPL version 2 or 3.
 * tool: userland tools to control walb devices.
 * sim: simulators to check algorithm consistency (deprecated).
 * doc: documents.
+
+# Supported kernel version.
+
+Linux kernel 3.10 to 3.13.
+For 3.2 to 3.8, use version 1.0.x.
