@@ -18,9 +18,9 @@ extern "C" {
 
 /* Do not use walb/logger.h. */
 #ifdef DEBUG
-#define LOGx(fmt, args...) fprintf(stderr, fmt, ##args)
+#define LOGx(...) fprintf(stderr, __VA_ARGS__)
 #else
-#define LOGx(fmt, args...)
+#define LOGx(...)
 #endif
 
 /**
