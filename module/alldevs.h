@@ -50,6 +50,9 @@ unsigned int get_n_devices(void);
 /* Get free minor. */
 unsigned int get_free_minor(void);
 
+/* Check already used or not. */
+bool alldevs_is_already_used(dev_t);
+
 /* Lock wrapper */
 void alldevs_read_lock(void);
 void alldevs_read_unlock(void);

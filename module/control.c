@@ -109,6 +109,19 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	/* Lock */
 	alldevs_write_lock();
 
+	if (alldevs_is_already_used(ldevt)) {
+		alldevs_write_unlock();
+		LOGe("already used ldev %u:%u\n", MAJOR(ldevt), MINOR(ldevt));
+		ctl->error = -4;
+		goto error0;
+	}
+	if (alldevs_is_already_used(ddevt)) {
+		alldevs_write_unlock();
+		LOGe("already used ddev %u:%u\n", MAJOR(ddevt), MINOR(ddevt));
+		ctl->error = -5;
+		goto error0;
+	}
+
 	if (ctl->u2k.wminor == WALB_DYNAMIC_MINOR) {
 		wminor = get_free_minor();
 	} else {
@@ -121,19 +134,20 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	if (!wdev) {
 		alldevs_write_unlock();
 		LOGe("prepare wdev failed.\n");
-		ctl->error = -4;
+		ctl->error = -6;
 		goto error0;
 	}
 
 	if (alldevs_add(wdev) != 0) {
 		alldevs_write_unlock();
 		LOGe("alldevs_add failed.\n");
-		ctl->error = -5;
+		ctl->error = -7;
 		goto error1;
 	}
 
 	if (!register_wdev(wdev)) {
-		ctl->error = -6;
+		LOGe("register_wdev failed.\n");
+		ctl->error = -8;
 		goto error2;
 	}
 
@@ -151,6 +165,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 
 error2:
 	alldevs_del(wdev);
+	alldevs_write_unlock();
 error1:
 	destroy_wdev(wdev);
 error0:
