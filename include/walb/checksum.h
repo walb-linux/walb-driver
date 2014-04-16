@@ -21,17 +21,20 @@ extern "C" {
  *
  * @return current checksum.
  */
-static inline u32 checksum_partial(u32 sum, const u8 *data, u32 size)
+static inline u32 checksum_partial(u32 sum, const void *data, u32 size)
 {
 	u32 n = size / sizeof(u32);
 	u32 i;
+	const u8 *p;
 
 	ASSERT(size % sizeof(u32) == 0);
+	p = (const u8 *)data;
 
 	for (i = 0; i < n; i++) {
 		u32 buf;
-		memcpy(&buf, data + sizeof(u32) * i, sizeof(u32));
+		memcpy(&buf, p, sizeof(u32));
 		sum += buf;
+		p += sizeof(u32);
 	}
 	return sum;
 }
@@ -58,7 +61,7 @@ static inline u32 checksum_finish(u32 sum)
  *
  * @return checksum of the data.
  */
-static inline u32 checksum(const u8 *data, u32 size, u32 salt)
+static inline u32 checksum(const void *data, u32 size, u32 salt)
 {
 	return checksum_finish(checksum_partial(salt, data, size));
 }
