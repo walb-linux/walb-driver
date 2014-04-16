@@ -509,6 +509,25 @@ unsigned int get_free_minor()
 }
 
 /**
+ * RETURN:
+ *   true if the device is already used as walb underlying device.
+ *
+ * @LOCK read lock required.
+ */
+bool alldevs_is_already_used(dev_t devt)
+{
+	struct map_cursor curt;
+	map_cursor_init(map_minor_, &curt);
+	map_cursor_begin(&curt);
+	while (map_cursor_next(&curt)) {
+		struct walb_dev *wdev = (struct walb_dev *)map_cursor_val(&curt);
+		if (devt == wdev->ldev->bd_dev || devt == wdev->ddev->bd_dev)
+			return true;
+	}
+	return false;
+}
+
+/**
  * Read lock.
  */
 void alldevs_read_lock(void)
