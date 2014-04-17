@@ -582,9 +582,7 @@ void print_queue_limits(
 		"    io_min: %u\n"
 		"    io_opt: %u\n"
 		"    max_discard_sectors: %u\n"
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 		"    max_write_same_sectors: %u\n"
-#endif
 		"    discard_granularity: %u\n"
 		"    discard_alignment: %u\n"
 		"    logical_block_size: %u\n"
@@ -599,9 +597,7 @@ void print_queue_limits(
 		, limits->io_min
 		, limits->io_opt
 		, limits->max_discard_sectors
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 		, limits->max_write_same_sectors
-#endif
 		, limits->discard_granularity
 		, limits->discard_alignment
 		, limits->logical_block_size
