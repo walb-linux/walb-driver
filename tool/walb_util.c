@@ -403,7 +403,7 @@ bool init_super_sector_raw(
 	LOGd("metadata_size: %d\n", n_sectors);
 
 	/* Prepare super sector */
-	memset(super_sect, 0, sizeof(super_sect));
+	memset(super_sect, 0, sizeof(*super_sect));
 	/* Set sector type. */
 	super_sect->sector_type = SECTOR_TYPE_SUPER;
 	/* Fill parameters. */
