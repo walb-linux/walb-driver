@@ -46,10 +46,7 @@ hashtbl.o treemap.o
 
 test-hashtbl-mod-objs := test/test_hashtbl.o hashtbl.o
 test-treemap-mod-objs := test/test_treemap.o treemap.o
-test-memblk-data-mod-objs := test/test_memblk_data.o proto/memblk_data.o treemap.o
-test-memblk-data-perf-mod-objs := test/test_memblk_data_perf.o proto/memblk_data.o treemap.o
 test-sg-util-mod-objs := test/test_sg_util.o sg_util.o
-test-size-list-mod-objs := test/test_size_list.o proto/size_list.o
 test-kmem-cache-mod-objs := test/test_kmem_cache.o
 test-workqueue-mod-objs := test/test_workqueue.o
 test-kthread-mod-objs := test/test_kthread.o
@@ -61,36 +58,12 @@ test-bdev-mod-objs := test/test_bdev.o
 test-sort-mod-objs := test/test_sort.o treemap.o
 test-bio-entry-mod-objs := test/test_bio_entry.o bio_entry.o bio_wrapper.o
 
-simple-blk-mod-objs := proto/simple_blk.o
-BASE_BIO_OBJS = proto/base_bio.o proto/size_list.o
-BASE_REQ_OBJS = proto/base_req.o proto/size_list.o
-none-bio-mod-objs := $(BASE_BIO_OBJS) proto/none_bio.o
-none-req-mod-objs := $(BASE_REQ_OBJS) proto/none_req.o
-MEMBLK_DATA_OBJS = proto/memblk_data.o treemap.o
-mem-bio-mod-objs := $(BASE_BIO_OBJS) $(MEMBLK_DATA_OBJS) proto/mem_bio.o
-mem-req-mod-objs := $(BASE_REQ_OBJS) $(MEMBLK_DATA_OBJS) proto/mem_req.o
-wrapper-blk-mod-objs := proto/wrapper_blk.o pack_work.o
-WRAP_REQ_OBJS = proto/wrap_req.o
-wrap-req-mod-objs := $(WRAP_REQ_OBJS)
-WRAP_BIO_OBJS = proto/wrap_bio.o bio_entry.o
-wrap-bio-mod-objs := $(WRAP_BIO_OBJS)
-WALB_PROTO_REQ_OBJS = proto/walb_proto_req.o \
-sector_io.o bio_entry.o proto/req_entry.o logpack.o treemap.o worker.o pack_work.o
-walb-proto-req-mod-objs := $(WALB_PROTO_REQ_OBJS)
-WALB_PROTO_BIO_OBJS = \
-proto/walb_proto_bio.o wdev_util.o overlapped_io.o pending_io.o io.o sysfs.o checkpoint.o super.o \
-sector_io.o bio_entry.o bio_wrapper.o logpack.o treemap.o worker.o pack_work.o
-walb-proto-bio-mod-objs := $(WALB_PROTO_BIO_OBJS)
-
 obj-m := \
 test-hashtbl-mod.o \
 test-treemap-mod.o \
-test-memblk-data-mod.o \
-test-memblk-data-perf-mod.o \
 test-kthread-mod.o \
 test-deadlock-mod.o \
 test-sg-util-mod.o \
-test-size-list-mod.o \
 test-kmem-cache-mod.o \
 test-workqueue-mod.o \
 test-serialized-task-mod.o \
@@ -99,16 +72,6 @@ test-vmalloc-mod.o \
 test-bdev-mod.o \
 test-sort-mod.o \
 test-bio-entry-mod.o \
-simple-blk-mod.o \
-none-bio-mod.o \
-none-req-mod.o \
-mem-bio-mod.o \
-mem-req-mod.o \
-wrapper-blk-mod.o \
-wrap-req-mod.o \
-wrap-bio-mod.o \
-walb-proto-req-mod.o \
-walb-proto-bio-mod.o \
 walb-mod.o \
 
 else
