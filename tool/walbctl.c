@@ -27,7 +27,6 @@
 #include "util.h"
 #include "walb_util.h"
 #include "logpack.h"
-#include "snapshot.h"
 #include "walb_log.h"
 #include "version.h"
 
@@ -59,8 +58,6 @@ struct config
 	/* size_t log_sector_size; /\* sector size of log device *\/ */
 	/* size_t log_dev_size; /\* size of log device by the sector *\/ */
 
-	int n_snapshots; /* maximum number of snapshots to keep */
-
 	/* Discard flags. */
 	bool nodiscard;
 
@@ -72,10 +69,6 @@ struct config
 	u64 lsid1; /* to lsid */
 
 	char *name; /* name of stuff */
-
-	/* These will be converted to lsid(s) internally. */
-	char *snap0; /* from snapshot */
-	char *snap1; /* to snapshot */
 
 	size_t size; /* (size_t)(-1) means undefined. */
 
@@ -104,12 +97,10 @@ struct map_str_to_fn
  */
 static const char *helpstr_options_ =
 	"OPTIONS:\n"
-	"  N_SNAP: --n_snap [max number of snapshots]\n"
 	"  DISCARD: --nodiscard\n"
 	"  SIZE:   --size [size of stuff]\n"
 	"  LRANGE: --lsid0 [from lsid] --lsid1 [to lsid]\n"
 	"  (NYI)TRANGE: --time0 [from time] --time1 [to time]\n"
-	"  (NYI)SRANGE: --snap0 [from snapshot] --snap1 [to snapshot]\n"
 	"  LSID:   --lsid [lsid]\n"
 	"  DDEV:   --ddev [data device path]\n"
 	"  LDEV:   --ldev [log device path]\n"
@@ -139,7 +130,7 @@ struct cmdhelp
  * Help string.
  */
 static struct cmdhelp cmdhelps_[] = {
-	{ "format_ldev LDEV DDEV (NSNAP) (NAME) (N_SNAP) (DISCARD)",
+	{ "format_ldev LDEV DDEV (NAME) (DISCARD)",
 	  "Format log device." },
 	{ "create_wdev LDEV DDEV (NAME)"
 	  " (MAX_LOGPACK_KB) (MAX_PENDING_MB) (MIN_PENDING_MB)\n"
@@ -150,20 +141,6 @@ static struct cmdhelp cmdhelps_[] = {
 	  "Make walb/walblog device." },
 	{ "delete_wdev WDEV",
 	  "Delete walb/walblog device." },
-	{ "create_snapshot WDEV NAME",
-	  "Create snapshot." },
-	{ "delete_snapshot WDEV NAME | LRANGE",
-	  "Delete snapshot." },
-	{ "num_snapshot WDEV (LRANGE | TRANGE | SRANGE)",
-	  "Get number of snapshots." },
-	{ "list_snapshot WDEV",
-	  "Get list of snapshots." },
-	{ "list_snapshot_range WDEV (LRANGE | TRANGE | SRANGE)",
-	  "Get list of snapshots with a range." },
-	{ "check_snapshot LDEV",
-	  "Check snapshot metadata." },
-	{ "clean_snapshot LDEV",
-	  "Clean snapshot metadata." },
 	{ "set_checkpoint_interval WDEV SIZE",
 	  "Set checkpoint interval in [ms]." },
 	{ "get_checkpoint_interval WDEV",
@@ -222,7 +199,6 @@ enum
 {
 	OPT_LDEV = 1,
 	OPT_DDEV,
-	OPT_N_SNAP,
 	OPT_NODISCARD,
 	OPT_WDEV,
 	OPT_WLDEV,
@@ -230,8 +206,6 @@ enum
 	OPT_LSID0,
 	OPT_LSID1,
 	OPT_NAME,
-	OPT_SNAP0,
-	OPT_SNAP1,
 	OPT_SIZE,
 	OPT_MAX_LOGPACK_KB,
 	OPT_MAX_PENDING_MB,
@@ -257,21 +231,12 @@ static void init_config(struct config* cfg);
 static int parse_opt(int argc, char* const argv[], struct config *cfg);
 static bool init_walb_metadata(
 	int fd, unsigned int lbs, unsigned int pbs,
-	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
-	const char *name);
-static bool check_snapshot_metadata(int fd, unsigned int pbs);
-static bool init_snapshot_metadata(
-	int fd, const struct sector_data *super_sect);
+	u64 ddev_lb, u64 ldev_lb, const char *name);
 static bool invoke_ioctl(
 	const char *wdev_name, struct walb_ctl *ctl, int open_flag);
 static bool ioctl_and_print_bool(const char *wdev_name, int cmd);
 static u64 get_ioctl_u64(const char* wdev_name, int command);
 static bool dispatch(const struct config *cfg);
-static bool delete_snapshot_by_name(const struct config *cfg);
-static bool delete_snapshot_by_lsid_range(const struct config *cfg);
-static u64 get_lsid_by_snapshot_name(
-	const char *wdev_name, const char *snap_name);
-static void decide_lsid_range(const struct config *cfg, u64 lsid[2]);
 static struct walblog_header *create_and_read_wlog_header(int inFd);
 static struct walb_super_sector *create_and_read_super_sector(
 	struct sector_data **sectdp, int fd, unsigned int pbs);
@@ -280,13 +245,6 @@ static struct walb_super_sector *create_and_read_super_sector(
 static bool do_format_ldev(const struct config *cfg);
 static bool do_create_wdev(const struct config *cfg);
 static bool do_delete_wdev(const struct config *cfg);
-static bool do_create_snapshot(const struct config *cfg);
-static bool do_delete_snapshot(const struct config *cfg);
-static bool do_num_snapshot(const struct config *cfg);
-static bool do_list_snapshot(const struct config *cfg);
-static bool do_list_snapshot_range(const struct config *cfg);
-static bool do_check_snapshot(const struct config *cfg);
-static bool do_clean_snapshot(const struct config *cfg);
 static bool do_take_checkpoint(const struct config *cfg);
 static bool do_set_checkpoint_interval(const struct config *cfg);
 static bool do_get_checkpoint_interval(const struct config *cfg);
@@ -322,13 +280,6 @@ const struct map_str_to_fn cmd_map_[] = {
 	{ "format_ldev", do_format_ldev },
 	{ "create_wdev", do_create_wdev },
 	{ "delete_wdev", do_delete_wdev },
-	{ "create_snapshot", do_create_snapshot },
-	{ "delete_snapshot", do_delete_snapshot },
-	{ "num_snapshot", do_num_snapshot },
-	{ "list_snapshot", do_list_snapshot },
-	{ "list_snapshot_range", do_list_snapshot_range },
-	{ "check_snapshot", do_check_snapshot },
-	{ "clean_snapshot", do_clean_snapshot },
 	{ "take_checkpoint", do_take_checkpoint },
 	{ "set_checkpoint_interval", do_set_checkpoint_interval },
 	{ "get_checkpoint_interval", do_get_checkpoint_interval },
@@ -430,8 +381,6 @@ static void init_config(struct config* cfg)
 
 	memset(cfg, 0, sizeof(struct config));
 
-	cfg->n_snapshots = 10000;
-
 	cfg->nodiscard = false;
 
 	cfg->lsid = (u64)(-1);
@@ -460,7 +409,6 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 		static const struct option long_options[] = {
 			{"ldev", 1, 0, OPT_LDEV}, /* log device */
 			{"ddev", 1, 0, OPT_DDEV}, /* data device */
-			{"n_snap", 1, 0, OPT_N_SNAP}, /* num of snapshots */
 			{"nodiscard", 0, 0, OPT_NODISCARD},
 			{"wdev", 1, 0, OPT_WDEV}, /* walb device */
 			{"wldev", 1, 0, OPT_WLDEV}, /* walb log device */
@@ -468,8 +416,6 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			{"lsid0", 1, 0, OPT_LSID0}, /* begin */
 			{"lsid1", 1, 0, OPT_LSID1}, /* end */
 			{"name", 1, 0, OPT_NAME},
-			{"snap0", 1, 0, OPT_SNAP0}, /* begin */
-			{"snap1", 1, 0, OPT_SNAP1}, /* end */
 			{"size", 1, 0, OPT_SIZE},
 			{"max_logpack_kb", 1, 0, OPT_MAX_LOGPACK_KB},
 			{"max_pending_mb", 1, 0, OPT_MAX_PENDING_MB},
@@ -496,9 +442,6 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			cfg->ddev_name = optarg;
 			LOGd("ddev: %s\n", optarg);
 			break;
-		case OPT_N_SNAP:
-			cfg->n_snapshots = atoi(optarg);
-			break;
 		case OPT_NODISCARD:
 			cfg->nodiscard = true;
 			break;
@@ -519,12 +462,6 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
 			break;
 		case OPT_NAME:
 			cfg->name = optarg;
-			break;
-		case OPT_SNAP0:
-			cfg->snap0 = optarg;
-			break;
-		case OPT_SNAP1:
-			cfg->snap1 = optarg;
 			break;
 		case OPT_SIZE:
 			cfg->size = atoll(optarg);
@@ -598,7 +535,6 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
  * @pbs physical block size.
  * @ddev_lb device size [logical block].
  * @ldev_lb log device size [logical block]
- * @n_snapshots number of snapshots to keep.
  * @name name of the walb device, or NULL.
  *
  * RETURN:
@@ -606,8 +542,7 @@ static int parse_opt(int argc, char* const argv[], struct config *cfg)
  */
 static bool init_walb_metadata(
 	int fd, unsigned int lbs, unsigned int pbs,
-	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
-	const char *name)
+	u64 ddev_lb, u64 ldev_lb, const char *name)
 {
 	struct sector_data *super_sect;
 
@@ -628,7 +563,7 @@ static bool init_walb_metadata(
 	/* Initialize super sector. */
 	if (!init_super_sector(
 			super_sect, lbs, pbs,
-			ddev_lb, ldev_lb, n_snapshots, name)) {
+			ddev_lb, ldev_lb, name)) {
 		LOGe("init super sector faield.\n");
 		goto error1;
 	}
@@ -636,12 +571,6 @@ static bool init_walb_metadata(
 	/* Write super sector */
 	if (!write_super_sector(fd, super_sect)) {
 		LOGe("write super sector failed.\n");
-		goto error1;
-	}
-
-	/* Initialize all snapshot sectors. */
-	if (!init_snapshot_metadata(fd, super_sect)) {
-		LOGe("init snapshot sectors failed.\n");
 		goto error1;
 	}
 
@@ -670,137 +599,6 @@ static bool init_walb_metadata(
 error1:
 	sector_free(super_sect);
 	return false;
-}
-
-/**
- * Check whether snapshot metadata is valid or not.
- *
- * @fd file descriptor of log device.
- * @pbs physical block size.
- *
- * RETURN:
- *   true if valid, or false.
- */
-static bool check_snapshot_metadata(int fd, unsigned int pbs)
-{
-	bool ret = false;
-	struct sector_data *super_sect = NULL, *snap_sect = NULL;
-	struct walb_super_sector *super;
-	u64 off0;
-	int i, n_sectors;
-
-	ASSERT(fd >= 0);
-	ASSERT_PBS(pbs);
-
-	/* Allocate memory. */
-	super_sect = sector_alloc(pbs);
-	if (!super_sect) {
-		LOGe("%s", NOMEM_STR);
-		return false;
-	}
-	super = get_super_sector(super_sect);
-	snap_sect = sector_alloc(pbs);
-	if (!snap_sect) {
-		LOGe("%s", NOMEM_STR);
-		goto error1;
-	}
-
-	/* Read super block */
-	off0 = get_super_sector0_offset(pbs);
-	if (!sector_read(fd, off0, super_sect)) {
-		LOGe("read super sector0 failed.\n");
-		goto error2;
-	}
-	if (!is_valid_super_sector(super_sect)) {
-		LOGe("super sector is not valid.\n");
-		goto error2;
-	}
-
-	/* Check each snapshot sector. */
-	i = 0;
-	n_sectors = (int)super->snapshot_metadata_size;
-	for (i = 0; i < n_sectors; i++) {
-		if (!read_snapshot_sector(fd, super_sect, snap_sect, i)) {
-			LOGe("read snapshot sector %d failed.\n", i);
-			goto error2;
-		}
-		if (!is_valid_snapshot_sector(snap_sect)) {
-			LOGe("snapshot sector %d is invalid.\n", i);
-			ret = false;
-			/* try to check all snapshot sectors. */
-		}
-	}
-	ret = true;
-
-error2:
-	sector_free(snap_sect);
-error1:
-	sector_free(super_sect);
-	return ret;
-}
-
-/**
- * Initialize snapshot metadata.
- *
- * @fd file descriptor of log device.
- * @super_sect super sector data.
- *
- * RETURN:
- *   true in success, or false.
- */
-static bool init_snapshot_metadata(
-	int fd, const struct sector_data *super_sect)
-{
-	bool ret = false;
-	const struct walb_super_sector *super;
-	struct sector_data *snap_sect = NULL;
-	int i, n_sectors;
-
-	ASSERT(fd >= 0);
-	ASSERT(is_valid_super_sector(super_sect));
-
-	super = get_super_sector_const(super_sect);
-
-	/* Prepare a snapshot sectors. */
-	snap_sect = sector_alloc(super_sect->size);
-	if (!snap_sect) {
-		LOGe("allocate sector failed.\n");
-		return false;
-	}
-
-	/* Write snapshot sectors */
-	n_sectors = (int)super->snapshot_metadata_size;
-	for (i = 0; i < n_sectors; i++) {
-		init_snapshot_sector(snap_sect);
-		if (!write_snapshot_sector(
-				fd, super_sect, snap_sect, i)) {
-			LOGe("write snapshot sector %d failed.\n", i);
-			goto error1;
-		}
-	}
-
-#if 1
-	/* Read snapshot sectors and print for debug. */
-	for (i = 0; i < n_sectors; i++) {
-		sector_zeroclear(snap_sect);
-		bool ret = read_snapshot_sector(
-			fd, super_sect, snap_sect, i);
-		if (!ret) {
-			LOGe("read snapshot sector %d failed.\n", i);
-			goto error1;
-		}
-		if (!is_valid_snapshot_sector(snap_sect)) {
-			LOGw("snapshot sector %d invalid.\n", i);
-		}
-#if 0
-		print_snapshot_sector(snap_sect);
-#endif
-	}
-#endif
-	ret = true;
-error1:
-	sector_free(snap_sect);
-	return ret;
 }
 
 /**
@@ -895,141 +693,6 @@ static bool dispatch(const struct config *cfg)
 		}
 	}
 	return ret;
-}
-
-/**
- * Delete a snapshot by name.
- *
- * RETURN:
- *   true in succes, or false.
- */
-static bool delete_snapshot_by_name(const struct config *cfg)
-{
-	struct walb_snapshot_record record;
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_DELETE_SNAPSHOT,
-		.u2k = { .buf_size = sizeof(struct walb_snapshot_record),
-			 .buf = (u8 *)&record },
-		.k2u = { .buf_size = 0 },
-	};
-
-	/* Check. */
-	if (!is_valid_snapshot_name(cfg->name)) {
-		LOGe("snapshot name %s is not valid.\n", cfg->name);
-		return false;
-	}
-
-	/* Prepare control data. */
-	record.lsid = INVALID_LSID;
-	record.timestamp = 0;
-	record.snapshot_id = INVALID_SNAPSHOT_ID;
-	snprintf(record.name, SNAPSHOT_NAME_MAX_LEN, "%s", cfg->name);
-
-	/* Invoke. */
-	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
-		return false;
-	}
-	LOGn("Delete snapshot succeeded.\n");
-	return true;
-}
-
-/**
- * Delete snapshots by range.
- *
- * RETURN:
- *   true in success, or false.
- */
-static bool delete_snapshot_by_lsid_range(const struct config *cfg)
-{
-	u64 lsid[2];
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_DELETE_SNAPSHOT_RANGE,
-		.u2k = { .buf_size = sizeof(lsid),
-			 .buf = (u8 *)&lsid[0] },
-		.k2u = { .buf_size = 0 },
-	};
-
-	/* Decide lsid range. */
-	ASSERT(is_lsid_range_valid(cfg->lsid0, cfg->lsid1));
-	lsid[0] = cfg->lsid0;
-	lsid[1] = cfg->lsid1;
-
-	/* Invoke. */
-	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
-		LOGe("Delete snapshots failed: %d.\n", ctl.error);
-		return false;
-	}
-	LOGn("Delete %d snapshots succeeded.\n", ctl.val_int);
-	return true;
-}
-
-/**
- * Get lsid by snapshot name.
- *
- * RETURN:
- *   lsid in found, or INVALID_LSID.
- */
-static u64 get_lsid_by_snapshot_name(
-	const char *wdev_name, const char *snap_name)
-{
-	struct walb_snapshot_record srec[2];
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_GET_SNAPSHOT,
-		.u2k = { .buf_size = sizeof(struct walb_snapshot_record),
-			 .buf = (u8 *)&srec[0] },
-		.k2u = { .buf_size = sizeof(struct walb_snapshot_record),
-			 .buf = (u8 *)&srec[1] },
-	};
-
-	ASSERT(is_valid_snapshot_name(snap_name));
-	snprintf(srec[0].name, SNAPSHOT_NAME_MAX_LEN, "%s", snap_name);
-	if (!invoke_ioctl(wdev_name, &ctl, O_RDWR)) {
-		return INVALID_LSID;
-	}
-	ASSERT(srec[1].lsid != INVALID_LSID);
-	return srec[1].lsid;
-}
-
-/**
- * Decide lsid range using config.
- *
- * @cfg configuration.
- * @lsid u64 array of size 2 to store result.
- */
-static void decide_lsid_range(const struct config *cfg, u64 lsid[2])
-{
-	ASSERT(cfg);
-
-	/* Decide lsid[0]. */
-	if (cfg->lsid0 != (u64)(-1)) {
-		lsid[0] = cfg->lsid0;
-	} else if (is_valid_snapshot_name(cfg->snap0)) {
-		lsid[0] = get_lsid_by_snapshot_name(cfg->wdev_name, cfg->snap0);
-		if (lsid[0] == INVALID_LSID) {
-			LOGe("Snapshot %s not found.\n", cfg->snap0);
-			goto error0;
-		}
-	} else {
-		lsid[0] = 0;
-	}
-
-	/* Decide lsid[1]. */
-	if (cfg->lsid1 != (u64)(-1)) {
-		lsid[1] = cfg->lsid1;
-	} else if (is_valid_snapshot_name(cfg->snap1)) {
-		lsid[1] = get_lsid_by_snapshot_name(cfg->wdev_name, cfg->snap1);
-		if (lsid[1] == INVALID_LSID) {
-			LOGe("Snapshot %s not found.\n", cfg->snap1);
-			goto error0;
-		}
-	} else {
-		lsid[1] = MAX_LSID + 1;
-	}
-	return;
-
-error0:
-	lsid[0] = INVALID_LSID;
-	lsid[1] = INVALID_LSID;
 }
 
 /**
@@ -1167,7 +830,7 @@ static bool do_format_ldev(const struct config *cfg)
 		fd, lbs, pbs,
 		ddev_info.size / lbs,
 		ldev_info.size / lbs,
-		cfg->n_snapshots, cfg->name);
+		cfg->name);
 	if (!retb) {
 		LOGe("initialize walb log device failed.\n");
 		goto error1;
@@ -1316,274 +979,6 @@ static bool do_delete_wdev(const struct config *cfg)
 	}
 	return true;
 
-error1:
-	close_(fd);
-	return false;
-}
-
-/**
- * Create snapshot.
- *
- * Input: NAME (default: datetime string).
- * Output: Nothing.
- */
-static bool do_create_snapshot(const struct config *cfg)
-{
-	char name[SNAPSHOT_NAME_MAX_LEN];
-	time_t timestamp = time(0);
-	struct walb_snapshot_record record;
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_CREATE_SNAPSHOT,
-		.u2k = { .buf_size = sizeof(struct walb_snapshot_record),
-			 .buf = (u8 *)&record },
-		.k2u = { .buf_size = 0 },
-	};
-
-	ASSERT(strcmp(cfg->cmd_str, "create_snapshot") == 0);
-	name[0] = '\0';
-
-	/* Decide snapshot name. */
-	if (cfg->name) {
-		snprintf(name, SNAPSHOT_NAME_MAX_LEN, "%s", cfg->name);
-	} else {
-		bool retb = get_datetime_str(
-			timestamp, name, SNAPSHOT_NAME_MAX_LEN);
-		if (!retb) {
-			LOGe("Getting datetime string failed.\n");
-			return false;
-		}
-	}
-	if (!is_valid_snapshot_name(name)) {
-		LOGe("snapshot name %s is not valid.\n", name);
-		return false;
-	}
-	LOGd("name: %s\n", name);
-
-	/* Prepare control data. */
-	record.lsid = INVALID_LSID;
-	record.timestamp = (u64)timestamp;
-	record.snapshot_id = INVALID_SNAPSHOT_ID;
-	snprintf(record.name, SNAPSHOT_NAME_MAX_LEN, "%s", name);
-
-	/* Invoke ioctl. */
-	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
-		LOGe("Create snapshot failed: %d.\n", ctl.error);
-		return false;
-	}
-	LOGn("Create snapshot succeeded.\n");
-	return true;
-}
-
-/**
- * Delete one or more snapshots.
- *
- * Specify name or lsid range.
- */
-static bool do_delete_snapshot(const struct config *cfg)
-{
-	bool ret = false;
-	ASSERT(strcmp(cfg->cmd_str, "delete_snapshot") == 0);
-
-	if (cfg->name) {
-		ret = delete_snapshot_by_name(cfg);
-	} else if (is_lsid_range_valid(cfg->lsid0, cfg->lsid1)) {
-		ret = delete_snapshot_by_lsid_range(cfg);
-	} else {
-		LOGe("Specify snapshot name or lsid range to delete.\n");
-		ret = false;
-	}
-	return ret;
-}
-
-/**
- * Get number of snapshots.
- *
- * Specify a range (optional)
- *   Left edge by --lsid0 or --snap0 (default: 0)
- *   Right edge by --lsid1 or --snap1 (default: MAX_LSID + 1)
- */
-static bool do_num_snapshot(const struct config *cfg)
-{
-	u64 lsid[2];
-	struct walb_ctl ctl = {
-		.command = WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE,
-		.u2k = { .buf_size = sizeof(lsid),
-			 .buf = (u8 *)&lsid[0] },
-		.k2u = { .buf_size = 0 },
-	};
-
-	ASSERT(strcmp(cfg->cmd_str, "num_snapshot") == 0);
-
-	/* Decide lsid range. */
-	decide_lsid_range(cfg, lsid);
-	if (!is_lsid_range_valid(lsid[0], lsid[1])) {
-		LOGe("Specify correct lsid range: (%"PRIu64", %"PRIu64").\n",
-			lsid[0], lsid[1]);
-		return false;
-	}
-
-	/* Invoke ioctl. */
-	if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
-		LOGe("Num of snapshots ioctl failed: %d.\n", ctl.error);
-		return false;
-	}
-	ASSERT(ctl.val_int >= 0);
-	LOGn("Num of snapshots in range (%"PRIu64", %"PRIu64"): %d.\n",
-		lsid[0], lsid[1], ctl.val_int);
-	return true;
-}
-
-/**
- * List all snapshots.
- */
-static bool do_list_snapshot(const struct config *cfg)
-{
-	int n_rec, i;
-	u32 snapshot_id = 0;
-	u8 buf[PAGE_SIZE];
-	struct walb_snapshot_record *srec =
-		(struct walb_snapshot_record *)buf;
-
-	ASSERT(strcmp(cfg->cmd_str, "list_snapshot") == 0);
-
-	n_rec = -1;
-	while (n_rec) {
-		struct walb_ctl ctl = {
-			.command = WALB_IOCTL_LIST_SNAPSHOT_FROM,
-			.val_u32 = snapshot_id,
-			.u2k = { .buf_size = 0, },
-			.k2u = { .buf_size = PAGE_SIZE,
-				 .buf = &buf[0] },
-		};
-		if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
-			LOGe("List snapshots ioctl failed: %d.\n", ctl.error);
-			return false;
-		}
-		n_rec = ctl.val_int;
-		for (i = 0; i < n_rec; i++) {
-			print_snapshot_record(&srec[i]);
-		}
-		snapshot_id = ctl.val_u32;
-		LOGd("Next snapshot_id %"PRIu32".\n", snapshot_id);
-	}
-	return true;
-}
-
-/**
- * List snapshots.
- *
- * Specify lsid range.
- */
-static bool do_list_snapshot_range(const struct config *cfg)
-{
-	int n_rec, i;
-	u64 lsid[2];
-	u8 buf[PAGE_SIZE];
-	struct walb_snapshot_record *srec =
-		(struct walb_snapshot_record *)buf;
-
-	ASSERT(strcmp(cfg->cmd_str, "list_snapshot_range") == 0);
-
-	/* Decide lsid range. */
-	decide_lsid_range(cfg, lsid);
-	if (!is_lsid_range_valid(lsid[0], lsid[1])) {
-		LOGe("Specify correct lsid range: (%"PRIu64", %"PRIu64").\n",
-			lsid[0], lsid[1]);
-		return false;
-	}
-	LOGd("Scan lsid (%"PRIu64", %"PRIu64")\n", lsid[0], lsid[1]);
-	while (lsid[0] < lsid[1]) {
-		struct walb_ctl ctl = {
-			.command = WALB_IOCTL_LIST_SNAPSHOT_RANGE,
-			.u2k = { .buf_size = sizeof(lsid),
-				 .buf = (u64 *)&lsid[0] },
-			.k2u = { .buf_size = PAGE_SIZE,
-				 .buf = &buf[0] },
-		};
-
-		if (!invoke_ioctl(cfg->wdev_name, &ctl, O_RDWR)) {
-			LOGe("List snapshots ioctl failed: %d.\n", ctl.error);
-		}
-		n_rec = ctl.val_int;
-		for (i = 0; i < n_rec; i++) {
-			print_snapshot_record(&srec[i]);
-		}
-		lsid[0] = ctl.val_u64; /* the first lsid of remaining. */
-		LOGd("Next lsid %"PRIu64".\n", lsid[0]);
-	}
-	return true;
-}
-
-/**
- * List snapshots.
- *
- * Specify log device.
- */
-static bool do_check_snapshot(const struct config *cfg)
-{
-	int fd;
-	struct bdev_info ldev_info;
-
-	ASSERT(cfg->cmd_str);
-	ASSERT(strcmp(cfg->cmd_str, "check_snapshot") == 0);
-
-	if (!open_bdev_and_get_info(cfg->ldev_name, &ldev_info, &fd, O_RDONLY)) {
-		LOGe("check and open failed: %s.\n", cfg->ldev_name);
-		return false;
-	}
-
-	if (!check_snapshot_metadata(fd, ldev_info.pbs)) {
-		LOGe("snapshot metadata invalid.\n");
-		close_(fd);
-		return false;
-	}
-	LOGn("snapshot metadata valid.\n");
-	return close_(fd) == 0;
-}
-
-/**
- * Clean metadata.
- *
- * Specify log device.
- */
-static bool do_clean_snapshot(const struct config *cfg)
-{
-	struct bdev_info ldev_info;
-	struct sector_data *super_sect;
-	int fd, ret;
-
-	ASSERT(cfg->cmd_str);
-	ASSERT(strcmp(cfg->cmd_str, "clean_snapshot") == 0);
-
-	if (!open_bdev_and_get_info(cfg->ldev_name, &ldev_info, &fd, O_RDWR)) {
-		LOGe("check and open failed: %s.\n", cfg->ldev_name);
-		return false;
-	}
-
-	/* Allocate memory and read super block */
-	super_sect = sector_alloc(ldev_info.pbs);
-	if (!super_sect) {
-		LOGe("%s", NOMEM_STR);
-		goto error1;
-	}
-
-	/* Read super sector and initialize snapshot sectors. */
-	if (!read_super_sector(fd, super_sect)) {
-		LOGe("read snapshot sector failed.\n");
-		goto error2;
-	}
-	if (!init_snapshot_metadata(fd, super_sect)) {
-		LOGe("snapshot metadata invalid.\n");
-		goto error2;
-	}
-
-	/* Close and free. */
-	ret = fdatasync_and_close(fd);
-	sector_free(super_sect);
-	return ret == 0;
-
-error2:
-	sector_free(super_sect);
 error1:
 	close_(fd);
 	return false;

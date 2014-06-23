@@ -370,7 +370,6 @@ bool sector_array_write(
  * @pbs physical block size.
  * @ddev_lb device size [logical block].
  * @ldev_lb log device size [logical block]
- * @n_snapshots number of snapshots to keep.
  * @name name of the walb device, or NULL.
  *
  * RETURN:
@@ -379,11 +378,9 @@ bool sector_array_write(
 bool init_super_sector_raw(
 	struct walb_super_sector* super_sect,
 	unsigned int lbs, unsigned int pbs,
-	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+	u64 ddev_lb, u64 ldev_lb,
 	const char *name)
 {
-	int n_sectors;
-	int t;
 	u32 salt;
 	char *rname;
 	bool ret;
@@ -396,12 +393,6 @@ bool init_super_sector_raw(
 
 	ASSERT(sizeof(struct walb_super_sector) <= (size_t)pbs);
 
-	/* Calculate number of snapshot sectors. */
-	t = get_max_n_records_in_snapshot_sector(pbs);
-	n_sectors = (n_snapshots + t - 1) / t;
-
-	LOGd("metadata_size: %d\n", n_sectors);
-
 	/* Prepare super sector */
 	memset(super_sect, 0, sizeof(*super_sect));
 	/* Set sector type. */
@@ -410,7 +401,7 @@ bool init_super_sector_raw(
 	super_sect->version = WALB_LOG_VERSION;
 	super_sect->logical_bs = lbs;
 	super_sect->physical_bs = pbs;
-	super_sect->snapshot_metadata_size = n_sectors;
+	super_sect->metadata_size = 0; /* currently fixed */
 	ret = generate_uuid(super_sect->uuid);
 	if (!ret) { return false; }
 	memset_random((u8 *)&salt, sizeof(salt));
@@ -418,7 +409,7 @@ bool init_super_sector_raw(
 	super_sect->log_checksum_salt = salt;
 	super_sect->ring_buffer_size =
 		ldev_lb / (pbs / lbs)
-		- get_ring_buffer_offset(pbs, n_snapshots);
+		- get_ring_buffer_offset(pbs);
 	super_sect->oldest_lsid = 0;
 	super_sect->written_lsid = 0;
 	super_sect->device_size = ddev_lb;
@@ -437,14 +428,14 @@ bool init_super_sector_raw(
 bool init_super_sector(
 	struct sector_data *sect,
 	unsigned int lbs, unsigned int pbs,
-	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+	u64 ddev_lb, u64 ldev_lb,
 	const char *name)
 {
 	ASSERT_SECTOR_DATA(sect);
 	ASSERT(pbs == sect->size);
 
 	return init_super_sector_raw(
-		sect->data, lbs, pbs, ddev_lb, ldev_lb, n_snapshots, name);
+		sect->data, lbs, pbs, ddev_lb, ldev_lb, name);
 }
 
 /**
@@ -457,12 +448,12 @@ void print_super_sector_raw(const struct walb_super_sector* super_sect)
 	printf("checksum: %08x\n"
 		"logical_bs: %u\n"
 		"physical_bs: %u\n"
-		"snapshot_metadata_size: %u\n"
+		"metadata_size: %u\n"
 		"log_checksum_salt: %"PRIu32"\n",
 		super_sect->checksum,
 		super_sect->logical_bs,
 		super_sect->physical_bs,
-		super_sect->snapshot_metadata_size,
+		super_sect->metadata_size,
 		super_sect->log_checksum_salt);
 	printf("uuid: ");
 	print_uuid(super_sect->uuid);
@@ -553,75 +544,6 @@ bool write_super_sector(int fd, const struct sector_data *sect)
 		return false;
 	}
 	return write_super_sector_raw(fd, sect->data);
-}
-
-/**
- * Read super sector from the log device.
- *
- * This is obsolute. Use read_super_sector() instead.
- *
- * @fd file descripter of log device.
- * @super_sect super sector to be filled.
- * @sector_size sector size in bytes.
- * @n_snapshots number of snapshots to be stored.
- *
- * RETURN:
- *   true in success, or false.
- */
-bool read_super_sector_raw(
-	int fd, struct walb_super_sector* super_sect,
-	u32 sector_size, u32 n_snapshots)
-{
-	u8 *buf, *buf0, *buf1;
-	u64 off0, off1;
-	bool ret0, ret1, ret;
-	struct walb_super_sector *p0, *p1;
-
-	/* 1. Read two sectors
-	   2. Compare them and choose one having larger written_lsid. */
-	ASSERT(super_sect);
-	ASSERT(sector_size <= PAGE_SIZE);
-
-	/* Memory image of sector. */
-	if (posix_memalign((void **)&buf, PAGE_SIZE, sector_size * 2) != 0) {
-		perror("memory allocation failed.");
-		return false;
-	}
-	buf0 = buf;
-	buf1 = buf + sector_size;
-	p0 = (struct walb_super_sector *)buf0;
-	p1 = (struct walb_super_sector *)buf1;
-	off0 = get_super_sector0_offset(sector_size);
-	off1 = get_super_sector1_offset(sector_size, n_snapshots);
-	ret0 = read_sector_raw(fd, buf0, sector_size, off0);
-	ret1 = read_sector_raw(fd, buf1, sector_size, off1);
-
-	if (ret0 && checksum(buf0, sector_size, 0) != 0) { ret0 = false; }
-	if (ret1 && checksum(buf1, sector_size, 0) != 0) { ret1 = false; }
-	if (ret0 && p0->sector_type != SECTOR_TYPE_SUPER) { ret0 = false; }
-	if (ret1 && p1->sector_type != SECTOR_TYPE_SUPER) { ret1 = false; }
-	if (!ret0 && !ret1) {
-		LOGe("Both superblocks are broken.\n");
-		ret = false;
-	} else if (ret0 && ret1) {
-		u64 lsid0 = p0->written_lsid;
-		u64 lsid1 = p1->written_lsid;
-		if (lsid0 >= lsid1) {
-			memcpy(super_sect, buf0, sizeof(*super_sect));
-		} else {
-			memcpy(super_sect, buf1, sizeof(*super_sect));
-		}
-		ret = true;
-	} else if (ret0) {
-		memcpy(super_sect, buf0, sizeof(*super_sect));
-		ret = true;
-	} else {
-		memcpy(super_sect, buf1, sizeof(*super_sect));
-		ret = true;
-	}
-
-	free(buf);
-	return ret;
 }
 
 /**

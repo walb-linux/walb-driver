@@ -8,7 +8,6 @@
 
 #include "log_record.h"
 #include "super.h"
-#include "snapshot.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,9 +57,6 @@ extern "C" {
  *   DATA u8 reserved[PAGE_SIZE]
  *   DATA walb_super_sector super0
  *   DATA u8 padding[PAGE_SIZE - SECTOR_SIZE]
- *   snapshot_meta_data {
- *     DATA walb_snapshot_sector snapshot_sector[super0.snapshot_metadata_size]
- *   }
  *   DATA walb_super_sector super1
  *   DATA u8 padding[PAGE_SIZE - SECTOR_SIZE]
  * }
@@ -98,28 +94,6 @@ extern "C" {
  */
 
 /**
- * Get metadata size
- *
- * @sector_size sector size.
- * @n_snapshots number snapshot to keep.
- *
- * @return required metadata size by the sector.
- */
-static inline unsigned int get_metadata_size(
-	unsigned int sector_size, unsigned int n_snapshots)
-{
-	unsigned int n_sectors;
-	unsigned int t;
-
-	ASSERT(PAGE_SIZE % sector_size == 0 &&
-		PAGE_SIZE >= sector_size);
-
-	t = get_max_n_records_in_snapshot_sector(sector_size);
-	n_sectors = (n_snapshots + t - 1) / t;
-	return n_sectors;
-}
-
-/**
  * Get offset of primary super sector.
  *
  * @sector_size sector size in bytes.
@@ -138,27 +112,15 @@ static inline u64 get_super_sector0_offset(int sector_size)
 }
 
 /**
- * Get offset of first metadata sector.
- *
- * @sector_size sector size in bytes.
- * @return offset in sectors.
- */
-static inline u64 get_metadata_offset(int sector_size)
-{
-	return get_super_sector0_offset(sector_size) + 1;
-}
-
-/**
  * Get offset of secondary super sector.
  *
  * @sector_size sector size in bytes.
- * @n_snapshots number of snapshot to keep.
+ * @n
  * @return offset in sectors.
  */
-static inline u64 get_super_sector1_offset(int sector_size, int n_snapshots)
+static inline u64 get_super_sector1_offset(int sector_size)
 {
-	return	get_metadata_offset(sector_size) +
-		get_metadata_size(sector_size, n_snapshots);
+	return get_super_sector0_offset(sector_size) + 1;
 }
 
 /**
@@ -169,9 +131,9 @@ static inline u64 get_super_sector1_offset(int sector_size, int n_snapshots)
  *
  * @return ring buffer offset by the sector.
  */
-static inline u64 get_ring_buffer_offset(int sector_size, int n_snapshots)
+static inline u64 get_ring_buffer_offset(int sector_size)
 {
-	return	get_super_sector1_offset(sector_size, n_snapshots) + 1;
+	return	get_super_sector1_offset(sector_size) + 1;
 }
 
 
@@ -185,22 +147,13 @@ static inline u64 get_super_sector0_offset_2(const struct walb_super_sector* sup
 }
 
 /**
- * Get offset of first metadata sector.
- */
-static inline u64 get_metadata_offset_2(const struct walb_super_sector* super_sect)
-{
-	ASSERT(super_sect != NULL);
-	return get_metadata_offset(super_sect->physical_bs);
-}
-
-/**
  * Get offset of secondary super sector.
  */
 static inline u64 get_super_sector1_offset_2(const struct walb_super_sector* super_sect)
 {
 	ASSERT(super_sect != NULL);
-	return	get_metadata_offset(super_sect->physical_bs) +
-		super_sect->snapshot_metadata_size;
+	return	get_super_sector0_offset(super_sect->physical_bs) + 1 +
+		super_sect->metadata_size;
 }
 
 /**

@@ -254,108 +254,14 @@ enum {
 	WALB_IOCTL_STATUS,
 
 	/*
-	 * Create a snapshot.
-	 *
-	 * INPUT:
-	 *   ctl->u2k.buf as struct walb_snapshot_record *rec.
-	 *   ctl->u2k.buf_size must > (struct walb_snapshot_record).
-	 *     If rec->lsid is INVALID_LSID, then completed_lsid will be used.
-	 * OUTPUT:
-	 *   None.
-	 * RETURN:
-	 *   0 in success, or -EFAULT.
+	 * Deprecated. These will be removed.
 	 */
 	WALB_IOCTL_CREATE_SNAPSHOT,
-
-	/*
-	 * Delete a snapshot.
-	 *
-	 * INPUT:
-	 *   ctl->u2k.buf as struct walb_snapshot_record *rec.
-	 *     Only rec->name will be used.
-	 * OUTPUT:
-	 *   None.
-	 * RETURN:
-	 *   0 in success, or -EFAULT.
-	 */
 	WALB_IOCTL_DELETE_SNAPSHOT,
-
-	/*
-	 * Delete all snapshots in a lsid range.
-	 *
-	 * INPUT:
-	 *   ctl->u2k.buf as u64 *lsid.
-	 *     ctl->u2k.buf_size must be >= sizeof(u64) * 2;
-	 *     The range is lsid[0] <= lsid < lsid[1].
-	 * OUTPUT:
-	 *   ctl->val_int as the number of deleted records.
-	 * RETURN:
-	 *   0 in success, or -EFAULT.
-	 */
 	WALB_IOCTL_DELETE_SNAPSHOT_RANGE,
-
-	/*
-	 * Get snapshot record.
-	 *
-	 * INPUT:
-	 *   ctl->u2k.buf as struct walb_snapshot_record *rec0.
-	 *     Only rec0->name will be used.
-	 * OUTPUT:
-	 *   ctl->k2u.buf as struct walb_snapshot_record *rec1.
-	 *     rec1->name must be the same as rec1->name.
-	 * RETURN:
-	 *   0 in success, or -EFAULT.
-	 */
 	WALB_IOCTL_GET_SNAPSHOT,
-
-	/*
-	 * Get number of snapshots in a lsid range.
-	 *
-	 * INPUT:
-	 *   ctl->u2k.buf as u64 *lsid.
-	 *     ctl->u2k.buf_size must be >= sizeof(u64) * 2;
-	 *     The range is lsid[0] <= lsid < lsid[1].
-	 * OUTPUT:
-	 *   ctl->val_int as the number of deleted records.
-	 * RETURN:
-	 *   0 in success, or -EFAULT.
-	 */
 	WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE,
-
-	/*
-	 * Get snapshot records in a lsid range.
-	 *
-	 * INPUT:
-	 *   ctl->u2k.buf as u64 *lsid.
-	 *     ctl->u2k.buf_size must be >= sizeof(u64) * 2;
-	 *     The range is lsid[0] <= lsid < lsid[1].
-	 * OUTPUT:
-	 *   ctl->k2u.buf as struct walb_snapshot_record *rec.
-	 *   If the buffer size is small,
-	 *   all matched records will not be filled.
-	 *   ctl->val_int as the number of filled records.
-	 *   ctl->val_u64 as the last found lsid.
-	 * RETURN:
-	 *   0 in success, or -EFAULT.
-	 */
 	WALB_IOCTL_LIST_SNAPSHOT_RANGE,
-
-	/*
-	 * Get snapshot records from a specified id.
-	 *
-	 * INPUT:
-	 *   ctl->val_u32 as the starting snapshot id.
-	 * OUTPUT:
-	 *   ctl->k2u.buf as struct walb_snapshot_record *rec.
-	 *     If the buffer size is small,
-	 *     all matched records will not be filled.
-	 *   ctl->val_int as the number of filled records.
-	 *   ctl->val_u32 as the next starting snapshot id.
-	 *     You can get all snapshots by using the id
-	 *     as next starting snapshot id respectively.
-	 * RETURN:
-	 *   0 in success, or -EFAULT.
-	 */
 	WALB_IOCTL_LIST_SNAPSHOT_FROM,
 
 	/*

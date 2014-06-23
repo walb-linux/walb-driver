@@ -38,7 +38,7 @@ struct walb_super_sector {
 	 *
 	 * Constant value inside kernel.
 	 *   logical_bs, physical_bs
-	 *   snapshot_metadata_size
+	 *   metadata_size
 	 *   uuid
 	 *   ring_buffer_size
 	 *   sector_type
@@ -70,8 +70,9 @@ struct walb_super_sector {
 	u32 logical_bs; /* currently fixed as LOGICAL_BLOCK_SIZE. */
 	u32 physical_bs;
 
-	/* Number of physical blocks for snapshot metadata. */
-	u32 snapshot_metadata_size;
+	/* Number of physical blocks for metadata.
+	   Metadata area is currently unused. */
+	u32 metadata_size;
 
 	/* Log checksum must use this. */
 	u32 log_checksum_salt;

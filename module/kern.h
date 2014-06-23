@@ -131,7 +131,8 @@ struct walb_dev
 	struct list_head list; /* member of all_wdevs_ */
 
 	/* Max number of snapshots.
-	   This is const after log device is initialized. */
+	   This is const after log device is initialized.
+	   This is deprecated. */
 	u32 n_snapshots;
 
 	/* Size of underlying devices. [logical block] */
@@ -203,11 +204,6 @@ struct walb_dev
 	 * For checkpointing.
 	 */
 	struct checkpoint_data cpd;
-
-	/*
-	 * For snapshotting.
-	 */
-	struct snapshot_data *snapd;
 
 	/* Maximum logpack size [physical block].
 	   This will be used for logpack size

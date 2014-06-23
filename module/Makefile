@@ -44,7 +44,7 @@ ifneq ($(KERNELRELEASE),)
 # call from kernel build system
 
 walb-mod-objs := \
-walb.o wdev_util.o wdev_ioctl.o sysfs.o control.o alldevs.o snapshot.o checkpoint.o \
+walb.o wdev_util.o wdev_ioctl.o sysfs.o control.o alldevs.o checkpoint.o \
 super.o logpack.o overlapped_io.o pending_io.o io.o redo.o \
 sector_io.o bio_entry.o bio_wrapper.o worker.o pack_work.o \
 hashtbl.o treemap.o

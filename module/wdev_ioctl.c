@@ -11,7 +11,6 @@
 #include "kern.h"
 #include "io.h"
 #include "super.h"
-#include "snapshot.h"
 #include "alldevs.h"
 #include "control.h"
 
@@ -23,13 +22,6 @@
 static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_status(struct walb_dev *wdev, struct walb_ctl *ctl); /* NYI */
-static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_delete_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_delete_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl);
-static int ioctl_wdev_list_snapshot_from(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_get_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl);
@@ -126,258 +118,7 @@ static int ioctl_wdev_status(struct walb_dev *wdev, struct walb_ctl *ctl)
 }
 
 /**
- * Create a snapshot.
- *
- * @wdev walb dev.
- * @ctl ioctl data.
- * RETURN:
- *   0 in success, or -EFAULT.
- */
-static int ioctl_wdev_create_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
-{
-	int error;
-	struct walb_snapshot_record srec;
-
-	LOGn("WALB_IOCTL_CREATE_SNAPSHOT\n");
-	ASSERT(ctl->command == WALB_IOCTL_CREATE_SNAPSHOT);
-
-	if (!get_snapshot_record_from_ctl_u2k(&srec, ctl)) {
-		return -EFAULT;
-	}
-	if (srec.lsid == INVALID_LSID) {
-		srec.lsid = get_completed_lsid(wdev);
-		ASSERT(srec.lsid != INVALID_LSID);
-	}
-	if (!is_valid_snapshot_name(srec.name)) {
-		LOGe("Snapshot name is invalid.\n");
-		return -EFAULT;
-	}
-	LOGn("Create snapshot name %s lsid %"PRIu64" ts %"PRIu64"\n",
-		srec.name, srec.lsid, srec.timestamp);
-	error = snapshot_add(wdev->snapd, srec.name, srec.lsid, srec.timestamp);
-	if (error) {
-		ctl->error = error;
-		return -EFAULT;
-	}
-	return 0;
-}
-
-/**
- * Delete a snapshot.
- *
- * @wdev walb dev.
- * @ctl ioctl data.
- * RETURN:
- *   0 in success, or -EFAULT.
- */
-static int ioctl_wdev_delete_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
-{
-	struct walb_snapshot_record srec;
-	int error;
-
-	LOGn("WALB_IOCTL_DELETE_SNAPSHOT\n");
-	ASSERT(ctl->command == WALB_IOCTL_DELETE_SNAPSHOT);
-
-	if (!get_snapshot_record_from_ctl_u2k(&srec, ctl)) {
-		return -EFAULT;
-	}
-	if (!is_valid_snapshot_name(srec.name)) {
-		LOGe("Invalid snapshot name.\n");
-		return -EFAULT;
-	}
-	error = snapshot_del(wdev->snapd, srec.name);
-	if (error) {
-		ctl->error = error;
-		return -EFAULT;
-	}
-	return 0;
-}
-
-/**
- * Delete snapshots over a lsid range.
- *
- * @wdev walb dev.
- * @ctl ioctl data.
- * RETURN:
- *   0 in success, or -EFAULT.
- */
-static int ioctl_wdev_delete_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl)
-{
-	u64 lsid0, lsid1;
-	int ret;
-
-	LOGn("WALB_IOCTL_DELETE_SNAPSHOT_RANGE");
-	ASSERT(ctl->command == WALB_IOCTL_DELETE_SNAPSHOT_RANGE);
-
-	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
-		return -EFAULT;
-	}
-	ret = snapshot_del_range(wdev->snapd, lsid0, lsid1);
-	if (ret >= 0) {
-		ctl->val_int = ret;
-	} else {
-		ctl->error = ret;
-		return -EFAULT;
-	}
-	return 0;
-}
-
-/**
- * Get a snapshot.
- *
- * @wdev walb dev.
- * @ctl ioctl data.
- * RETURN:
- *   0 in success, or -EFAULT.
- */
-static int ioctl_wdev_get_snapshot(struct walb_dev *wdev, struct walb_ctl *ctl)
-{
-	int ret;
-	struct walb_snapshot_record srec0t;
-	struct walb_snapshot_record *srec1, *srec;
-
-	LOGn("WALB_IOCTL_GET_SNAPSHOT\n");
-	ASSERT(ctl->command == WALB_IOCTL_GET_SNAPSHOT);
-
-	if (!get_snapshot_record_from_ctl_u2k(&srec0t, ctl)) {
-		return -EFAULT;
-	}
-	if (sizeof(struct walb_snapshot_record) > ctl->k2u.buf_size) {
-		LOGe("buffer size too small.\n");
-		return -EFAULT;
-	}
-	srec1 = (struct walb_snapshot_record *)ctl->k2u.kbuf; /* assign pointer. */
-	if (!srec1) {
-		LOGe("You must specify buffers for an output snapshot record.\n");
-		return -EFAULT;
-	}
-	ret = snapshot_get(wdev->snapd, srec0t.name, &srec);
-	if (!ret) {
-		snapshot_record_init(srec1);
-		ctl->error = 1;
-		return -EFAULT;
-	}
-	*srec1 = *srec;
-	return 0;
-}
-
-/**
- * Get number of snapshots over a lsid range.
- *
- * @wdev walb dev.
- * @ctl ioctl data.
- * RETURN:
- *   0 in success, or -EFAULT.
- */
-static int ioctl_wdev_num_of_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl)
-{
-	u64 lsid0, lsid1;
-	int ret;
-
-	LOGn("WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE\n");
-	ASSERT(ctl->command == WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE);
-
-	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
-		return -EFAULT;
-	}
-	ret = snapshot_n_records_range(
-		wdev->snapd, lsid0, lsid1);
-	if (ret < 0) {
-		ctl->error = ret;
-		return -EFAULT;
-	}
-	ctl->val_int = ret;
-	return 0;
-}
-
-/**
- * List snapshots over a lsid range.
- *
- * @wdev walb dev.
- * @ctl ioctl data.
- * RETURN:
- *   0 in success, or -EFAULT.
- */
-static int ioctl_wdev_list_snapshot_range(struct walb_dev *wdev, struct walb_ctl *ctl)
-{
-	u64 lsid0, lsid1;
-	struct walb_snapshot_record *srec;
-	size_t size;
-	int n_rec, ret;
-
-	LOGn("WALB_IOCTL_LIST_SNAPSHOT_RANGE\n");
-	ASSERT(ctl->command == WALB_IOCTL_LIST_SNAPSHOT_RANGE);
-
-	if (!get_lsid_range_from_ctl(&lsid0, &lsid1, ctl)) {
-		return -EFAULT;
-	}
-	srec = (struct walb_snapshot_record *)ctl->k2u.kbuf;
-	size = ctl->k2u.buf_size / sizeof(struct walb_snapshot_record);
-	if (size == 0) {
-		LOGe("Buffer is to small for results.\n");
-		return -EFAULT;
-	}
-	ret = snapshot_list_range(wdev->snapd, srec, size,
-				lsid0, lsid1);
-	if (ret < 0) {
-		ctl->error = ret;
-		return -EFAULT;
-	}
-	n_rec = ret;
-	ctl->val_int = n_rec;
-	if (n_rec > 0) {
-		ASSERT(srec[n_rec - 1].lsid != INVALID_LSID);
-		ctl->val_u64 = srec[n_rec - 1].lsid + 1;
-	} else {
-		ctl->val_u64 = INVALID_LSID;
-	}
-	return 0;
-}
-
-/**
- * List snapshots from a snapshot_id.
- *
- * @wdev walb dev.
- * @ctl ioctl data.
- * RETURN:
- *   0 in success, or -EFAULT.
- */
-static int ioctl_wdev_list_snapshot_from(struct walb_dev *wdev, struct walb_ctl *ctl)
-{
-	struct walb_snapshot_record *srec;
-	size_t size;
-	int n_rec, ret;
-	u32 sid, next_sid;
-
-	LOGn("WALB_IOCTL_LIST_SNAPSHOT_FROM\n");
-	ASSERT(ctl->command == WALB_IOCTL_LIST_SNAPSHOT_FROM);
-
-	sid = ctl->val_u32;
-	srec = (struct walb_snapshot_record *)ctl->k2u.kbuf;
-	size = ctl->k2u.buf_size / sizeof(struct walb_snapshot_record);
-	if (size == 0) {
-		LOGe("Buffer is to small for results.\n");
-		return -EFAULT;
-	}
-	ret = snapshot_list_from(wdev->snapd, srec, size, sid);
-	if (ret < 0) {
-		ctl->error = ret;
-		return -EFAULT;
-	}
-	n_rec = ret;
-	ctl->val_int = n_rec;
-	if (n_rec > 0) {
-		ASSERT(srec[n_rec - 1].snapshot_id != INVALID_SNAPSHOT_ID);
-		next_sid = srec[n_rec - 1].snapshot_id + 1;
-	} else {
-		next_sid = INVALID_SNAPSHOT_ID;
-	}
-	ctl->val_u32 = next_sid;
-	return 0;
-}
-
-/**
- * Take a snapshot immedicately.
+ * Take a checkpoint immedicately.
  *
  * @wdev walb dev.
  * @ctl ioctl data.
@@ -675,12 +416,10 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 			old_ldev_size, new_ldev_size);
 		wdev->ldev_size = new_ldev_size;
 
-		/* Currently you can not change n_snapshots. */
-
 		/* Recalculate ring buffer size. */
 		wdev->ring_buffer_size =
 			addr_pb(pbs, new_ldev_size)
-			- get_ring_buffer_offset(pbs, wdev->n_snapshots);
+			- get_ring_buffer_offset(pbs);
 	}
 
 	/* Generate new uuid and salt. */
@@ -695,7 +434,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	memcpy(super->uuid, new_uuid, UUID_SIZE);
 	super->ring_buffer_size = wdev->ring_buffer_size;
 	super->log_checksum_salt = new_salt;
-	/* super->snapshot_metadata_size; */
+	/* super->metadata_size; */
 	lsid0_off = get_offset_of_lsid_2(super, 0);
 	spin_unlock(&wdev->lsuper0_lock);
 
@@ -722,16 +461,6 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 		iocore_set_readonly(wdev);
 		goto error2;
 	}
-
-	/* Delete all snapshots. */
-	if (snapshot_del_range(wdev->snapd, 0, MAX_LSID + 1) < 0) {
-		LOGe("Delete all snapshots failed.\n");
-		iocore_set_readonly(wdev);
-		goto error2;
-
-	}
-	ASSERT(snapshot_n_records(wdev->snapd) == 0);
-	LOGn("Delete all snapshots done.\n");
 
 	/* Clear log overflow. */
 	iocore_clear_log_overflow(wdev);
@@ -901,27 +630,6 @@ int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		break;
 	case WALB_IOCTL_IS_FLUSH_CAPABLE:
 		ret = ioctl_wdev_is_flush_capable(wdev, ctl);
-		break;
-	case WALB_IOCTL_CREATE_SNAPSHOT:
-		ret = ioctl_wdev_create_snapshot(wdev, ctl);
-		break;
-	case WALB_IOCTL_DELETE_SNAPSHOT:
-		ret = ioctl_wdev_delete_snapshot(wdev, ctl);
-		break;
-	case WALB_IOCTL_DELETE_SNAPSHOT_RANGE:
-		ret = ioctl_wdev_delete_snapshot_range(wdev, ctl);
-		break;
-	case WALB_IOCTL_GET_SNAPSHOT:
-		ret = ioctl_wdev_get_snapshot(wdev, ctl);
-		break;
-	case WALB_IOCTL_NUM_OF_SNAPSHOT_RANGE:
-		ret = ioctl_wdev_num_of_snapshot_range(wdev, ctl);
-		break;
-	case WALB_IOCTL_LIST_SNAPSHOT_RANGE:
-		ret = ioctl_wdev_list_snapshot_range(wdev, ctl);
-		break;
-	case WALB_IOCTL_LIST_SNAPSHOT_FROM:
-		ret = ioctl_wdev_list_snapshot_from(wdev, ctl);
 		break;
 	case WALB_IOCTL_STATUS:
 		ret = ioctl_wdev_status(wdev, ctl);
