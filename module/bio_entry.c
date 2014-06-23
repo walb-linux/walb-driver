@@ -85,7 +85,6 @@ static inline struct page* alloc_page_inc(gfp_t gfp_mask);
 static inline void free_page_dec(struct page *page);
 
 /* For bio_cursor */
-#ifdef WALB_FAST_ALGORITHM
 UNUSED static void bio_cursor_print(const char* level, struct bio_cursor *cur);
 UNUSED static bool bio_cursor_is_valid(const struct bio_cursor *cur);
 static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe);
@@ -98,7 +97,6 @@ static char* bio_cursor_map(struct bio_cursor *cur);
 static void bio_cursor_unmap(char *buffer);
 static unsigned int bio_cursor_try_copy_and_proceed(
 	struct bio_cursor *dst, struct bio_cursor *src, unsigned int len);
-#endif
 
 /* For bio_entry_cursor */
 static void get_bio_split_position(struct bio *bio, unsigned int first_sectors,
@@ -123,13 +121,11 @@ static void bio_entry_cursor_proceed_to_boundary(
 	struct bio_entry_cursor *cur);
 static bool bio_entry_cursor_split(struct bio_entry_cursor *cur, gfp_t gfp_mask);
 
-#ifdef WALB_FAST_ALGORITHM
 static void copied_bio_put(struct bio *bio);
 static void bio_data_copy(
 	struct bio_entry *dst, unsigned int dst_off,
 	struct bio_entry *src, unsigned int src_off,
 	unsigned int sectors);
-#endif /* WALB_FAST_ALGORITHM */
 
 static struct bio_entry* bio_entry_list_get_first_nonzero(
 	struct list_head *bio_ent_list);
@@ -171,7 +167,6 @@ static inline void free_page_dec(struct page *page)
 #endif
 }
 
-#ifdef WALB_FAST_ALGORITHM
 UNUSED static void bio_cursor_print(
 	const char *level, struct bio_cursor *cur)
 {
@@ -192,7 +187,6 @@ UNUSED static void bio_cursor_print(
 		pos, len,
 		cur->idx, cur->off, cur->off_in);
 }
-#endif
 
 /**
  * Check whether bio_cursor data is valid or not.
@@ -200,7 +194,6 @@ UNUSED static void bio_cursor_print(
  * RETURN:
  *   true if valid, or false.
  */
-#ifdef WALB_FAST_ALGORITHM
 UNUSED static bool bio_cursor_is_valid(const struct bio_cursor *cur)
 {
 	struct bio_vec *bvec;
@@ -242,12 +235,10 @@ fin:
 error:
 	return false;
 }
-#endif
 
 /**
  * Initialize bio_cursor data.
  */
-#ifdef WALB_FAST_ALGORITHM
 static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe)
 {
 	ASSERT(cur);
@@ -265,7 +256,6 @@ static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe)
 
 	ASSERT(bio_cursor_is_valid(cur));
 }
-#endif
 
 /**
  * Proceed a bio_cursor.
@@ -276,7 +266,6 @@ static void bio_cursor_init(struct bio_cursor *cur, struct bio_entry *bioe)
  * @cur cursor.
  * @len proceeding size [bytes].
  */
-#ifdef WALB_FAST_ALGORITHM
 static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len)
 {
 	unsigned int tmp;
@@ -298,12 +287,10 @@ static void bio_cursor_proceed(struct bio_cursor *cur, unsigned int len)
 
 	ASSERT(bio_cursor_is_valid(cur));
 }
-#endif
 
 /**
  * Check a bio_cursor indicates the end.
  */
-#ifdef WALB_FAST_ALGORITHM
 static bool bio_cursor_is_end(const struct bio_cursor *cur)
 {
 	ASSERT(bio_cursor_is_valid(cur));
@@ -315,23 +302,19 @@ static bool bio_cursor_is_end(const struct bio_cursor *cur)
 		return cur->off == cur->bioe->len * LOGICAL_BLOCK_SIZE;
 	}
 }
-#endif
 
 /**
  * Check a cursor is now io_vec boundary.
  */
-#ifdef WALB_FAST_ALGORITHM
 UNUSED static bool bio_cursor_is_boundary(const struct bio_cursor *cur)
 {
 	ASSERT(bio_cursor_is_valid(cur));
 	return cur->off_in == 0;
 }
-#endif
 
 /**
  * Get size to the end of the current io_vec.
  */
-#ifdef WALB_FAST_ALGORITHM
 static unsigned int bio_cursor_size_to_boundary(struct bio_cursor *cur)
 {
 	unsigned int bv_len;
@@ -345,12 +328,10 @@ static unsigned int bio_cursor_size_to_boundary(struct bio_cursor *cur)
 		return bv_len - cur->off_in;
 	}
 }
-#endif
 
 /**
  * Proceed to the next io_vec boundary.
  */
-#ifdef WALB_FAST_ALGORITHM
 static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
 {
 	ASSERT(bio_cursor_is_valid(cur));
@@ -363,14 +344,12 @@ static void bio_cursor_proceed_to_boundary(struct bio_cursor *cur)
 
 	ASSERT(bio_cursor_is_boundary(cur));
 }
-#endif
 
 /**
  * Get pointer to the buffer of the current io_vec of a bio_cursor.
  *
  * You must call bio_cursor_unmap() after operations done.
  */
-#ifdef WALB_FAST_ALGORITHM
 static char* bio_cursor_map(struct bio_cursor *cur)
 {
 	struct bio_vec *bvec;
@@ -386,18 +365,15 @@ static char* bio_cursor_map(struct bio_cursor *cur)
 	ASSERT(addr != 0);
 	return addr;
 }
-#endif
 
 /**
  * Unmapping a bio_cursor.
  * You must call this after calling bio_cursor_map().
  */
-#ifdef WALB_FAST_ALGORITHM
 static void bio_cursor_unmap(char *buffer)
 {
 	kunmap_atomic(buffer);
 }
-#endif
 
 /**
  * Copy data from a bio_cursor to a bio_cursor.
@@ -410,7 +386,6 @@ static void bio_cursor_unmap(char *buffer)
  *   Actually copied size [bytes].
  *   This may be less than @len.
  */
-#ifdef WALB_FAST_ALGORITHM
 static unsigned int bio_cursor_try_copy_and_proceed(
 	struct bio_cursor *dst, struct bio_cursor *src, unsigned int len)
 {
@@ -449,7 +424,6 @@ static unsigned int bio_cursor_try_copy_and_proceed(
 
 	return copied;
 }
-#endif
 
 /**
  * Get split position of a bio.
@@ -813,7 +787,6 @@ error:
 /**
  * Free its all pages and call bio_put().
  */
-#ifdef WALB_FAST_ALGORITHM
 static void copied_bio_put(struct bio *bio)
 {
 	struct bio_vec *bvec;
@@ -830,7 +803,6 @@ static void copied_bio_put(struct bio *bio)
 	ASSERT(atomic_read(&bio->bi_cnt) == 1);
 	bio_put(bio);
 }
-#endif
 
 /**
  * Copy data of a bio to another.
@@ -841,7 +813,6 @@ static void copied_bio_put(struct bio *bio)
  * @src_off source offset [sectors].
  * @sectors copy size [sectors].
  */
-#ifdef WALB_FAST_ALGORITHM
 static void bio_data_copy(
 	struct bio_entry *dst, unsigned int dst_off,
 	struct bio_entry *src, unsigned int src_off,
@@ -872,7 +843,6 @@ static void bio_data_copy(
 		size -= copied;
 	}
 }
-#endif
 
 /**
  * Get the first non-zero bio_entry in a bio_entry list.
@@ -998,9 +968,7 @@ void destroy_bio_entry(struct bio_entry *bioe)
 		LOG_("bioe->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe->bio_orig->bi_cnt));
 		bio = bioe->bio_orig;
-#ifdef WALB_FAST_ALGORITHM
 		ASSERT(bio_entry_state_is_own_pages(bioe));
-#endif
 		ASSERT(!bioe->bio);
 	} else if (bio_entry_state_is_splitted(bioe)) {
 		bio = NULL;
@@ -1011,15 +979,11 @@ void destroy_bio_entry(struct bio_entry *bioe)
 
 	if (bio) {
 		LOG_("bio_put %p\n", bio);
-#ifdef WALB_FAST_ALGORITHM
 		if (bio_entry_state_is_own_pages(bioe)) {
 			copied_bio_put(bio);
 		} else {
 			bio_put(bio);
 		}
-#else
-		bio_put(bio);
-#endif
 	}
 #ifdef WALB_DEBUG
 	atomic_dec(&n_allocated_);
@@ -1147,7 +1111,6 @@ error1:
 /**
  * Initialize a bio_entry with a bio with copy.
  */
-#ifdef WALB_FAST_ALGORITHM
 void init_copied_bio_entry(
 	struct bio_entry *bioe, struct bio *bio_with_copy)
 {
@@ -1160,7 +1123,6 @@ void init_copied_bio_entry(
 	}
 	bio_get(bio_with_copy);
 }
-#endif
 
 /**
  * Mark copied bio_entry list at a range.
@@ -1174,7 +1136,6 @@ void init_copied_bio_entry(
  *   true in success.
  *   false in failure due to memory allocation failure for splitting.
  */
-#ifdef WALB_FAST_ALGORITHM
 bool bio_entry_list_mark_copied(
 	struct list_head *bio_ent_list, unsigned int off, unsigned int sectors,
 	gfp_t gfp_mask)
@@ -1217,7 +1178,6 @@ bool bio_entry_list_mark_copied(
 error:
 	return false;
 }
-#endif
 
 /**
  * Check whether bio_entry_cursor data is valid or not.
@@ -1335,7 +1295,6 @@ bool bio_entry_cursor_proceed(struct bio_entry_cursor *cur,
  * RETURN:
  *   number of copied sectors [sectors].
  */
-#ifdef WALB_FAST_ALGORITHM
 unsigned int bio_entry_cursor_try_copy_and_proceed(
 	struct bio_entry_cursor *dst,
 	struct bio_entry_cursor *src,
@@ -1412,7 +1371,6 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 
 	return copied_sectors;
 }
-#endif
 
 /**
  * Check whether split bio(s) is required or not.

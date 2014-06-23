@@ -13,7 +13,6 @@
 #include "bio_wrapper.h"
 
 /* Pending data functions. */
-#ifdef WALB_FAST_ALGORITHM
 bool pending_insert(
 	struct multimap *pending_data, unsigned int *max_sectors_p,
 	struct bio_wrapper *biow, gfp_t gfp_mask);
@@ -28,6 +27,5 @@ void pending_delete_fully_overwritten(
 bool pending_insert_and_delete_fully_overwritten(
 	struct multimap *pending_data, unsigned int *max_sectors_p,
 	struct bio_wrapper *biow, gfp_t gfp_mask);
-#endif
 
 #endif /* WALB_PENDING_IO_H_KERNEL */

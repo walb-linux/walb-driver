@@ -32,11 +32,9 @@ static atomic_t shared_cnt_ = ATOMIC_INIT(0);
  * Static functions prototype.
  *******************************************************************************/
 
-#ifdef WALB_FAST_ALGORITHM
 static void bio_wrapper_get_overlapped_pos_and_len(
 	struct bio_wrapper *biow0,  struct bio_wrapper *biow1,
 	u64 *ol_pos_p, unsigned int *ol_len_p);
-#endif
 
 /*******************************************************************************
  * Macros definition.
@@ -54,7 +52,6 @@ static void bio_wrapper_get_overlapped_pos_and_len(
  * @ol_pos_p pointer to store result position [sectors].
  * @ol_len_p pointer to store result length [sectors].
  */
-#ifdef WALB_FAST_ALGORITHM
 static void bio_wrapper_get_overlapped_pos_and_len(
 	struct bio_wrapper *biow0,  struct bio_wrapper *biow1,
 	u64 *ol_pos_p, unsigned int *ol_len_p)
@@ -86,7 +83,6 @@ static void bio_wrapper_get_overlapped_pos_and_len(
 	*ol_pos_p = pos;
 	*ol_len_p = len;
 }
-#endif
 
 /*******************************************************************************
  * Global functions definition.
@@ -156,9 +152,7 @@ void print_bio_wrapper(const char *level, struct bio_wrapper *biow)
 		"  is_submitted %d\n"
 		"  is_completed %d\n"
 		"  is_discard %d\n"
-#ifdef WALB_FAST_ALGORITHM
 		"  is_overwritten %d\n"
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 		"  is_delayed %d\n"
 #endif
@@ -176,9 +170,7 @@ void print_bio_wrapper(const char *level, struct bio_wrapper *biow)
 		, bio_wrapper_state_is_submitted(biow) ? 1 : 0
 		, bio_wrapper_state_is_completed(biow) ? 1 : 0
 		, bio_wrapper_state_is_discard(biow) ? 1 : 0
-#ifdef WALB_FAST_ALGORITHM
 		, bio_wrapper_state_is_overwritten(biow) ? 1 : 0
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 		, bio_wrapper_state_is_delayed(biow) ? 1 : 0
 #endif
@@ -266,7 +258,6 @@ void destroy_bio_wrapper(struct bio_wrapper *biow)
  *   true if copy has done successfully,
  *   or false (due to memory allocation failure).
  */
-#ifdef WALB_FAST_ALGORITHM
 bool data_copy_bio_wrapper(
 	struct bio_wrapper *dst, struct bio_wrapper *src, gfp_t gfp_mask)
 {
@@ -318,8 +309,6 @@ bool data_copy_bio_wrapper(
 	LOG_("end dst %p src %p.\n", dst, src);
 	return true;
 }
-#endif
-
 
 /**
  * Initilaize bio_entry cache.

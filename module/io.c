@@ -94,18 +94,14 @@ static inline void set_read_only_mode(struct iocore_data *iocored)
 static void bio_entry_end_io(struct bio *bio, int error);
 static struct bio_entry* create_bio_entry_by_clone(
 	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
-#ifdef WALB_FAST_ALGORITHM
 static struct bio_entry* create_bio_entry_by_clone_copy(
 	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
-#endif
 
 /* Helper functions for bio_entry list. */
 static bool create_bio_entry_list(
 	struct bio_wrapper *biow, struct block_device *bdev);
-#ifdef WALB_FAST_ALGORITHM
 static bool create_bio_entry_list_by_copy(
 	struct bio_wrapper *biow, struct block_device *bdev);
-#endif
 static void submit_bio_entry_list(struct list_head *bioe_list);
 static int wait_for_bio_entry_list(struct list_head *bioe_list);
 static void clear_flush_bit_of_bio_entry_list(struct list_head *bioe_list);
@@ -222,12 +218,10 @@ static void fail_and_destroy_bio_wrapper_list(
 	struct walb_dev *wdev, struct list_head *biow_list);
 
 /* Stop/start queue for fast algorithm. */
-#ifdef WALB_FAST_ALGORITHM
 static bool should_stop_queue(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 static bool should_start_queue(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
-#endif
 
 /* For treemap memory manager. */
 static bool treemap_memory_manager_get(void);
@@ -273,7 +267,6 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	/* LOGd("bio_entry_end_io() begin.\n"); */
 	bioe->error = error;
 	bi_cnt = atomic_read(&bio->bi_cnt);
-#ifdef WALB_FAST_ALGORITHM
 	if (bio->bi_rw & REQ_WRITE) {
 		if (bioe->bio_orig) {
 			/* 2 for data, 1 for log. */
@@ -293,9 +286,6 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	} else {
 		ASSERT(bi_cnt == 1);
 	}
-#else
-	ASSERT(bi_cnt == 1);
-#endif
 	LOG_("complete bioe %p pos %"PRIu64" len %u\n",
 		bioe, (u64)bioe->pos, bioe->len);
 	if (bi_cnt == 1) {
@@ -347,7 +337,6 @@ error0:
 /**
  * Create a bio_entry by clone with copy.
  */
-#ifdef WALB_FAST_ALGORITHM
 static struct bio_entry* create_bio_entry_by_clone_copy(
 	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask)
 {
@@ -375,7 +364,6 @@ error0:
 	LOGe("create_bio_entry_by_clone_copy() end with error.\n");
 	return NULL;
 }
-#endif
 
 /**
  * Create bio_entry list for a bio_wrapper.
@@ -417,7 +405,6 @@ error0:
  * CONTEXT:
  *     Non-IRQ, Non-Atomic.
  */
-#ifdef WALB_FAST_ALGORITHM
 static bool create_bio_entry_list_by_copy(
 	struct bio_wrapper *biow, struct block_device *bdev)
 {
@@ -440,7 +427,6 @@ error0:
 	ASSERT(list_empty(&biow->bioe_list));
 	return false;
 }
-#endif
 
 /**
  * Submit all bio_entry(s) in a req_entry.
@@ -456,7 +442,6 @@ static void submit_bio_entry_list(struct list_head *bioe_list)
 
 	ASSERT(bioe_list);
 	list_for_each_entry(bioe, bioe_list, list) {
-#ifdef WALB_FAST_ALGORITHM
 #ifdef WALB_DEBUG
 		if (!bio_entry_state_is_splitted(bioe)) {
 			ASSERT(bioe->bio->bi_end_io == bio_entry_end_io);
@@ -474,12 +459,6 @@ static void submit_bio_entry_list(struct list_head *bioe_list)
 				bioe, (u64)bioe->pos, bioe->len);
 			generic_make_request(bioe->bio);
 		}
-#else /* WALB_FAST_ALGORITHM */
-		LOG_("submit_d: rw %lu bioe %p pos %"PRIu64" len %u\n",
-			bioe->bio->bi_rw,
-			bioe, (u64)bioe->pos, bioe->len);
-		generic_make_request(bioe->bio);
-#endif /* WALB_FAST_ALGORITHM */
 	}
 }
 
@@ -1718,9 +1697,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 			if (rtimeo == 0) {
 				LOGn("timeout(%d): biow %p bio %p pos %"PRIu64" len %u"
 					" state(%d%d%d%d"
-#ifdef WALB_FAST_ALGORITHM
 					"%d"
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 					"%d"
 #endif
@@ -1738,9 +1715,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 					bio_wrapper_state_is_submitted(biow),
 					bio_wrapper_state_is_completed(biow),
 					bio_wrapper_state_is_discard(biow)
-#ifdef WALB_FAST_ALGORITHM
 					, bio_wrapper_state_is_overwritten(biow)
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 					, bio_wrapper_state_is_delayed(biow)
 					, biow->n_overlapped
@@ -1978,7 +1953,6 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 #endif
 #endif
 
-#ifdef WALB_FAST_ALGORITHM
 	spin_lock_init(&iocored->pending_data_lock);
 	iocored->pending_data = multimap_create(gfp_mask, &mmgr_);
 	if (!iocored->pending_data) {
@@ -1989,7 +1963,6 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	iocored->queue_restart_jiffies = jiffies;
 	iocored->is_under_throttling = false;
 	iocored->max_sectors_in_pending = 0;
-#endif
 
 #ifdef WALB_DEBUG
 	atomic_set(&iocored->n_flush_io, 0);
@@ -1998,11 +1971,9 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 #endif
 	return iocored;
 
-#ifdef WALB_FAST_ALGORITHM
 error2:
 	multimap_destroy(iocored->pending_data);
 
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 error1:
 	multimap_destroy(iocored->overlapped_data);
@@ -2019,9 +1990,7 @@ static void destroy_iocore_data(struct iocore_data *iocored)
 {
 	ASSERT(iocored);
 
-#ifdef WALB_FAST_ALGORITHM
 	multimap_destroy(iocored->pending_data);
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	multimap_destroy(iocored->overlapped_data);
 #endif
@@ -2242,10 +2211,8 @@ static void wait_for_logpack_and_submit_datapack(
 	struct iocore_data *iocored;
 	bool ret;
 	int reti;
-#ifdef WALB_FAST_ALGORITHM
 	bool is_pending_insert_succeeded;
 	bool is_stop_queue = false;
-#endif
 
 	ASSERT(wpack);
 	ASSERT(wdev);
@@ -2296,11 +2263,7 @@ static void wait_for_logpack_and_submit_datapack(
 				blk_queue_discard(bdev_get_queue(wdev->ddev))) {
 				/* Create all related bio(s) by copying IO data. */
 			retry_create:
-#ifdef WALB_FAST_ALGORITHM
 				ret = create_bio_entry_list_by_copy(biow, wdev->ddev);
-#else
-				ret = create_bio_entry_list(biow, wdev->ddev);
-#endif
 				if (!ret) {
 					schedule();
 					goto retry_create;
@@ -2319,7 +2282,6 @@ static void wait_for_logpack_and_submit_datapack(
 				}
 			}
 
-#ifdef WALB_FAST_ALGORITHM
 			/* Call bio_get() for all bio(s) */
 			get_bio_entry_list(&biow->bioe_list);
 
@@ -2367,7 +2329,6 @@ static void wait_for_logpack_and_submit_datapack(
 			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
 			bio_endio(biow->bio, 0);
 			biow->bio = NULL;
-#endif /* WALB_FAST_ALGORITHM */
 
 			reti = test_and_set_bit(BIO_WRAPPER_PREPARED, &biow->flags);
 			ASSERT(reti == 0);
@@ -2397,9 +2358,7 @@ static void wait_for_logpack_and_submit_datapack(
 			get_logpack_header(wpack->logpack_header_sector);
 		bool should_notice = false;
 		spin_lock(&wdev->lsid_lock);
-#ifdef WALB_FAST_ALGORITHM
 		wdev->lsids.completed = get_next_lsid(logh);
-#endif
 		if (wpack->is_flush_contained &&
 			wdev->lsids.permanent < logh->logpack_lsid) {
 			should_notice = is_permanent_log_empty(&wdev->lsids);
@@ -2425,17 +2384,10 @@ static void wait_for_logpack_and_submit_datapack(
 static void wait_for_write_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow)
 {
-#if defined(WALB_FAST_ALGORITHM) || defined(WALB_OVERLAPPED_SERIALIZE)
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-#endif
-#ifdef WALB_FAST_ALGORITHM
 	const bool is_endio = false;
 	const bool is_delete = false;
 	bool is_start_queue;
-#else
-	const bool is_endio = true;
-	const bool is_delete = true;
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	struct bio_wrapper *biow_tmp, *biow_tmp_next;
 	unsigned int n_should_submit;
@@ -2493,7 +2445,6 @@ static void wait_for_write_bio_wrapper(
 	ASSERT(list_empty(&should_submit_list));
 #endif
 
-#ifdef WALB_FAST_ALGORITHM
 	/* Delete from pending data. */
 	spin_lock(&iocored->pending_data_lock);
 	is_start_queue = should_start_queue(wdev, biow);
@@ -2516,7 +2467,6 @@ static void wait_for_write_bio_wrapper(
 
 	/* Free resources. */
 	destroy_bio_entry_list(&biow->bioe_list);
-#endif /* WALB_FAST_ALGORITHM */
 
 	ASSERT(list_empty(&biow->bioe_list));
 }
@@ -2555,9 +2505,7 @@ static void wait_for_bio_wrapper(
 				LOGn("timeout(%d): biow %p ith %u "
 					"bioe %p bio %p pos %"PRIu64" len %u"
 					" state(%d%d%d%d"
-#ifdef WALB_FAST_ALGORITHM
 					"%d"
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 					"%d"
 #endif
@@ -2568,9 +2516,7 @@ static void wait_for_bio_wrapper(
 					bio_wrapper_state_is_submitted(biow),
 					bio_wrapper_state_is_completed(biow),
 					bio_wrapper_state_is_discard(biow)
-#ifdef WALB_FAST_ALGORITHM
 					, bio_wrapper_state_is_overwritten(biow)
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 					, bio_wrapper_state_is_delayed(biow)
 #endif
@@ -2663,10 +2609,8 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 static void submit_read_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow)
 {
-#ifdef WALB_FAST_ALGORITHM
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	bool ret;
-#endif
 
 	ASSERT(biow);
 	ASSERT(biow->bio);
@@ -2682,7 +2626,6 @@ static void submit_read_bio_wrapper(
 		goto error1;
 	}
 
-#ifdef WALB_FAST_ALGORITHM
 	/* Check pending data and copy data from executing write requests. */
 	spin_lock(&iocored->pending_data_lock);
 	ret = pending_check_and_copy(
@@ -2692,7 +2635,6 @@ static void submit_read_bio_wrapper(
 	if (!ret) {
 		goto error1;
 	}
-#endif /* WALB_FAST_ALGORITHM */
 
 	/* Submit all related bio(s). */
 	submit_bio_entry_list(&biow->bioe_list);
@@ -3011,7 +2953,6 @@ static void fail_and_destroy_bio_wrapper_list(
  * CONTEXT:
  *   pending_data_lock must be held.
  */
-#ifdef WALB_FAST_ALGORITHM
 static bool should_stop_queue(
 	struct walb_dev *wdev, struct bio_wrapper *biow)
 {
@@ -3039,7 +2980,6 @@ static bool should_stop_queue(
 		return false;
 	}
 }
-#endif
 
 /**
  * Check whether walb should restart the queue
@@ -3048,7 +2988,6 @@ static bool should_stop_queue(
  * CONTEXT:
  *   pending_data_lock must be held.
  */
-#ifdef WALB_FAST_ALGORITHM
 static bool should_start_queue(
 	struct walb_dev *wdev, struct bio_wrapper *biow)
 {
@@ -3081,7 +3020,6 @@ static bool should_start_queue(
 		return false;
 	}
 }
-#endif
 
 /**
  * Increment n_users of treemap memory manager and

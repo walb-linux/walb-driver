@@ -1209,9 +1209,7 @@ bool execute_redo(struct walb_dev *wdev)
 	spin_lock(&wdev->lsid_lock);
 	wdev->lsids.prev_written = written_lsid;
 	wdev->lsids.written = written_lsid;
-#ifdef WALB_FAST_ALGORITHM
 	wdev->lsids.completed = written_lsid;
-#endif
 	wdev->lsids.permanent = written_lsid;
 	wdev->lsids.flush = written_lsid;
 	wdev->lsids.latest = written_lsid;

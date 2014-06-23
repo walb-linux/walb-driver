@@ -53,11 +53,7 @@ static ssize_t walb_attr_show_lsids(struct walb_dev *wdev, char *buf)
 		"oldest       %" PRIu64 "\n"
 		, lsids.latest
 		, lsids.flush
-#ifdef WALB_FAST_ALGORITHM
 		, lsids.completed
-#else
-		, lsids.written
-#endif
 		, lsids.permanent
 		, lsids.written
 		, lsids.prev_written

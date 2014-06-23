@@ -14,10 +14,8 @@
  * Static functions prototype.
  *******************************************************************************/
 
-#ifdef WALB_FAST_ALGORITHM
 static void insert_to_sorted_bio_wrapper_list_by_lsid(
 	struct bio_wrapper *biow, struct list_head *biow_list);
-#endif
 
 /*******************************************************************************
  * Static functions definition.
@@ -33,7 +31,6 @@ static void insert_to_sorted_bio_wrapper_list_by_lsid(
  * @biow (struct bio_wrapper *)
  * @biow_list (struct list_head *)
  */
-#ifdef WALB_FAST_ALGORITHM
 static void insert_to_sorted_bio_wrapper_list_by_lsid(
 	struct bio_wrapper *biow, struct list_head *biow_list)
 {
@@ -75,7 +72,6 @@ static void insert_to_sorted_bio_wrapper_list_by_lsid(
 	}
 #endif
 }
-#endif
 
 /*******************************************************************************
  * Global functions definition.
@@ -87,7 +83,6 @@ static void insert_to_sorted_bio_wrapper_list_by_lsid(
  * CONTEXT:
  *   pending_data lock must be held.
  */
-#ifdef WALB_FAST_ALGORITHM
 bool pending_insert(
 	struct multimap *pending_data,
 	unsigned int *max_sectors_p,
@@ -115,7 +110,6 @@ bool pending_insert(
 	*max_sectors_p = max(*max_sectors_p, biow->len);
 	return true;
 }
-#endif
 
 /**
  * Delete a req_entry from a pending data.
@@ -123,7 +117,6 @@ bool pending_insert(
  * CONTEXT:
  *   pending_data lock must be held.
  */
-#ifdef WALB_FAST_ALGORITHM
 void pending_delete(
 	struct multimap *pending_data,
 	unsigned int *max_sectors_p,
@@ -144,7 +137,6 @@ void pending_delete(
 		*max_sectors_p = 0;
 	}
 }
-#endif
 
 /**
  * Check overlapped writes and copy from them.
@@ -155,7 +147,6 @@ void pending_delete(
  * CONTEXT:
  *   pending_data lock must be held.
  */
-#ifdef WALB_FAST_ALGORITHM
 bool pending_check_and_copy(
 	struct multimap *pending_data, unsigned int max_sectors,
 	struct bio_wrapper *biow, gfp_t gfp_mask)
@@ -227,7 +218,6 @@ bool pending_check_and_copy(
 #endif
 	return true;
 }
-#endif
 
 /**
  * Delete fully overwritten biow(s) by a specified biow
@@ -238,7 +228,6 @@ bool pending_check_and_copy(
  * @pending_data pending data.
  * @biow bio wrapper as a target for comparison.
  */
-#ifdef WALB_FAST_ALGORITHM
 void pending_delete_fully_overwritten(
 	struct multimap *pending_data, const struct bio_wrapper *biow)
 {
@@ -279,7 +268,6 @@ void pending_delete_fully_overwritten(
 		if (!ret) { break; }
 	}
 }
-#endif
 
 /**
  * Insert a biow to and
@@ -289,7 +277,6 @@ void pending_delete_fully_overwritten(
  * RETURN:
  *   true in success, or false.
  */
-#ifdef WALB_FAST_ALGORITHM
 bool pending_insert_and_delete_fully_overwritten(
 	struct multimap *pending_data, unsigned int *max_sectors_p,
 	struct bio_wrapper *biow, gfp_t gfp_mask)
@@ -305,6 +292,5 @@ bool pending_insert_and_delete_fully_overwritten(
 	pending_delete_fully_overwritten(pending_data, biow);
 	return true;
 }
-#endif
 
 MODULE_LICENSE("Dual BSD/GPL");

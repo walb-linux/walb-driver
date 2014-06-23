@@ -3,7 +3,6 @@ DEBUG = 0
 DYNAMIC_DEBUG = 0
 # You can specify the following parameters.
 OVERLAP = 1 #overlapped writes serialization.
-FAST_ALG = 1 # use fast algorithm instead of easy.
 ASSERT = 0 # enable ASSERT even with relase build.
 PERF = 0 # enable performacne analysis of each bio wrapper.
 
@@ -22,10 +21,6 @@ endif
 
 ifeq ($(OVERLAP),1)
   DEBFLAGS += -DWALB_OVERLAPPED_SERIALIZE
-endif
-
-ifeq ($(FAST_ALG),1)
-  DEBFLAGS += -DWALB_FAST_ALGORITHM
 endif
 
 ifeq ($(PERF),1)
@@ -80,7 +75,7 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD       := $(shell pwd)
 
 default:
-	@echo DEBUG=$(DEBUG) DYNAMIC_DEBUG=$(DYNAMIC_DEBUG) OVERLAP=$(OVERLAP) FAST_ALG=$(FAST_ALG)
+	@echo DEBUG=$(DEBUG) DYNAMIC_DEBUG=$(DYNAMIC_DEBUG) OVERLAP=$(OVERLAP)
 	@echo DEBFLAGS=$(DEBFLAGS)
 	$(MAKE) clean
 	$(MAKE) buildmodule

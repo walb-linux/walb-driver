@@ -92,10 +92,8 @@ enum
 	 * Information bit.
 	 */
 	BIO_WRAPPER_DISCARD,
-#ifdef WALB_FAST_ALGORITHM
 	/* Set if the biow data will be fully overwritten by newer IO(s). */
 	BIO_WRAPPER_OVERWRITTEN,
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	/* Set if the biow submission for data device is delayed
 	   due to overlapped. */
@@ -111,10 +109,8 @@ enum
 	test_bit(BIO_WRAPPER_COMPLETED, &(biow)->flags)
 #define bio_wrapper_state_is_discard(biow) \
 	test_bit(BIO_WRAPPER_DISCARD, &(biow)->flags)
-#ifdef WALB_FAST_ALGORITHM
 #define bio_wrapper_state_is_overwritten(biow) \
 	test_bit(BIO_WRAPPER_OVERWRITTEN, &(biow)->flags)
-#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 #define bio_wrapper_state_is_delayed(biow) \
 	test_bit(BIO_WRAPPER_DELAYED, &(biow)->flags)

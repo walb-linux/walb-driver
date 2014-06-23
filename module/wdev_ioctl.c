@@ -392,9 +392,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	spin_lock(&wdev->lsid_lock);
 	wdev->lsids.latest = 0;
 	wdev->lsids.flush = 0;
-#ifdef WALB_FAST_ALGORITHM
 	wdev->lsids.completed = 0;
-#endif
 	wdev->lsids.permanent = 0;
 	wdev->lsids.written = 0;
 	wdev->lsids.prev_written = 0;

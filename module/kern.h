@@ -111,9 +111,7 @@ struct lsid_set
 {
 	u64 latest;
 	u64 flush;
-#ifdef WALB_FAST_ALGORITHM
 	u64 completed;
-#endif
 	u64 permanent;
 	u64 written;
 	u64 prev_written;
@@ -219,7 +217,6 @@ struct walb_dev
 	/* Log flush time interval must not exceed this value [jiffies]. */
 	unsigned int log_flush_interval_jiffies;
 
-#ifdef WALB_FAST_ALGORITHM
 	/* max_pending_sectors < pending_sectors
 	   we must stop the queue. */
 	unsigned int max_pending_sectors;
@@ -230,7 +227,6 @@ struct walb_dev
 
 	/* queue stopped period must not exceed this value. */
 	unsigned int queue_stop_timeout_jiffies;
-#endif
 
 	/* If you prefer small response to large throughput,
 	   set n_pack_bulk smaller. */

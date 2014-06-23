@@ -51,13 +51,11 @@ enum {
 	BIO_ENTRY_DISCARD = 0,
 	/* Set if the bio is splitted one. */
 	BIO_ENTRY_SPLITTED,
-#ifdef WALB_FAST_ALGORITHM
 	/* Set if read is done by copy from pending data. */
 	BIO_ENTRY_COPIED,
 	/* Set when pages are managed by itself.
 	   destroy_bio_entry() must free the page. */
 	BIO_ENTRY_OWN_PAGES,
-#endif
 };
 
 #define bio_entry_state_is_discard(bioe) \
@@ -68,7 +66,6 @@ enum {
 	test_bit(BIO_ENTRY_SPLITTED, &(bioe)->flags)
 #define bio_entry_state_set_splitted(bioe) \
 	set_bit(BIO_ENTRY_SPLITTED, &(bioe)->flags)
-#ifdef WALB_FAST_ALGORITHM
 #define bio_entry_state_is_copied(bioe) \
 	test_bit(BIO_ENTRY_COPIED, &(bioe)->flags)
 #define bio_entry_state_set_copied(bioe) \
@@ -77,7 +74,6 @@ enum {
 	test_bit(BIO_ENTRY_OWN_PAGES, &(bioe)->flags)
 #define bio_entry_state_set_own_pages(bioe) \
 	set_bit(BIO_ENTRY_OWN_PAGES, &(bioe)->flags)
-#endif
 
 /**
  * bio_entry cursor.
@@ -106,7 +102,6 @@ void get_bio_entry_list(struct list_head *bio_ent_list);
 void put_bio_entry_list(struct list_head *bio_ent_list);
 void destroy_bio_entry_list(struct list_head *bio_ent_list);
 
-#ifdef WALB_FAST_ALGORITHM
 struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask);
 void init_copied_bio_entry(
 	struct bio_entry *bioe, struct bio *bio_with_copy);
@@ -118,7 +113,6 @@ unsigned int bio_entry_cursor_try_copy_and_proceed(
 	struct bio_entry_cursor *dst,
 	struct bio_entry_cursor *src,
 	unsigned int sectors);
-#endif
 
 bool bio_entry_cursor_is_valid(const struct bio_entry_cursor *cur);
 void bio_entry_cursor_init(

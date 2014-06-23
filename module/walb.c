@@ -767,9 +767,7 @@ struct walb_dev* prepare_wdev(
 	bool retb;
 #ifdef WALB_DEBUG
 	u64 written_lsid, latest_lsid, flush_lsid;
-#ifdef WALB_FAST_ALGORITHM
 	u64 completed_lsid;
-#endif
 #endif
 
 	ASSERT(is_walb_start_param_valid(param));
@@ -856,9 +854,7 @@ struct walb_dev* prepare_wdev(
 	wdev->lsids.prev_written = wdev->lsids.written;
 	wdev->lsids.written = super->written_lsid;
 	wdev->lsids.permanent = wdev->lsids.written;
-#ifdef WALB_FAST_ALGORITHM
 	wdev->lsids.completed = wdev->lsids.written;
-#endif
 	wdev->lsids.latest = wdev->lsids.written;
 
 	wdev->ring_buffer_size = super->ring_buffer_size;
@@ -888,7 +884,6 @@ struct walb_dev* prepare_wdev(
 		wdev->max_logpack_pb,
 		wdev->log_flush_interval_jiffies,
 		wdev->log_flush_interval_pb);
-#ifdef WALB_FAST_ALGORITHM
 	ASSERT(0 < param->min_pending_mb);
 	ASSERT(param->min_pending_mb < param->max_pending_mb);
 	wdev->max_pending_sectors
@@ -903,7 +898,6 @@ struct walb_dev* prepare_wdev(
 		wdev->max_pending_sectors,
 		wdev->min_pending_sectors,
 		wdev->queue_stop_timeout_jiffies);
-#endif
 	wdev->n_pack_bulk = 128; /* default value. */
 	if (param->n_pack_bulk > 0) { wdev->n_pack_bulk = param->n_pack_bulk; }
 	wdev->n_io_bulk = 1024; /* default value. */
@@ -967,15 +961,11 @@ struct walb_dev* prepare_wdev(
 	written_lsid = wdev->lsids.written;
 	latest_lsid = wdev->lsids.latest;
 	flush_lsid = wdev->lsids.flush;
-#ifdef WALB_FAST_ALGORITHM
 	completed_lsid = wdev->lsids.completed;
-#endif
 	spin_unlock(&wdev->lsid_lock);
 	ASSERT(written_lsid == latest_lsid);
 	ASSERT(written_lsid == flush_lsid);
-#ifdef WALB_FAST_ALGORITHM
 	ASSERT(written_lsid == completed_lsid);
-#endif
 #endif
 
 	return wdev;

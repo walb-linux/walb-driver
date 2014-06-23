@@ -100,7 +100,6 @@ struct iocore_data
 
 #endif /* WALB_OVERLAPPED_SERIALIZE */
 
-#ifdef WALB_FAST_ALGORITHM
 	/**
 	 * All bio_wrapper data must keep
 	 * biow->bioe_list while they are stored in the pending_data.
@@ -124,7 +123,7 @@ struct iocore_data
 
 	/* true if queue is stopped. */
 	bool is_under_throttling;
-#endif
+
 	/* To check that we should flush log device. */
 	unsigned long log_flush_jiffies;
 

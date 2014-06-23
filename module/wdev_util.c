@@ -127,15 +127,11 @@ u64 get_permanent_lsid(struct walb_dev *wdev)
  */
 u64 get_completed_lsid(struct walb_dev *wdev)
 {
-#ifdef WALB_FAST_ALGORITHM
 	u64 ret;
 	spin_lock(&wdev->lsid_lock);
 	ret = wdev->lsids.completed;
 	spin_unlock(&wdev->lsid_lock);
 	return ret;
-#else /* WALB_FAST_ALGORITHM */
-	return get_written_lsid(wdev);
-#endif /* WALB_FAST_ALGORITHM */
 }
 
 /**
