@@ -27,7 +27,6 @@
 
 #include "kern.h"
 #include "hashtbl.h"
-#include "snapshot.h"
 #include "control.h"
 #include "alldevs.h"
 #include "util.h"
@@ -44,7 +43,6 @@
 #include "walb/ioctl.h"
 #include "walb/log_device.h"
 #include "walb/sector.h"
-#include "walb/snapshot.h"
 #include "walb/logger.h"
 
 /*******************************************************************************
@@ -548,10 +546,7 @@ static void walblog_finalize_device(struct walb_dev *wdev)
  */
 static int walb_ldev_initialize(struct walb_dev *wdev)
 {
-	u64 snapshot_begin_pb, snapshot_end_pb;
 	struct sector_data *lsuper0_tmp;
-	int ret;
-
 	ASSERT(wdev);
 
 	/*
@@ -597,36 +592,8 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 	/* Do not forget calling kfree(dev->lsuper0)
 	   before releasing the block device. */
 
-	/*
-	 * 2. Prepare and initialize snapshot data structure.
-	 */
-	snapshot_begin_pb = get_metadata_offset(wdev->physical_bs);
-	snapshot_end_pb = snapshot_begin_pb +
-		get_super_sector(wdev->lsuper0)->snapshot_metadata_size;
-	LOGd("snapshot offset range: [%"PRIu64",%"PRIu64").\n",
-		snapshot_begin_pb, snapshot_end_pb);
-	wdev->snapd = snapshot_data_create
-		(wdev->ldev, snapshot_begin_pb, snapshot_end_pb);
-	if (!wdev->snapd) {
-		LOGe("snapshot_data_create() failed.\n");
-		goto error2;
-	}
-	/* Initialize snapshot data by scanning snapshot sectors. */
-	ret = snapshot_data_initialize(wdev->snapd);
-	if (!ret) {
-		LOGe("Initialize snapshot data failed.\n");
-		goto error3;
-	}
-
 	return 0;
-#if 0
-error4:
-	if (wdev->snapd) {
-		snapshot_data_finalize(wdev->snapd);
-	}
-#endif
-error3:
-	snapshot_data_destroy(wdev->snapd);
+
 error2:
 	sector_free(lsuper0_tmp);
 error1:
@@ -642,10 +609,6 @@ static void walb_ldev_finalize(struct walb_dev *wdev)
 {
 	ASSERT(wdev);
 	ASSERT(wdev->lsuper0);
-	ASSERT(wdev->snapd);
-
-	snapshot_data_finalize(wdev->snapd);
-	snapshot_data_destroy(wdev->snapd);
 
 	if (!walb_finalize_super_block(wdev, is_sync_superblock_)) {
 		LOGe("finalize super block failed.\n");
@@ -1061,7 +1024,6 @@ void destroy_wdev(struct walb_dev *wdev)
 
 	iocore_flush(wdev);
 
-	snapshot_data_finalize(wdev->snapd);
 	walb_ldev_finalize(wdev);
 	iocore_finalize(wdev);
 

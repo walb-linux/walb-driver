@@ -57,13 +57,9 @@ bool sector_array_write(
 bool init_super_sector_raw(
 	struct walb_super_sector* super_sect,
 	unsigned int pbs, unsigned int lbs,
-	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+	u64 ddev_lb, u64 ldev_lb,
 	const char *name);
 void print_super_sector_raw(const struct walb_super_sector* super_sect);
-DEPRECATED
-bool read_super_sector_raw(
-	int fd, struct walb_super_sector* super_sect,
-	u32 sector_size, u32 n_snapshots);
 bool write_super_sector_raw(
 	int fd, const struct walb_super_sector* super_sect);
 
@@ -71,7 +67,7 @@ bool write_super_sector_raw(
 bool init_super_sector(
 	struct sector_data *sect,
 	unsigned int pbs, unsigned int lbs,
-	u64 ddev_lb, u64 ldev_lb, int n_snapshots,
+	u64 ddev_lb, u64 ldev_lb,
 	const char *name);
 void print_super_sector(const struct sector_data *sect);
 bool read_super_sector(int fd, struct sector_data *sect);

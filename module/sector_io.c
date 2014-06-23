@@ -138,7 +138,7 @@ void walb_print_super_sector(struct walb_super_sector *lsuper0)
 		"checksum %08x\n"
 		"logical_bs %u\n"
 		"physical_bs %u\n"
-		"snapshot_metadata_size %u\n"
+		"metadata_size %u\n"
 		"uuid: %s\n"
 		"sector_type: %04x\n"
 		"ring_buffer_size %llu\n"
@@ -149,7 +149,7 @@ void walb_print_super_sector(struct walb_super_sector *lsuper0)
 		lsuper0->checksum,
 		lsuper0->logical_bs,
 		lsuper0->physical_bs,
-		lsuper0->snapshot_metadata_size,
+		lsuper0->metadata_size,
 		uuidstr,
 		lsuper0->sector_type,
 		lsuper0->ring_buffer_size,
@@ -183,7 +183,7 @@ bool walb_read_super_sector(
 
 	/* Really read. */
 	off0 = get_super_sector0_offset(pbs);
-	/* off1 = get_super_sector1_offset(wdev->physical_bs, wdev->n_snapshots); */
+	/* off1 = get_super_sector1_offset(wdev->physical_bs, 0); */
 	if (!sector_io(READ, ldev, off0, lsuper)) {
 		LOGe("read super sector0 failed\n");
 		goto error0;

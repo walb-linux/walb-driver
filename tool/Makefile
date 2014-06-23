@@ -11,7 +11,7 @@ endif
 BINARIES = walbctl trim test_rw
 TEST_BINARIES = \
 	test/test_rbtree test/test_checksum test/test_u64bits \
-	test/test_sector test/test_super test/test_snapshot test/test_logpack
+	test/test_sector test/test_super test/test_logpack
 
 binaries: version_h $(BINARIES) $(TEST_BINARIES)
 
@@ -24,7 +24,7 @@ rebuild:
 	$(MAKE) clean
 	$(MAKE) binaries
 
-WALBCTL_OBJS = walbctl.o util.o walb_util.o logpack.o snapshot.o
+WALBCTL_OBJS = walbctl.o util.o walb_util.o logpack.o
 walbctl: $(WALBCTL_OBJS)
 	$(CC) -o $@ $(CFLAGS) $(WALBCTL_OBJS)
 
@@ -39,9 +39,6 @@ test/test_checksum: test/test_checksum.o
 
 test/test_u64bits: test/test_u64bits.o
 	$(CC) -o $@ $(CFLAGS) test/test_u64bits.o
-
-test/test_snapshot: test/test_snapshot.o util.o walb_util.o snapshot.o
-	$(CC) -o $@ $(CFLAGS) test/test_snapshot.o util.o walb_util.o snapshot.o
 
 test/test_sector: test/test_sector.o util.o walb_util.o
 	$(CC) -o $@ $(CFLAGS) test/test_sector.o util.o walb_util.o
@@ -59,9 +56,8 @@ SRCS= \
 	test/test_rbtree.c \
 	test/test_sector.c \
 	test/test_super.c \
-	test/test_snapshot.c \
 	test/test_logpack.c \
-	util.c logpack.c test_rw.c walbctl.c snapshot.c trim.c
+	util.c logpack.c test_rw.c walbctl.c trim.c
 
 .c.o:
 	$(CC) -c $< -o $@ $(CFLAGS)
@@ -91,75 +87,55 @@ test_sector.o: test/test_sector.c ../include/walb/sector.h \
  ../include/walb/checksum.h random.h check_userland.h \
  ../include/walb/userland.h util.h ../include/walb/common.h walb_util.h \
  ../include/walb/walb.h ../include/walb/log_device.h \
- ../include/walb/log_record.h ../include/walb/util.h \
- ../include/walb/u32bits.h ../include/walb/super.h \
- ../include/walb/sector.h ../include/walb/block_size.h \
- ../include/walb/snapshot.h ../include/walb/u64bits.h
+ ../include/walb/log_record.h ../include/walb/check.h \
+ ../include/walb/util.h ../include/walb/u32bits.h ../include/walb/super.h \
+ ../include/walb/sector.h ../include/walb/block_size.h
 test_super.o: test/test_super.c util.h ../include/walb/common.h \
  ../include/walb/userland.h walb_util.h check_userland.h \
  ../include/walb/walb.h ../include/walb/common.h \
  ../include/walb/disk_name.h ../include/walb/log_device.h \
  ../include/walb/log_record.h ../include/walb/walb.h \
- ../include/walb/util.h ../include/walb/u32bits.h \
+ ../include/walb/check.h ../include/walb/util.h ../include/walb/u32bits.h \
  ../include/walb/checksum.h ../include/walb/super.h \
  ../include/walb/sector.h ../include/walb/block_size.h \
- ../include/walb/snapshot.h ../include/walb/u64bits.h \
  ../include/walb/super.h
-test_snapshot.o: test/test_snapshot.c util.h ../include/walb/common.h \
- ../include/walb/userland.h walb_util.h check_userland.h \
- ../include/walb/walb.h ../include/walb/common.h \
- ../include/walb/disk_name.h ../include/walb/log_device.h \
- ../include/walb/log_record.h ../include/walb/walb.h \
- ../include/walb/util.h ../include/walb/u32bits.h \
- ../include/walb/checksum.h ../include/walb/super.h \
- ../include/walb/sector.h ../include/walb/block_size.h \
- ../include/walb/snapshot.h ../include/walb/u64bits.h snapshot.h \
- ../include/walb/log_record.h ../include/walb/snapshot.h
 test_logpack.o: test/test_logpack.c ../include/walb/block_size.h \
  ../include/walb/common.h ../include/walb/userland.h util.h \
  ../include/walb/common.h walb_util.h check_userland.h \
  ../include/walb/walb.h ../include/walb/disk_name.h \
  ../include/walb/log_device.h ../include/walb/log_record.h \
- ../include/walb/walb.h ../include/walb/util.h ../include/walb/u32bits.h \
- ../include/walb/checksum.h ../include/walb/super.h \
- ../include/walb/sector.h ../include/walb/block_size.h \
- ../include/walb/snapshot.h ../include/walb/u64bits.h logpack.h \
- ../include/walb/log_record.h
+ ../include/walb/walb.h ../include/walb/check.h ../include/walb/util.h \
+ ../include/walb/u32bits.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/block_size.h logpack.h ../include/walb/log_record.h
 util.o: util.c ../include/walb/common.h ../include/walb/userland.h \
- ../include/walb/block_size.h ../include/walb/common.h \
+ ../include/walb/logger.h ../include/walb/print.h \
+ ../include/walb/common.h ../include/walb/block_size.h \
  ../include/walb/util.h random.h check_userland.h \
  ../include/walb/userland.h util.h
 logpack.o: logpack.c ../include/walb/block_size.h \
- ../include/walb/common.h ../include/walb/userland.h util.h \
+ ../include/walb/common.h ../include/walb/userland.h \
+ ../include/walb/logger.h ../include/walb/print.h util.h \
  ../include/walb/common.h walb_util.h check_userland.h \
  ../include/walb/walb.h ../include/walb/disk_name.h \
  ../include/walb/log_device.h ../include/walb/log_record.h \
- ../include/walb/walb.h ../include/walb/util.h ../include/walb/u32bits.h \
- ../include/walb/checksum.h ../include/walb/super.h \
- ../include/walb/sector.h ../include/walb/block_size.h \
- ../include/walb/snapshot.h ../include/walb/u64bits.h logpack.h \
- ../include/walb/log_record.h
+ ../include/walb/walb.h ../include/walb/check.h ../include/walb/util.h \
+ ../include/walb/u32bits.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/block_size.h logpack.h ../include/walb/log_record.h
 test_rw.o: test_rw.c random.h check_userland.h ../include/walb/userland.h \
  util.h ../include/walb/common.h ../include/walb/userland.h
 walbctl.o: walbctl.c ../include/walb/walb.h ../include/walb/common.h \
  ../include/walb/userland.h ../include/walb/disk_name.h \
+ ../include/walb/logger.h ../include/walb/print.h \
  ../include/walb/log_device.h ../include/walb/log_record.h \
- ../include/walb/walb.h ../include/walb/util.h ../include/walb/u32bits.h \
- ../include/walb/checksum.h ../include/walb/super.h \
- ../include/walb/sector.h ../include/walb/block_size.h \
- ../include/walb/snapshot.h ../include/walb/u64bits.h \
- ../include/walb/log_record.h ../include/walb/ioctl.h random.h \
- check_userland.h ../include/walb/userland.h util.h \
- ../include/walb/common.h walb_util.h logpack.h snapshot.h \
- ../include/walb/snapshot.h walb_log.h version.h
-snapshot.o: snapshot.c util.h ../include/walb/common.h \
- ../include/walb/userland.h walb_util.h check_userland.h \
- ../include/walb/walb.h ../include/walb/common.h \
- ../include/walb/disk_name.h ../include/walb/log_device.h \
- ../include/walb/log_record.h ../include/walb/walb.h \
- ../include/walb/util.h ../include/walb/u32bits.h \
- ../include/walb/checksum.h ../include/walb/super.h \
- ../include/walb/sector.h ../include/walb/block_size.h \
- ../include/walb/snapshot.h ../include/walb/u64bits.h snapshot.h \
- ../include/walb/log_record.h ../include/walb/snapshot.h
-trim.o: trim.c ../include/walb/common.h ../include/walb/userland.h util.h
+ ../include/walb/walb.h ../include/walb/check.h ../include/walb/util.h \
+ ../include/walb/u32bits.h ../include/walb/checksum.h \
+ ../include/walb/super.h ../include/walb/sector.h \
+ ../include/walb/block_size.h ../include/walb/log_record.h \
+ ../include/walb/ioctl.h random.h check_userland.h \
+ ../include/walb/userland.h util.h ../include/walb/common.h walb_util.h \
+ logpack.h walb_log.h version.h
+trim.o: trim.c ../include/walb/common.h ../include/walb/userland.h \
+ ../include/walb/logger.h ../include/walb/print.h \
+ ../include/walb/common.h util.h

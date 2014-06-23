@@ -517,31 +517,6 @@ bool get_lsid_range_from_ctl(
 }
 
 /**
- * Get snapshot record from a walb ctl buffer.
- *
- * @srec pointer to result buffer.
- * @ctl control.
- *
- * RETURN:
- *   true in success, or false.
- */
-bool get_snapshot_record_from_ctl_u2k(
-	struct walb_snapshot_record *srec, const struct walb_ctl *ctl)
-{
-	ASSERT(srec);
-	if (ctl->u2k.buf_size < sizeof(*srec)) {
-		LOGe("Buffer is too small for walb_snapshot_record.\n");
-		return false;
-	}
-	if (!ctl->u2k.kbuf) {
-		LOGe("Buffer must not be NULL, be walb_snapshot_record data.\n");
-		return false;
-	}
-	*srec = *(struct walb_snapshot_record *)ctl->u2k.kbuf;
-	return true;
-}
-
-/**
  * Set chunk sectors.
  *
  * @chunk_sectors variable to be set.

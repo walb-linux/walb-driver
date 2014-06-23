@@ -55,8 +55,6 @@ bool melt_if_frozen(struct walb_dev *wdev, bool restarts_checkpointing);
 void set_geometry(struct hd_geometry *geo, u64 n_sectors);
 bool get_lsid_range_from_ctl(
 	u64 *lsid0, u64 *lsid1, const struct walb_ctl *ctl);
-bool get_snapshot_record_from_ctl_u2k(
-	struct walb_snapshot_record *srec, const struct walb_ctl *ctl);
 void set_chunk_sectors(
 	unsigned int *chunk_sectors, unsigned int pbs,
 	const struct request_queue *q);
