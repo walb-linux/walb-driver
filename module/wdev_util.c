@@ -269,7 +269,8 @@ bool resize_disk(struct gendisk *gd, u64 new_size)
 	if (old_size > new_size) {
 		LOGn("Shrink disk should discard block cache.\n");
 		check_disk_size_change(gd, bdev);
-		bdev->bd_invalidated = 0; /* This is bugfix. */
+		/* This should be implemented in check_disk_size_change(). */
+		bdev->bd_invalidated = 0;
 	} else {
 		i_size_write(bdev->bd_inode,
 			(loff_t)new_size * LOGICAL_BLOCK_SIZE);

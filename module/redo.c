@@ -322,7 +322,7 @@ static struct bio_wrapper* create_log_bio_wrapper_for_redo(
 	struct bio_wrapper *biow;
 	const unsigned int pbs = wdev->physical_bs;
 	u64 off_lb, off_pb;
-	int len;
+	int bytes;
 	bool is_sectd_alloc = false;
 
 	ASSERT(pbs <= PAGE_SIZE);
@@ -341,14 +341,14 @@ static struct bio_wrapper* create_log_bio_wrapper_for_redo(
 	off_pb = lsid % wdev->ring_buffer_size + wdev->ring_buffer_off;
 	LOG_("lsid: %"PRIu64" off_pb: %"PRIu64"\n", lsid, off_pb);
 	off_lb = addr_lb(pbs, off_pb);
-	bio->bi_sector = off_lb;
+	bio->bi_iter.bi_sector = off_lb;
 	bio->bi_rw = READ;
 	bio->bi_end_io = bio_end_io_for_redo;
 	bio->bi_private = biow;
-	len = bio_add_page(bio, virt_to_page(sectd->data),
+	bytes = bio_add_page(bio, virt_to_page(sectd->data),
 			pbs, offset_in_page(sectd->data));
-	ASSERT(len == pbs);
-	ASSERT(bio->bi_size == pbs);
+	ASSERT(bytes == pbs);
+	ASSERT((bio_sectors(bio) << 9) == pbs);
 
 	init_bio_wrapper(biow, bio);
 	biow->private_data = sectd;
@@ -394,13 +394,13 @@ static bool prepare_data_bio_for_redo(
 	if (!bio) { return false; }
 
 	bio->bi_bdev = wdev->ddev;
-	bio->bi_sector = pos;
+	bio->bi_iter.bi_sector = pos;
 	bio->bi_rw = WRITE;
 	bio->bi_end_io = bio_end_io_for_redo;
 	bio->bi_private = biow;
 	bio_add_page(bio, virt_to_page(sectd->data),
 		len * LOGICAL_BLOCK_SIZE, offset_in_page(sectd->data));
-	ASSERT(bio->bi_size == len * LOGICAL_BLOCK_SIZE);
+	ASSERT(bio_sectors(bio) == len);
 
 	init_bio_wrapper(biow, bio);
 	biow->private_data = sectd;
@@ -431,11 +431,11 @@ static struct bio_wrapper* create_discard_bio_wrapper_for_redo(
 	if (!biow) { goto error1; }
 
 	bio->bi_bdev = wdev->ddev;
-	bio->bi_sector = (sector_t)pos;
+	bio->bi_iter.bi_sector = pos;
+	bio->bi_iter.bi_size = len << 9;
 	bio->bi_rw = WRITE | REQ_DISCARD;
 	bio->bi_end_io = bio_end_io_for_redo;
 	bio->bi_private = biow;
-	bio->bi_size = len;
 
 	init_bio_wrapper(biow, bio);
 	ASSERT(bio_wrapper_state_is_discard(biow));
@@ -459,9 +459,8 @@ static void destroy_bio_wrapper_for_redo(
 {
 	struct sector_data *sectd;
 
-	if (!biow) { return; }
-
-	ASSERT(list_empty(&biow->bioe_list));
+	if (!biow)
+		return;
 
 	if (biow->private_data) {
 		sectd = biow->private_data;
@@ -541,8 +540,8 @@ static void wait_for_all_read_io_and_destroy(struct redo_data *read_rd)
 	retry:
 		rtimeo = wait_for_completion_timeout(&biow->done, timeo);
 		if (rtimeo == 0) {
-			LOGw("timeout(%d): biow %p pos %"PRIu64" len %u\n",
-				c, biow, (u64)biow->pos, biow->len);
+			LOGw("timeout(%d): biow %p pos %" PRIu64 " len %u\n"
+				, c, biow, (u64)biow->pos, biow->len);
 			c++;
 			goto retry;
 		}
@@ -1021,7 +1020,8 @@ static void create_discard_data_io_for_redo(
 	ASSERT(test_bit_u32(LOG_RECORD_DISCARD, &rec->flags));
 
 retry:
-	biow = create_discard_bio_wrapper_for_redo(wdev, rec->offset, rec->io_size);
+	biow = create_discard_bio_wrapper_for_redo(
+		wdev, rec->offset, rec->io_size >> 9);
 	if (!biow) {
 		schedule();
 		goto retry;

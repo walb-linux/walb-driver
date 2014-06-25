@@ -15,6 +15,7 @@
 #include "walb/block_size.h"
 #include "bio_entry.h"
 #include "bio_wrapper.h"
+#include "bio_util.h"
 
 /*******************************************************************************
  * Static data.
@@ -26,63 +27,6 @@ static struct kmem_cache *bio_wrapper_cache_ = NULL;
 
 /* shared coutner of the cache. */
 static atomic_t shared_cnt_ = ATOMIC_INIT(0);
-
-
-/*******************************************************************************
- * Static functions prototype.
- *******************************************************************************/
-
-static void bio_wrapper_get_overlapped_pos_and_len(
-	struct bio_wrapper *biow0,  struct bio_wrapper *biow1,
-	u64 *ol_pos_p, unsigned int *ol_len_p);
-
-/*******************************************************************************
- * Macros definition.
- *******************************************************************************/
-
-/*******************************************************************************
- * Static functions definition.
- *******************************************************************************/
-
-/**
- * Get overlapped position and length of two bio entries.
- *
- * @biow0 a bio wrapper.
- * @biow1 another bio wrapper.
- * @ol_pos_p pointer to store result position [sectors].
- * @ol_len_p pointer to store result length [sectors].
- */
-static void bio_wrapper_get_overlapped_pos_and_len(
-	struct bio_wrapper *biow0,  struct bio_wrapper *biow1,
-	u64 *ol_pos_p, unsigned int *ol_len_p)
-{
-	u64 pos, pos_end0, pos_end1;
-	unsigned int len;
-
-	/* Bigger one as the begining position. */
-	if (biow0->pos < biow1->pos) {
-		pos = biow1->pos;
-	} else {
-		pos = biow0->pos;
-	}
-	ASSERT(biow0->pos <= pos);
-	ASSERT(biow1->pos <= pos);
-
-	/* Smaller one as the ending position. */
-	pos_end0 = biow0->pos + biow0->len;
-	pos_end1 = biow1->pos + biow1->len;
-	if (pos_end0 < pos_end1) {
-		len = pos_end0 - pos;
-	} else {
-		len = pos_end1 - pos;
-	}
-	ASSERT(biow0->len >= len);
-	ASSERT(biow1->len >= len);
-
-	/* Set results. */
-	*ol_pos_p = pos;
-	*ol_len_p = len;
-}
 
 /*******************************************************************************
  * Global functions definition.
@@ -126,11 +70,8 @@ void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow)
  * Print a req_entry.
  */
 UNUSED
-void print_bio_wrapper(const char *level, struct bio_wrapper *biow)
+void print_bio_wrapper(const char *level, const struct bio_wrapper *biow)
 {
-	struct bio_entry *bioe;
-	int i;
-
 	ASSERT(biow);
 	printk("%s"
 		"biow %p\n"
@@ -175,32 +116,31 @@ void print_bio_wrapper(const char *level, struct bio_wrapper *biow)
 		, bio_wrapper_state_is_delayed(biow) ? 1 : 0
 #endif
 		);
-	i = 0;
-	list_for_each_entry(bioe, &biow->bioe_list, list) {
-		printk("%s"
-			"  [%d] bioe %p pos %" PRIu64 " len %u\n"
-			, level,
-			i, bioe, (u64)bioe->pos, bioe->len);
-		i++;
+	if (biow->cloned_bioe) {
+		const struct bio_entry *bioe = biow->cloned_bioe;
+		printk("%s""  cloned_bioe %p pos %" PRIu64 " len %u\n"
+			, level, bioe
+			, (u64)bio_entry_pos(bioe)
+			, bio_entry_len(bioe));
 	}
-	printk("%s"
-		"  number of bioe %d\n", level, i);
 }
 
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 {
 	ASSERT(biow);
 
-	INIT_LIST_HEAD(&biow->bioe_list);
+	biow->cloned_bioe = NULL;
+	bio_list_init(&biow->cloned_bio_list);
 	biow->error = 0;
 	biow->csum = 0;
 	biow->private_data = NULL;
 	init_completion(&biow->done);
 	biow->flags = 0;
+
 	if (bio) {
 		biow->bio = bio;
-		biow->pos = bio->bi_sector;
-		biow->len = bio->bi_size / LOGICAL_BLOCK_SIZE;
+		biow->pos = bio_begin_sector(bio);
+		biow->len = bio_sectors(bio);
 		if (bio->bi_rw & REQ_DISCARD) {
 			set_bit(BIO_WRAPPER_DISCARD, &biow->flags);
 		}
@@ -232,27 +172,108 @@ struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask)
 	return biow;
 }
 
+/**
+ * Do not touch biow->bio if not null.
+ */
 void destroy_bio_wrapper(struct bio_wrapper *biow)
 {
-	struct bio_entry *bioe, *bioe_next;
+	if (!biow)
+		return;
 
-	if (!biow) { return; }
-	list_for_each_entry_safe(bioe, bioe_next, &biow->bioe_list, list) {
-		list_del(&bioe->list);
-		destroy_bio_entry(bioe);
-	}
+	if (biow->cloned_bioe)
+		destroy_bio_entry(biow->cloned_bioe);
+
 	kmem_cache_free(bio_wrapper_cache_, biow);
+}
+
+#define bio_list_for_each_safe(bio, n, bl)				\
+	for (bio = (bl)->head, n = bio->bi_next; bio;			\
+	     bio = n, n = (n ? n->bi_next : NULL))
+
+/**
+ * BEFORE:
+ *   prev -> next
+ * AFTER:
+ *   prev -> bio -> next
+ */
+static inline void bio_list_insert(
+	struct bio_list *bl, struct bio *bio, struct bio *prev)
+{
+	struct bio *next;
+	ASSERT(bio);
+
+	if (bio_list_empty(bl)) {
+		ASSERT(!prev);
+		bio_list_add(bl, bio);
+		return;
+	}
+	if (!prev) {
+		bio_list_add_head(bl, bio);
+		return;
+	}
+
+	next = prev->bi_next;
+	if (next) {
+		ASSERT(bl->tail != prev);
+		bio->bi_next = next;
+		prev->bi_next = bio;
+	} else {
+		ASSERT(bl->tail == prev);
+		bio->bi_next = NULL;
+		prev->bi_next = bio;
+		bl->tail = bio;
+	}
+}
+
+/**
+ * BEFORE:
+ *   prev -> bio -> next
+ * AFTER:
+ *   prev -> next
+ */
+static inline void bio_list_del(
+	struct bio_list *bl, struct bio *bio, struct bio *prev)
+{
+	ASSERT(bio);
+
+	if (bl->head == bio && bl->tail == bio) {
+		bio_list_get(bl);
+		return;
+	}
+	if (bl->head == bio) {
+		ASSERT(!prev);
+		ASSERT(bio->bi_next);
+		bl->head = bio->bi_next;
+		bio->bi_next = NULL;
+		return;
+	}
+	if (bl->tail == bio) {
+		ASSERT(prev);
+		ASSERT(!bio->bi_next);
+		prev->bi_next = NULL;
+		bl->tail = prev;
+		return;
+	}
+
+	ASSERT(prev);
+	ASSERT(bio->bi_next);
+	prev->bi_next = bio->bi_next;
+	bio->bi_next = NULL;
 }
 
 /**
  * Copy data from a source bio_wrapper to a destination bio_wrapper.
+ * Do not call this function if they are not overlapped.
  *
- * @dst destination bio_wrapper. You can split inside bio(s).
- * @src source bio_wrapper. You must not modify this.
+ * @dst destination bio_wrapper.
+ *     This function modifies dst->cloned_bio_list
+ *     and may split bios in the list at overlapped borders.
+ *     For all written bio(s), bio_endio(bio, 0) will be called
+ *     and they will be removed from the list.
+ * @src source bio_wrapper.
+ *     This uses src->cloned_bioe->bio and src->cloned_bioe->iter.
+ *     This function does not modify them.
  * @gfp_mask for memory allocation in bio split.
- *
- * bio_entry(s) inside the dst->bioe_list
- * will be splitted due to overlapped border.
  *
  * RETURN:
  *   true if copy has done successfully,
@@ -261,52 +282,96 @@ void destroy_bio_wrapper(struct bio_wrapper *biow)
 bool data_copy_bio_wrapper(
 	struct bio_wrapper *dst, struct bio_wrapper *src, gfp_t gfp_mask)
 {
-	u64 ol_bio_pos;
-	unsigned int ol_bio_len;
-	unsigned int dst_off, src_off;
-	unsigned int copied;
-	int tmp_copied;
-	struct bio_entry_cursor dst_cur, src_cur;
+	struct bio *src_bio = src->cloned_bioe->bio;
+	struct bio_list *dst_list = &dst->cloned_bio_list;
+	struct bio *dst_bio, *prev_bio = NULL, *next_bio;
 
-	ASSERT(dst);
-	ASSERT(src);
-	LOG_("begin dst %p src %p.\n", dst, src);
+	ASSERT(bio_wrapper_is_overlap(dst, src));
 
-	/* Get overlapped area. */
-	bio_wrapper_get_overlapped_pos_and_len(
-		dst, src, &ol_bio_pos, &ol_bio_len);
-	ASSERT(ol_bio_len > 0);
+	bio_list_for_each_safe(dst_bio, next_bio, dst_list) {
+		struct bvec_iter dst_iter = dst_bio->bi_iter;
+		struct bvec_iter src_iter = src->cloned_bioe->iter;
+		uint sectors, written;
+		struct bio *split0 = NULL, *split1 = NULL;
 
-	LOG_("ol_bio_pos: %"PRIu64" ol_bio_len: %u\n",
-		ol_bio_pos, ol_bio_len);
+		if (!bvec_iter_is_overlap(&dst_iter, &src_iter)) {
+			prev_bio = dst_bio;
+			continue;
+		}
 
-	/* Initialize cursors. */
-	bio_entry_cursor_init(&dst_cur, &dst->bioe_list);
-	bio_entry_cursor_init(&src_cur, &src->bioe_list);
-	dst_off = (unsigned int)(ol_bio_pos - dst->pos);
-	src_off = (unsigned int)(ol_bio_pos - src->pos);
-	bio_entry_cursor_proceed(&dst_cur, dst_off);
-	bio_entry_cursor_proceed(&src_cur, src_off);
+		bio_get_overlapped(
+			dst_bio, &dst_iter,
+			src_bio, &src_iter, &sectors);
+		ASSERT(sectors > 0);
 
-	/* Copy data in the range. */
-	copied = 0;
-	while (copied < ol_bio_len) {
-		tmp_copied = bio_entry_cursor_try_copy_and_proceed(
-			&dst_cur, &src_cur, ol_bio_len - copied);
-		ASSERT(tmp_copied > 0);
-		copied += tmp_copied;
+		written = bio_copy_data_partial(
+			dst_bio, dst_iter,
+			src_bio, src_iter, sectors);
+		ASSERT(written == sectors);
+
+		/* Split top */
+		if (dst_bio->bi_iter.bi_sector < dst_iter.bi_sector) {
+			const uint split_sectors =
+				dst_iter.bi_sector - dst_bio->bi_iter.bi_sector;
+			split0 = bio_split(
+				dst_bio, split_sectors, gfp_mask, fs_bio_set);
+			if (!split0)
+				return false;
+
+			bio_chain(split0, dst_bio);
+		}
+		/* Split bottom */
+		if (sectors < dst_iter.bi_size << 9) {
+			split1 = bio_split(
+				dst_bio, sectors, gfp_mask, fs_bio_set);
+			if (!split1)
+				return false;
+
+			bio_chain(split1, dst_bio);
+		}
+
+		if (split0 && split1) {
+			/*
+			 * src       |--|
+			 * dst    |--------|
+			 * split0 |--|
+			 * split1    |--|    (copied)
+			 * dst'         |--|
+			 */
+			bio_list_insert(dst_list, split0, prev_bio);
+			bio_endio(split1, 0);
+			prev_bio = dst_bio;
+		} else if (split0 && !split1) {
+			/*
+			 * src       |-----|
+			 * dst    |-----|
+			 * split0 |--|
+			 * dst'      |--|    (copied)
+			 */
+			bio_list_del(dst_list, dst_bio, prev_bio);
+			bio_list_insert(dst_list, split0, prev_bio);
+			bio_endio(dst_bio, 0);
+			prev_bio = split0;
+		} else if (!split0 && split1) {
+			/*
+			 * src    |-----|
+			 * dst       |-----|
+			 * split1    |--|    (copied)
+			 * dst'         |--|
+			 */
+			bio_endio(split1, 0);
+			prev_bio = dst_bio;
+		} else {
+			/*
+			 * src |--------|
+			 * dst    |--|    (copied)
+			 */
+			bio_list_del(dst_list, dst_bio, prev_bio);
+			bio_endio(dst_bio, 0);
+			/* prev_bio is not changed. */
+		}
 	}
-	ASSERT(copied == ol_bio_len);
 
-	/* Set copied flag. This may split the bio. */
-	if (!bio_entry_list_mark_copied(
-			&dst->bioe_list, dst_off, ol_bio_len,
-			gfp_mask)) {
-		LOGe("mark_copied failed.\n");
-		return false;
-	}
-
-	LOG_("end dst %p src %p.\n", dst, src);
 	return true;
 }
 

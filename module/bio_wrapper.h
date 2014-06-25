@@ -40,10 +40,13 @@ struct bio_wrapper
 	/* lsid of bio wrapper.
 	   This is for
 	   (1) sort in pending data copy,
-	   (2) comparison with permanented_lsid. */
+	   (2) comparison with permanent_lsid. */
 	u64 lsid;
 
-	struct list_head bioe_list; /* list head of bio_entry */
+	struct bio_entry *cloned_bioe; /* cloned bioe */
+
+	/* for temporary use. must be empty before submiting. */
+	struct bio_list cloned_bio_list;
 
 	unsigned long start_time; /* for diskstats. */
 
@@ -120,7 +123,7 @@ enum
 void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow);
 #endif
 
-UNUSED void print_bio_wrapper(const char *level, struct bio_wrapper *biow);
+UNUSED void print_bio_wrapper(const char *level, const struct bio_wrapper *biow);
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio);
 struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask);
 void destroy_bio_wrapper(struct bio_wrapper *biow);

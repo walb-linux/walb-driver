@@ -93,7 +93,7 @@ bool sector_io(
 
 	bio->bi_rw = bi_rw;
 	bio->bi_bdev = bdev;
-	bio->bi_sector = addr * (pbs / lbs);
+	bio->bi_iter.bi_sector = addr * (pbs / lbs);
 	bio->bi_end_io = walb_end_io_with_completion;
 	bio->bi_private = bioc;
 	bio_add_page(bio, page, pbs, offset_in_page(buf));

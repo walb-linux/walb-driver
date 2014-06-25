@@ -202,9 +202,8 @@ bool pending_check_and_copy(
 	}
 	/* Copy overlapped pending bio(s) in the order of lsid. */
 	list_for_each_entry(biow_tmp, &biow_list, list3) {
-		if (!data_copy_bio_wrapper(biow, biow_tmp, gfp_mask)) {
+		if (!data_copy_bio_wrapper(biow, biow_tmp, gfp_mask))
 			return false;
-		}
 	}
 #ifdef WALB_DEBUG
 	LOG_("lsid begin\n");

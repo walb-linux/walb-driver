@@ -270,7 +270,7 @@ bool walb_logpack_header_add_bio(
 	clear_bit_u32(LOG_RECORD_PADDING, &lhead->record[idx].flags);
 	lhead->record[idx].lsid = bio_lsid;
 	lhead->record[idx].lsid_local = (u16)(bio_lsid - logpack_lsid);
-	lhead->record[idx].offset = (u64)bio->bi_sector;
+	lhead->record[idx].offset = (u64)bio->bi_iter.bi_sector;
 	lhead->record[idx].io_size = (u16)bio_lb;
 	lhead->n_records++;
 	if (is_discard) {

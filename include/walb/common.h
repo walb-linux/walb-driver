@@ -60,7 +60,7 @@ static inline void* amalloc(size_t size, size_t align)
 /**
  * Function/variable attribute macros.
  */
-#define DEPRECATED __attribute__((deprecated))
+#define DEPRECATED_ATTR __attribute__((deprecated))
 #define UNUSED __attribute__((unused))
 #define NOT_YET_IMPLEMENTED __attribute__((warning("NOT YET IMPLEMENTED")))
 
