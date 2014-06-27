@@ -151,7 +151,7 @@ static inline int snprint_bio_flags(
 	s = snprintf(buf, size, "REQ_FLAGS:");
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
 
-	for (i = 0; i < sizeof(tbl); i++) {
+	for (i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++) {
 		if (!(bio->bi_rw & tbl[i].value))
 			continue;
 
