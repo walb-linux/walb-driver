@@ -286,8 +286,13 @@ static inline void clear_flush_bit(struct bio_list *bio_list)
 static inline bool should_split_bio_for_chunk(
 	struct bio *bio, uint chunk_sectors)
 {
-	sector_t bgn = bio_begin_sector(bio);
-	sector_t last = bio_end_sector(bio) - 1;
+	sector_t bgn, last;
+
+	if (chunk_sectors == 0)
+		return false;
+
+	bgn = bio_begin_sector(bio);
+	last = bio_end_sector(bio) - 1;
 	do_div(bgn, chunk_sectors);
 	do_div(last, chunk_sectors);
 	return bgn != last;
