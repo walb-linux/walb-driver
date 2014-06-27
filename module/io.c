@@ -109,9 +109,6 @@ static struct bio_entry* create_bio_entry_by_clone_never_giveup(
 	gfp_t gfp_mask, bool is_deep);
 static void wait_for_bio_entry(struct bio_entry *bioe);
 
-/* QQQ */
-static void clear_flush_bit(struct bio_list *bio_list);
-
 /* pack related. */
 static struct pack* create_pack(gfp_t gfp_mask);
 static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
@@ -835,7 +832,6 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 
 		/* Sort IOs. */
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
-			/* Clear flush bit. */
 			clear_flush_bit(&biow->cloned_bio_list);
 
 #ifdef WALB_OVERLAPPED_SERIALIZE
@@ -1090,7 +1086,11 @@ static bool create_logpack_list(
 	if (latest_lsid - written_lsid > wdev->ring_buffer_size) {
 		pr_err_ratelimited(
 			"Ring buffer size is too small to keep consistency. "
-			"!!!PLEASE GROW THE LOG DEVICE SIZE.!!!\n");
+			"!!!PLEASE GROW THE LOG DEVICE SIZE.!!!\n"
+			"latest_lsid %" PRIu64 "\n"
+			"written_lsid %" PRIu64 "\n"
+			"ring_buffer_size %" PRIu64 "\n"
+			, latest_lsid, written_lsid, wdev->ring_buffer_size);
 	}
 
 	return true;
@@ -1415,7 +1415,6 @@ retry_bio_entry:
 	LOG_("submit_lr: bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, bioe->pos, bioe->len);
 	submit_all_bio_list(&bio_list);
-
 }
 
 /**
@@ -1429,6 +1428,7 @@ static struct bio* logpack_create_bio(
 	cbio = bio_clone(bio, GFP_NOIO);
 	if (!cbio)
 		return NULL;
+
 	cbio->bi_bdev = ldev;
 	cbio->bi_iter.bi_sector = addr_lb(pbs, ldev_off_pb) + bio_off_lb;
 	/* cbio->bi_end_io = NULL; */

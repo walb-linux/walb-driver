@@ -211,6 +211,7 @@ bool data_copy_bio_wrapper(
 	struct bio_list *dst_list = &dst->cloned_bio_list;
 	struct bio *dst_bio, *prev_bio = NULL, *next_bio;
 
+	ASSERT(src_bio);
 	ASSERT(bio_wrapper_is_overlap(dst, src));
 	if (bio_list_empty(dst_list)) {
 		/* All bios has been finished by copy. */
@@ -232,6 +233,8 @@ bool data_copy_bio_wrapper(
 			dst_bio, &dst_iter,
 			src_bio, &src_iter, &sectors);
 		ASSERT(sectors > 0);
+		ASSERT((dst_iter.bi_size >> 9) >= sectors);
+		ASSERT((src_iter.bi_size >> 9) >= sectors);
 
 		written = bio_copy_data_partial(
 			dst_bio, dst_iter,

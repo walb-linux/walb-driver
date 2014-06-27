@@ -90,6 +90,10 @@ static inline u32 bio_calc_checksum(const struct bio *bio, u32 salt)
 }
 
 #define SNPRINT_BIO_PROCEED(buf, size, w, s) do {			\
+		if (s < 0) {						\
+			pr_warning("snprint_bio: snprintf failed\n");	\
+			return w;					\
+		}							\
 		buf += (s);						\
 		size -= (s);						\
 		w += (s);						\
@@ -147,7 +151,6 @@ static inline int snprint_bio_flags(
 		{REQ_END, "REQ_END"},
 		{REQ_HASHED, "REQ_HASHED"},
 	};
-
 	s = snprintf(buf, size, "REQ_FLAGS:");
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
 
@@ -155,7 +158,7 @@ static inline int snprint_bio_flags(
 		if (!(bio->bi_rw & tbl[i].value))
 			continue;
 
-		s = snprintf(buf, size, tbl[i].name);
+		s = snprintf(buf, size, " %s", tbl[i].name);
 		SNPRINT_BIO_PROCEED(buf, size, w, s);
 	}
 	return w;
@@ -227,6 +230,13 @@ static inline int snprint_bio(char *buf, size_t size, const struct bio *bio)
 	s = snprint_bvec_iter(buf, size, &bio->bi_iter);
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
 
+	s = snprintf(buf, size, "  ");
+	SNPRINT_BIO_PROCEED(buf, size, w, s);
+	s = snprint_bio_flags(buf, size, bio);
+	SNPRINT_BIO_PROCEED(buf, size, w, s);
+	s = snprintf(buf, size, "\n");
+	SNPRINT_BIO_PROCEED(buf, size, w, s);
+
         bio_for_each_segment(bv, biox, iter) {
 		s = snprintf(buf, size, "  ");
 		SNPRINT_BIO_PROCEED(buf, size, w, s);
@@ -238,6 +248,36 @@ static inline int snprint_bio(char *buf, size_t size, const struct bio *bio)
 		SNPRINT_BIO_PROCEED(buf, size, w, s);
         }
 	return w;
+}
+
+static inline void print_bvec_iter(const struct bvec_iter *iter)
+{
+	char buf[512];
+	int w;
+	w = snprint_bvec_iter(buf, 512, iter);
+	pr_info("%s", buf);
+}
+
+static inline void print_bio(const struct bio *bio)
+{
+	char buf[512];
+	int w;
+	w = snprint_bio(buf, 512, bio);
+	pr_info("%s", buf);
+}
+
+static inline void print_bio_short(const char *prefix, const struct bio *bio)
+{
+	pr_info("%sbio %p pos %" PRIu64 " len %u"
+		" bdev(%d:%d) rw %lu\n"
+		, prefix, bio, (u64)bio_begin_sector(bio), bio_sectors(bio)
+		, MAJOR(bio->bi_bdev->bd_dev)
+		, MINOR(bio->bi_bdev->bd_dev)
+		, bio->bi_rw);
+}
+
+static inline void print_bio_short_(const char *prefix, const struct bio *bio)
+{
 }
 
 /**
@@ -252,8 +292,7 @@ static inline void submit_all_bio_list(struct bio_list *bio_list)
 		return;
 
 	while ((bio = bio_list_pop(bio_list))) {
-		LOG_("submit_lr: bio %p pos %" PRIu64 " len %u\n"
-			, bio, bio_begin_sector(bio), bio_sectors(bio));
+		print_bio_short_("submit_lr: ", bio);
 		generic_make_request(bio);
 	}
 }
@@ -361,10 +400,10 @@ static inline uint bio_copy_data_partial(
 		u8 *src_p, *dst_p;
 		uint src_off, dst_off, src_len, dst_len, bytes;
 
-		src_len = bio_iter_len(src_bio, src_iter);
-		dst_len = bio_iter_len(dst_bio, dst_iter);
 		src_off = bio_iter_offset(src_bio, src_iter);
 		dst_off = bio_iter_offset(dst_bio, dst_iter);
+		src_len = bio_iter_len(src_bio, src_iter);
+		dst_len = bio_iter_len(dst_bio, dst_iter);
 		src_page = bio_iter_page(src_bio, src_iter);
 		dst_page = bio_iter_page(dst_bio, dst_iter);
 		bytes = min3(src_len, dst_len, remaining);
@@ -378,18 +417,7 @@ static inline uint bio_copy_data_partial(
 		bio_advance_iter(src_bio, &src_iter, bytes);
 		bio_advance_iter(dst_bio, &dst_iter, bytes);
 		remaining -= bytes;
-
-#if 0
-		pr_info("loop end\n"); /* QQQ */
-		print_bvec_iter(&dst_iter);
-		print_bvec_iter(&src_iter);
-#endif
 	}
-
-#if 0
-	pr_info("ret value %u\n", sectors - (remaining >> 9)); /* QQQ */
-	pr_info(">>>>>>>>>>bio_copy_data_partial>>>>>>>>>>\n");
-#endif
 
 	return sectors - (remaining >> 9);
 }

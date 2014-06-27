@@ -112,7 +112,7 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 		if (bio->bi_rw & REQ_DISCARD) {
 			bio_entry_state_set_discard(bioe);
 		}
-		bioe->iter = bioe->bio->bi_iter; /* copy */
+		bioe->iter = bio->bi_iter; /* copy */
 	} else {
 		bioe->bio = NULL;
 		memset(&bioe->iter, 0, sizeof(bioe->iter));
