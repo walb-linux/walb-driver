@@ -287,6 +287,10 @@ bool data_copy_bio_wrapper(
 	struct bio *dst_bio, *prev_bio = NULL, *next_bio;
 
 	ASSERT(bio_wrapper_is_overlap(dst, src));
+	if (bio_list_empty(dst_list)) {
+		/* All bios has been finished by copy. */
+		return true;
+	}
 
 	bio_list_for_each_safe(dst_bio, next_bio, dst_list) {
 		struct bvec_iter dst_iter = dst_bio->bi_iter;
