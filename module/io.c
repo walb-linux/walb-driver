@@ -2402,7 +2402,9 @@ static void submit_read_bio_wrapper(
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	bool ret;
 	struct bio_entry *bioe;
-	struct bio_list bio_list;
+	struct bio_list *bio_list = &biow->cloned_bio_list;
+
+	ASSERT(bio_list_empty(bio_list));
 
 	/* Create cloned bio. */
 	bioe = create_bio_entry_by_clone(
@@ -2414,9 +2416,8 @@ static void submit_read_bio_wrapper(
 	biow->cloned_bioe = bioe;
 
 	/* Split if required due to chunk limitations. */
-	bio_list_init(&bio_list);
 	if (!split_bio_for_chunk(
-			&bio_list, bioe->bio,
+			bio_list, bioe->bio,
 			wdev->ddev_chunk_sectors, GFP_NOIO))
 		goto error1;
 
@@ -2432,7 +2433,7 @@ static void submit_read_bio_wrapper(
 	/* Submit all related bio(s). */
 	LOG_("submit_lr: bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, bioe->pos, bioe->len);
-	submit_all_bio_list(&bio_list);
+	submit_all_bio_list(bio_list);
 
 	/* Enqueue wait/gc task. */
 	INIT_WORK(&biow->work, task_wait_and_gc_read_bio_wrapper);
@@ -2440,7 +2441,7 @@ static void submit_read_bio_wrapper(
 	return;
 
 error1:
-	put_all_bio_list(&bio_list);
+	put_all_bio_list(bio_list);
 	bioe->bio = NULL;
 	destroy_bio_entry(bioe);
 	biow->cloned_bioe = NULL;
