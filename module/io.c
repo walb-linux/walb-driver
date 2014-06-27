@@ -1438,7 +1438,7 @@ static struct bio* logpack_create_bio(
 	if (cbio->bi_rw & REQ_FUA)
 		cbio->bi_rw |= REQ_FLUSH;
 
-	return bio;
+	return cbio;
 }
 
 /**
