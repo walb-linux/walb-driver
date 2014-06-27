@@ -378,13 +378,24 @@ static inline uint bio_copy_data_partial(
 		bio_advance_iter(src_bio, &src_iter, bytes);
 		bio_advance_iter(dst_bio, &dst_iter, bytes);
 		remaining -= bytes;
+
+#if 0
+		pr_info("loop end\n"); /* QQQ */
+		print_bvec_iter(&dst_iter);
+		print_bvec_iter(&src_iter);
+#endif
 	}
+
+#if 0
+	pr_info("ret value %u\n", sectors - (remaining >> 9)); /* QQQ */
+	pr_info(">>>>>>>>>>bio_copy_data_partial>>>>>>>>>>\n");
+#endif
 
 	return sectors - (remaining >> 9);
 }
 
 #define bio_list_for_each_safe(bio, n, bl)				\
-	for (bio = (bl)->head, n = bio->bi_next;		\
+	for (bio = (bl)->head, n = (bio ? bio->bi_next : NULL);		\
 	     bio; bio = n, n = (n ? n->bi_next : NULL))
 
 /**
