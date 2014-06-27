@@ -321,7 +321,7 @@ bool data_copy_bio_wrapper(
 			bio_chain(split0, dst_bio);
 		}
 		/* Split bottom */
-		if (sectors < dst_iter.bi_size << 9) {
+		if (sectors < (dst_iter.bi_size >> 9)) {
 			split1 = bio_split(
 				dst_bio, sectors, gfp_mask, fs_bio_set);
 			if (!split1)

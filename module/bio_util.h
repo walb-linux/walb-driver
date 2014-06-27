@@ -53,7 +53,7 @@ static inline void bio_get_overlapped(
 			(iter0->bi_sector - iter1->bi_sector) << 9);
 	}
 
-	*sectors_p = min(iter0->bi_size, iter1->bi_size) << 9;
+	*sectors_p = min(iter0->bi_size, iter1->bi_size) >> 9;
 }
 
 /**
