@@ -383,4 +383,79 @@ static inline uint bio_copy_data_partial(
 	return sectors - (remaining >> 9);
 }
 
+#define bio_list_for_each_safe(bio, n, bl)				\
+	for (bio = (bl)->head, n = bio->bi_next;		\
+	     bio; bio = n, n = (n ? n->bi_next : NULL))
+
+/**
+ * BEFORE:
+ *   prev -> next
+ * AFTER:
+ *   prev -> bio -> next
+ */
+static inline void bio_list_insert(
+	struct bio_list *bl, struct bio *bio, struct bio *prev)
+{
+	struct bio *next;
+	ASSERT(bio);
+
+	if (bio_list_empty(bl)) {
+		ASSERT(!prev);
+		bio_list_add(bl, bio);
+		return;
+	}
+	if (!prev) {
+		bio_list_add_head(bl, bio);
+		return;
+	}
+
+	next = prev->bi_next;
+	if (next) {
+		ASSERT(bl->tail != prev);
+		bio->bi_next = next;
+		prev->bi_next = bio;
+	} else {
+		ASSERT(bl->tail == prev);
+		bio->bi_next = NULL;
+		prev->bi_next = bio;
+		bl->tail = bio;
+	}
+}
+
+/**
+ * BEFORE:
+ *   prev -> bio -> next
+ * AFTER:
+ *   prev -> next
+ */
+static inline void bio_list_del(
+	struct bio_list *bl, struct bio *bio, struct bio *prev)
+{
+	ASSERT(bio);
+
+	if (bl->head == bio && bl->tail == bio) {
+		bio_list_get(bl);
+		return;
+	}
+	if (bl->head == bio) {
+		ASSERT(!prev);
+		ASSERT(bio->bi_next);
+		bl->head = bio->bi_next;
+		bio->bi_next = NULL;
+		return;
+	}
+	if (bl->tail == bio) {
+		ASSERT(prev);
+		ASSERT(!bio->bi_next);
+		prev->bi_next = NULL;
+		bl->tail = prev;
+		return;
+	}
+
+	ASSERT(prev);
+	ASSERT(bio->bi_next);
+	prev->bi_next = bio->bi_next;
+	bio->bi_next = NULL;
+}
+
 #endif /* WALB_BIO_UTIL_H_KERNEL */
