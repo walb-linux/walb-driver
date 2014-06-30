@@ -1367,7 +1367,7 @@ retry:
 	biow->cloned_bioe = bioe;
 	LOG_("submit_lr: bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, (u64)bioe->pos, bioe->len);
-	generic_make_request(bioe->bio); /* QQQ */
+	generic_make_request(bioe->bio);
 }
 
 /**
@@ -2106,14 +2106,13 @@ static void wait_for_logpack_and_submit_datapack(
 			destroy_bio_wrapper_dec(wdev, biow);
 		} else {
 			const bool is_discard = bio_wrapper_state_is_discard(biow);
-
 			if (!is_discard || blk_queue_discard(bdev_get_queue(wdev->ddev))) {
-				/* TODO: is blk_queue_discard() required?  */
 				/* Create all related bio(s) by copying IO data. */
 				biow->cloned_bioe = create_bio_entry_by_clone_never_giveup(
 					biow->bio, wdev->ddev, GFP_NOIO, true);
 			} else {
-				/* Do nothing */
+				/* Do nothing.
+				   TODO: should do write zero? */
 			}
 
 			if (biow->cloned_bioe) {
@@ -2191,6 +2190,7 @@ static void wait_for_logpack_and_submit_datapack(
 		list_del(&biow->list);
 		destroy_bio_wrapper_dec(wdev, biow);
 	}
+
 
 	/* Update completed_lsid/permanent_lsid. */
 	if (!is_failed) {
@@ -2296,14 +2296,17 @@ static void wait_for_write_bio_wrapper(
 		}
 	}
 	spin_unlock(&iocored->pending_data_lock);
-	if (is_start_queue) {
+	if (is_start_queue)
 		iocore_melt(wdev);
-	}
 
 	/* Put related bio(s) and free resources. */
-	ASSERT(biow->cloned_bioe);
-	destroy_bio_entry(biow->cloned_bioe);
-	biow->cloned_bioe = NULL;
+	if (biow->cloned_bioe) {
+		destroy_bio_entry(biow->cloned_bioe);
+		biow->cloned_bioe = NULL;
+	} else {
+		ASSERT(bio_wrapper_state_is_discard(biow));
+		ASSERT(!blk_queue_discard(bdev_get_queue(wdev->ddev)));
+	}
 }
 
 /**
@@ -2325,8 +2328,12 @@ static void wait_for_bio_wrapper(struct bio_wrapper *biow, bool is_endio, bool i
 	ASSERT(biow);
 	ASSERT(biow->error == 0);
 
-	wait_for_bio_entry(biow->cloned_bioe);
-	biow->error = biow->cloned_bioe->error;
+	if (biow->cloned_bioe) {
+		wait_for_bio_entry(biow->cloned_bioe);
+		biow->error = biow->cloned_bioe->error;
+	} else {
+		ASSERT(biow->len == 0 || bio_wrapper_state_is_discard(biow));
+	}
 
 	if (is_endio) {
 		ASSERT(biow->bio);
@@ -2523,7 +2530,7 @@ static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
 		wdev,
 		IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
-		wq_unbound_,
+		wq_unbound_, /* QQQ: should be normal? */
 		task_submit_bio_wrapper_list);
 }
 

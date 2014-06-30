@@ -43,7 +43,7 @@ enum {
 	 */
 
 	/* Set if the bio is discard request. */
-	BIO_ENTRY_DISCARD = 0,
+	BIO_ENTRY_DISCARD = 0, /* QQQ: will be removed */
 
 	/* Set when pages are managed by itself.
 	   destroy_bio_entry() must free the page. */
