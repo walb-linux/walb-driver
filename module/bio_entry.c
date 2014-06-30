@@ -88,12 +88,11 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 	else
 		buf[0] = '\0';
 
-	printk("%s""bio %p error %d is_discard %d has_own_pages %d\n"
+	printk("%s""bio %p error %d has_own_pages %d\n"
 		"%s\n"
 		, level
 		, bioe->bio, bioe->error
-		, bio_entry_state_is_discard(bioe)
-		, bio_entry_state_has_own_pages(bioe)
+		, (int)bioe->has_own_pages
 		, buf);
 }
 
@@ -106,12 +105,9 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 
 	init_completion(&bioe->done);
 	bioe->error = 0;
-	bioe->flags = 0;
+	bioe->has_own_pages = false;
 	if (bio) {
 		bioe->bio = bio;
-		if (bio->bi_rw & REQ_DISCARD) {
-			bio_entry_state_set_discard(bioe);
-		}
 		bioe->iter = bio->bi_iter; /* copy */
 	} else {
 		bioe->bio = NULL;
@@ -153,7 +149,7 @@ void destroy_bio_entry(struct bio_entry *bioe)
 	bio = bioe->bio;
 	if (bio) {
 		LOG_("bio_put %p\n", bio);
-		if (bio_entry_state_has_own_pages(bioe)) {
+		if (bioe->has_own_pages) {
 			copied_bio_put(bio);
 		} else {
 			bio_put(bio);
@@ -219,8 +215,8 @@ void init_copied_bio_entry(
 	ASSERT(bio_with_copy);
 
 	init_bio_entry(bioe, bio_with_copy);
-	if (bio_entry_len(bioe) > 0 && !bio_entry_state_is_discard(bioe)) {
-		bio_entry_state_set_own_pages(bioe);
+	if (bio_entry_len(bioe) > 0 && !(bio_with_copy->bi_rw & REQ_DISCARD)) {
+		bioe->has_own_pages = true;
 	}
 
 	/* You must call copied_bio_put() explicitly

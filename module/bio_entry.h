@@ -31,33 +31,9 @@ struct bio_entry
 
 	int error; /* bio error status. */
 	struct completion done;
-	unsigned long flags;
+
+	bool has_own_pages;
 };
-
-/**
- * bio_entry.flags.
- */
-enum {
-	/*
-	 * Information.
-	 */
-
-	/* Set if the bio is discard request. */
-	BIO_ENTRY_DISCARD = 0, /* QQQ: will be removed */
-
-	/* Set when pages are managed by itself.
-	   destroy_bio_entry() must free the page. */
-	BIO_ENTRY_OWN_PAGES,
-};
-
-#define bio_entry_state_is_discard(bioe) \
-	test_bit(BIO_ENTRY_DISCARD, &(bioe)->flags)
-#define bio_entry_state_set_discard(bioe) \
-	set_bit(BIO_ENTRY_DISCARD, &(bioe)->flags)
-#define bio_entry_state_has_own_pages(bioe) \
-	test_bit(BIO_ENTRY_OWN_PAGES, &(bioe)->flags)
-#define bio_entry_state_set_own_pages(bioe) \
-	set_bit(BIO_ENTRY_OWN_PAGES, &(bioe)->flags)
 
 /********************************************************************************
  * Utility functions for bio entry.
