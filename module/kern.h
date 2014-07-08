@@ -146,6 +146,8 @@ struct walb_dev
 	 *   (2) bio must not cross over multiple chunks.
 	 * else:
 	 *   no limitation.
+	 *
+	 * This is for some drivers like md-raid5.
 	 */
 	unsigned int ldev_chunk_sectors;
 	unsigned int ddev_chunk_sectors;
