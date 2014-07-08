@@ -920,7 +920,7 @@ struct walb_dev* prepare_wdev(
 	}
 	ASSERT_SECTOR_DATA(wdev->lsuper0);
 	dev_name = super->name;
-	memcpy(param->name, dev_name, DISK_NAME_LEN);
+	snprintf(param->name, DISK_NAME_LEN, dev_name);
 
 	/*
 	 * Prepare walb block device.
