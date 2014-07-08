@@ -224,6 +224,11 @@ struct walb_dev
 	 * This must not be so large because we use insertion sort. */
 	unsigned int n_io_bulk;
 
+	/* for sysfs. */
+	bool support_flush;
+	bool support_fua;
+	bool support_discard;
+
 	/*
 	 * For freeze/melt.
 	 */

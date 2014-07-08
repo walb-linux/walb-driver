@@ -200,18 +200,23 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 		lq_flush, lq_fua, dq_flush, dq_fua);
 
 	/* Check REQ_FLUSH/REQ_FUA supports. */
+	wdev->support_flush = false;
+	wdev->support_fua = false;
 	if (lq_flush && dq_flush) {
+		uint flush_flags = REQ_FLUSH;
+		LOGn("Supports REQ_FLUSH.");
+		wdev->support_flush = true;
 		if (lq_fua) {
-			LOGn("Supports REQ_FLUSH | REQ_FUA.");
-			blk_queue_flush(q, REQ_FLUSH | REQ_FUA);
-		} else {
-			LOGn("Supports REQ_FLUSH.");
-			blk_queue_flush(q, REQ_FLUSH);
+			flush_flags |= REQ_FUA;
+			LOGn("Supports REQ_FUA.");
+			wdev->support_fua = true;
 		}
+		blk_queue_flush(q, flush_flags);
 		blk_queue_flush_queueable(q, true);
 	} else {
 		LOGw("REQ_FLUSH is not supported!\n"
-			"WalB can not guarantee data consistency...\n");
+			"WalB can not guarantee data consistency"
+			"in sudden crashes of underlying devices.\n");
 	}
 }
 
@@ -229,6 +234,8 @@ void walb_discard_support(struct walb_dev *wdev)
 	q->limits.max_discard_sectors = 1 << 15;
 	q->limits.discard_zeroes_data = 0;
 	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+
+	wdev->support_discard = true;
 }
 
 /**

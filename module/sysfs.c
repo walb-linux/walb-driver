@@ -122,6 +122,21 @@ static ssize_t walb_attr_show_status(struct walb_dev *wdev, char *buf)
 		, test_bit(IOCORE_STATE_WAIT_DATA_TASK_WORKING, &flags));
 }
 
+static ssize_t walb_attr_show_support_flush(struct walb_dev *wdev, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d", wdev->support_flush ? 1 : 0);
+}
+
+static ssize_t walb_attr_show_support_fua(struct walb_dev *wdev, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d", wdev->support_fua ? 1 : 0);
+}
+
+static ssize_t walb_attr_show_support_discard(struct walb_dev *wdev, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d", wdev->support_discard ? 1 : 0);
+}
+
 /*******************************************************************************
  * Ops and attributes definition.
  *******************************************************************************/
@@ -160,6 +175,9 @@ static DECLARE_WALB_SYSFS_ATTR(uuid);
 static DECLARE_WALB_SYSFS_ATTR(log_capacity);
 static DECLARE_WALB_SYSFS_ATTR(log_usage);
 static DECLARE_WALB_SYSFS_ATTR(status);
+static DECLARE_WALB_SYSFS_ATTR(support_flush);
+static DECLARE_WALB_SYSFS_ATTR(support_fua);
+static DECLARE_WALB_SYSFS_ATTR(support_discard);
 
 static struct attribute *walb_attrs[] = {
 	&walb_attr_ldev.attr,
@@ -170,6 +188,9 @@ static struct attribute *walb_attrs[] = {
 	&walb_attr_log_capacity.attr,
 	&walb_attr_log_usage.attr,
 	&walb_attr_status.attr,
+	&walb_attr_support_flush.attr,
+	&walb_attr_support_fua.attr,
+	&walb_attr_support_discard.attr,
 	NULL,
 };
 
