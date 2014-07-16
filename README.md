@@ -16,5 +16,6 @@ GPL version 2 or 3.
 
 # Supported kernel version.
 
-Linux kernel 3.10 to 3.13.
+Linux kernel 3.14 to 3.x.
+For 3.10 to 3.13, use version 1.1.x.
 For 3.2 to 3.8, use version 1.0.x.
