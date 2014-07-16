@@ -10,6 +10,7 @@
 #include <linux/types.h>
 #include <linux/blkdev.h>
 #include <linux/bio.h>
+#include <linux/version.h>
 
 #include "walb/common.h"
 #include "walb/logger.h"
@@ -149,7 +150,9 @@ static inline int snprint_bio_flags(
 		{REQ_SECURE, "REQ_SECURE"},
 		{REQ_PM, "REQ_PM"},
 		{REQ_END, "REQ_END"},
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0)
 		{REQ_HASHED, "REQ_HASHED"},
+#endif
 	};
 	s = snprintf(buf, size, "REQ_FLAGS:");
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
