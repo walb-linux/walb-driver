@@ -1,10 +1,14 @@
 # Debug options. Choose one of the followings.
-DEBUG = 0
-DYNAMIC_DEBUG = 0
+DEBUG=0
+DYNAMIC_DEBUG=0
+
 # You can specify the following parameters.
-OVERLAP = 1 #overlapped writes serialization.
-ASSERT = 0 # enable ASSERT even with relase build.
-PERF = 0 # enable performacne analysis of each bio wrapper.
+#overlapped writes serialization.
+OVERLAP=1
+# enable ASSERT even with relase build.
+ASSERT=0
+# enable performacne analysis of each bio wrapper.
+PERF=0
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DYNAMIC_DEBUG),1)
