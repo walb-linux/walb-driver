@@ -1,5 +1,6 @@
-* remove snapshotting features (just naming lsids)
-* remove easy and non-ol features.
-* remove deprecated prototypes and tests.
-* support blk-mq
+* simplify all_dev removing hash tables.
+* refactor bio_entry and bio_wrapper.
+* remove duplicate of redo.c and io.c.
+* remove non-ol features.
+* support blk-mq (some time)
 
