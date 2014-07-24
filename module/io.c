@@ -797,9 +797,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			list_move_tail(&biow->list2, &biow_list);
 			n_io++;
 			lsid = biow->lsid;
-#ifdef WALB_DEBUG
-			atomic_inc(&biow->state);
-#endif
+			BIO_WRAPPER_CHANGE_STATE(biow);
 			if (n_io >= wdev->n_io_bulk) { break; }
 		}
 		spin_unlock(&iocored->datapack_submit_queue_lock);
@@ -864,9 +862,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			const bool is_plugging = false;
 			/* Submit bio wrapper. */
 			list_del(&biow->list4);
-#ifdef WALB_DEBUG
-			atomic_inc(&biow->state);
-#endif
+			BIO_WRAPPER_CHANGE_STATE(biow);
 			BIO_WRAPPER_PRINT("data0", biow);
 			submit_write_bio_wrapper(biow, is_plugging);
 		}
@@ -875,9 +871,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 		/* Enqueue wait task. */
 		spin_lock(&iocored->datapack_wait_queue_lock);
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
-#ifdef WALB_DEBUG
-			atomic_inc(&biow->state);
-#endif
+			BIO_WRAPPER_CHANGE_STATE(biow);
 			list_move_tail(&biow->list2, &iocored->datapack_wait_queue);
 		}
 		spin_unlock(&iocored->datapack_wait_queue_lock);
@@ -919,9 +913,7 @@ static void task_wait_for_bio_wrapper_list(struct work_struct *work)
 					&iocored->datapack_wait_queue, list2) {
 			list_move_tail(&biow->list2, &biow_list);
 			n_io++;
-#ifdef WALB_DEBUG
-			atomic_inc(&biow->state);
-#endif
+			BIO_WRAPPER_CHANGE_STATE(biow);
 			if (n_io >= wdev->n_io_bulk) { break; }
 		}
 		spin_unlock(&iocored->datapack_wait_queue_lock);
@@ -2175,9 +2167,7 @@ static void wait_for_logpack_and_submit_datapack(
 
 			reti = test_and_set_bit(BIO_WRAPPER_PREPARED, &biow->flags);
 			ASSERT(reti == 0);
-#ifdef WALB_DEBUG
-			atomic_inc(&biow->state);
-#endif
+			BIO_WRAPPER_CHANGE_STATE(biow);
 
 			/* Enqueue submit datapack task. */
 			spin_lock(&iocored->datapack_submit_queue_lock);

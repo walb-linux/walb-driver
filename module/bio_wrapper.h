@@ -154,6 +154,12 @@ void bio_wrapper_exit(void);
 #define BIO_WRAPPER_PRINT_LS(prefix, biow, list_size)
 #endif
 
+#ifdef WALB_DEBUG
+#define BIO_WRAPPER_CHANGE_STATE(biow) atomic_inc(&biow->state)
+#else
+#define BIO_WRAPPER_CHANGE_STATE(biow)
+#endif
+
 /**
  * Check overlapped.
  */
