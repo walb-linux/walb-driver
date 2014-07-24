@@ -1500,36 +1500,10 @@ static void wait_for_bio_wrapper_done(struct bio_wrapper *biow)
 		ulong rtimeo = wait_for_completion_timeout(&biow->done, timeo);
 		if (rtimeo)
 			break;
-		LOGn("timeout(%d): biow %p bio %p pos %" PRIu64 " len %u"
-			" state(%d%d%d%d"
-			"%d"
-#ifdef WALB_OVERLAPPED_SERIALIZE
-			"%d"
-#endif
-			")"
-#ifdef WALB_OVERLAPPED_SERIALIZE
-			" n_overlapped %d"
-#endif
-			" started %d"
-#ifdef WALB_DEBUG
-			" state %d"
-#endif
-			"\n",
-			c, biow, biow->bio, (u64)biow->pos, biow->len,
-			bio_wrapper_state_is_prepared(biow),
-			bio_wrapper_state_is_submitted(biow),
-			bio_wrapper_state_is_completed(biow),
-			bio_wrapper_state_is_discard(biow)
-			, bio_wrapper_state_is_overwritten(biow)
-#ifdef WALB_OVERLAPPED_SERIALIZE
-			, bio_wrapper_state_is_delayed(biow)
-			, biow->n_overlapped
-#endif
-			, biow->is_started
-#ifdef WALB_DEBUG
-			, atomic_read(&biow->state)
-#endif
-			);
+		LOGn("timeout(%d): "
+			"biow %p pos %" PRIu64 " len %u csum %08x error %d\n"
+			, c, biow, (u64)biow->pos, biow->len
+			, biow->csum, biow->error);
 		c++;
 	}
 }
@@ -2045,7 +2019,6 @@ static void wait_for_logpack_and_submit_datapack(
 	struct bio_wrapper *biow, *biow_next;
 	bool is_failed = false;
 	struct iocore_data *iocored;
-	int reti;
 	bool is_pending_insert_succeeded;
 	bool is_stop_queue = false;
 
@@ -2165,8 +2138,7 @@ static void wait_for_logpack_and_submit_datapack(
 			bio_endio(biow->bio, 0);
 			biow->bio = NULL;
 
-			reti = test_and_set_bit(BIO_WRAPPER_PREPARED, &biow->flags);
-			ASSERT(reti == 0);
+			bio_wrapper_state_set_prepared(biow);
 			BIO_WRAPPER_CHANGE_STATE(biow);
 
 			/* Enqueue submit datapack task. */
@@ -2227,8 +2199,6 @@ static void wait_for_write_bio_wrapper(
 	unsigned int c = 0;
 	struct blk_plug plug;
 #endif
-	int reti;
-
 	ASSERT(bio_wrapper_state_is_prepared(biow));
 	ASSERT(bio_wrapper_state_is_submitted(biow));
 #ifdef WALB_OVERLAPPED_SERIALIZE
@@ -2237,8 +2207,9 @@ static void wait_for_write_bio_wrapper(
 
 	/* Wait for completion and call end_request. */
 	wait_for_bio_wrapper(biow, false, false);
-	reti = test_and_set_bit(BIO_WRAPPER_COMPLETED, &biow->flags);
-	ASSERT(reti == 0);
+
+	ASSERT(bio_wrapper_state_is_submitted(biow));
+	bio_wrapper_state_set_completed(biow);
 	BIO_WRAPPER_PRINT("done", biow);
 
 #ifdef WALB_OVERLAPPED_SERIALIZE
@@ -2363,10 +2334,7 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 #endif
 
 	ASSERT(bio_wrapper_state_is_prepared(biow));
-	if (test_and_set_bit(BIO_WRAPPER_SUBMITTED, &biow->flags) != 0) {
-		/* Already submitted. */
-		BUG();
-	}
+	bio_wrapper_state_set_submitted(biow);
 
 #ifdef WALB_DEBUG
 	if (bio_wrapper_state_is_discard(biow) &&
@@ -2557,8 +2525,9 @@ static void start_write_bio_wrapper(
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	ASSERT(biow);
 
-	ASSERT(!biow->is_started);
-	biow->is_started = true;
+	if (test_and_set_bit(BIO_WRAPPER_STARTED, &biow->flags))
+		BUG();
+
 	atomic_inc(&iocored->n_started_write_bio);
 }
 
@@ -3233,7 +3202,8 @@ struct bio_wrapper* alloc_bio_wrapper_inc(
 	if (!biow) { return NULL; }
 
 	atomic_inc(&iocored->n_pending_bio);
-	biow->is_started = false;
+	clear_bit(BIO_WRAPPER_STARTED, &biow->flags);
+
 	return biow;
 }
 
@@ -3251,7 +3221,7 @@ void destroy_bio_wrapper_dec(
 	ASSERT(iocored);
 	ASSERT(biow);
 
-	started = biow->is_started;
+	started = bio_wrapper_state_is_started(biow);
 	destroy_bio_wrapper(biow);
 
 	atomic_dec(&iocored->n_pending_bio);

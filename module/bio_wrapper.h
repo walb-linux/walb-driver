@@ -33,7 +33,6 @@ struct bio_wrapper
 	u32 csum; /* checksum for write IO. */
 	int error;
 	struct completion done;
-	bool is_started;
 
 	unsigned long flags; /* For atomic state management. */
 
@@ -45,7 +44,7 @@ struct bio_wrapper
 
 	struct bio_entry *cloned_bioe; /* cloned bioe */
 
-	/* for temporary use. must be empty before submiting. */
+	/* for temporary use. must be empty after submitted. */
 	struct bio_list cloned_bio_list;
 
 	unsigned long start_time; /* for diskstats. */
@@ -69,13 +68,13 @@ struct bio_wrapper
 #ifdef WALB_PERFORMANCE_ANALYSIS
 enum
 {
-	WALB_TIME_BEGIN,
-	WALB_TIME_LOG_SUBMITTED,
-	WALB_TIME_LOG_COMPLETED,
-	WALB_TIME_DATA_SUBMITTED,
-	WALB_TIME_DATA_COMPLETED,
-	WALB_TIME_END,
-	WALB_TIME_MAX,
+	WALB_TIME_BEGIN = 0,
+	WALB_TIME_LOG_SUBMITTED = 1,
+	WALB_TIME_LOG_COMPLETED = 2,
+	WALB_TIME_DATA_SUBMITTED = 3,
+	WALB_TIME_DATA_COMPLETED = 4,
+	WALB_TIME_END = 5,
+	WALB_TIME_MAX = 6,
 };
 #endif
 
@@ -85,11 +84,9 @@ enum
 enum
 {
 	/*
-	 * State bits.
+	 * Started flag.
 	 */
-	BIO_WRAPPER_PREPARED = 0,
-	BIO_WRAPPER_SUBMITTED,
-	BIO_WRAPPER_COMPLETED,
+	BIO_WRAPPER_STARTED,
 
 	/*
 	 * Information bit.
@@ -102,14 +99,19 @@ enum
 	   due to overlapped. */
 	BIO_WRAPPER_DELAYED,
 #endif
+
+#ifdef WALB_DEBUG
+	/*
+	 * State bits.
+	 */
+	BIO_WRAPPER_PREPARED,
+	BIO_WRAPPER_SUBMITTED,
+	BIO_WRAPPER_COMPLETED,
+#endif
 };
 
-#define bio_wrapper_state_is_prepared(biow) \
-	test_bit(BIO_WRAPPER_PREPARED, &(biow)->flags)
-#define bio_wrapper_state_is_submitted(biow) \
-	test_bit(BIO_WRAPPER_SUBMITTED, &(biow)->flags)
-#define bio_wrapper_state_is_completed(biow) \
-	test_bit(BIO_WRAPPER_COMPLETED, &(biow)->flags)
+#define bio_wrapper_state_is_started(biow) \
+	test_bit(BIO_WRAPPER_STARTED, &(biow)->flags)
 #define bio_wrapper_state_is_discard(biow) \
 	test_bit(BIO_WRAPPER_DISCARD, &(biow)->flags)
 #define bio_wrapper_state_is_overwritten(biow) \
@@ -118,12 +120,43 @@ enum
 #define bio_wrapper_state_is_delayed(biow) \
 	test_bit(BIO_WRAPPER_DELAYED, &(biow)->flags)
 #endif
+#ifdef WALB_DEBUG
+#define bio_wrapper_state_is_prepared(biow) \
+	test_bit(BIO_WRAPPER_PREPARED, &(biow)->flags)
+#define bio_wrapper_state_is_submitted(biow) \
+	test_bit(BIO_WRAPPER_SUBMITTED, &(biow)->flags)
+#define bio_wrapper_state_is_completed(biow) \
+	test_bit(BIO_WRAPPER_COMPLETED, &(biow)->flags)
+
+static inline void bio_wrapper_state_set(struct bio_wrapper *biow, uint flag)
+{
+	if (test_and_set_bit(flag, &biow->flags))
+		BUG();
+}
+
+#define bio_wrapper_state_set_prepared(biow) \
+	bio_wrapper_state_set(biow, BIO_WRAPPER_PREPARED)
+#define bio_wrapper_state_set_submitted(biow) \
+	bio_wrapper_state_set(biow, BIO_WRAPPER_SUBMITTED)
+#define bio_wrapper_state_set_completed(biow) \
+	bio_wrapper_state_set(biow, BIO_WRAPPER_COMPLETED)
+#else
+#define bio_wrapper_state_is_prepared(biow)
+#define bio_wrapper_state_is_submitted(biow)
+#define bio_wrapper_state_is_completed(biow)
+#define bio_wrapper_state_set_prepared(biow)
+#define bio_wrapper_state_set_submitted(biow)
+#define bio_wrapper_state_set_completed(biow)
+#endif
 
 #ifdef WALB_PERFORMANCE_ANALYSIS
 void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow);
 #endif
 
 UNUSED void print_bio_wrapper(const char *level, const struct bio_wrapper *biow);
+UNUSED void print_bio_wrapper_short(
+	const char *level, const struct bio_wrapper *biow, const char *prefix);
+
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio);
 struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask);
 void destroy_bio_wrapper(struct bio_wrapper *biow);
@@ -136,17 +169,19 @@ bool bio_wrapper_init(void);
 void bio_wrapper_exit(void);
 
 #ifdef WALB_TRACK_BIO_WRAPPER
-#define BIO_WRAPPER_PRINT(prefix, biow) bio_wrapper_print(prefix, biow)
+#define BIO_WRAPPER_PRINT(prefix, biow) \
+	print_bio_wrapper_short(KERN_INFO, biow, prefix)
 #define BIO_WRAPPER_PRINT_CSUM(prefix, biow) do {			\
 		const struct walb_dev *wdev = biow->private_data;	\
-		biow->csum = bio_calc_checksum(biow->bio, wdev->log_checksum_salt); \
-		bio_wrapper_print(prefix, biow);			\
+		biow->csum = bio_calc_checksum(				\
+			biow->bio, wdev->log_checksum_salt);		\
+		print_bio_wrapper_short(KERN_INFO, biow, prefix);	\
 	} while (0)
 #define BIO_WRAPPER_PRINT_LS(prefix, biow, list_size) do {	\
 		char buf[32];					\
 		if (list_size == 0) break;			\
 		snprintf(buf, 32, "%s %u", prefix, list_size);	\
-		bio_wrapper_print(buf, biow);			\
+		print_bio_wrapper_short(KERN_INFO, biow, buf);	\
 	} while (0)
 #else
 #define BIO_WRAPPER_PRINT(prefix, biow)
@@ -186,14 +221,6 @@ static inline bool bio_wrapper_is_overwritten_by(
 
 	return biow1->pos <= biow0->pos &&
 		biow0->pos + biow0->len <= biow1->pos + biow1->len;
-}
-
-static inline void bio_wrapper_print(const char *prefix, const struct bio_wrapper *biow)
-{
-	LOGi("%s lsid %" PRIu64 " pos %" PRIu64 " len %u csum %08x\n"
-		, prefix
-		, (u64)biow->lsid, (u64)biow->pos
-		, biow->len, biow->csum);
 }
 
 #endif /* WALB_BIO_WRAPPER_H_KERNEL */

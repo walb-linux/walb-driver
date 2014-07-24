@@ -38,7 +38,8 @@ void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow)
 	struct timespec *tsp[WALB_TIME_MAX];
 	struct timespec ts[WALB_TIME_MAX - 1];
 
-	if (!biow) { return; }
+	if (!biow)
+		return;
 
 	tsp[0] = &biow->ts[WALB_TIME_BEGIN];
 	tsp[1] = &biow->ts[WALB_TIME_LOG_SUBMITTED];
@@ -66,63 +67,80 @@ void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow)
 }
 #endif
 
-/**
- * Print a req_entry.
- */
 UNUSED
 void print_bio_wrapper(const char *level, const struct bio_wrapper *biow)
 {
-	ASSERT(biow);
+	if (!biow)
+		return;
+
 	printk("%s"
-		"biow %p\n"
-		"  bio %p\n"
-		"  pos %" PRIu64 "\n"
-		"  len %u\n"
-		"  csum %08x\n"
-		"  error %d\n"
-		"  is_started %d\n"
-		"  lsid %" PRIu64 "\n"
-		"  private_data %p\n"
+		"biow %p "
+		"bio %p "
+		"pos %" PRIu64 " "
+		"len %u "
+		"csum %08x "
+		"error %d "
+		"flags(%d%d%d"
 #ifdef WALB_OVERLAPPED_SERIALIZE
-		"  n_overlapped %d\n"
+		"%d"
+#endif
 #ifdef WALB_DEBUG
-		"  ol_id %" PRIu64 "\n"
+		"%d%d%d"
 #endif
-#endif
-		"  is_prepared %d\n"
-		"  is_submitted %d\n"
-		"  is_completed %d\n"
-		"  is_discard %d\n"
-		"  is_overwritten %d\n"
+		") "
+		"lsid %" PRIu64 " "
+		"private_data %p "
+		"cloned_bioe %p "
+		"cloned_bio_list_size %u "
 #ifdef WALB_OVERLAPPED_SERIALIZE
-		"  is_delayed %d\n"
+		"n_overlapped %d "
+#ifdef WALB_DEBUG
+		"ol_id %" PRIu64 " "
 #endif
-		, level, biow, biow->bio,
-		(u64)biow->pos, biow->len, biow->csum, biow->error,
-		(int)biow->is_started, biow->lsid,
-		biow->private_data
+#endif
+#ifdef WALB_DEBUG
+		"state %d "
+#endif
+		"\n"
+		, level, biow, biow->bio
+		, (u64)biow->pos, biow->len, biow->csum, biow->error
+		, bio_wrapper_state_is_started(biow) ? 1 : 0
+		, bio_wrapper_state_is_discard(biow) ? 1 : 0
+		, bio_wrapper_state_is_overwritten(biow) ? 1 : 0
+#ifdef WALB_OVERLAPPED_SERIALIZE
+		, bio_wrapper_state_is_delayed(biow) ? 1 : 0
+#endif
+#ifdef WALB_DEBUG
+		, bio_wrapper_state_is_prepared(biow) ? 1 : 0
+		, bio_wrapper_state_is_submitted(biow) ? 1 : 0
+		, bio_wrapper_state_is_completed(biow) ? 1 : 0
+#endif
+		, biow->lsid
+		, biow->private_data
+		, biow->cloned_bioe
+		, bio_list_size(&biow->cloned_bio_list)
 #ifdef WALB_OVERLAPPED_SERIALIZE
 		, biow->n_overlapped
 #ifdef WALB_DEBUG
 		, biow->ol_id
 #endif
 #endif
-		, bio_wrapper_state_is_prepared(biow) ? 1 : 0
-		, bio_wrapper_state_is_submitted(biow) ? 1 : 0
-		, bio_wrapper_state_is_completed(biow) ? 1 : 0
-		, bio_wrapper_state_is_discard(biow) ? 1 : 0
-		, bio_wrapper_state_is_overwritten(biow) ? 1 : 0
-#ifdef WALB_OVERLAPPED_SERIALIZE
-		, bio_wrapper_state_is_delayed(biow) ? 1 : 0
+#ifdef WALB_DEBUG
+		, atomic_read(&biow->state)
 #endif
 		);
-	if (biow->cloned_bioe) {
-		const struct bio_entry *bioe = biow->cloned_bioe;
-		printk("%s""  cloned_bioe %p pos %" PRIu64 " len %u\n"
-			, level, bioe
-			, (u64)bio_entry_pos(bioe)
-			, bio_entry_len(bioe));
-	}
+}
+
+UNUSED
+void print_bio_wrapper_short(
+	const char *level, const struct bio_wrapper *biow, const char *prefix)
+{
+	if (!biow)
+		return;
+
+	printk("%s%s biow lsid %" PRIu64 " pos %" PRIu64 " len %u csum %08x\n"
+		, level, prefix, (u64)biow->lsid
+		, (u64)biow->pos, biow->len, biow->csum);
 }
 
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
