@@ -51,7 +51,6 @@ hashtbl.o treemap.o
 
 test-hashtbl-mod-objs := test/test_hashtbl.o hashtbl.o
 test-treemap-mod-objs := test/test_treemap.o treemap.o
-test-sg-util-mod-objs := test/test_sg_util.o sg_util.o
 test-kmem-cache-mod-objs := test/test_kmem_cache.o
 test-workqueue-mod-objs := test/test_workqueue.o
 test-kthread-mod-objs := test/test_kthread.o
@@ -68,7 +67,6 @@ test-hashtbl-mod.o \
 test-treemap-mod.o \
 test-kthread-mod.o \
 test-deadlock-mod.o \
-test-sg-util-mod.o \
 test-kmem-cache-mod.o \
 test-workqueue-mod.o \
 test-serialized-task-mod.o \
