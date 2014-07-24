@@ -2440,6 +2440,8 @@ static void submit_read_bio_wrapper(
 	/* Submit all related bio(s). */
 	LOG_("submit_lr: bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, bioe->pos, bioe->len);
+	/* TODO: if bio_list is empty,
+	   we need not delay to call bio_endio and gc it. */
 	submit_all_bio_list(bio_list);
 
 	/* Enqueue wait/gc task. */

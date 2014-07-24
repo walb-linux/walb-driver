@@ -500,4 +500,23 @@ static inline void bio_list_del(
 	bio->bi_next = NULL;
 }
 
+static inline bool bio_private_lsb_get(const struct bio *bio)
+{
+	const ulong mask = 1;
+	return ((ulong)bio->bi_private & mask) != 0;
+}
+
+static inline void bio_private_lsb_set(struct bio *bio)
+{
+	const ulong mask = 1;
+	*(ulong *)(&bio->bi_private) |= mask;
+}
+
+static inline void bio_private_lsb_clear(struct bio *bio)
+{
+	const ulong mask = 1;
+	*(ulong *)(&bio->bi_private) &= ~mask;
+}
+
+
 #endif /* WALB_BIO_UTIL_H_KERNEL */

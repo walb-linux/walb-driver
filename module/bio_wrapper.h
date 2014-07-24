@@ -128,8 +128,9 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio);
 struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask);
 void destroy_bio_wrapper(struct bio_wrapper *biow);
 
-bool data_copy_bio_wrapper(
+bool bio_wrapper_copy_overlapped(
 	struct bio_wrapper *dst, struct bio_wrapper *src, gfp_t gfp_mask);
+void bio_wrapper_endio_copied(struct bio_wrapper *biow);
 
 bool bio_wrapper_init(void);
 void bio_wrapper_exit(void);

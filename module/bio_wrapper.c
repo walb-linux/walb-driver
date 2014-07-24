@@ -193,8 +193,10 @@ void destroy_bio_wrapper(struct bio_wrapper *biow)
  * @dst destination bio_wrapper.
  *     This function modifies dst->cloned_bio_list
  *     and may split bios in the list at overlapped borders.
- *     For all written bio(s), bio_endio(bio, 0) will be called
- *     and they will be removed from the list.
+ *     For all copied bio(s), the least significant bit (LSB)
+ *     of bio->bi_private will be set
+ *     to detect whether they are copied or not later.
+ *     You must clear the bit before calling bio_endio().
  * @src source bio_wrapper.
  *     This uses src->cloned_bioe->bio and src->cloned_bioe->iter.
  *     This function does not modify them.
@@ -204,7 +206,7 @@ void destroy_bio_wrapper(struct bio_wrapper *biow)
  *   true if copy has done successfully,
  *   or false (due to memory allocation failure).
  */
-bool data_copy_bio_wrapper(
+bool bio_wrapper_copy_overlapped(
 	struct bio_wrapper *dst, struct bio_wrapper *src, gfp_t gfp_mask)
 {
 	struct bio *src_bio = src->cloned_bioe->bio;
@@ -213,10 +215,7 @@ bool data_copy_bio_wrapper(
 
 	ASSERT(src_bio);
 	ASSERT(bio_wrapper_is_overlap(dst, src));
-	if (bio_list_empty(dst_list)) {
-		/* All bios has been finished by copy. */
-		return true;
-	}
+	ASSERT(!bio_list_empty(dst_list));
 
 	bio_list_for_each_safe(dst_bio, next_bio, dst_list) {
 		struct bvec_iter dst_iter = dst_bio->bi_iter;
@@ -270,9 +269,9 @@ bool data_copy_bio_wrapper(
 			 * split1    |--|    (copied)
 			 * dst'         |--|
 			 */
+			bio_private_lsb_set(split1);
 			bio_list_insert(dst_list, split0, prev_bio);
-			bio_endio(split1, 0);
-			prev_bio = dst_bio;
+			bio_list_insert(dst_list, split1, split0);
 		} else if (split0 && !split1) {
 			/*
 			 * src       |-----|
@@ -280,10 +279,8 @@ bool data_copy_bio_wrapper(
 			 * split0 |--|
 			 * dst'      |--|    (copied)
 			 */
-			bio_list_del(dst_list, dst_bio, prev_bio);
+			bio_private_lsb_set(dst_bio);
 			bio_list_insert(dst_list, split0, prev_bio);
-			bio_endio(dst_bio, 0);
-			prev_bio = split0;
 		} else if (!split0 && split1) {
 			/*
 			 * src    |-----|
@@ -291,20 +288,42 @@ bool data_copy_bio_wrapper(
 			 * split1    |--|    (copied)
 			 * dst'         |--|
 			 */
-			bio_endio(split1, 0);
-			prev_bio = dst_bio;
+			bio_private_lsb_set(split1);
+			bio_list_insert(dst_list, split1, prev_bio);
 		} else {
 			/*
 			 * src |--------|
 			 * dst    |--|    (copied)
 			 */
-			bio_list_del(dst_list, dst_bio, prev_bio);
-			bio_endio(dst_bio, 0);
-			/* prev_bio is not changed. */
+			bio_private_lsb_set(dst_bio);
+		}
+		prev_bio = dst_bio;
+	}
+	return true;
+}
+
+/**
+ * For all bio(s) in biow->cloned_bio_list,
+ * call bio_endio() and remove from the list
+ * if lsb of bio->private_data is set.
+ */
+void bio_wrapper_endio_copied(struct bio_wrapper *biow)
+{
+	struct bio_list *bio_list = &biow->cloned_bio_list;
+	struct bio *bio, *prev_bio = NULL, *next_bio;
+
+	ASSERT(bio_list);
+	ASSERT(!bio_list_empty(bio_list));
+
+	bio_list_for_each_safe(bio, next_bio, bio_list) {
+		if (bio_private_lsb_get(bio)) {
+			bio_private_lsb_clear(bio);
+			bio_list_del(bio_list, bio, prev_bio);
+			bio_endio(bio, 0);
+		} else {
+			prev_bio = bio;
 		}
 	}
-
-	return true;
 }
 
 /**

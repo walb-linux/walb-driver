@@ -202,9 +202,11 @@ bool pending_check_and_copy(
 	}
 	/* Copy overlapped pending bio(s) in the order of lsid. */
 	list_for_each_entry(biow_tmp, &biow_list, list3) {
-		if (!data_copy_bio_wrapper(biow, biow_tmp, gfp_mask))
+		if (!bio_wrapper_copy_overlapped(biow, biow_tmp, gfp_mask))
 			return false;
 	}
+	bio_wrapper_endio_copied(biow);
+
 #ifdef WALB_DEBUG
 	LOG_("lsid begin\n");
 	lsid = 0;
@@ -280,14 +282,13 @@ bool pending_insert_and_delete_fully_overwritten(
 	struct multimap *pending_data, unsigned int *max_sectors_p,
 	struct bio_wrapper *biow, gfp_t gfp_mask)
 {
-	bool ret;
-
 	ASSERT(pending_data);
 	ASSERT(max_sectors_p);
 	ASSERT(biow);
 
-	ret = pending_insert(pending_data, max_sectors_p, biow, gfp_mask);
-	if (!ret) { return false; }
+	if (!pending_insert(pending_data, max_sectors_p, biow, gfp_mask))
+		return false;
+
 	pending_delete_fully_overwritten(pending_data, biow);
 	return true;
 }
