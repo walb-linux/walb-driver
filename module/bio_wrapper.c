@@ -128,7 +128,9 @@ void print_bio_wrapper(const char *level, const struct bio_wrapper *biow)
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 {
 	ASSERT(biow);
-
+#ifdef WALB_DEBUG
+	memset(biow, 0, sizeof(*biow));
+#endif
 	biow->cloned_bioe = NULL;
 	bio_list_init(&biow->cloned_bio_list);
 	biow->error = 0;
@@ -136,6 +138,7 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 	biow->private_data = NULL;
 	init_completion(&biow->done);
 	biow->flags = 0;
+	biow->lsid = 0;
 
 	if (bio) {
 		biow->bio = bio;

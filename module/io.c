@@ -867,6 +867,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 #ifdef WALB_DEBUG
 			atomic_inc(&biow->state);
 #endif
+			BIO_WRAPPER_PRINT("data0", biow);
 			submit_write_bio_wrapper(biow, is_plugging);
 		}
 		blk_finish_plug(&plug);
@@ -1247,11 +1248,13 @@ static void submit_logpack(
 			/* such bio must be permitted at first only. */
 			ASSERT(i == 0);
 
+			BIO_WRAPPER_PRINT("logF", biow);
 			logpack_submit_bio_wrapper_zero(biow, pbs, ldev);
 		} else {
 			/* Normal IO. */
 			ASSERT(i < logh->n_records);
 
+			BIO_WRAPPER_PRINT("log0", biow);
 			/* submit bio(s) for the biow. */
 			logpack_submit_bio_wrapper(
 				biow, rec->lsid, pbs, ldev, ring_buffer_off,
@@ -2166,6 +2169,7 @@ static void wait_for_logpack_and_submit_datapack(
 			   while easy algorithm call it after data device IO. */
 			io_acct_end(biow);
 			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
+			BIO_WRAPPER_PRINT("log1", biow);
 			bio_endio(biow->bio, 0);
 			biow->bio = NULL;
 
@@ -2245,6 +2249,7 @@ static void wait_for_write_bio_wrapper(
 	wait_for_bio_wrapper(biow, false, false);
 	reti = test_and_set_bit(BIO_WRAPPER_COMPLETED, &biow->flags);
 	ASSERT(reti == 0);
+	BIO_WRAPPER_PRINT("done", biow);
 
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	/* Delete from overlapped detection data. */
@@ -2275,6 +2280,7 @@ static void wait_for_write_bio_wrapper(
 				biow_tmp, (u64)biow_tmp->pos, biow_tmp->len); /* debug */
 #endif
 			c++;
+			BIO_WRAPPER_PRINT("data1", biow);
 			submit_write_bio_wrapper(biow_tmp, is_plug);
 		}
 		blk_finish_plug(&plug);
@@ -2340,6 +2346,7 @@ static void wait_for_bio_wrapper(struct bio_wrapper *biow, bool is_endio, bool i
 		if (!biow->error)
 			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
 
+		BIO_WRAPPER_PRINT_CSUM("read2", biow);
 		io_acct_end(biow);
 		bio_endio(biow->bio, biow->error);
 		biow->bio = NULL;
@@ -2429,6 +2436,7 @@ static void submit_read_bio_wrapper(
 		goto error1;
 
 	/* Check pending data and copy data from executing write requests. */
+	BIO_WRAPPER_PRINT_LS("read0", biow, bio_list_size(bio_list));
 	spin_lock(&iocored->pending_data_lock);
 	ret = pending_check_and_copy(
 		iocored->pending_data,
@@ -2440,6 +2448,7 @@ static void submit_read_bio_wrapper(
 	/* Submit all related bio(s). */
 	LOG_("submit_lr: bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, bioe->pos, bioe->len);
+	BIO_WRAPPER_PRINT_LS("read1", biow, bio_list_size(bio_list));
 	/* TODO: if bio_list is empty,
 	   we need not delay to call bio_endio and gc it. */
 	submit_all_bio_list(bio_list);

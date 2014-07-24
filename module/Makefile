@@ -9,6 +9,8 @@ OVERLAP=1
 ASSERT=0
 # enable performacne analysis of each bio wrapper.
 PERF=0
+# enable bio wrapper tracking
+TRACK=0
 
 # Add your debugging flag (or not) to CFLAGS
 ifeq ($(DYNAMIC_DEBUG),1)
@@ -29,6 +31,10 @@ endif
 
 ifeq ($(PERF),1)
   DEBFLAGS += -DWALB_PERFORMANCE_ANALYSIS
+endif
+
+ifeq ($(TRACK),1)
+  DEBFLAGS += -DWALB_TRACK_BIO_WRAPPER
 endif
 
 EXTRA_CFLAGS += $(DEBFLAGS)

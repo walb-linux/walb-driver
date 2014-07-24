@@ -135,6 +135,25 @@ void bio_wrapper_endio_copied(struct bio_wrapper *biow);
 bool bio_wrapper_init(void);
 void bio_wrapper_exit(void);
 
+#ifdef WALB_TRACK_BIO_WRAPPER
+#define BIO_WRAPPER_PRINT(prefix, biow) bio_wrapper_print(prefix, biow)
+#define BIO_WRAPPER_PRINT_CSUM(prefix, biow) do {			\
+		const struct walb_dev *wdev = biow->private_data;	\
+		biow->csum = bio_calc_checksum(biow->bio, wdev->log_checksum_salt); \
+		bio_wrapper_print(prefix, biow);			\
+	} while (0)
+#define BIO_WRAPPER_PRINT_LS(prefix, biow, list_size) do {	\
+		char buf[32];					\
+		if (list_size == 0) break;			\
+		snprintf(buf, 32, "%s %u", prefix, list_size);	\
+		bio_wrapper_print(buf, biow);			\
+	} while (0)
+#else
+#define BIO_WRAPPER_PRINT(prefix, biow)
+#define BIO_WRAPPER_PRINT_CSUM(prefix, biow)
+#define BIO_WRAPPER_PRINT_LS(prefix, biow, list_size)
+#endif
+
 /**
  * Check overlapped.
  */
@@ -161,6 +180,14 @@ static inline bool bio_wrapper_is_overwritten_by(
 
 	return biow1->pos <= biow0->pos &&
 		biow0->pos + biow0->len <= biow1->pos + biow1->len;
+}
+
+static inline void bio_wrapper_print(const char *prefix, const struct bio_wrapper *biow)
+{
+	LOGi("%s lsid %" PRIu64 " pos %" PRIu64 " len %u csum %08x\n"
+		, prefix
+		, (u64)biow->lsid, (u64)biow->pos
+		, biow->len, biow->csum);
 }
 
 #endif /* WALB_BIO_WRAPPER_H_KERNEL */

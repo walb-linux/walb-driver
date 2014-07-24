@@ -202,6 +202,7 @@ bool pending_check_and_copy(
 	}
 	/* Copy overlapped pending bio(s) in the order of lsid. */
 	list_for_each_entry(biow_tmp, &biow_list, list3) {
+		BIO_WRAPPER_PRINT("copy", biow_tmp);
 		if (!bio_wrapper_copy_overlapped(biow, biow_tmp, gfp_mask))
 			return false;
 	}
