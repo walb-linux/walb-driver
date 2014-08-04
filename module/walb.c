@@ -26,7 +26,6 @@
 #include <asm/atomic.h>
 
 #include "kern.h"
-#include "hashtbl.h"
 #include "control.h"
 #include "alldevs.h"
 #include "util.h"

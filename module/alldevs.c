@@ -9,7 +9,6 @@
 #include <linux/rwsem.h>
 
 #include "treemap.h"
-#include "hashtbl.h"
 #include "alldevs.h"
 
 /**

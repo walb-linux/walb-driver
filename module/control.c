@@ -13,7 +13,6 @@
 #include <linux/vmalloc.h>
 
 #include "kern.h"
-#include "hashtbl.h"
 #include "control.h"
 #include "alldevs.h"
 #include "version.h"
