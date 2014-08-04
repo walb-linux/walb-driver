@@ -80,7 +80,6 @@ struct treemap_memory_manager
 	struct kmem_cache *cell_cache;
 };
 
-
 /**
  * Map and multimap data structure.
  * Data type is different but the contents must be the same.
@@ -181,8 +180,6 @@ void map_empty(struct map *map);
 int map_is_empty(const struct map *map);
 int map_n_items(const struct map *map);
 
-int map_test(void); /* For unit test. */
-
 /**
  * Prototypes for map cursor operations.
  */
@@ -203,9 +200,6 @@ unsigned long map_cursor_val(const struct map_cursor *cursor);
 /* int map_cursor_update(struct map_cursor *cursor); */
 int map_cursor_del(struct map_cursor *cursor);
 void map_cursor_destroy(struct map_cursor *cursor);
-
-int map_cursor_test(void); /* For unit test. */
-
 
 /**
  * Prototypes for multimap operations.
@@ -228,9 +222,6 @@ void multimap_empty(struct multimap *map);
 int multimap_is_empty(const struct multimap *map);
 int multimap_n_items(const struct multimap *map);
 
-int multimap_test(void); /* For unit test. */
-
-
 /**
  * Prototypes for multimap cursor operations.
  */
@@ -251,6 +242,25 @@ unsigned long multimap_cursor_val(const struct multimap_cursor *cursor);
 u64 multimap_cursor_key(const struct multimap_cursor *cursor);
 int multimap_cursor_del(struct multimap_cursor *cursor);
 
-int multimap_cursor_test(void); /* For unit test. */
+/**
+ * Assertions.
+ */
+#define ASSERT_TREEMAP_MEMORY_MANAGER(mmgr)		\
+	ASSERT(is_valid_treemap_memory_manager(mmgr))
+
+#define ASSERT_TREEMAP(tmap)						\
+	ASSERT((tmap) && is_valid_treemap_memory_manager((tmap)->mmgr))
+
+#define ASSERT_TREENODE(tnode)				\
+	ASSERT((tnode) &&				\
+		(tnode)->val != TREEMAP_INVALID_VAL)
+
+#define ASSERT_TREECELL(tcell)				\
+	ASSERT((tcell) &&				\
+		(tcell)->val != TREEMAP_INVALID_VAL)
+
+#define ASSERT_MAP_CURSOR(cursor) ASSERT(is_valid_map_cursor(cursor))
+#define ASSERT_MULTIMAP_CURSOR(cursor) ASSERT(is_valid_multimap_cursor(cursor))
+
 
 #endif /* TREEMAP_H_KERNEL */
