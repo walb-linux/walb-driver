@@ -13,27 +13,6 @@
 #include "sector_io.h"
 
 /**
- * End io with completion.
- *
- * bio->bi_private must be (struct walb_bio_with_completion *).
- */
-void walb_end_io_with_completion(struct bio *bio, int error)
-{
-	struct walb_bio_with_completion *bioc;
-	bioc = bio->bi_private;
-
-	ASSERT(bioc->status == WALB_BIO_INIT);
-	if (error || ! test_bit(BIO_UPTODATE, &bio->bi_flags)) {
-		LOGe("walb_end_io_with_completion: error %d bi_flags %lu\n",
-			error, bio->bi_flags);
-		bioc->status = WALB_BIO_ERROR;
-	} else {
-		bioc->status = WALB_BIO_END;
-	}
-	complete(&bioc->wait);
-}
-
-/**
  * Read/write sector from/to block device.
  * This is blocked operation.
  * Do not call this function in interuption handlers.
@@ -46,13 +25,12 @@ void walb_end_io_with_completion(struct bio *bio, int error)
  * @return true in success, or false.
  */
 bool sector_io(
-	unsigned long bi_rw, struct block_device *bdev,
+	ulong bi_rw, struct block_device *bdev,
 	u64 addr, struct sector_data *sect)
 {
 	struct bio *bio;
-	int pbs, lbs;
+	int pbs, error;
 	struct page *page;
-	struct walb_bio_with_completion *bioc;
 	u8 *buf;
 
 	LOG_("walb_sector_io begin\n");
@@ -61,7 +39,6 @@ bool sector_io(
 	buf = sect->data;
 	ASSERT(buf);
 
-	lbs = bdev_logical_block_size(bdev);
 	pbs = bdev_physical_block_size(bdev);
 
 	if (sect->size != pbs) {
@@ -69,56 +46,40 @@ bool sector_io(
 		goto error0;
 	}
 
-	bioc = kmalloc(sizeof(struct walb_bio_with_completion), GFP_NOIO);
-	if (!bioc) {
-		goto error0;
-	}
-	init_completion(&bioc->wait);
-	bioc->status = WALB_BIO_INIT;
-
 	/* Alloc bio */
 	bio = bio_alloc(GFP_NOIO, 1);
 	if (!bio) {
 		LOGe("bio_alloc failed.\n");
-		goto error1;
+		goto error0;
 	}
 	ASSERT(virt_addr_valid(buf));
 	page = virt_to_page(buf);
 
-	LOGd("sector %lu "
-		"page %p buf %p sectorsize %d offset %lu rw %lu\n",
-		(unsigned long)(addr * (pbs / lbs)),
-		virt_to_page(buf), buf,
-		pbs, offset_in_page(buf), bi_rw);
+	LOGd("sector %" PRIu64 " "
+		"page %p buf %p sectorsize %d offset %lu rw %lu\n"
+		, addr_lb(pbs, addr)
+		, virt_to_page(buf), buf
+		, pbs, offset_in_page(buf), bi_rw);
 
 	bio->bi_rw = bi_rw;
 	bio->bi_bdev = bdev;
-	bio->bi_iter.bi_sector = addr * (pbs / lbs);
-	bio->bi_end_io = walb_end_io_with_completion;
-	bio->bi_private = bioc;
+	bio->bi_iter.bi_sector = addr_lb(pbs, addr);
 	bio_add_page(bio, page, pbs, offset_in_page(buf));
 
-	/* Submit and wait to complete. */
-	generic_make_request(bio);
-	wait_for_completion(&bioc->wait);
-
-	/* Check result. */
-	if (bioc->status != WALB_BIO_END) {
-		LOGe("sector io failed.\n");
-		goto error2;
+	/* Submit, wait for completion,
+	   check errors, and deallocate. */
+	error = submit_bio_wait(bi_rw, bio);
+	if (error) {
+		LOGe("sector io failed with error %d\n", error);
+		goto error1;
 	}
-
-	/* Cleanup allocated bio and memory. */
 	bio_put(bio);
-	kfree(bioc);
 
 	LOG_("walb_sector_io end\n");
 	return true;
 
-error2:
-	bio_put(bio);
 error1:
-	kfree(bioc);
+	bio_put(bio);
 error0:
 	return false;
 }

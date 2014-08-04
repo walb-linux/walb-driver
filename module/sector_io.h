@@ -18,34 +18,13 @@
 #include "walb/log_device.h"
 #include "walb/block_size.h"
 
-/**
- * BIO wrapper flag.
- */
-#define WALB_BIO_INIT	 0
-#define WALB_BIO_END	 1
-#define WALB_BIO_ERROR	 2
-
-/**
- * Bio wrapper with completion.
- */
-struct walb_bio_with_completion
-{
-	struct bio *bio;
-	struct completion wait;
-	int status;
-	struct list_head list;
-};
-
 /*******************************************************************************
  * Function prototypes.
  *******************************************************************************/
 
-/* End IO callback for struct walb_bio_with_completion. */
-void walb_end_io_with_completion(struct bio *bio, int error);
-
 /* Sector IO function. */
 bool sector_io(
-	unsigned long bi_rw, struct block_device *bdev,
+	ulong bi_rw, struct block_device *bdev,
 	u64 off, struct sector_data *sect);
 
 /* Super sector functions. */
