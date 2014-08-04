@@ -138,17 +138,12 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 		goto error0;
 	}
 
-	if (alldevs_add(wdev) != 0) {
-		alldevs_write_unlock();
-		LOGe("alldevs_add failed.\n");
-		ctl->error = -7;
-		goto error1;
-	}
+	alldevs_add(wdev);
 
 	if (!register_wdev(wdev)) {
 		LOGe("register_wdev failed.\n");
 		ctl->error = -8;
-		goto error2;
+		goto error1;
 	}
 
 	/* Unlock */
@@ -163,10 +158,9 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	print_walb_ctl(ctl); /* debug */
 	return 0;
 
-error2:
+error1:
 	alldevs_del(wdev);
 	alldevs_write_unlock();
-error1:
 	destroy_wdev(wdev);
 error0:
 	return -EFAULT;

@@ -361,7 +361,6 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	u8 new_uuid[UUID_SIZE], old_uuid[UUID_SIZE];
 	unsigned int pbs = wdev->physical_bs;
 	bool is_grown = false;
-	int ret;
 	struct walb_super_sector *super;
 	u64 lsid0_off;
 	struct lsid_set lsids;
@@ -439,16 +438,6 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	/* Sync super sector. */
 	if (!walb_sync_super_block(wdev)) {
 		LOGe("sync superblock failed.\n");
-		iocore_set_readonly(wdev);
-		goto error2;
-	}
-
-	/* Update uuid index of alldev data. */
-	alldevs_write_lock();
-	ret = alldevs_update_uuid(old_uuid, new_uuid);
-	alldevs_write_unlock();
-	if (ret) {
-		LOGe("Update alldevs index failed.\n");
 		iocore_set_readonly(wdev);
 		goto error2;
 	}

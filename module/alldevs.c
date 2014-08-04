@@ -19,7 +19,7 @@ static struct rw_semaphore all_wdevs_lock_;
 
 /**
  * List of struct walb_dev.
- * This is used just for 'for all' operations.
+ * The list is sorted by device minor number.
  */
 static struct list_head all_wdevs_;
 
@@ -27,25 +27,6 @@ static struct list_head all_wdevs_;
  * Number of devices.
  */
 static unsigned int n_devices_;
-
-/**
- * Tree map or hash tables to get wdev by minor, name or uuid.
- *
- * map_minor's key size is unsigned int minor.
- *	       value is pointer to struct walb_dev.
- * htbl_name's key size is 64.
- *	       value is pointer to struct walb_dev.
- * htbl_uuid's key size is UUID_SIZE.
- *	       value is pointer to struct walb_dev.
- */
-static struct map *map_minor_;
-static struct hash_tbl *htbl_name_;
-static struct hash_tbl *htbl_uuid_;
-
-/**
- * Memory manager for this module.
- */
-static struct treemap_memory_manager mmgr_;
 
 /**
  * For debug.
@@ -71,24 +52,6 @@ static atomic_t is_available_ = ATOMIC_INIT(0);
 	} while (0)
 
 /*******************************************************************************
- * Static functions.
- *******************************************************************************/
-
-
-/**
- * Get length of walb device.
- *
- * @return length of the device name like "walb/0".
- */
-static size_t get_wdev_name_len(const struct walb_dev *wdev)
-{
-	ASSERT(wdev != NULL);
-	ASSERT(wdev->lsuper0 != NULL);
-	return strlen(get_super_sector(wdev->lsuper0)->name);
-}
-
-
-/*******************************************************************************
  * Global functions.
  *******************************************************************************/
 
@@ -99,43 +62,10 @@ static size_t get_wdev_name_len(const struct walb_dev *wdev)
  */
 int alldevs_init(void)
 {
-	bool ret;
-
 	INIT_LIST_HEAD(&all_wdevs_);
-
-	ret = initialize_treemap_memory_manager_kmalloc(&mmgr_, 1);
-	if (!ret) { goto error0; }
-
-	htbl_name_ = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
-	if (!htbl_name_) { goto error1; }
-
-	htbl_uuid_ = hashtbl_create(HASHTBL_MAX_BUCKET_SIZE, GFP_KERNEL);
-	if (!htbl_uuid_) { goto error2; }
-
-	map_minor_ = map_create(GFP_KERNEL, &mmgr_);
-	if (!map_minor_) { goto error3; }
-
 	init_rwsem(&all_wdevs_lock_);
-
 	CHECK_START();
-
 	return 0;
-
-#if 0
-error4:
-	map_destroy(map_minor_);
-	map_minor_ = NULL;
-#endif
-error3:
-	hashtbl_destroy(htbl_uuid_);
-	htbl_uuid_ = NULL;
-error2:
-	hashtbl_destroy(htbl_name_);
-	htbl_name_ = NULL;
-error1:
-	finalize_treemap_memory_manager(&mmgr_);
-error0:
-	return -ENOMEM;
 }
 
 /**
@@ -144,93 +74,28 @@ error0:
 void alldevs_exit(void)
 {
 	CHECK_STOP();
-
-	/* Call this after all walb devices has stopped. */
-
 	ASSERT(list_empty(&all_wdevs_));
-	ASSERT(map_is_empty(map_minor_));
-	ASSERT(hashtbl_is_empty(htbl_uuid_));
-	ASSERT(hashtbl_is_empty(htbl_name_));
-
-	map_destroy(map_minor_);
-	map_minor_ = NULL;
-	hashtbl_destroy(htbl_uuid_);
-	htbl_uuid_ = NULL;
-	hashtbl_destroy(htbl_name_);
-	htbl_name_ = NULL;
-
-	finalize_treemap_memory_manager(&mmgr_);
 }
 
 /**
  * Search wdev with device minor id.
- * Using map_minor_.
  *
  * @LOCK read lock is required.
  */
 struct walb_dev* search_wdev_with_minor(unsigned int minor)
 {
-	unsigned long p;
+	struct walb_dev *wdev;
 
 	CHECK_RUNNING();
+	list_for_each_entry(wdev, &all_wdevs_, list) {
+		if (MINOR(wdev->devt) == minor)
+			return wdev;
 
-	p = map_lookup(map_minor_, (u64)minor);
-	if (p == TREEMAP_INVALID_VAL) {
-		return NULL;
-	} else {
-		ASSERT(p);
-		return (struct walb_dev *)p;
+		/* assume the list is sorted. */
+		if (MINOR(wdev->devt) > minor)
+			return NULL;
 	}
-}
-
-/**
- * Search wdev with device name.
- * Using htbl_name_.
- *
- * @LOCK read lock is required.
- */
-struct walb_dev* search_wdev_with_name(const char* name)
-{
-	size_t len;
-	unsigned long p;
-
-	CHECK_RUNNING();
-
-	len = strnlen(name, WALB_DEV_NAME_MAX_LEN);
-	if (len == WALB_DEV_NAME_MAX_LEN) {
-		return NULL;
-	}
-
-	p = hashtbl_lookup(htbl_name_, (const u8 *)name, len);
-	ASSERT(p != 0);
-
-	if (p == HASHTBL_INVALID_VAL) {
-		return NULL;
-	} else {
-		return (struct walb_dev *)p;
-	}
-}
-
-/**
- * Search wdev with device uuid.
- * Using htbl_uuid_.
- *
- * @LOCK read lock is required.
- */
-struct walb_dev* search_wdev_with_uuid(const u8* uuid)
-{
-	unsigned long p;
-
-	CHECK_RUNNING();
-
-	p = hashtbl_lookup(htbl_uuid_, uuid, UUID_SIZE);
-	ASSERT(p != 0);
-
-	if (p == HASHTBL_INVALID_VAL) {
-		return NULL;
-	} else {
-		return (struct walb_dev *)p;
-	}
+	return NULL;
 }
 
 /**
@@ -254,31 +119,18 @@ int get_wdev_list_range(
 	size_t n,
 	unsigned int minor0, unsigned int minor1)
 {
-	int ret;
-	unsigned int minor;
 	size_t remaining = n;
-	struct map_cursor cur_t;
-
+	struct walb_dev *wdev;
 	ASSERT(n > 0);
 	ASSERT(minor0 < minor1);
 
-	map_cursor_init(map_minor_, &cur_t);
-	ret = map_cursor_search(&cur_t, (u64)minor0, MAP_SEARCH_GE);
-	if (ret) {
-		minor = map_cursor_key(&cur_t);
-	} else {
-		minor = (-1U);
-	}
-	while (remaining > 0 && ret && minor < (u64)minor1) {
+	list_for_each_entry(wdev, &all_wdevs_, list) {
 		struct walb_disk_data ddata_t;
-		struct walb_dev *wdev;
-		unsigned long val;
-
-		/* Get walb_dev. */
-		val = map_cursor_val(&cur_t);
-		ASSERT(val != TREEMAP_INVALID_VAL);
-		wdev = (struct walb_dev *)val;
-		ASSERT(wdev);
+		const uint minor = MINOR(wdev->devt);
+		if (minor < minor0)
+			continue;
+		if (minor >= minor1 || remaining == 0)
+			break;
 
 		/* Make walb_disk_data. */
 		ASSERT(wdev->gd);
@@ -301,8 +153,6 @@ int get_wdev_list_range(
 			ddata_k++;
 		}
 		remaining--;
-		ret = map_cursor_next(&cur_t);
-		minor = (unsigned int)map_cursor_key(&cur_t);
 	}
 	ASSERT(n - remaining <= (size_t)INT_MAX);
 	return (int)(n - remaining);
@@ -320,77 +170,58 @@ unsigned int get_n_devices(void)
 }
 
 /**
- * Add walb device alldevs list and hash tables.
+ * Add walb device alldevs list.
  *
  * @wdev walb device to add.
  *
- * @return 0 in success,
- *	   -ENOMEM in memory allocation failure,
- *	   -EPERM in name or
- *
  * @LOCK write lock is required.
  */
-int alldevs_add(struct walb_dev* wdev)
+void alldevs_add(struct walb_dev* wdev)
 {
-	size_t len;
-	int ret;
-	char buf[UUID_STR_SIZE];
-	unsigned int minor;
-
-	CHECK_RUNNING();
-	minor = MINOR(wdev->devt);
-
-	ret = map_add(map_minor_, (u64)minor, (unsigned long)wdev, GFP_KERNEL);
-	if (ret) {
-		if (ret == -EEXIST) {
-			LOGe("alldevs_add: minor %u is already registered.\n",
-				MINOR(wdev->devt));
-		}
-		goto error0;
-	}
-
-	len = get_wdev_name_len(wdev);
-	ret = hashtbl_add(htbl_name_,
-			get_super_sector(wdev->lsuper0)->name, len,
-			(unsigned long)wdev, GFP_KERNEL);
-	if (ret != 0) {
-		if (ret == -EPERM) {
-			LOGe("alldevs_add: name %s is already registered.\n",
-				get_super_sector(wdev->lsuper0)->name);
-		}
-		goto error1;
-	}
-
-	ret = hashtbl_add(htbl_uuid_,
-			get_super_sector(wdev->lsuper0)->uuid, UUID_SIZE,
-			(unsigned long)wdev, GFP_KERNEL);
-	if (ret != 0) {
-		if (ret == -EPERM) {
-			sprint_uuid(buf, UUID_STR_SIZE, get_super_sector(wdev->lsuper0)->uuid);
-			LOGe("alldevs_add: uuid %s is already registered.\n",
-				buf);
-		}
-		goto error2;
-	}
-
-	list_add_tail(&wdev->list, &all_wdevs_);
-	n_devices_++;
-	return 0;
-
-#if 0
-error3:
-	hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, UUID_SIZE);
+	bool added = false;
+	struct walb_dev *wdev0, *wdev1;
+#ifdef WALB_DEBUG
+	uint minor;
 #endif
-error2:
-	hashtbl_del(htbl_name_, get_super_sector(wdev->lsuper0)->name, len);
-error1:
-	map_del(map_minor_, (u64)minor);
-error0:
-	return ret;
+	CHECK_RUNNING();
+
+	/* Insert sort. */
+	if (list_empty(&all_wdevs_)) {
+		list_add_tail(&wdev->list, &all_wdevs_);
+		goto fin;
+	}
+	wdev0 = list_last_entry(&all_wdevs_, struct walb_dev, list);
+	if (MINOR(wdev->devt) > MINOR(wdev0->devt)) {
+		list_add_tail(&wdev->list, &all_wdevs_);
+		goto fin;
+	}
+	list_for_each_entry_safe_reverse(wdev0, wdev1, &all_wdevs_, list) {
+		if (MINOR(wdev->devt) > MINOR(wdev0->devt)) {
+			list_add(&wdev->list, &wdev0->list);
+			added = true;
+			break;
+		}
+	}
+	if (!added)
+		list_add(&wdev->list, &all_wdevs_);
+
+fin:
+#ifdef WALB_DEBUG
+	minor = 0;
+	list_for_each_entry(wdev0, &all_wdevs_, list) {
+		if (minor == 0)
+			ASSERT(minor <= MINOR(wdev0->devt));
+		else
+			ASSERT(minor < MINOR(wdev0->devt));
+
+		minor = MINOR(wdev0->devt);
+	}
+#endif
+	n_devices_++;
 }
 
 /**
- * Delete walb device from alldevs list and hash tables.
+ * Delete walb device from alldevs list.
  *
  * @wdev walb device to del.
  *
@@ -398,24 +229,7 @@ error0:
  */
 void alldevs_del(struct walb_dev* wdev)
 {
-	size_t len;
-	struct walb_dev *tmp0, *tmp1, *tmp2;
-	unsigned int wminor;
-
 	CHECK_RUNNING();
-
-	len = get_wdev_name_len(wdev);
-	wminor = MINOR(wdev->devt);
-
-	tmp0 = (struct walb_dev *)
-		hashtbl_del(htbl_uuid_, get_super_sector(wdev->lsuper0)->uuid, UUID_SIZE);
-	tmp1 = (struct walb_dev *)
-		hashtbl_del(htbl_name_, get_super_sector(wdev->lsuper0)->name, len);
-	tmp2 = (struct walb_dev *)map_del(map_minor_, (u64)wminor);
-
-	ASSERT(wdev == tmp0);
-	ASSERT(wdev == tmp1);
-	ASSERT(wdev == tmp2);
 	list_del(&wdev->list);
 	n_devices_--;
 }
@@ -444,68 +258,21 @@ struct walb_dev* alldevs_pop(void)
 }
 
 /**
- * Update uuid of a walb device.
- *
- * RETURN:
- *   0 in success, or -1.
- *
- * @LOCK write lock required.
- */
-int alldevs_update_uuid(
-	const u8 *old_uuid, const u8 *new_uuid)
-{
-	struct walb_dev *wdev;
-	char buf[UUID_STR_SIZE];
-	int ret;
-
-	wdev = (struct walb_dev *)hashtbl_del(
-		htbl_uuid_, old_uuid, UUID_SIZE);
-	if (!wdev) {
-		LOGe("Specified uuid not found.\n");
-		return -1;
-	}
-	ret = hashtbl_add(
-		htbl_uuid_, new_uuid, UUID_SIZE,
-		(unsigned long)wdev, GFP_KERNEL);
-	if (ret == 0) { return 0; }
-
-	/* error handling. */
-	if (ret == -EPERM) {
-		sprint_uuid(buf, UUID_STR_SIZE, new_uuid);
-		LOGe("alldevs_add: uuid %s is already registered.\n",
-			buf);
-	}
-	ret = hashtbl_add(
-		htbl_uuid_, old_uuid, UUID_SIZE, (unsigned long)wdev, GFP_KERNEL);
-	if (ret != 0) {
-		LOGe("Failed to re-add.\n");
-	}
-	return -1;
-}
-
-/**
  * Get free minor id.
  *
  * @LOCK read lock required.
  */
 unsigned int get_free_minor()
 {
-	unsigned int minor;
-	struct map_cursor cur_t;
+	struct walb_dev *wdev;
 
 	CHECK_RUNNING();
 
-	map_cursor_init(map_minor_, &cur_t);
-	map_cursor_end(&cur_t);
+	if (list_empty(&all_wdevs_))
+		return 0;
 
-	if (map_cursor_prev(&cur_t)) {
-		minor = (unsigned int)map_cursor_key(&cur_t);
-		minor += 2;
-	} else {
-		ASSERT(map_is_empty(map_minor_));
-		minor = 0;
-	}
-	return minor;
+	wdev = list_last_entry(&all_wdevs_, struct walb_dev, list);
+	return MINOR(wdev->devt) + 2;
 }
 
 /**
@@ -516,47 +283,32 @@ unsigned int get_free_minor()
  */
 bool alldevs_is_already_used(dev_t devt)
 {
-	struct map_cursor curt;
-	map_cursor_init(map_minor_, &curt);
-	map_cursor_begin(&curt);
-	while (map_cursor_next(&curt)) {
-		struct walb_dev *wdev = (struct walb_dev *)map_cursor_val(&curt);
+	struct walb_dev *wdev;
+	list_for_each_entry(wdev, &all_wdevs_, list) {
 		if (devt == wdev->ldev->bd_dev || devt == wdev->ddev->bd_dev)
 			return true;
 	}
 	return false;
 }
 
-/**
- * Read lock.
- */
 void alldevs_read_lock(void)
 {
 	CHECK_RUNNING();
 	down_read(&all_wdevs_lock_);
 }
 
-/**
- * Read unlock.
- */
 void alldevs_read_unlock(void)
 {
 	CHECK_RUNNING();
 	up_read(&all_wdevs_lock_);
 }
 
-/**
- * Write lock.
- */
 void alldevs_write_lock(void)
 {
 	CHECK_RUNNING();
 	down_write(&all_wdevs_lock_);
 }
 
-/**
- * Write unlock.
- */
 void alldevs_write_unlock(void)
 {
 	CHECK_RUNNING();

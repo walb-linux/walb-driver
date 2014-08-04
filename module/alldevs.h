@@ -12,8 +12,6 @@
 #include "sector_io.h"
 
 /**
- * Prototypes.
- *
  * Before call the following functions,
  * you must lock all_wdevs_lock_ semaphore.
  */
@@ -22,20 +20,11 @@
 int alldevs_init(void);
 void alldevs_exit(void);
 
-/* Add/Del */
-int alldevs_add(struct walb_dev* wdev);
+/* Add/Del/Pop/Search */
+void alldevs_add(struct walb_dev* wdev);
 void alldevs_del(struct walb_dev* wdev);
-
-/* Pop */
 struct walb_dev* alldevs_pop(void);
-
-/* Update uuid. */
-int alldevs_update_uuid(const u8 *old_uuid, const u8 *new_uuid);
-
-/* Search */
 struct walb_dev* search_wdev_with_minor(unsigned int minor);
-struct walb_dev* search_wdev_with_name(const char* name);
-struct walb_dev* search_wdev_with_uuid(const u8* uuid);
 
 /* Listing and counting. */
 int get_wdev_list_range(
@@ -53,7 +42,7 @@ unsigned int get_free_minor(void);
 /* Check already used or not. */
 bool alldevs_is_already_used(dev_t);
 
-/* Lock wrapper */
+/* Lock wrappers */
 void alldevs_read_lock(void);
 void alldevs_read_unlock(void);
 void alldevs_write_lock(void);
