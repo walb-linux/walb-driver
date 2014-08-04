@@ -1501,9 +1501,11 @@ static void wait_for_bio_wrapper_done(struct bio_wrapper *biow)
 		if (rtimeo)
 			break;
 		LOGn("timeout(%d): "
-			"biow %p pos %" PRIu64 " len %u csum %08x error %d\n"
+			"biow %p pos %" PRIu64 " len %u csum %08x "
+			"error %d discard %u\n"
 			, c, biow, (u64)biow->pos, biow->len
-			, biow->csum, biow->error);
+			, biow->csum, biow->error
+			, bio_wrapper_state_is_discard(biow) ? 1 : 0);
 		c++;
 	}
 }
@@ -1943,7 +1945,7 @@ static void insert_to_sorted_bio_wrapper_list_by_pos(
 
 	if (!list_empty(biow_list)) {
 		/* last entry. */
-		biow_tmp = list_entry(biow_list->prev, struct bio_wrapper, list4);
+		biow_tmp = list_last_entry(biow_list, struct bio_wrapper, list4);
 		ASSERT(biow_tmp);
 		if (biow->pos > biow_tmp->pos) {
 			list_add_tail(&biow->list4, biow_list);
@@ -2328,7 +2330,6 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 #endif
 	struct blk_plug plug;
 
-	ASSERT(biow);
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	ASSERT(biow->n_overlapped == 0);
 #endif
