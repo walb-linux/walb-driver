@@ -10,7 +10,6 @@
 #include "kern.h"
 #include "io.h"
 #include "bio_wrapper.h"
-#include "bio_entry.h"
 #include "treemap.h"
 #include "worker.h"
 #include "bio_util.h"
