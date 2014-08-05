@@ -8,7 +8,6 @@
 #include <linux/list.h>
 #include <linux/rwsem.h>
 
-#include "treemap.h"
 #include "alldevs.h"
 
 /**
