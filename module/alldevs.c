@@ -32,23 +32,18 @@ static unsigned int n_devices_;
  */
 static atomic_t is_available_ = ATOMIC_INIT(0);
 
-#define CHECK_START() do {					\
-		if (atomic_inc_return(&is_available_) != 1) {	\
+#define CHECK_START() {						\
+		if (atomic_inc_return(&is_available_) != 1)	\
 			BUG();					\
-		}						\
-	} while (0)
-
-#define CHECK_STOP() do {					\
-		if (atomic_dec_return(&is_available_) != 0) {	\
+	}
+#define CHECK_STOP() {						\
+		if (atomic_dec_return(&is_available_) != 0)	\
 			BUG();					\
-		}						\
-	} while (0)
-
-#define CHECK_RUNNING() do {				\
-		if (atomic_read(&is_available_) != 1) { \
+	}
+#define CHECK_RUNNING() {				\
+		if (atomic_read(&is_available_) != 1)	\
 			BUG();				\
-		}					\
-	} while (0)
+	}
 
 /*******************************************************************************
  * Global functions.
@@ -246,9 +241,8 @@ struct walb_dev* alldevs_pop(void)
 	struct walb_dev *wdev;
 
 	CHECK_RUNNING();
-	if (list_empty(&all_wdevs_)) {
+	if (list_empty(&all_wdevs_))
 		return NULL;
-	}
 
 	wdev = list_first_entry(&all_wdevs_, struct walb_dev, list);
 	alldevs_del(wdev);
