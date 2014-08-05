@@ -2540,11 +2540,12 @@ static void wait_for_all_started_write_io_done(struct walb_dev *wdev)
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 
 	while (atomic_read(&iocored->n_started_write_bio) > 0) {
-		LOGn("n_started_write_bio %d\n",
+		LOGi("n_started_write_bio %d\n",
 			atomic_read(&iocored->n_started_write_bio));
 		msleep(100);
 	}
-	LOGn("n_started_write_bio %d\n", atomic_read(&iocored->n_started_write_bio));
+	LOGi("n_started_write_bio %d\n",
+		atomic_read(&iocored->n_started_write_bio));
 }
 
 /**
@@ -2555,11 +2556,11 @@ static void wait_for_all_pending_gc_done(struct walb_dev *wdev)
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 
 	while (atomic_read(&iocored->n_pending_gc) > 0) {
-		LOGn("n_pending_gc %d\n",
+		LOGi("n_pending_gc %d\n",
 			atomic_read(&iocored->n_pending_gc));
 		msleep(100);
 	}
-	LOGn("n_pending_gc %d\n", atomic_read(&iocored->n_pending_gc));
+	LOGi("n_pending_gc %d\n", atomic_read(&iocored->n_pending_gc));
 }
 
 /**
@@ -3011,7 +3012,8 @@ void iocore_freeze(struct walb_dev *wdev)
 	might_sleep();
 
 	if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-		LOGn("iocore frozen.\n");
+		LOGn("iocore frozen [%u:%u].\n"
+			, MAJOR(wdev->devt), MINOR(wdev->devt));
 	}
 
 	/* Wait for all started write io done. */
@@ -3033,7 +3035,8 @@ void iocore_melt(struct walb_dev *wdev)
 	iocored = get_iocored_from_wdev(wdev);
 
 	if (atomic_dec_return(&iocored->n_stoppers) == 0) {
-		LOG_("iocore melted.\n");
+		LOG_("iocore melted. [%u:%u]\n"
+			, MAJOR(wdev->devt), MINOR(wdev->devt));
 		enqueue_submit_task_if_necessary(wdev);
 	}
 }

@@ -52,7 +52,7 @@ static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl);
  */
 static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGn("WALB_IOCTL_GET_OLDEST_LSID\n");
+	LOGd("WALB_IOCTL_GET_OLDEST_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_OLDEST_LSID);
 
 	ctl->val_u64 = get_oldest_lsid(wdev);
@@ -71,7 +71,7 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 {
 	u64 lsid, oldest_lsid, written_lsid;
 
-	LOGn("WALB_IOCTL_SET_OLDEST_LSID_SET\n");
+	LOGd("WALB_IOCTL_SET_OLDEST_LSID_SET\n");
 
 	lsid = ctl->val_u64;
 
@@ -113,7 +113,7 @@ static int ioctl_wdev_status(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	/* not yet implemented */
 
-	LOGn("WALB_IOCTL_STATUS is not supported currently.\n");
+	LOGd("WALB_IOCTL_STATUS is not supported currently.\n");
 	return -EFAULT;
 }
 
@@ -129,7 +129,7 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
 {
 	bool ret;
 
-	LOGn("WALB_IOCTL_TAKE_CHECKPOINT\n");
+	LOGd("WALB_IOCTL_TAKE_CHECKPOINT\n");
 	ASSERT(ctl->command == WALB_IOCTL_TAKE_CHECKPOINT);
 
 	stop_checkpointing(&wdev->cpd);
@@ -158,7 +158,7 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
  */
 static int ioctl_wdev_get_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGn("WALB_IOCTL_GET_CHECKPOINT_INTERVAL\n");
+	LOGd("WALB_IOCTL_GET_CHECKPOINT_INTERVAL\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_CHECKPOINT_INTERVAL);
 
 	ctl->val_u32 = get_checkpoint_interval(&wdev->cpd);
@@ -177,7 +177,7 @@ static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb
 {
 	u32 interval;
 
-	LOGn("WALB_IOCTL_SET_CHECKPOINT_INTERVAL\n");
+	LOGd("WALB_IOCTL_SET_CHECKPOINT_INTERVAL\n");
 	ASSERT(ctl->command == WALB_IOCTL_SET_CHECKPOINT_INTERVAL);
 
 	interval = ctl->val_u32;
@@ -199,7 +199,7 @@ static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb
  */
 static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGn("WALB_IOCTL_GET_WRITTEN_LSID\n");
+	LOGd("WALB_IOCTL_GET_WRITTEN_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_WRITTEN_LSID);
 
 	ctl->val_u64 = get_written_lsid(wdev);
@@ -216,7 +216,7 @@ static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *c
  */
 static int ioctl_wdev_get_permanent_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGn("WALB_IOCTL_GET_PERMANENT_LSID\n");
+	LOGd("WALB_IOCTL_GET_PERMANENT_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_PERMANENT_LSID);
 
 	ctl->val_u64 = get_permanent_lsid(wdev);
@@ -233,7 +233,7 @@ static int ioctl_wdev_get_permanent_lsid(struct walb_dev *wdev, struct walb_ctl 
  */
 static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGn("WALB_IOCTL_GET_COMPLETED_LSID\n");
+	LOGd("WALB_IOCTL_GET_COMPLETED_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_COMPLETED_LSID);
 
 	ctl->val_u64 = get_completed_lsid(wdev);
@@ -250,7 +250,7 @@ static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl 
  */
 static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGn("WALB_IOCTL_GET_LOG_USAGE\n");
+	LOGd("WALB_IOCTL_GET_LOG_USAGE\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_LOG_USAGE);
 
 	ctl->val_u64 = walb_get_log_usage(wdev);
@@ -267,7 +267,7 @@ static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl)
  */
 static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGn("WALB_IOCTL_GET_LOG_CAPACITY\n");
+	LOGd("WALB_IOCTL_GET_LOG_CAPACITY\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_LOG_CAPACITY);
 
 	ctl->val_u64 = walb_get_log_capacity(wdev);
@@ -284,7 +284,7 @@ static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *c
  */
 static int ioctl_wdev_is_flush_capable(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGn("WALB_IOCTL_IS_FLUAH_CAPABLE");
+	LOGd("WALB_IOCTL_IS_FLUAH_CAPABLE");
 	ASSERT(ctl->command == WALB_IOCTL_IS_FLUSH_CAPABLE);
 
 	ctl->val_int = (wdev->queue->flush_flags & REQ_FLUSH) != 0;
@@ -305,7 +305,7 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 	u64 new_size;
 	u64 old_size;
 
-	LOGn("WALB_IOCTL_RESIZE.\n");
+	LOGd("WALB_IOCTL_RESIZE.\n");
 	ASSERT(ctl->command == WALB_IOCTL_RESIZE);
 
 	old_size = get_capacity(wdev->gd);
@@ -368,7 +368,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	u32 new_salt;
 
 	ASSERT(ctl->command == WALB_IOCTL_CLEAR_LOG);
-	LOGn("WALB_IOCTL_CLEAR_LOG.\n");
+	LOGd("WALB_IOCTL_CLEAR_LOG.\n");
 
 	/* Freeze iocore and checkpointing.  */
 	iocore_freeze(wdev);
@@ -485,7 +485,7 @@ error0:
 static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	ASSERT(ctl->command == WALB_IOCTL_IS_LOG_OVERFLOW);
-	LOGn("WALB_IOCTL_IS_LOG_OVERFLOW.\n");
+	LOGd("WALB_IOCTL_IS_LOG_OVERFLOW.\n");
 
 	ctl->val_int = iocore_is_log_overflow(wdev);
 	return 0;
@@ -505,7 +505,7 @@ static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
 	u32 timeout_sec;
 
 	ASSERT(ctl->command == WALB_IOCTL_FREEZE);
-	LOGn("WALB_IOCTL_FREEZE\n");
+	LOGd("WALB_IOCTL_FREEZE\n");
 
 	/* Clip timeout value. */
 	timeout_sec = ctl->val_u32;
@@ -533,7 +533,7 @@ static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
 static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	ASSERT(ctl->command == WALB_IOCTL_IS_FROZEN);
-	LOGn("WALB_IOCTL_IS_FROZEN\n");
+	LOGd("WALB_IOCTL_IS_FROZEN\n");
 
 	mutex_lock(&wdev->freeze_lock);
 	ctl->val_int = (wdev->freeze_state == FRZ_MELTED) ? 0 : 1;
@@ -553,7 +553,7 @@ static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl)
 static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	ASSERT(ctl->command == WALB_IOCTL_MELT);
-	LOGn("WALB_IOCTL_MELT\n");
+	LOGd("WALB_IOCTL_MELT\n");
 
 	cancel_melt_work(wdev);
 	if (melt_if_frozen(wdev, true)) {
@@ -640,7 +640,7 @@ int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		ret = ioctl_wdev_is_frozen(wdev, ctl);
 		break;
 	default:
-		LOGn("WALB_IOCTL_WDEV %d is not supported.\n",
+		LOGw("WALB_IOCTL_WDEV %d is not supported.\n",
 			ctl->command);
 	}
 

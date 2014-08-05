@@ -31,6 +31,7 @@ bool sector_io(
 	struct bio *bio;
 	int pbs, error;
 	struct page *page;
+	uint off;
 	u8 *buf;
 
 	LOG_("walb_sector_io begin\n");
@@ -54,17 +55,17 @@ bool sector_io(
 	}
 	ASSERT(virt_addr_valid(buf));
 	page = virt_to_page(buf);
-
-	LOGd("sector %" PRIu64 " "
-		"page %p buf %p sectorsize %d offset %lu rw %lu\n"
-		, addr_lb(pbs, addr)
-		, virt_to_page(buf), buf
-		, pbs, offset_in_page(buf), bi_rw);
+	off = offset_in_page(buf);
 
 	bio->bi_rw = bi_rw;
 	bio->bi_bdev = bdev;
 	bio->bi_iter.bi_sector = addr_lb(pbs, addr);
-	bio_add_page(bio, page, pbs, offset_in_page(buf));
+	bio_add_page(bio, page, pbs, off);
+
+	LOGd("sector %" PRIu64 " "
+		"buf %p page %p offset %u sectorsize %d rw %lu\n"
+		, addr_lb(pbs, addr)
+		, buf, page, off, pbs, bi_rw);
 
 	/* Submit, wait for completion,
 	   check errors, and deallocate. */
@@ -201,7 +202,7 @@ bool walb_write_super_sector(
 	struct walb_super_sector *sect;
 	unsigned int pbs;
 
-	LOGd("walb_write_super_sector begin\n");
+	LOG_("walb_write_super_sector begin\n");
 
 	ASSERT(ldev);
 	ASSERT_SECTOR_DATA(lsuper);
@@ -224,7 +225,7 @@ bool walb_write_super_sector(
 		return false;
 	}
 
-	LOGd("walb_write_super_sector end\n");
+	LOG_("walb_write_super_sector end\n");
 	return true;
 }
 
