@@ -128,6 +128,10 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 		wminor &= ~1U;
 	}
 	LOGd("wminor: %u\n", wminor);
+	if (wminor >= (1U << MINORBITS)) {
+		LOGe("there is no available minor id.");
+		goto error0;
+	}
 
 	wdev = prepare_wdev(wminor, ldevt, ddevt, param0);
 	if (!wdev) {
