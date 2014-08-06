@@ -95,10 +95,13 @@ prev_written 536193
 oldest       0
 }}}
 
+Permanent lsid indicates the logs have been stored and flushed in {{{$LDEV}}}.
+Written lsid indicated the data have been stored in {{{$DDEV}}}.
+
 See log usage.
 {{{
 > cat /sys/block/walb\!0/walb/log_usage
-546193
+536193
 }}}
 
 The values may be different at your environment.

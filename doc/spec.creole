@@ -129,10 +129,4 @@ Let PBS be the physical block size (512B or 4KiB).
 Logpack position in the ring buffer can be calculated directly
 by logpack lsid (log sequence id), starting offset of the ring buffer, and its size.
 
-=== WalB log file format
-
-* The first 4KiB is the header data.
-** See {{{struct walblog_header}}} defined in {{{tool/walb_log.h}}}.
-* Remaining data are all logpacks.
-
 -----

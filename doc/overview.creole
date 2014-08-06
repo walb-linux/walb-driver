@@ -36,14 +36,14 @@ WalB was named after Block-level Write-Ahead Logging (WAL).
 * Negligible overhead for read IOs.
 * Small overhead for write IOs.
 ** Response time: almost the same as that of the underlying devices.
-** Throughput: almost the same as that of the underlying devices, when the log and data devices are independent physically and the bandwidth of HBA is enough (2x + alpha or more).
+** Throughput: almost the same as that of the underlying devices, when the log and data devices are independent physically and the bandwidth of HBA is enough (2x + alpha).
 * You can use any filesystems on a walb device.
 * You can get portable and consistent diff files from logs.
 You can store them for backup, compress and transfer them for remote replication, as you like.
 
 === Cons
 
-* WalB uses 2x bandwidth for writes.
+* WalB uses more than 2x bandwidth for writes.
 * A walb device requires additional storage space for logs.
 * You cannot access to snapshot images with a walb device only.
 

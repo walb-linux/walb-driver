@@ -15,7 +15,7 @@ The important limitation of the algorithm is that
 it must not submit write IOs to the data device before they are persistent on the log device.
 Since walb devices do not have undo logs, it can execute redo but cannot execute undo!
 
-=== Easy algorithm
+=== Easy algorithm (removed from the code)
 
 It is very simple algorithm.
 

@@ -6,17 +6,16 @@
 
 * Architecture: x86_64
 ** Currently x86_32 is not supported.
-* Linux kernel version: 3.2 or later.
-** Tested with up to 3.8.
+* Linux kernel version: from 3.2 to 3.16 (or later).
+** v1.0.x for kernel 3.2 to 3.8.
+** v1.1.x for kernel 3.10 to 3.13.
+** v1.2.x for kernel 3.14 to 3.16.
 
-Tested Linux distribution: Ubuntu Linux Server 12.04.
+Tested Linux distribution: Ubuntu Linux Server 12.04 and 14.04.
 
 === Build tools
 
 * Tools required to build Linux kernel.
-** gcc (tested with version 4.6.3 and 4.7.2)
-** make
-** ...
 
 == Build kernel module
 
@@ -39,12 +38,17 @@ For Ubuntu, ex.
 
 You can specify the following make options:
 * {{{DEBUG=1}}}: debug build. ASSERT() will be enabled (a wrapper of BUG_ON()).
-* {{{DYNAMIC_DEBUG=1}}}: for pr_debug().
-* {{{OVERLAP=0}}}: disable overlapped IO serialization.
-* {{{FAST_ALG=0}}}: use easy algorithm instead fast.
-* {{{ASSERT=1}}}: enable ASSERT() even with release build {{{DEBUG=0}}}.
+* {{{DYNAMIC_DEBUG=1}}}: use pr_debug() instead of printk() for debug logs.
+* {{{OVERLAP=0}}}: disable overlapped IO serialization for test.
+* {{{ASSERT=1}}}: enable ASSERT() even with release build with {{{DEBUG=0}}}.
+* {{{PERF=1}}}: just for test and debug.
+* {{{TRACK=1}}}: just for test and debug.
 
 == Build userland tools
+
+The userland tools in tool/ directory are obsolute.
+Use walb-tools written by c++.
+https://github.com/starpos/walb-tools/
 
 Build the control tool.
 {{{
@@ -65,8 +69,7 @@ You must build them with {{{DEBUG=1}}} before running tests.
 == Test and prototype tools
 
 * {{{module/test/*}}}: test code for kernel components.
-* {{{module/proto/*}}}: prototype modules.
-* {{{tool/test/*}}}: test code for userland components.
+  Please use at your own risk.
 
 == Install
 
@@ -78,12 +81,6 @@ Install the module.
 > mkdir -p /lib/module/`uname -r`/kernel/drivers/block/walb
 > cp -p walb.git/module/walb-mod.ko /lib/module/`uname -r`/kernel/drivers/block/walb/
 > depmod `uname -r`
-}}}
-
-Install the tool.
-Copy {{{walbctl}}} executable to a directory that are in the search path.
-{{{
-> cp -p walb.git/tool/walbctl /usr/local/sbin/
 }}}
 
 -----
