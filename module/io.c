@@ -3012,7 +3012,7 @@ void iocore_freeze(struct walb_dev *wdev)
 	might_sleep();
 
 	if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-		LOGn("iocore frozen [%u:%u].\n"
+		LOGi("iocore frozen [%u:%u].\n"
 			, MAJOR(wdev->devt), MINOR(wdev->devt));
 	}
 
@@ -3035,7 +3035,7 @@ void iocore_melt(struct walb_dev *wdev)
 	iocored = get_iocored_from_wdev(wdev);
 
 	if (atomic_dec_return(&iocored->n_stoppers) == 0) {
-		LOG_("iocore melted. [%u:%u]\n"
+		LOGi("iocore melted. [%u:%u]\n"
 			, MAJOR(wdev->devt), MINOR(wdev->devt));
 		enqueue_submit_task_if_necessary(wdev);
 	}
