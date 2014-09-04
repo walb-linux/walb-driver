@@ -1022,7 +1022,7 @@ int map_cursor_is_data(struct map_cursor *cursor)
 /**
  * Check cursor is valid.
  */
-int map_cursor_is_valid(struct map_cursor *cursor)
+int map_cursor_is_valid(const struct map_cursor *cursor)
 {
 	return is_valid_map_cursor(cursor);
 }
@@ -1705,7 +1705,7 @@ int multimap_cursor_is_data(struct multimap_cursor *cursor)
  *
  * @return Non-zero if valid, or 0.
  */
-int multimap_cursor_is_valid(struct multimap_cursor *cursor)
+int multimap_cursor_is_valid(const struct multimap_cursor *cursor)
 {
 	return is_valid_multimap_cursor(cursor);
 }

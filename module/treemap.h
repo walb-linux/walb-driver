@@ -193,7 +193,7 @@ int map_cursor_end(struct map_cursor *cursor);
 int map_cursor_is_begin(struct map_cursor *cursor);
 int map_cursor_is_end(struct map_cursor *cursor);
 int map_cursor_is_data(struct map_cursor *cursor);
-int map_cursor_is_valid(struct map_cursor *cursor);
+int map_cursor_is_valid(const struct map_cursor *cursor);
 void map_cursor_copy(struct map_cursor *dst, struct map_cursor *src);
 u64 map_cursor_key(const struct map_cursor *cursor);
 unsigned long map_cursor_val(const struct map_cursor *cursor);
@@ -235,7 +235,7 @@ int multimap_cursor_end(struct multimap_cursor *cursor);
 int multimap_cursor_is_begin(struct multimap_cursor *cursor);
 int multimap_cursor_is_end(struct multimap_cursor *cursor);
 int multimap_cursor_is_data(struct multimap_cursor *cursor);
-int multimap_cursor_is_valid(struct multimap_cursor *cursor);
+int multimap_cursor_is_valid(const struct multimap_cursor *cursor);
 void multimap_cursor_copy(
 	struct multimap_cursor *dst, struct multimap_cursor *src);
 unsigned long multimap_cursor_val(const struct multimap_cursor *cursor);
