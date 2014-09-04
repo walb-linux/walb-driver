@@ -708,14 +708,14 @@ static void walb_exit(void)
 {
 	struct walb_dev *wdev;
 
-	alldevs_write_lock();
+	alldevs_lock();
 	wdev = alldevs_pop();
 	while (wdev) {
 		unregister_wdev(wdev);
 		destroy_wdev(wdev);
 		wdev = alldevs_pop();
 	}
-	alldevs_write_unlock();
+	alldevs_unlock();
 
 	finalize_workqueues();
 	unregister_blkdev(walb_major_, WALB_NAME);
@@ -758,12 +758,7 @@ struct walb_dev* prepare_wdev(
 #endif
 
 	ASSERT(is_walb_start_param_valid(param));
-
-	/* Minor id check. */
-	if (minor == WALB_DYNAMIC_MINOR) {
-		LOGe("Do not specify WALB_DYNAMIC_MINOR.\n");
-		goto out;
-	}
+	ASSERT(minor != WALB_DYNAMIC_MINOR);
 
 	/*
 	 * Initialize walb_dev.

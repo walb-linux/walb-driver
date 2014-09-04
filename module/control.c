@@ -106,36 +106,38 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	}
 
 	/* Lock */
-	alldevs_write_lock();
+	alldevs_lock();
 
 	if (alldevs_is_already_used(ldevt)) {
-		alldevs_write_unlock();
+		alldevs_unlock();
 		LOGe("already used ldev %u:%u\n", MAJOR(ldevt), MINOR(ldevt));
 		ctl->error = -4;
 		goto error0;
 	}
 	if (alldevs_is_already_used(ddevt)) {
-		alldevs_write_unlock();
+		alldevs_unlock();
 		LOGe("already used ddev %u:%u\n", MAJOR(ddevt), MINOR(ddevt));
 		ctl->error = -5;
 		goto error0;
 	}
 
 	if (ctl->u2k.wminor == WALB_DYNAMIC_MINOR) {
-		wminor = get_free_minor();
+		wminor = alloc_any_minor();
 	} else {
-		wminor = ctl->u2k.wminor;
-		wminor &= ~1U;
+		wminor = alloc_specific_minor(ctl->u2k.wminor);
 	}
 	LOGd("wminor: %u\n", wminor);
 	if (wminor >= (1U << MINORBITS)) {
+		free_minor(wminor);
+		alldevs_unlock();
 		LOGe("there is no available minor id.");
 		goto error0;
 	}
 
 	wdev = prepare_wdev(wminor, ldevt, ddevt, param0);
 	if (!wdev) {
-		alldevs_write_unlock();
+		free_minor(wminor);
+		alldevs_unlock();
 		LOGe("prepare wdev failed.\n");
 		ctl->error = -6;
 		goto error0;
@@ -150,7 +152,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	}
 
 	/* Unlock */
-	alldevs_write_unlock();
+	alldevs_unlock();
 
 	/* Return values to userland. */
 	ctl->k2u.wmajor = walb_major_;
@@ -163,7 +165,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 
 error1:
 	alldevs_del(wdev);
-	alldevs_write_unlock();
+	alldevs_unlock();
 	destroy_wdev(wdev);
 error0:
 	return -EFAULT;
@@ -199,11 +201,11 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 	}
 	wdevt = MKDEV(wmajor, wminor);
 
-	alldevs_read_lock();
-	wdev = search_wdev_with_minor(wminor);
-	alldevs_read_unlock();
+	alldevs_lock();
 
+	wdev = search_wdev_with_minor(wminor);
 	if (!wdev) {
+		alldevs_unlock();
 		LOGe("Walb dev with minor %u not found.\n",
 			wminor);
 		ctl->error = -1;
@@ -211,14 +213,11 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 	}
 
 	unregister_wdev(wdev);
-
-	alldevs_write_lock();
 	alldevs_del(wdev);
-	alldevs_write_unlock();
+
+	alldevs_unlock();
 
 	destroy_wdev(wdev);
-
-	/* Set result */
 	ctl->error = 0;
 	return 0;
 }
