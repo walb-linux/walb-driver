@@ -2,9 +2,13 @@
 
 SCRIPT_DIR=$(cd $(dirname $0);pwd)
 
-V1=$(cat ${SCRIPT_DIR}/VERSION |cut -f 1 -d .)
-V2=$(cat ${SCRIPT_DIR}/VERSION |cut -f 2 -d .)
-V3=$(cat ${SCRIPT_DIR}/VERSION |cut -f 3 -d .)
+version_str=$(cat ${SCRIPT_DIR}/VERSION)
 
-echo "#define WALB_VERSION ((${V1} << 16) + (${V2} << 8) + ${V3})"
-echo "#define WALB_VERSION_STR \"${V1}.${V2}.${V3}\""
+pure_version_str=$(echo $version_str |cut -f 1 -d -)
+
+v1=$(echo $pure_version_str |cut -f 1 -d .)
+v2=$(echo $pure_version_str |cut -f 2 -d .)
+v3=$(echo $pure_version_str |cut -f 3 -d .)
+
+echo "#define WALB_VERSION ((${v1} << 16) + (${v2} << 8) + ${v3})"
+echo "#define WALB_VERSION_STR \"${version_str}\""
