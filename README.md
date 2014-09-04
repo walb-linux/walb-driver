@@ -10,12 +10,16 @@ GPL version 2 or 3.
 
 * include: header files shared by kernel/userland code.
 * module: linux device driver source files.
-* tool: userland tools to control walb devices. (deprecated).
-* sim: simulators to check algorithm consistency (deprecated).
 * doc: documents.
+* tool(deprecated): userland tools to control walb devices.
+* sim(deprecated): simulators to check algorithm consistency.
 
 # Supported kernel version.
 
-* This version (1.2.x) supports Linux kernel 3.14 to 3.16.
-* For 3.10 to 3.13, use version 1.1.x.
-* For 3.2 to 3.8, use version 1.0.x.
+Use an appropriate branch or a tag for your using kernel as follows:
+
+| Branch     | Tag      | Kernel version |
+|------------|----------|----------------|
+| `for-3.14` | `v1.2.x` | 3.14-          |
+| `for-3.13` | `v1.1.x` | 3.10-3.13      |
+| `for-3.2`  | `v1.0.x` | 3.2-3.8        |
