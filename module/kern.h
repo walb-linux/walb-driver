@@ -112,12 +112,6 @@ struct walb_dev
 	dev_t devt; /* Wrapper device id. */
 
 	atomic_t is_read_only; /* Write always fails if true */
-	struct list_head list; /* member of all_wdevs_ */
-
-	/* Max number of snapshots.
-	   This is const after log device is initialized.
-	   This is deprecated. */
-	u32 n_snapshots;
 
 	/* Size of underlying devices. [logical block] */
 	u64 ldev_size;
