@@ -132,7 +132,7 @@ static int walblog_prepare_device(struct walb_dev *wdev, unsigned int minor,
 static void walblog_finalize_device(struct walb_dev *wdev);
 
 static int walb_ldev_initialize(struct walb_dev *wdev);
-static void walb_ldev_finalize(struct walb_dev *wdev);
+static void walb_ldev_finalize(struct walb_dev *wdev, bool is_sync);
 
 /* Register/unregister. */
 static void walb_register_device(struct walb_dev *wdev);
@@ -592,14 +592,14 @@ error0:
 /**
  * Finalize log device.
  */
-static void walb_ldev_finalize(struct walb_dev *wdev)
+static void walb_ldev_finalize(struct walb_dev *wdev, bool is_sync)
 {
 	ASSERT(wdev);
 	ASSERT(wdev->lsuper0);
 
-	if (!walb_finalize_super_block(wdev, is_sync_superblock_)) {
+	if (!walb_finalize_super_block(wdev, is_sync_superblock_ && is_sync))
 		LOGe("finalize super block failed.\n");
-	}
+
 	sector_free(wdev->lsuper0);
 }
 
@@ -959,7 +959,7 @@ out_walblogdev:
 out_walbdev:
 	walb_finalize_device(wdev);
 out_ldev_init:
-	walb_ldev_finalize(wdev);
+	walb_ldev_finalize(wdev, false);
 out_ddev:
 	if (wdev->ddev) {
 		walb_unlock_bdev(wdev->ddev);
@@ -996,7 +996,7 @@ void destroy_wdev(struct walb_dev *wdev)
 
 	iocore_flush(wdev);
 
-	walb_ldev_finalize(wdev);
+	walb_ldev_finalize(wdev, true);
 	iocore_finalize(wdev);
 
 	if (wdev->ddev)

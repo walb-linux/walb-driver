@@ -33,30 +33,24 @@ void init_checkpointing(struct checkpoint_data *cpd)
  */
 bool take_checkpoint(struct checkpoint_data *cpd)
 {
-	u64 written_lsid, prev_written_lsid;
-	bool ret;
+	bool skip;
 	struct walb_dev *wdev;
 
 	ASSERT(cpd);
 	wdev = get_wdev_from_checkpoint_data(cpd);
 	ASSERT(wdev);
 
-	/* Get written_lsid and prev_written_lsid. */
+	/* Check the need of writing superblock. */
 	spin_lock(&wdev->lsid_lock);
-	written_lsid = wdev->lsids.written;
-	prev_written_lsid = wdev->lsids.prev_written;
+	skip = wdev->lsids.written == wdev->lsids.prev_written;
 	spin_unlock(&wdev->lsid_lock);
-
-	/* Write superblock if necessary. */
-	if (written_lsid == prev_written_lsid) {
+	if (skip) {
 		LOG_("skip superblock sync.\n");
-		ret = true;
-	} else {
-		ret = !blkdev_issue_flush(wdev->ddev, GFP_KERNEL, NULL)
-			&& walb_sync_super_block(wdev);
+		return true;
 	}
 
-	return ret;
+	/* Write and flush super block at log device. */
+	return walb_sync_super_block(wdev);
 }
 
 /**
@@ -73,8 +67,6 @@ void task_do_checkpointing(struct work_struct *work)
 		container_of(work, struct delayed_work, work);
 	struct checkpoint_data *cpd =
 		container_of(dwork, struct checkpoint_data, dwork);
-	struct walb_dev *wdev =
-		get_wdev_from_checkpoint_data(cpd);
 
 	/* CP_WAITING --> CP_RUNNING. */
 	down_write(&cpd->lock);
@@ -97,9 +89,6 @@ void task_do_checkpointing(struct work_struct *work)
 	/* Take a checkpoint. */
 	j0 = jiffies;
 	if (!take_checkpoint(cpd)) {
-		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
-		LOGe("superblock sync failed.\n");
-
 		/* CP_RUNNING --> CP_STOPPED. */
 		down_write(&cpd->lock);
 		cpd->state = CP_STOPPED;
