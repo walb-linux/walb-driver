@@ -307,7 +307,7 @@ bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
 	ret = sector_io(WRITE, wdev->ldev, off, zero_sector);
 	if (!ret) {
 		LOGe("sector write failed.\n");
-		iocore_set_readonly(wdev);
+		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 	}
 	sector_free(zero_sector);
 	return ret;

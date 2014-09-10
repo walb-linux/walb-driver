@@ -771,7 +771,7 @@ struct walb_dev* prepare_wdev(
 	spin_lock_init(&wdev->lsid_lock);
 	spin_lock_init(&wdev->lsuper0_lock);
 	spin_lock_init(&wdev->size_lock);
-	atomic_set(&wdev->is_read_only, 0);
+	wdev->flags = 0;
 	mutex_init(&wdev->freeze_lock);
 	wdev->freeze_state = FRZ_MELTED;
 
@@ -988,7 +988,7 @@ void destroy_wdev(struct walb_dev *wdev)
 		MAJOR(wdev->ddev->bd_dev),
 		MINOR(wdev->ddev->bd_dev));
 
-	iocore_set_failure(wdev);
+	set_bit(WALB_STATE_FINALIZE, &wdev->flags);
 	melt_if_frozen(wdev, false);
 
 	walblog_finalize_device(wdev);

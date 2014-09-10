@@ -104,14 +104,27 @@ struct lsid_set
 	u64 oldest;
 };
 
+enum {
+	/* Write always fails if set. */
+	WALB_STATE_READ_ONLY = 0,
+
+	/* All IOs must fail during finalization if set. */
+	WALB_STATE_FINALIZE,
+
+	/* Overflow state if set. */
+	WALB_STATE_OVERFLOW,
+};
+
 /**
  * The internal representation of walb and walblog device.
  */
 struct walb_dev
 {
-	dev_t devt; /* Wrapper device id. */
+	/* Wrapper device id. */
+	dev_t devt;
 
-	atomic_t is_read_only; /* Write always fails if true */
+	/* See WALB_STATE_XXX */
+	unsigned long flags;
 
 	/* Size of underlying devices. [logical block] */
 	u64 ldev_size;
