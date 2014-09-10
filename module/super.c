@@ -86,21 +86,17 @@ error0:
  */
 bool walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
 {
-	/*
-	 * 1. Wait for all related IO are finished.
-	 * 2. Cleanup snapshot metadata and write down.
-	 * 3. Generate latest super block and write down.
-	 */
+	const u32 minor = MINOR(wdev->devt);
 
 	spin_lock(&wdev->lsid_lock);
 	wdev->lsids.written = wdev->lsids.latest;
 	spin_unlock(&wdev->lsid_lock);
 
 	if (is_superblock_sync) {
-		LOGn("is_superblock_sync is on\n");
+		LOGi("%u: finalize super block\n", minor);
 		return walb_sync_super_block(wdev);
 	} else {
-		LOGn("is_superblock_sync is off\n");
+		LOGi("%u: do not finalize super block\n", minor);
 		return true;
 	}
 }
