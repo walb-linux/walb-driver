@@ -98,10 +98,9 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 	wdev->lsids.oldest = lsid;
 	spin_unlock(&wdev->lsid_lock);
 
-	if (!walb_sync_super_block(wdev)) {
-		LOGe("sync super block failed.\n");
+	if (!walb_sync_super_block(wdev))
 		return -EFAULT;
-	}
+
 	return 0;
 }
 
@@ -131,8 +130,6 @@ static int ioctl_wdev_status(struct walb_dev *wdev, struct walb_ctl *ctl)
  */
 static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	bool ret;
-
 	LOGn("WALB_IOCTL_TAKE_CHECKPOINT\n");
 	ASSERT(ctl->command == WALB_IOCTL_TAKE_CHECKPOINT);
 
@@ -142,12 +139,9 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
 	ASSERT(wdev->cpd.state == CP_STOPPED);
 	up_write(&wdev->cpd.lock);
 #endif
-	ret = take_checkpoint(&wdev->cpd);
-	if (!ret) {
-		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
-		LOGe("superblock sync failed. to be read-only mode.\n");
+	if (!take_checkpoint(&wdev->cpd))
 		return -EFAULT;
-	}
+
 	start_checkpointing(&wdev->cpd);
 	return 0;
 }
@@ -344,10 +338,9 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 	}
 
 	/* Sync super block for super->device_size */
-	if (!walb_sync_super_block(wdev)) {
-		LOGe("superblock sync failed.\n");
+	if (!walb_sync_super_block(wdev))
 		return -EFAULT;
-	}
+
 	return 0;
 }
 
@@ -441,11 +434,8 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	spin_unlock(&wdev->lsuper0_lock);
 
 	/* Sync super sector. */
-	if (!walb_sync_super_block(wdev)) {
-		LOGe("sync superblock failed.\n");
-		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
+	if (!walb_sync_super_block(wdev))
 		goto error2;
-	}
 
 	/* Update uuid index of alldev data. */
 	alldevs_write_lock();
