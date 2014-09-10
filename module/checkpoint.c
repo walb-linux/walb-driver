@@ -97,7 +97,7 @@ void task_do_checkpointing(struct work_struct *work)
 	/* Take a checkpoint. */
 	j0 = jiffies;
 	if (!take_checkpoint(cpd)) {
-		atomic_set(&wdev->is_read_only, 1);
+		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 		LOGe("superblock sync failed.\n");
 
 		/* CP_RUNNING --> CP_STOPPED. */

@@ -68,28 +68,6 @@ static struct treemap_memory_manager mmgr_;
  * Static functions definition.
  *******************************************************************************/
 
-/**
- * Check read-only mode.
- */
-static inline bool is_read_only_mode(const struct iocore_data *iocored)
-{
-	ASSERT(iocored);
-	return test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
-}
-
-/**
- * Set read-only mode.
- */
-static inline void set_read_only_mode(struct iocore_data *iocored)
-{
-	ASSERT(iocored);
-	set_bit(IOCORE_STATE_READ_ONLY, &iocored->flags);
-}
-
-/*******************************************************************************
- * Static functions definition.
- *******************************************************************************/
-
 /* bio_entry related. */
 static void bio_entry_end_io(struct bio *bio, int error);
 static struct bio_entry* create_bio_entry_by_clone(
@@ -807,7 +785,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 		if (is_empty) { break; }
 
 		/* Failure mode. */
-		if (test_bit(IOCORE_STATE_READ_ONLY, &iocored->flags)) {
+		if (test_bit(WALB_STATE_READ_ONLY, &wdev->flags)) {
 			fail_and_destroy_bio_wrapper_list(wdev, &biow_list);
 			continue;
 		}
@@ -1235,7 +1213,7 @@ static bool create_logpack_list(
 	/* Check ring buffer overflow. */
 	ASSERT(latest_lsid >= oldest_lsid);
 	if (latest_lsid - oldest_lsid > wdev->ring_buffer_size) {
-		if (test_and_set_bit(IOCORE_STATE_LOG_OVERFLOW, &iocored->flags) == 0) {
+		if (!test_and_set_bit(WALB_STATE_OVERFLOW, &wdev->flags)) {
 			pr_warn_ratelimited(
 				"Ring buffer for log has been overflowed."
 				" reset_wal is required.\n");
@@ -1676,7 +1654,6 @@ retry:
  */
 static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 {
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	struct pack *wpack, *wpack_next;
 	struct bio_wrapper *biow, *biow_next;
 	u64 written_lsid = INVALID_LSID;
@@ -1732,7 +1709,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 			ASSERT(bio_wrapper_state_is_completed(biow));
 			if (biow->error) {
 				LOGe("data IO error. to be read-only mode.\n");
-				set_read_only_mode(iocored);
+				set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 			}
 #ifdef WALB_PERFORMANCE_ANALYSIS
 			getnstimeofday(&biow->ts[WALB_TIME_END]);
@@ -2219,7 +2196,8 @@ static void wait_for_logpack_and_submit_datapack(
 
 	/* Check read only mode. */
 	iocored = get_iocored_from_wdev(wdev);
-	if (is_read_only_mode(iocored)) { is_failed = true; }
+	if (test_bit(WALB_STATE_READ_ONLY, &wdev->flags))
+		is_failed = true;
 
 	/* Wait for logpack header bio or zero_flush pack bio. */
 	bio_error = wait_for_bio_entry_list(&wpack->bioe_list);
@@ -2344,7 +2322,7 @@ static void wait_for_logpack_and_submit_datapack(
 		continue;
 	error_io:
 		is_failed = true;
-		set_read_only_mode(iocored);
+		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 		LOGe("WalB changes device minor:%u to read-only mode.\n",
 			MINOR(wdev->devt));
 		bio_endio(biow->bio, -EIO);
@@ -2852,7 +2830,7 @@ retry:
 	err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
 	if (err) {
 		LOGe("log device flush failed. to be read-only mode\n");
-		set_read_only_mode(iocored);
+		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 	}
 
 #ifdef WALB_DEBUG
@@ -3274,8 +3252,8 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	unsigned long is_write = bio->bi_rw & REQ_WRITE;
 
 	/* Failure/Read-only state check. */
-	if (test_bit(IOCORE_STATE_FAILURE, &iocored->flags) ||
-		(is_write && is_read_only_mode(iocored))) {
+	if (test_bit(WALB_STATE_FINALIZE, &wdev->flags) ||
+		(is_write && test_bit(WALB_STATE_READ_ONLY, &wdev->flags))) {
 		error = -EIO;
 		goto error0;
 	}
@@ -3343,56 +3321,6 @@ void iocore_flush(struct walb_dev *wdev)
 {
 	wait_for_all_pending_io_done(wdev);
 	flush_all_wq();
-}
-
-/**
- * Set read-only mode.
- */
-void iocore_set_readonly(struct walb_dev *wdev)
-{
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-
-	set_read_only_mode(iocored);
-}
-
-/**
- * Check read-only mode.
- */
-bool iocore_is_readonly(struct walb_dev *wdev)
-{
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-
-	return is_read_only_mode(iocored);
-}
-
-/**
- * Set failure mode.
- */
-void iocore_set_failure(struct walb_dev *wdev)
-{
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-
-	set_bit(IOCORE_STATE_FAILURE, &iocored->flags);
-}
-
-/**
- * Clear ring buffer overflow state bit.
- */
-void iocore_clear_log_overflow(struct walb_dev *wdev)
-{
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-
-	clear_bit(IOCORE_STATE_LOG_OVERFLOW, &iocored->flags);
-}
-
-/**
- * Check ring buffer has been overflow.
- */
-bool iocore_is_log_overflow(struct walb_dev *wdev)
-{
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-
-	return test_bit(IOCORE_STATE_LOG_OVERFLOW, &iocored->flags);
 }
 
 /**

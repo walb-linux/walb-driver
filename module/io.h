@@ -20,12 +20,8 @@
  * iocored->flags bit.
  */
 enum {
-	IOCORE_STATE_FAILURE = 0,
-	IOCORE_STATE_READ_ONLY,
-	IOCORE_STATE_LOG_OVERFLOW,
-
 	/* These are for workqueue tasks management. */
-	IOCORE_STATE_SUBMIT_LOG_TASK_WORKING,
+	IOCORE_STATE_SUBMIT_LOG_TASK_WORKING = 0,
 	IOCORE_STATE_WAIT_LOG_TASK_WORKING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 	IOCORE_STATE_WAIT_DATA_TASK_WORKING,
@@ -159,11 +155,6 @@ void iocore_melt(struct walb_dev *wdev);
 void iocore_make_request(struct walb_dev *wdev, struct bio *bio);
 void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio);
 void iocore_flush(struct walb_dev *wdev);
-void iocore_set_failure(struct walb_dev *wdev);
-void iocore_set_readonly(struct walb_dev *wdev);
-bool iocore_is_readonly(struct walb_dev *wdev);
-void iocore_clear_log_overflow(struct walb_dev *wdev);
-bool iocore_is_log_overflow(struct walb_dev *wdev);
 
 /* Iocore utilities. */
 void wait_for_all_pending_io_done(struct walb_dev *wdev);
