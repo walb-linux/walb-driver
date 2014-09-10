@@ -1096,10 +1096,8 @@ bool execute_redo(struct walb_dev *wdev)
 	struct bio_wrapper *logh_biow;
 	unsigned int pbs;
 	u64 written_lsid, start_lsid;
-	int err;
 	bool failed = false;
 	bool should_terminate;
-	bool retb;
 	int ret;
 	struct timespec ts[2];
 	u64 n_logpack = 0;
@@ -1196,15 +1194,6 @@ bool execute_redo(struct walb_dev *wdev)
 		return false;
 	}
 
-	/* flush data device. */
-	err = blkdev_issue_flush(wdev->ddev, GFP_KERNEL, NULL);
-	if (err) {
-		LOGe("Data device flush failed.");
-		return false;
-	} else {
-		LOGn("Redo has done with lsid %"PRIu64".\n", written_lsid);
-	}
-
 	/* Update lsid variables. */
 	spin_lock(&wdev->lsid_lock);
 	wdev->lsids.prev_written = written_lsid;
@@ -1217,12 +1206,9 @@ bool execute_redo(struct walb_dev *wdev)
 	wdev->lsids.latest = written_lsid;
 	spin_unlock(&wdev->lsid_lock);
 
-	/* Update superblock. */
-	retb = walb_sync_super_block(wdev);
-	if (!retb) {
-		LOGe("Superblock sync failed.\n");
+	/* Synchronize superblock. */
+	if (!walb_sync_super_block(wdev))
 		return false;
-	}
 
 	/* Get end time. */
 	getnstimeofday(&ts[1]);

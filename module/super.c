@@ -13,6 +13,9 @@
 /**
  * Sync down super block.
  *
+ * This always fails if read-only flag is set.
+ * This will set read-only flag if write/flush IOs failed.
+ *
  * RETURN:
  *   true in success, or false.
  */
@@ -20,10 +23,19 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 {
 	u64 written_lsid, oldest_lsid;
 	struct sector_data *lsuper_tmp;
-	struct walb_super_sector *sect, *sect_tmp;
+	struct walb_super_sector *sect;
 	u64 device_size;
 
 	ASSERT(wdev);
+
+	/* It always fails in read only mode. */
+	if (test_bit(WALB_STATE_READ_ONLY, &wdev->flags))
+		return false;
+
+	/* Allocate temporary super block. */
+	lsuper_tmp = sector_alloc(wdev->physical_bs, GFP_NOIO);
+	if (!lsuper_tmp)
+		goto error0;
 
 	/* Get written/oldest lsid. */
 	spin_lock(&wdev->lsid_lock);
@@ -35,14 +47,6 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 	spin_lock(&wdev->size_lock);
 	device_size = wdev->size;
 	spin_unlock(&wdev->size_lock);
-
-	/* Allocate temporary super block. */
-	lsuper_tmp = sector_alloc(wdev->physical_bs, GFP_NOIO);
-	if (!lsuper_tmp) {
-		goto error0;
-	}
-	ASSERT_SECTOR_DATA(lsuper_tmp);
-	sect_tmp = get_super_sector(lsuper_tmp);
 
 	/* Modify super sector and copy. */
 	spin_lock(&wdev->lsuper0_lock);
@@ -56,8 +60,15 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 	sector_copy(lsuper_tmp, wdev->lsuper0);
 	spin_unlock(&wdev->lsuper0_lock);
 
+	/* Flush the data device for written_lsid to be permanent. */
+	if (blkdev_issue_flush(wdev->ddev, GFP_KERNEL, NULL)) {
+		LOGe("ddev flush failed.\n");
+		goto error1;
+	}
+
+	/* Write and flush superblock in the log device. */
 	if (!walb_write_super_sector(wdev->ldev, lsuper_tmp)) {
-		LOGe("walb_sync_super_block: write super block failed.\n");
+		LOGe("write and flush super block failed.\n");
 		goto error1;
 	}
 
@@ -71,6 +82,7 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 	return true;
 
 error1:
+	set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 	sector_free(lsuper_tmp);
 error0:
 	return false;
