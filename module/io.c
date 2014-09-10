@@ -3084,12 +3084,13 @@ error0:
  */
 void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio)
 {
-	if (bio->bi_rw & WRITE) {
+	if ((bio->bi_rw & WRITE) ||
+		test_bit(WALB_STATE_FINALIZE, &wdev->flags)) {
 		bio_endio(bio, -EIO);
-	} else {
-		bio->bi_bdev = wdev->ldev;
-		generic_make_request(bio);
+		return;
 	}
+	bio->bi_bdev = wdev->ldev;
+	generic_make_request(bio);
 }
 
 /**
