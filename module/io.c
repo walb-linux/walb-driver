@@ -1506,10 +1506,9 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 			wait_for_bio_wrapper_done(biow);
 			ASSERT(bio_wrapper_state_is_submitted(biow));
 			ASSERT(bio_wrapper_state_is_completed(biow));
-			if (biow->error) {
+			if (biow->error &&
+				!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 				LOGe("data IO error. to be read-only mode.\n");
-				set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
-			}
 #ifdef WALB_PERFORMANCE_ANALYSIS
 			getnstimeofday(&biow->ts[WALB_TIME_END]);
 			print_bio_wrapper_performance(KERN_NOTICE, biow);
@@ -2129,9 +2128,9 @@ static void wait_for_logpack_and_submit_datapack(
 		continue;
 	error_io:
 		is_failed = true;
-		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
-		LOGe("WalB changes device minor:%u to read-only mode.\n",
-			MINOR(wdev->devt));
+		if (!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
+			LOGe("WalB changes device minor:%u to read-only mode.\n",
+				MINOR(wdev->devt));
 		bio_endio(biow->bio, -EIO);
 		list_del(&biow->list);
 		destroy_bio_wrapper_dec(wdev, biow);
