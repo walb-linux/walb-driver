@@ -204,7 +204,7 @@ static bool create_private_data(struct wrapper_blk_dev *wrdev)
 	wdev->ddev = NULL;
 	spin_lock_init(&wdev->lsid_lock);
 	spin_lock_init(&wdev->lsuper0_lock);
-	atomic_set(&wdev->is_read_only, 0);
+	wdev->flags = 0;
 	INIT_LIST_HEAD(&wdev->list);
 
 	/* Device number. */
@@ -561,7 +561,7 @@ static void stop_dev(void)
 	ASSERT(wdev);
 
 	/* Flush all remaining IOs for underlying devices. */
-	iocore_set_failure(wdev);
+	set_bit(WALB_STATE_FINALIZE, &wdev->flags);
 	iocore_flush(wdev);
 }
 

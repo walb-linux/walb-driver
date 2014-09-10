@@ -144,8 +144,8 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
 #endif
 	ret = take_checkpoint(&wdev->cpd);
 	if (!ret) {
-		atomic_set(&wdev->is_read_only, 1);
-		LOGe("superblock sync failed.\n");
+		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
+		LOGe("superblock sync failed. to be read-only mode.\n");
 		return -EFAULT;
 	}
 	start_checkpointing(&wdev->cpd);
@@ -413,7 +413,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 		is_grown = true;
 		if (!resize_disk(wdev->log_gd, new_ldev_size)) {
 			LOGe("grow disk failed.\n");
-			iocore_set_readonly(wdev);
+			set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 			goto error1;
 		}
 		LOGn("Grown log device size from %"PRIu64" to %"PRIu64".\n",
@@ -445,7 +445,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	/* Sync super sector. */
 	if (!walb_sync_super_block(wdev)) {
 		LOGe("sync superblock failed.\n");
-		iocore_set_readonly(wdev);
+		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 		goto error2;
 	}
 
@@ -455,19 +455,19 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	alldevs_write_unlock();
 	if (ret) {
 		LOGe("Update alldevs index failed.\n");
-		iocore_set_readonly(wdev);
+		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 		goto error2;
 	}
 
 	/* Invalidate first logpack */
 	if (!invalidate_lsid(wdev, 0)) {
 		LOGe("invalidate lsid 0 failed.\n");
-		iocore_set_readonly(wdev);
+		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 		goto error2;
 	}
 
 	/* Clear log overflow. */
-	iocore_clear_log_overflow(wdev);
+	clear_bit(WALB_STATE_OVERFLOW, &wdev->flags);
 
 	/* Melt iocore and checkpointing. */
 	start_checkpointing(&wdev->cpd);
@@ -504,7 +504,7 @@ static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ct
 	ASSERT(ctl->command == WALB_IOCTL_IS_LOG_OVERFLOW);
 	LOGn("WALB_IOCTL_IS_LOG_OVERFLOW.\n");
 
-	ctl->val_int = iocore_is_log_overflow(wdev);
+	ctl->val_int = test_bit(WALB_STATE_OVERFLOW, &wdev->flags);
 	return 0;
 }
 

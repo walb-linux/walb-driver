@@ -105,25 +105,29 @@ static ssize_t walb_attr_show_log_usage(struct walb_dev *wdev, char *buf)
 static ssize_t walb_attr_show_status(struct walb_dev *wdev, char *buf)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-	unsigned long flags;
+	unsigned long flagsW, flagsC;
 
-	if (!iocored) { return 0; }
-	flags = iocored->flags;
+	if (!iocored)
+		return 0;
+
+	flagsW = wdev->flags;
+	flagsC = iocored->flags;
+
 	return snprintf(buf, PAGE_SIZE,
-		"failure                  %u\n"
 		"read_only                %u\n"
 		"log_overflow             %u\n"
+		"finalize                 %u\n"
 		"submit_log_task_working  %u\n"
 		"wait_log_task_working    %u\n"
 		"submit_data_task_working %u\n"
 		"wait_data_task_working   %u\n"
-		, test_bit(IOCORE_STATE_FAILURE, &flags)
-		, test_bit(IOCORE_STATE_READ_ONLY, &flags)
-		, test_bit(IOCORE_STATE_LOG_OVERFLOW, &flags)
-		, test_bit(IOCORE_STATE_SUBMIT_LOG_TASK_WORKING, &flags)
-		, test_bit(IOCORE_STATE_WAIT_LOG_TASK_WORKING, &flags)
-		, test_bit(IOCORE_STATE_SUBMIT_DATA_TASK_WORKING, &flags)
-		, test_bit(IOCORE_STATE_WAIT_DATA_TASK_WORKING, &flags));
+		, test_bit(WALB_STATE_READ_ONLY, &flagsW)
+		, test_bit(WALB_STATE_OVERFLOW, &flagsW)
+		, test_bit(WALB_STATE_FINALIZE, &flagsW)
+		, test_bit(IOCORE_STATE_SUBMIT_LOG_TASK_WORKING, &flagsC)
+		, test_bit(IOCORE_STATE_WAIT_LOG_TASK_WORKING, &flagsC)
+		, test_bit(IOCORE_STATE_SUBMIT_DATA_TASK_WORKING, &flagsC)
+		, test_bit(IOCORE_STATE_WAIT_DATA_TASK_WORKING, &flagsC));
 }
 
 /*******************************************************************************
