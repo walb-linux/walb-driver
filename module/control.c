@@ -88,12 +88,12 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	if (ctl->u2k.buf_size != sizeof(struct walb_start_param)) {
 		LOGe("ctl->u2k.buf_size is invalid.\n");
 		ctl->error = -1;
-		goto error0;
+		return -EFAULT;
 	}
 	if (ctl->k2u.buf_size != sizeof(struct walb_start_param)) {
 		LOGe("ctl->k2u.buf_size is invalid.\n");
 		ctl->error = -2;
-		goto error0;
+		return -EFAULT;
 	}
 	param0 = (struct walb_start_param *)ctl->u2k.kbuf;
 	param1 = (struct walb_start_param *)ctl->k2u.kbuf;
@@ -102,20 +102,18 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	if (!is_walb_start_param_valid(param0)) {
 		LOGe("walb start param is invalid.\n");
 		ctl->error = -3;
-		goto error0;
+		return -EFAULT;
 	}
 
 	/* Lock */
 	alldevs_lock();
 
 	if (alldevs_is_already_used(ldevt)) {
-		alldevs_unlock();
 		LOGe("already used ldev %u:%u\n", MAJOR(ldevt), MINOR(ldevt));
 		ctl->error = -4;
 		goto error0;
 	}
 	if (alldevs_is_already_used(ddevt)) {
-		alldevs_unlock();
 		LOGe("already used ddev %u:%u\n", MAJOR(ddevt), MINOR(ddevt));
 		ctl->error = -5;
 		goto error0;
@@ -129,7 +127,6 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	LOGd("wminor: %u\n", wminor);
 	if (wminor >= (1U << MINORBITS)) {
 		free_minor(wminor);
-		alldevs_unlock();
 		LOGe("there is no available minor id.");
 		goto error0;
 	}
@@ -137,18 +134,22 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	wdev = prepare_wdev(wminor, ldevt, ddevt, param0);
 	if (!wdev) {
 		free_minor(wminor);
-		alldevs_unlock();
 		LOGe("prepare wdev failed.\n");
 		ctl->error = -6;
 		goto error0;
 	}
 
-	alldevs_add(wdev);
+	if (!alldevs_add(wdev)) {
+		free_minor(wminor);
+		LOGe("add walb device failed.\n");
+		ctl->error = -7;
+		goto error1;
+	}
 
 	if (!register_wdev(wdev)) {
 		LOGe("register_wdev failed.\n");
 		ctl->error = -8;
-		goto error1;
+		goto error2;
 	}
 
 	/* Unlock */
@@ -163,11 +164,12 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	print_walb_ctl(ctl); /* debug */
 	return 0;
 
-error1:
+error2:
 	alldevs_del(wdev);
-	alldevs_unlock();
+error1:
 	destroy_wdev(wdev);
 error0:
+	alldevs_unlock();
 	return -EFAULT;
 }
 

@@ -204,22 +204,37 @@ uint get_n_devices(void)
  *   Its minor id must be preallocated using
  *   alloc_any_minor() or alloc_specific_minor().
  *
+ * RETURN:
+ *   true in success.
+ *   false if a walb device already exist with the same name.
+ *
  * LOCK:
  *   required.
  *   You must call alloc_xxx_minor() and all_devs_add()
  *   in the same critical section not to reveal
  *   invalid pointers to other threads.
  */
-void alldevs_add(struct walb_dev* wdev)
+bool alldevs_add(struct walb_dev* wdev)
 {
 	const int key = get_key_from_wdev(wdev);
-	struct walb_dev *old_ptr;
+	struct walb_dev *old_ptr, *wdev_tmp;
+	int key_tmp;
 
 	CHECK_RUNNING();
+
+	idr_for_each_entry(&all_wdevs_, wdev_tmp, key_tmp) {
+		if (wdev_tmp == ALL_WDEVS_PREALLOCED)
+			continue;
+		if (!strncmp(wdev_tmp->gd->disk_name, wdev->gd->disk_name, DISK_NAME_LEN)) {
+			LOGe("walb device already exist: %s\n", wdev_tmp->gd->disk_name);
+			return false;
+		}
+	}
 
 	old_ptr = idr_replace(&all_wdevs_, wdev, key);
 	ASSERT(old_ptr == ALL_WDEVS_PREALLOCED);
 	atomic_inc(&nr_devs_);
+	return true;
 }
 
 /**

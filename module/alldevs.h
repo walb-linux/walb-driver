@@ -28,7 +28,7 @@ uint get_n_devices(void);
  */
 
 /* Add/Del/Pop/Search */
-void alldevs_add(struct walb_dev* wdev);
+bool alldevs_add(struct walb_dev* wdev);
 void alldevs_del(struct walb_dev* wdev);
 struct walb_dev* alldevs_pop(void);
 struct walb_dev* search_wdev_with_minor(uint minor);
