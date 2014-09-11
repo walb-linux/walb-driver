@@ -234,8 +234,8 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	ASSERT(bioe->bio == bio);
 
 	if (!uptodate) {
-		const unsigned int devt = bio->bi_bdev->bd_dev;
-		LOGn("BIO_UPTODATE is false"
+		UNUSED const unsigned int devt = bio->bi_bdev->bd_dev;
+		LOGd("BIO_UPTODATE is false"
 			" (dev %u:%u rw %lu pos %" PRIu64 " len %u).\n"
 			, MAJOR(devt), MINOR(devt)
 			, bio->bi_rw
