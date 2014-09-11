@@ -289,6 +289,7 @@ static void run_gc_log_in_redo(void *data)
 			list_for_each_entry_safe(
 				biow_tmp, biow_tmp_next, &should_submit_list, list4) {
 				ASSERT(biow_tmp->n_overlapped == 0);
+				ASSERT(bio_wrapper_state_is_delayed(biow_tmp));
 				list_del(&biow_tmp->list4);
 				generic_make_request(biow_tmp->bio);
 			}
@@ -1039,6 +1040,7 @@ static void submit_data_bio_for_redo(
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	bool is_overlapped_insert_succeeded;
+	int n_overlapped;
 #endif
 
 	ASSERT(biow);
@@ -1056,16 +1058,18 @@ retry_insert_ol:
 			, &iocored->overlapped_in_id
 #endif
 			);
+	n_overlapped = biow->n_overlapped;
 	spin_unlock(&iocored->overlapped_data_lock);
 	if (!is_overlapped_insert_succeeded) {
 		schedule();
 		goto retry_insert_ol;
 	}
-	ASSERT(biow->n_overlapped >= 0);
-	if (biow->n_overlapped == 0) {
-		generic_make_request(biow->bio);
+	if (bio_wrapper_state_is_delayed(biow)) {
+		LOG_("n_overlapped %d\n", n_overlapped);
+		ASSERT(n_overlapped > 0);
 	} else {
-		LOG_("n_overlapped %u\n", biow->n_overlapped);
+		ASSERT(n_overlapped == 0);
+		generic_make_request(biow->bio);
 	}
 #else /* WALB_OVERLAPPED_SERIALIZE */
 	generic_make_request(biow->bio);
