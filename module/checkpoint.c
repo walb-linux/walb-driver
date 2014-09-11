@@ -101,7 +101,7 @@ void task_do_checkpointing(struct work_struct *work)
 	delay = msecs_to_jiffies(interval);
 	sync_time = (long)(j1 - j0);
 	next_delay = delay - sync_time;
-	LOGd("delay %ld sync_time %ld next_delay %ld\n",
+	LOG_("delay %ld sync_time %ld next_delay %ld\n",
 		delay, sync_time, next_delay);
 	if (next_delay <= 0) {
 		LOGw("Checkpoint interval is too small. "

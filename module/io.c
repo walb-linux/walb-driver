@@ -236,8 +236,8 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	}
 #endif
 	if (!uptodate) {
-		unsigned int devt = bio->bi_bdev->bd_dev;
-		LOGn("BIO_UPTODATE is false (dev %u:%u rw %lu pos %"PRIu64" len %u).\n",
+		UNUSED unsigned int devt = bio->bi_bdev->bd_dev;
+		LOGd("BIO_UPTODATE is false (dev %u:%u rw %lu pos %"PRIu64" len %u).\n",
 			MAJOR(devt), MINOR(devt),
 			bio->bi_rw, (u64)bioe->pos, bioe->len);
 	}
@@ -2741,11 +2741,11 @@ static void wait_for_all_started_write_io_done(struct walb_dev *wdev)
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 
 	while (atomic_read(&iocored->n_started_write_bio) > 0) {
-		LOGn("n_started_write_bio %d\n",
+		LOGi("n_started_write_bio %d\n",
 			atomic_read(&iocored->n_started_write_bio));
 		msleep(100);
 	}
-	LOGn("n_started_write_bio %d\n", atomic_read(&iocored->n_started_write_bio));
+	LOGi("n_started_write_bio %d\n", atomic_read(&iocored->n_started_write_bio));
 }
 
 /**
