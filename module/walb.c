@@ -398,9 +398,11 @@ static int walb_prepare_device(
 	dq = bdev_get_queue(wdev->ddev);
 	blk_queue_stack_limits(wdev->queue, lq);
 	blk_queue_stack_limits(wdev->queue, dq);
+#if 0
 	print_queue_limits(KERN_NOTICE, "lq", &lq->limits);
 	print_queue_limits(KERN_NOTICE, "dq", &dq->limits);
 	print_queue_limits(KERN_NOTICE, "wdev", &wdev->queue->limits);
+#endif
 
 	/* Allocate a gendisk and set parameters. */
 	wdev->gd = alloc_disk(1);
@@ -980,6 +982,8 @@ out:
  */
 void destroy_wdev(struct walb_dev *wdev)
 {
+	UNUSED const u32 minor = MINOR(wdev->devt);
+
 	WLOGi(wdev, "destroy_wdev (ldev %u:%u ddev %u:%u)\n",
 		MAJOR(wdev->ldev->bd_dev),
 		MINOR(wdev->ldev->bd_dev),
@@ -1003,7 +1007,7 @@ void destroy_wdev(struct walb_dev *wdev)
 		walb_unlock_bdev(wdev->ldev);
 
 	kfree(wdev);
-	WLOGd(wdev, "destroy_wdev done.\n");
+	LOGd("%u: destroy_wdev done.\n", minor);
 }
 
 /**
