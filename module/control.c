@@ -77,7 +77,9 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 
 	ASSERT(ctl->command == WALB_IOCTL_START_DEV);
 
-	print_walb_ctl(ctl); /* debug */
+#if 0
+	print_walb_ctl(ctl);
+#endif
 
 	ldevt = MKDEV(ctl->u2k.lmajor, ctl->u2k.lminor);
 	ddevt = MKDEV(ctl->u2k.dmajor, ctl->u2k.dminor);
@@ -161,7 +163,11 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	*param1 = *param0;
 	ctl->error = 0;
 
-	print_walb_ctl(ctl); /* debug */
+#if 0
+	print_walb_ctl(ctl);
+#endif
+
+	LOGi("walb device added: %u\n", wminor);
 	return 0;
 
 error2:
