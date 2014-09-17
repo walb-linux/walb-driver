@@ -942,7 +942,7 @@ static bool create_logpack_list(
 	struct bio_wrapper *biow, *biow_next;
 	struct pack *wpack = NULL;
 	u64 latest_lsid, latest_lsid_old,
-		flush_lsid, written_lsid, oldest_lsid;
+		flush_lsid, prev_written_lsid, oldest_lsid;
 	unsigned long log_flush_jiffies;
 	bool ret;
 
@@ -951,17 +951,17 @@ static bool create_logpack_list(
 	ASSERT(iocored);
 	ASSERT(list_empty(wpack_list));
 	ASSERT(!list_empty(biow_list));
+	might_sleep();
 
 	/* Load latest_lsid */
 	spin_lock(&wdev->lsid_lock);
 	latest_lsid = wdev->lsids.latest;
 	oldest_lsid = wdev->lsids.oldest;
-	written_lsid = wdev->lsids.written;
+	prev_written_lsid = wdev->lsids.prev_written;
 	flush_lsid = wdev->lsids.flush;
 	log_flush_jiffies = iocored->log_flush_jiffies;
 	spin_unlock(&wdev->lsid_lock);
 	latest_lsid_old = latest_lsid;
-	ASSERT(latest_lsid >= written_lsid);
 
 	/* Create logpack(s). */
 	list_for_each_entry_safe(biow, biow_next, biow_list, list) {
@@ -1008,23 +1008,8 @@ static bool create_logpack_list(
 	ASSERT(list_empty(biow_list));
 
 	/* Check whether we must avoid ring buffer overflow. */
-	if (is_error_before_overflow_ && wdev->ring_buffer_size < latest_lsid - oldest_lsid) {
-		struct pack *wpack_next;
-		/* We must fail the IOs to avoid ring buffer overflow. */
-		list_for_each_entry_safe(wpack, wpack_next, wpack_list, list) {
-			list_del(&wpack->list);
-			fail_and_destroy_bio_wrapper_list(wdev, &wpack->biow_list);
-#ifdef DEBUG
-			if (wpack->is_flush_header) {
-				atomic_dec(&iocored->n_flush_logpack);
-			}
-#endif
-			ASSERT(!wpack->header_bioe);
-			destroy_pack(wpack);
-		}
-		ASSERT(list_empty(wpack_list));
-		return false;
-	}
+	if (is_error_before_overflow_ && wdev->ring_buffer_size < latest_lsid - oldest_lsid)
+		goto error;
 
 	/* Store lsids. */
 	ASSERT(latest_lsid >= latest_lsid_old);
@@ -1042,26 +1027,49 @@ static bool create_logpack_list(
 	ASSERT(latest_lsid >= oldest_lsid);
 	if (latest_lsid - oldest_lsid > wdev->ring_buffer_size) {
 		if (!test_and_set_bit(WALB_STATE_OVERFLOW, &wdev->flags)) {
-			pr_warn_ratelimited(
-				"Ring buffer for log has been overflowed."
+			WLOGe(wdev, "Ring buffer for log has been overflowed."
 				" reset_wal is required.\n");
 			invoke_userland_exec(wdev, "overflow");
 		}
 	}
 
 	/* Check consistency. */
-	ASSERT(latest_lsid >= written_lsid);
-	if (latest_lsid - written_lsid > wdev->ring_buffer_size) {
-		pr_err_ratelimited(
-			"Ring buffer size is too small to keep consistency. "
-			"!!!PLEASE GROW THE LOG DEVICE SIZE.!!!\n"
-			"latest_lsid %" PRIu64 "\n"
-			"written_lsid %" PRIu64 "\n"
-			"ring_buffer_size %" PRIu64 "\n"
-			, latest_lsid, written_lsid, wdev->ring_buffer_size);
+	ASSERT(latest_lsid >= prev_written_lsid);
+	while (latest_lsid - prev_written_lsid > wdev->ring_buffer_size) {
+		WLOGw(wdev, "Ring buffer size is too small to keep consistency. "
+			"Try to take checkpoint.\n");
+		stop_checkpointing(&wdev->cpd);
+		if (!take_checkpoint(&wdev->cpd))
+			goto error;
+		start_checkpointing(&wdev->cpd);
+
+		spin_lock(&wdev->lsid_lock);
+		prev_written_lsid = wdev->lsids.prev_written;
+		spin_unlock(&wdev->lsid_lock);
+		WLOGi(wdev, "latest_lsid %" PRIu64 " prev_written_lsid %" PRIu64 "\n"
+			, latest_lsid, prev_written_lsid);
 	}
 
+	/* Now the logpack can be submitted. */
 	return true;
+
+error:
+	{
+		struct pack *wpack_next;
+		/* We must fail the IOs to avoid ring buffer overflow. */
+		list_for_each_entry_safe(wpack, wpack_next, wpack_list, list) {
+			list_del(&wpack->list);
+			fail_and_destroy_bio_wrapper_list(wdev, &wpack->biow_list);
+#ifdef DEBUG
+			if (wpack->is_flush_header)
+				atomic_dec(&iocored->n_flush_logpack);
+#endif
+			ASSERT(!wpack->header_bioe);
+			destroy_pack(wpack);
+		}
+		ASSERT(list_empty(wpack_list));
+	}
+	return false;
 }
 
 /**
