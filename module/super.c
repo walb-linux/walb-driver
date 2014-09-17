@@ -62,13 +62,13 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 
 	/* Flush the data device for written_lsid to be permanent. */
 	if (blkdev_issue_flush(wdev->ddev, GFP_KERNEL, NULL)) {
-		LOGe("ddev flush failed.\n");
+		WLOGe(wdev, "ddev flush failed.\n");
 		goto error1;
 	}
 
 	/* Write and flush superblock in the log device. */
 	if (!walb_write_super_sector(wdev->ldev, lsuper_tmp)) {
-		LOGe("write and flush super block failed.\n");
+		WLOGe(wdev, "write and flush super block failed.\n");
 		goto error1;
 	}
 
@@ -98,17 +98,15 @@ error0:
  */
 bool walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
 {
-	const u32 minor = MINOR(wdev->devt);
-
 	spin_lock(&wdev->lsid_lock);
 	wdev->lsids.written = wdev->lsids.latest;
 	spin_unlock(&wdev->lsid_lock);
 
 	if (is_superblock_sync) {
-		LOGi("%u: finalize super block\n", minor);
+		WLOGi(wdev, "finalize super block\n");
 		return walb_sync_super_block(wdev);
 	} else {
-		LOGi("%u: do not finalize super block\n", minor);
+		WLOGi(wdev, "do not finalize super block\n");
 		return true;
 	}
 }

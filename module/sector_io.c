@@ -190,7 +190,7 @@ error0:
  * Write super sector.
  * Currently only super sector 0 will be written. (super sector 1 is not.)
  *
- * @wdev walb device.
+ * @ldev log block device.
  * @lsuper super sector to write.
  *
  * @return true in success, or false.

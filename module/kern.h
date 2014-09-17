@@ -263,6 +263,15 @@ struct walb_dev
 /* (struct gendisk *) --> (struct walb_dev *) */
 #define get_wdev_from_disk(disk) ((struct walb_dev *)(disk)->private_data)
 
+#define wdev_minor(wdev) MINOR((wdev)->devt)
+
+#define WLOGe(wdev, fmt, args...) LOGe("%u: " fmt, wdev_minor(wdev), ##args)
+#define WLOGw(wdev, fmt, args...) LOGw("%u: " fmt, wdev_minor(wdev), ##args)
+#define WLOGn(wdev, fmt, args...) LOGn("%u: " fmt, wdev_minor(wdev), ##args)
+#define WLOGi(wdev, fmt, args...) LOGi("%u: " fmt, wdev_minor(wdev), ##args)
+#define WLOGd(wdev, fmt, args...) LOGd("%u: " fmt, wdev_minor(wdev), ##args)
+#define WLOG_(wdev, fmt, args...)
+
 /*******************************************************************************
  * Static inline functions.
  *******************************************************************************/

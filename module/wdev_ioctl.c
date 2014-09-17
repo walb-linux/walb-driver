@@ -52,7 +52,7 @@ static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl);
  */
 static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGd("WALB_IOCTL_GET_OLDEST_LSID\n");
+	LOG_("WALB_IOCTL_GET_OLDEST_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_OLDEST_LSID);
 
 	ctl->val_u64 = get_oldest_lsid(wdev);
@@ -72,7 +72,7 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 	u64 lsid, oldest_lsid, prev_written_lsid;
 	bool is_valid;
 
-	LOGd("WALB_IOCTL_SET_OLDEST_LSID_SET\n");
+	LOG_("WALB_IOCTL_SET_OLDEST_LSID_SET\n");
 
 	lsid = ctl->val_u64;
 
@@ -87,10 +87,11 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 			&& walb_check_lsid_valid(wdev, lsid);
 
 	if (!is_valid) {
-		LOGe("lsid %"PRIu64" is not valid.\n", lsid);
-		LOGe("You shoud specify valid logpack header lsid"
-			" (oldest_lsid (%"PRIu64") <= lsid <= prev_written_lsid (%"PRIu64").\n",
-			oldest_lsid, prev_written_lsid);
+		WLOGe(wdev, "lsid %" PRIu64 " is not valid.\n"
+			"You shoud specify valid logpack header lsid"
+			" (oldest_lsid (%" PRIu64 ") <= lsid "
+			"<= prev_written_lsid (%" PRIu64 ").\n"
+			, lsid, oldest_lsid, prev_written_lsid);
 		return -EFAULT;
 	}
 
@@ -101,6 +102,7 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 	if (!walb_sync_super_block(wdev))
 		return -EFAULT;
 
+	WLOGi(wdev, "oldest_lsid was set to %" PRIu64 "\n", lsid);
 	return 0;
 }
 
@@ -114,9 +116,7 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
  */
 static int ioctl_wdev_status(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	/* not yet implemented */
-
-	LOGd("WALB_IOCTL_STATUS is not supported currently.\n");
+	LOGw("WALB_IOCTL_STATUS is not supported currently.\n");
 	return -EFAULT;
 }
 
@@ -130,7 +130,7 @@ static int ioctl_wdev_status(struct walb_dev *wdev, struct walb_ctl *ctl)
  */
 static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGd("WALB_IOCTL_TAKE_CHECKPOINT\n");
+	LOG_("WALB_IOCTL_TAKE_CHECKPOINT\n");
 	ASSERT(ctl->command == WALB_IOCTL_TAKE_CHECKPOINT);
 
 	stop_checkpointing(&wdev->cpd);
@@ -143,6 +143,8 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
 		return -EFAULT;
 
 	start_checkpointing(&wdev->cpd);
+
+	WLOGi(wdev, "taken checkpoint.\n");
 	return 0;
 }
 
@@ -156,7 +158,7 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
  */
 static int ioctl_wdev_get_checkpoint_interval(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGd("WALB_IOCTL_GET_CHECKPOINT_INTERVAL\n");
+	LOG_("WALB_IOCTL_GET_CHECKPOINT_INTERVAL\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_CHECKPOINT_INTERVAL);
 
 	ctl->val_u32 = get_checkpoint_interval(&wdev->cpd);
@@ -175,15 +177,17 @@ static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb
 {
 	u32 interval;
 
-	LOGd("WALB_IOCTL_SET_CHECKPOINT_INTERVAL\n");
+	LOG_("WALB_IOCTL_SET_CHECKPOINT_INTERVAL\n");
 	ASSERT(ctl->command == WALB_IOCTL_SET_CHECKPOINT_INTERVAL);
 
 	interval = ctl->val_u32;
 	if (interval > WALB_MAX_CHECKPOINT_INTERVAL) {
-		LOGe("Checkpoint interval is too big.\n");
+		WLOGe(wdev, "Checkpoint interval is too big.\n");
 		return -EFAULT;
 	}
+
 	set_checkpoint_interval(&wdev->cpd, interval);
+	WLOGi(wdev, "checkpoint interval was set to %u\n", interval);
 	return 0;
 }
 
@@ -197,7 +201,7 @@ static int ioctl_wdev_set_checkpoint_interval(struct walb_dev *wdev, struct walb
  */
 static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGd("WALB_IOCTL_GET_WRITTEN_LSID\n");
+	LOG_("WALB_IOCTL_GET_WRITTEN_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_WRITTEN_LSID);
 
 	ctl->val_u64 = get_written_lsid(wdev);
@@ -214,7 +218,7 @@ static int ioctl_wdev_get_written_lsid(struct walb_dev *wdev, struct walb_ctl *c
  */
 static int ioctl_wdev_get_permanent_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGd("WALB_IOCTL_GET_PERMANENT_LSID\n");
+	LOG_("WALB_IOCTL_GET_PERMANENT_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_PERMANENT_LSID);
 
 	ctl->val_u64 = get_permanent_lsid(wdev);
@@ -231,7 +235,7 @@ static int ioctl_wdev_get_permanent_lsid(struct walb_dev *wdev, struct walb_ctl 
  */
 static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGd("WALB_IOCTL_GET_COMPLETED_LSID\n");
+	LOG_("WALB_IOCTL_GET_COMPLETED_LSID\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_COMPLETED_LSID);
 
 	ctl->val_u64 = get_completed_lsid(wdev);
@@ -248,7 +252,7 @@ static int ioctl_wdev_get_completed_lsid(struct walb_dev *wdev, struct walb_ctl 
  */
 static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGd("WALB_IOCTL_GET_LOG_USAGE\n");
+	LOG_("WALB_IOCTL_GET_LOG_USAGE\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_LOG_USAGE);
 
 	ctl->val_u64 = walb_get_log_usage(wdev);
@@ -265,7 +269,7 @@ static int ioctl_wdev_get_log_usage(struct walb_dev *wdev, struct walb_ctl *ctl)
  */
 static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGd("WALB_IOCTL_GET_LOG_CAPACITY\n");
+	LOG_("WALB_IOCTL_GET_LOG_CAPACITY\n");
 	ASSERT(ctl->command == WALB_IOCTL_GET_LOG_CAPACITY);
 
 	ctl->val_u64 = walb_get_log_capacity(wdev);
@@ -282,7 +286,7 @@ static int ioctl_wdev_get_log_capacity(struct walb_dev *wdev, struct walb_ctl *c
  */
 static int ioctl_wdev_is_flush_capable(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	LOGd("WALB_IOCTL_IS_FLUAH_CAPABLE");
+	LOG_("WALB_IOCTL_IS_FLUAH_CAPABLE");
 	ASSERT(ctl->command == WALB_IOCTL_IS_FLUSH_CAPABLE);
 
 	ctl->val_int = (wdev->queue->flush_flags & REQ_FLUSH) != 0;
@@ -303,28 +307,30 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 	u64 new_size;
 	u64 old_size;
 
-	LOGd("WALB_IOCTL_RESIZE.\n");
+	LOG_("WALB_IOCTL_RESIZE.\n");
 	ASSERT(ctl->command == WALB_IOCTL_RESIZE);
 
 	old_size = get_capacity(wdev->gd);
 	new_size = ctl->val_u64;
 	ddev_size = wdev->ddev->bd_part->nr_sects;
 
-	if (new_size == 0) {
+	if (new_size == 0)
 		new_size = ddev_size;
-	}
+
 	if (new_size < old_size) {
-		LOGe("Shrink size from %"PRIu64" to %"PRIu64" is not supported.\n",
-			old_size, new_size);
+		WLOGe(wdev, "Shrink size from %" PRIu64 " "
+			"to %" PRIu64 " is not supported.\n"
+			, old_size, new_size);
 		return -EFAULT;
 	}
 	if (new_size > ddev_size) {
-		LOGe("new_size %"PRIu64" > data device capacity %"PRIu64".\n",
-			new_size, ddev_size);
+		WLOGe(wdev, "new_size %" PRIu64 " > "
+			"data device capacity %" PRIu64 ".\n"
+			, new_size, ddev_size);
 		return -EFAULT;
 	}
 	if (new_size == old_size) {
-		LOGn("No need to resize.\n");
+		WLOGi(wdev, "No need to resize.\n");
 		return 0;
 	}
 
@@ -333,14 +339,15 @@ static int ioctl_wdev_resize(struct walb_dev *wdev, struct walb_ctl *ctl)
 	wdev->ddev_size = ddev_size;
 	spin_unlock(&wdev->size_lock);
 
-	if (!resize_disk(wdev->gd, new_size)) {
+	if (!resize_disk(wdev->gd, new_size))
 		return -EFAULT;
-	}
 
 	/* Sync super block for super->device_size */
 	if (!walb_sync_super_block(wdev))
 		return -EFAULT;
 
+	WLOGi(wdev, "resize from %" PRIu64 " to %" PRIu64 " has done\n"
+		, old_size, new_size);
 	return 0;
 }
 
@@ -364,8 +371,8 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	u64 old_ring_buffer_size;
 	u32 new_salt;
 
+	LOG_("WALB_IOCTL_CLEAR_LOG.\n");
 	ASSERT(ctl->command == WALB_IOCTL_CLEAR_LOG);
-	LOGd("WALB_IOCTL_CLEAR_LOG.\n");
 
 	/* Freeze iocore and checkpointing.  */
 	iocore_freeze(wdev);
@@ -376,7 +383,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	new_ldev_size = wdev->ldev->bd_part->nr_sects;
 
 	if (old_ldev_size > new_ldev_size) {
-		LOGe("Log device shrink not supported.\n");
+		WLOGe(wdev, "Log device shrink not supported.\n");
 		goto error0;
 	}
 
@@ -397,7 +404,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 
 	/* Grow the walblog device. */
 	if (old_ldev_size < new_ldev_size) {
-		LOGn("Detect log device size change.\n");
+		WLOGi(wdev, "Detect log device size change.\n");
 
 		/* Grow the disk. */
 		is_grown = true;
@@ -406,8 +413,9 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 			set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 			goto error1;
 		}
-		LOGn("Grown log device size from %"PRIu64" to %"PRIu64".\n",
-			old_ldev_size, new_ldev_size);
+		WLOGi(wdev, "Grown log device size "
+			"from %" PRIu64 " to %" PRIu64 ".\n"
+			, old_ldev_size, new_ldev_size);
 		wdev->ldev_size = new_ldev_size;
 
 		/* Recalculate ring buffer size. */
@@ -438,7 +446,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 
 	/* Invalidate first logpack */
 	if (!invalidate_lsid(wdev, 0)) {
-		LOGe("invalidate lsid 0 failed.\n");
+		WLOGe(wdev, "invalidate lsid 0 failed. to be read-only mode\n");
 		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 		goto error2;
 	}
@@ -458,7 +466,7 @@ error2:
 #if 0
 	wdev->ldev_size = old_ldev_size;
 	if (!resize_disk(wdev->log_gd, old_ldev_size)) {
-		LOGe("resize_disk to shrink failed.\n");
+		WLOGe(wdev, "resize_disk to shrink failed.\n");
 	}
 #endif
 error1:
@@ -478,8 +486,8 @@ error0:
  */
 static int ioctl_wdev_is_log_overflow(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
+	LOG_("WALB_IOCTL_IS_LOG_OVERFLOW.\n");
 	ASSERT(ctl->command == WALB_IOCTL_IS_LOG_OVERFLOW);
-	LOGd("WALB_IOCTL_IS_LOG_OVERFLOW.\n");
 
 	ctl->val_int = test_bit(WALB_STATE_OVERFLOW, &wdev->flags);
 	return 0;
@@ -498,22 +506,19 @@ static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
 	u32 timeout_sec;
 
+	LOG_("WALB_IOCTL_FREEZE\n");
 	ASSERT(ctl->command == WALB_IOCTL_FREEZE);
-	LOGd("WALB_IOCTL_FREEZE\n");
 
 	/* Clip timeout value. */
 	timeout_sec = ctl->val_u32;
 	if (timeout_sec > 86400) {
 		timeout_sec = 86400;
-		LOGn("Freeze timeout has been cut to %"PRIu32" seconds.\n",
-			timeout_sec);
+		WLOGn(wdev, "Freeze timeout has been cut to %u seconds.\n"
+			, timeout_sec);
 	}
 
 	cancel_melt_work(wdev);
-	if (freeze_if_melted(wdev, timeout_sec)) {
-		return 0;
-	}
-	return -EFAULT;
+	return freeze_if_melted(wdev, timeout_sec) ? 0 : -EFAULT;
 }
 
 /**
@@ -526,8 +531,8 @@ static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
  */
 static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
+	LOG_("WALB_IOCTL_IS_FROZEN\n");
 	ASSERT(ctl->command == WALB_IOCTL_IS_FROZEN);
-	LOGd("WALB_IOCTL_IS_FROZEN\n");
 
 	mutex_lock(&wdev->freeze_lock);
 	ctl->val_int = (wdev->freeze_state == FRZ_MELTED) ? 0 : 1;
@@ -546,14 +551,11 @@ static int ioctl_wdev_is_frozen(struct walb_dev *wdev, struct walb_ctl *ctl)
  */
 static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
+	LOG_("WALB_IOCTL_MELT\n");
 	ASSERT(ctl->command == WALB_IOCTL_MELT);
-	LOGd("WALB_IOCTL_MELT\n");
 
 	cancel_melt_work(wdev);
-	if (melt_if_frozen(wdev, true)) {
-		return 0;
-	}
-	return -EFAULT;
+	return melt_if_frozen(wdev, true) ? 0 : -EFAULT;
 }
 
 /*******************************************************************************
@@ -573,7 +575,7 @@ int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 	/* Get ctl data. */
 	ctl = walb_get_ctl(userctl, GFP_KERNEL);
 	if (!ctl) {
-		LOGe("walb_get_ctl failed.\n");
+		WLOGe(wdev, "walb_get_ctl failed.\n");
 		return -EFAULT;
 	}
 
@@ -634,13 +636,13 @@ int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 		ret = ioctl_wdev_is_frozen(wdev, ctl);
 		break;
 	default:
-		LOGw("WALB_IOCTL_WDEV %d is not supported.\n",
-			ctl->command);
+		WLOGw(wdev, "WALB_IOCTL_WDEV %d is not supported.\n"
+			, ctl->command);
 	}
 
 	/* Put ctl data. */
 	if (walb_put_ctl(userctl, ctl) != 0) {
-		LOGe("walb_put_ctl failed.\n");
+		WLOGe(wdev, "walb_put_ctl failed.\n");
 		return -EFAULT;
 	}
 	return ret;

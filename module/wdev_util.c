@@ -31,7 +31,7 @@ int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
 
 	sect = sector_alloc(wdev->physical_bs, GFP_NOIO);
 	if (!sect) {
-		LOGe("walb_check_lsid_valid: alloc sector failed.\n");
+		WLOGe(wdev, "alloc sector failed.\n");
 		goto error0;
 	}
 	ASSERT(is_same_size_sector(sect, wdev->lsuper0));
@@ -41,20 +41,18 @@ int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
 	off = get_offset_of_lsid_2(get_super_sector(wdev->lsuper0), lsid);
 	spin_unlock(&wdev->lsuper0_lock);
 	if (!sector_io(READ, wdev->ldev, off, sect)) {
-		LOGe("walb_check_lsid_valid: read sector failed.\n");
+		WLOGe(wdev, "read sector failed.\n");
 		goto error1;
 	}
 
 	/* Check valid logpack header. */
 	if (!is_valid_logpack_header_with_checksum(
-			logh, wdev->physical_bs, wdev->log_checksum_salt)) {
+			logh, wdev->physical_bs, wdev->log_checksum_salt))
 		goto error1;
-	}
 
 	/* Check lsid. */
-	if (logh->logpack_lsid != lsid) {
+	if (logh->logpack_lsid != lsid)
 		goto error1;
-	}
 
 	sector_free(sect);
 	return 1;
@@ -164,12 +162,12 @@ int walb_set_name(struct walb_dev *wdev,
 		memset(dev_name, 0, DISK_NAME_LEN);
 		snprintf(dev_name, DISK_NAME_LEN, "%u", minor / 2);
 	}
-	LOGd("minor %u dev_name: %s\n", minor, dev_name);
+	WLOGd(wdev, "dev_name: %s\n", dev_name);
 
 	name_len = strlen(dev_name);
 	ASSERT(name_len < DISK_NAME_LEN);
 	if (name_len > WALB_DEV_NAME_MAX_LEN) {
-		LOGe("Device name is too long: %s.\n", name);
+		WLOGe(wdev, "Device name is too long: %s.\n", name);
 		return -1;
 	}
 	return 0;
@@ -196,25 +194,25 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 	dq_flush = dq->flush_flags & REQ_FLUSH;
 	lq_fua = lq->flush_flags & REQ_FUA;
 	dq_fua = dq->flush_flags & REQ_FUA;
-	LOGn("flush/fua flags: log_device %d/%d data_device %d/%d\n",
-		lq_flush, lq_fua, dq_flush, dq_fua);
+	WLOGi(wdev, "flush/fua flags: log_device %d/%d data_device %d/%d\n"
+		, lq_flush, lq_fua, dq_flush, dq_fua);
 
 	/* Check REQ_FLUSH/REQ_FUA supports. */
 	wdev->support_flush = false;
 	wdev->support_fua = false;
 	if (lq_flush && dq_flush) {
 		uint flush_flags = REQ_FLUSH;
-		LOGn("Supports REQ_FLUSH.");
+		WLOGi(wdev, "Supports REQ_FLUSH.\n");
 		wdev->support_flush = true;
 		if (lq_fua) {
 			flush_flags |= REQ_FUA;
-			LOGn("Supports REQ_FUA.");
+			WLOGi(wdev, "Supports REQ_FUA.\n");
 			wdev->support_fua = true;
 		}
 		blk_queue_flush(q, flush_flags);
 		blk_queue_flush_queueable(q, true);
 	} else {
-		LOGw("REQ_FLUSH is not supported!\n"
+		WLOGw(wdev, "REQ_FLUSH is not supported!\n"
 			"WalB can not guarantee data consistency"
 			"in sudden crashes of underlying devices.\n");
 	}
@@ -227,7 +225,7 @@ void walb_discard_support(struct walb_dev *wdev)
 {
 	struct request_queue *q = wdev->queue;
 
-	LOGn("Supports REQ_DISCARD.\n");
+	WLOGi(wdev, "Supports REQ_DISCARD.\n");
 	q->limits.discard_granularity = wdev->physical_bs;
 
 	/* Should be stored in u16 variable and aligned. */
@@ -295,7 +293,7 @@ bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
 	zero_sector = sector_alloc(
 		wdev->physical_bs, GFP_KERNEL | __GFP_ZERO);
 	if (!zero_sector) {
-		LOGe("sector allocation failed.\n");
+		WLOGe(wdev, "sector allocation failed.\n");
 		return false;
 	}
 
@@ -306,7 +304,7 @@ bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
 
 	ret = sector_io(WRITE, wdev->ldev, off, zero_sector);
 	if (!ret) {
-		LOGe("sector write failed.\n");
+		WLOGe(wdev, "sector write failed. to be read-only mode.\n");
 		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 	}
 	sector_free(zero_sector);
@@ -348,13 +346,13 @@ void task_melt(struct work_struct *work)
 
 	switch (wdev->freeze_state) {
 	case FRZ_MELTED:
-		LOGn("FRZ_MELTED minor %u.\n", MINOR(wdev->devt));
+		WLOGn(wdev, "FRZ_MELTED\n");
 		break;
 	case FRZ_FREEZED:
-		LOGn("FRZ_FREEZED minor %u.\n", MINOR(wdev->devt));
+		WLOGn(wdev, "FRZ_FREEZED\n");
 		break;
 	case FRZ_FREEZED_WITH_TIMEOUT:
-		LOGn("Melt walb device minor %u.\n", MINOR(wdev->devt));
+		WLOGn(wdev, "Melt device\n");
 		start_checkpointing(&wdev->cpd);
 		iocore_melt(wdev);
 		wdev->freeze_state = FRZ_MELTED;
@@ -382,9 +380,8 @@ void cancel_melt_work(struct walb_dev *wdev)
 	mutex_unlock(&wdev->freeze_lock);
 
 	/* Cancel the melt work if required. */
-	if (should_cancel_work) {
+	if (should_cancel_work)
 		cancel_delayed_work_sync(&wdev->freeze_dwork);
-	}
 }
 
 
@@ -400,28 +397,26 @@ void cancel_melt_work(struct walb_dev *wdev)
  */
 bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
 {
-	unsigned int minor;
 	int ret;
 
 	ASSERT(wdev);
-	minor = MINOR(wdev->devt);
 
 	/* Freeze and enqueue a melt work if required. */
 	mutex_lock(&wdev->freeze_lock);
 	switch (wdev->freeze_state) {
 	case FRZ_MELTED:
 		/* Freeze iocore and checkpointing. */
-		LOGn("Freeze walb device minor %u.\n", minor);
+		WLOGn(wdev, "Freeze walb device.\n");
 		iocore_freeze(wdev);
 		stop_checkpointing(&wdev->cpd);
 		wdev->freeze_state = FRZ_FREEZED;
 		break;
 	case FRZ_FREEZED:
 		/* Do nothing. */
-		LOGn("Already frozen minor %u.\n", minor);
+		WLOGn(wdev, "Already frozen.\n");
 		break;
 	case FRZ_FREEZED_WITH_TIMEOUT:
-		LOGe("Race condition occured.\n");
+		WLOGe(wdev, "Race condition occured.\n");
 		mutex_unlock(&wdev->freeze_lock);
 		return false;
 	default:
@@ -429,8 +424,8 @@ bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
 	}
 	ASSERT(wdev->freeze_state == FRZ_FREEZED);
 	if (timeout_sec > 0) {
-		LOGn("(Re)set frozen timeout to %"PRIu32" seconds.\n",
-			timeout_sec);
+		WLOGn(wdev, "(Re)set frozen timeout to %u seconds.\n"
+			, timeout_sec);
 		INIT_DELAYED_WORK(&wdev->freeze_dwork, task_melt);
 		ret = queue_delayed_work(
 			wq_misc_, &wdev->freeze_dwork,
@@ -452,10 +447,7 @@ bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
 bool melt_if_frozen(
 	struct walb_dev *wdev, bool restarts_checkpointing)
 {
-	unsigned int minor;
-
 	ASSERT(wdev);
-	minor = MINOR(wdev->devt);
 
 	cancel_melt_work(wdev);
 
@@ -464,20 +456,20 @@ bool melt_if_frozen(
 	switch (wdev->freeze_state) {
 	case FRZ_MELTED:
 		/* Do nothing. */
-		LOGn("Already melted minor %u\n", minor);
+		WLOGn(wdev, "Already melted.\n");
 		break;
 	case FRZ_FREEZED:
 		/* Melt. */
-		LOGn("Melt walb device minor %u.\n", minor);
-		if (restarts_checkpointing) {
+		WLOGn(wdev, "Melt device.\n");
+		if (restarts_checkpointing)
 			start_checkpointing(&wdev->cpd);
-		}
+
 		iocore_melt(wdev);
 		wdev->freeze_state = FRZ_MELTED;
 		break;
 	case FRZ_FREEZED_WITH_TIMEOUT:
 		/* Race condition. */
-		LOGe("Race condition occurred.\n");
+		WLOGe(wdev, "Race condition occurred.\n");
 		mutex_unlock(&wdev->freeze_lock);
 		return false;
 	default:
@@ -533,11 +525,10 @@ void set_chunk_sectors(
 {
 	unsigned int io_min = queue_io_min((struct request_queue *)q);
 	ASSERT(io_min % LOGICAL_BLOCK_SIZE == 0);
-	if (pbs < io_min) {
+	if (pbs < io_min)
 		*chunk_sectors = io_min / LOGICAL_BLOCK_SIZE;
-	} else {
+	else
 		*chunk_sectors = 0;
-	}
 }
 
 /**

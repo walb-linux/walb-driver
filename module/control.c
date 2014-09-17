@@ -208,8 +208,7 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 	wdev = search_wdev_with_minor(wminor);
 	if (!wdev) {
 		alldevs_unlock();
-		LOGe("Walb dev with minor %u not found.\n",
-			wminor);
+		LOGe("Walb dev with minor %u not found.\n", wminor);
 		ctl->error = -1;
 		return -EFAULT;
 	}

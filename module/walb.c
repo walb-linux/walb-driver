@@ -598,7 +598,7 @@ static void walb_ldev_finalize(struct walb_dev *wdev, bool is_sync)
 	ASSERT(wdev->lsuper0);
 
 	if (!walb_finalize_super_block(wdev, is_sync_superblock_ && is_sync))
-		LOGe("finalize super block failed.\n");
+		WLOGe(wdev, "finalize super block failed.\n");
 
 	sector_free(wdev->lsuper0);
 }
@@ -619,11 +619,11 @@ static void walb_register_device(struct walb_dev *wdev)
  */
 static void walb_unregister_device(struct walb_dev *wdev)
 {
-	LOGd("walb_unregister_device begin.\n");
+	LOG_("walb_unregister_device begin.\n");
 	if (wdev->gd) {
 		del_gendisk(wdev->gd);
 	}
-	LOGd("walb_unregister_device end.\n");
+	LOG_("walb_unregister_device end.\n");
 }
 
 /**
@@ -642,11 +642,11 @@ static void walblog_register_device(struct walb_dev *wdev)
  */
 static void walblog_unregister_device(struct walb_dev *wdev)
 {
-	LOGd("walblog_unregister_device begin.\n");
+	LOG_("walblog_unregister_device begin.\n");
 	if (wdev->log_gd) {
 		del_gendisk(wdev->log_gd);
 	}
-	LOGd("walblog_unregister_device end.\n");
+	LOG_("walblog_unregister_device end.\n");
 }
 
 static int __init walb_init(void)
@@ -980,9 +980,7 @@ out:
  */
 void destroy_wdev(struct walb_dev *wdev)
 {
-	LOGi("destroy_wdev (wrap %u:%u log %u:%u data %u:%u)\n",
-		MAJOR(wdev->devt),
-		MINOR(wdev->devt),
+	WLOGi(wdev, "destroy_wdev (ldev %u:%u ddev %u:%u)\n",
 		MAJOR(wdev->ldev->bd_dev),
 		MINOR(wdev->ldev->bd_dev),
 		MAJOR(wdev->ddev->bd_dev),
@@ -1005,7 +1003,7 @@ void destroy_wdev(struct walb_dev *wdev)
 		walb_unlock_bdev(wdev->ldev);
 
 	kfree(wdev);
-	LOGd("destroy_wdev done.\n");
+	WLOGd(wdev, "destroy_wdev done.\n");
 }
 
 /**
@@ -1024,7 +1022,7 @@ bool register_wdev(struct walb_dev *wdev)
 	walb_register_device(wdev);
 
 	if (walb_sysfs_init(wdev)) {
-		LOGe("walb_sysfs_init failed.\n");
+		WLOGe(wdev, "walb_sysfs_init failed.\n");
 		goto error;
 	}
 	return true;

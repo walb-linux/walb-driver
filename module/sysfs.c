@@ -16,7 +16,9 @@
 
 static inline struct walb_dev *get_wdev_from_kobj(struct kobject *kobj)
 {
-	if (!kobj) { return NULL; }
+	if (!kobj)
+		return NULL;
+
 	return container_of(kobj, struct walb_dev, kobj);
 }
 
@@ -157,9 +159,9 @@ static ssize_t walb_attr_show(
 	struct walb_sysfs_attr *wattr = container_of(attr, struct walb_sysfs_attr, attr);
 	struct walb_dev *wdev = get_wdev_from_kobj(kobj);
 
-	if (!wdev) {
+	if (!wdev)
 		return -EINVAL;
-	}
+
 	return wattr->show(wdev, buf);
 }
 
@@ -209,7 +211,7 @@ static struct kobj_type walb_ktype = {
 
 int walb_sysfs_init(struct walb_dev *wdev)
 {
-	LOGn("walb_sysfs_init\n");
+	LOGd("walb_sysfs_init\n");
 	memset(&wdev->kobj, 0, sizeof(struct kobject));
 	return kobject_init_and_add(&wdev->kobj, &walb_ktype,
 				&disk_to_dev(wdev->gd)->kobj,
@@ -218,8 +220,8 @@ int walb_sysfs_init(struct walb_dev *wdev)
 
 void walb_sysfs_exit(struct walb_dev *wdev)
 {
-	LOGn("walb_sysfs_exit\n");
 	kobject_put(&wdev->kobj);
+	LOGd("walb_sysfs_exit\n");
 }
 
 /**
@@ -227,9 +229,8 @@ void walb_sysfs_exit(struct walb_dev *wdev)
  */
 void walb_sysfs_notify(struct walb_dev *wdev, const char *attr_name)
 {
-	if (wdev && attr_name) {
+	if (wdev && attr_name)
 		sysfs_notify(&wdev->kobj, NULL, attr_name);
-	}
 }
 
 /* end of file */

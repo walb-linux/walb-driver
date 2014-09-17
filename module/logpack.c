@@ -73,6 +73,7 @@ void walb_logpack_header_print(
  * RETURN:
  *   true in success, or false.
  */
+DEPRECATED_ATTR
 bool walb_logpack_header_add_req(
 	struct walb_logpack_header *lhead,
 	const struct request *req,
@@ -84,6 +85,7 @@ bool walb_logpack_header_add_req(
 	u64 padding_pb;
 	unsigned int max_n_rec;
 	int idx;
+	const char err_msg[] = "no more request can not be added.\n";
 
 	ASSERT(lhead);
 	ASSERT(lhead->sector_type == SECTOR_TYPE_LOGPACK);
@@ -97,7 +99,7 @@ bool walb_logpack_header_add_req(
 
 	ASSERT(lhead->n_records <= max_n_rec);
 	if (lhead->n_records == max_n_rec) {
-		LOGd("no more request can not be added.\n");
+		LOGd("%s", err_msg);
 		return false;
 	}
 
@@ -118,7 +120,7 @@ bool walb_logpack_header_add_req(
 		   So padding is required. */
 		if (lhead->total_io_size + padding_pb
 			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
-			LOGd("no more request can not be added.\n");
+			LOGd("%s", err_msg);
 			return false;
 		}
 
@@ -137,14 +139,14 @@ bool walb_logpack_header_add_req(
 		idx++;
 
 		if (lhead->n_records == max_n_rec) {
-			LOGd("no more request can not be added.\n");
+			LOGd("%s", err_msg);
 			return false;
 		}
 	}
 
 	if (lhead->total_io_size + req_pb
 		> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
-		LOGd("no more request can not be added.\n");
+		LOGd("%s", err_msg);
 		return false;
 	}
 
