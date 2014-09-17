@@ -237,12 +237,11 @@ static void bio_entry_end_io(struct bio *bio, int error)
 #endif
 	if (!uptodate) {
 		UNUSED unsigned int devt = bio->bi_bdev->bd_dev;
-		LOGd("BIO_UPTODATE is false (dev %u:%u rw %lu pos %"PRIu64" len %u).\n",
+		LOG_("BIO_UPTODATE is false (dev %u:%u rw %lu pos %"PRIu64" len %u).\n",
 			MAJOR(devt), MINOR(devt),
 			bio->bi_rw, (u64)bioe->pos, bioe->len);
 	}
 
-	/* LOGd("bio_entry_end_io() begin.\n"); */
 	bioe->error = error;
 	bi_cnt = atomic_read(&bio->bi_cnt);
 	if (bio->bi_rw & REQ_WRITE) {
@@ -272,7 +271,6 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	}
 	bio_put(bio);
 	complete(&bioe->done);
-	/* LOGd("bio_entry_end_io() end.\n"); */
 }
 
 /**
@@ -523,7 +521,6 @@ error1:
 	destory_pack(pack);
 #endif
 error0:
-	LOGe("create_pack() end with error.\n");
 	return NULL;
 }
 
@@ -698,7 +695,7 @@ static void print_pack_list(const char *level, struct list_head *wpack_list)
 
 	printk("%s""print_pack_list %p begin.\n", level, wpack_list);
 	list_for_each_entry(pack, wpack_list, list) {
-		LOGd("%u: ", i);
+		printk("%s""%u: ", level, i);
 		print_pack(level, pack);
 		i++;
 	}
@@ -1145,7 +1142,7 @@ static bool create_logpack_list(
 			&latest_lsid, &flush_lsid, &log_flush_jiffies,
 			wdev, GFP_NOIO);
 		if (!ret) {
-			LOGn("writepack_add_bio_wrapper failed.\n");
+			WLOGw(wdev, "writepack_add_bio_wrapper failed.\n");
 			schedule();
 			goto retry;
 		}
@@ -1255,7 +1252,7 @@ static void submit_logpack_list(
 
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
-			LOG_("is_zero_flush_only\n");
+			WLOG_(wdev, "is_zero_flush_only\n");
 			logpack_submit_flush(wdev->ldev, &wpack->bioe_list);
 		} else {
 			ASSERT(logh->n_records > 0);
@@ -1709,7 +1706,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 			ASSERT(bio_wrapper_state_is_completed(biow));
 			if (biow->error &&
 				!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
-				LOGe("data IO error. to be read-only mode.\n");
+				WLOGe(wdev, "data IO error. to be read-only mode.\n");
 #ifdef WALB_PERFORMANCE_ANALYSIS
 			getnstimeofday(&biow->ts[WALB_TIME_END]);
 			print_bio_wrapper_performance(KERN_NOTICE, biow);
@@ -1817,7 +1814,7 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		CHECKd(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
 
 		if (test_bit_u32(LOG_RECORD_PADDING, &lrec->flags)) {
-			LOG_("padding found.\n"); /* debug */
+			LOG_("padding found.\n");
 			total_pb += capacity_pb(pbs, lrec->io_size);
 			n_padding++;
 			i++;
@@ -1919,7 +1916,7 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	spin_lock_init(&iocored->overlapped_data_lock);
 	iocored->overlapped_data = multimap_create(gfp_mask, &mmgr_);
 	if (!iocored->overlapped_data) {
-		LOGe();
+		LOGe("overlapped_data allocation failure.\n");
 		goto error1;
 	}
 	iocored->max_sectors_in_overlapped = 0;
@@ -1932,7 +1929,7 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	spin_lock_init(&iocored->pending_data_lock);
 	iocored->pending_data = multimap_create(gfp_mask, &mmgr_);
 	if (!iocored->pending_data) {
-		LOGe();
+		LOGe("pending_data allocation failure.\n");
 		goto error2;
 	}
 	iocored->pending_sectors = 0;
@@ -2083,7 +2080,7 @@ fin:
 
 		/* debug */
 		if (bio_wrapper_state_is_discard(biow)) {
-			LOGw("The bio has both REQ_FLUSH and REQ_DISCARD.\n");
+			WLOGw(wdev, "The bio has both REQ_FLUSH and REQ_DISCARD.\n");
 		}
 #ifdef WALB_DEBUG
 		atomic_inc(&get_iocored_from_wdev(wdev)->n_flush_io);
@@ -2142,16 +2139,13 @@ static void insert_to_sorted_bio_wrapper_list_by_pos(
 		list_add(&biow->list4, biow_list);
 	}
 
-	/* debug */
 #ifdef WALB_DEBUG
 	pos = 0;
-	/* LOGn("begin\n"); */
 	list_for_each_entry_safe(biow_tmp, biow_next, biow_list, list4) {
-		/* LOGn("%" PRIu64 "\n", (u64)biow_tmp->pos); */
+		LOG_("%" PRIu64 "\n", (u64)biow_tmp->pos);
 		ASSERT(pos <= biow_tmp->pos);
 		pos = biow_tmp->pos;
 	}
-	/* LOGn("end\n"); */
 #endif
 }
 
@@ -2322,8 +2316,7 @@ static void wait_for_logpack_and_submit_datapack(
 	error_io:
 		is_failed = true;
 		if (!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
-			LOGe("WalB changes device minor:%u to read-only mode.\n",
-				MINOR(wdev->devt));
+			WLOGe(wdev, "changed to read-only mode.\n");
 		bio_endio(biow->bio, -EIO);
 		list_del(&biow->list);
 		destroy_bio_wrapper_dec(wdev, biow);
@@ -2409,10 +2402,8 @@ static void wait_for_write_bio_wrapper(
 			ASSERT(bio_wrapper_state_is_delayed(biow_tmp));
 			ASSERT(biow_tmp != biow);
 			list_del(&biow_tmp->list4);
-#if 0
-			LOGn("submit overlapped biow %p pos %" PRIu64 " len %u\n",
-				biow_tmp, (u64)biow_tmp->pos, biow_tmp->len); /* debug */
-#endif
+			LOG_("submit overlapped biow %p pos %" PRIu64 " len %u\n",
+				biow_tmp, (u64)biow_tmp->pos, biow_tmp->len);
 			c++;
 			submit_write_bio_wrapper(biow_tmp, is_plug);
 		}
@@ -2739,13 +2730,14 @@ static void start_write_bio_wrapper(
 static void wait_for_all_started_write_io_done(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	int nr = atomic_read(&iocored->n_started_write_bio);
 
-	while (atomic_read(&iocored->n_started_write_bio) > 0) {
-		LOGi("n_started_write_bio %d\n",
-			atomic_read(&iocored->n_started_write_bio));
+	while (nr > 0) {
+		WLOGi(wdev, "n_started_write_bio %d\n", nr);
 		msleep(100);
+		nr = atomic_read(&iocored->n_started_write_bio);
 	}
-	LOGi("n_started_write_bio %d\n", atomic_read(&iocored->n_started_write_bio));
+	WLOGi(wdev, "n_started_write_bio %d\n", nr);
 }
 
 /**
@@ -2754,13 +2746,14 @@ static void wait_for_all_started_write_io_done(struct walb_dev *wdev)
 static void wait_for_all_pending_gc_done(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	int nr = atomic_read(&iocored->n_pending_gc);
 
-	while (atomic_read(&iocored->n_pending_gc) > 0) {
-		LOGn("n_pending_gc %d\n",
-			atomic_read(&iocored->n_pending_gc));
+	while (nr > 0) {
+		WLOGi(wdev, "n_pending_gc %d\n", nr);
 		msleep(100);
+		nr = atomic_read(&iocored->n_pending_gc);
 	}
-	LOGn("n_pending_gc %d\n", atomic_read(&iocored->n_pending_gc));
+	WLOGi(wdev, "n_pending_gc %d\n", nr);
 }
 
 /**
@@ -2784,9 +2777,9 @@ static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
 	int err;
 	bool should_notice = false;
 
-	if (wdev->log_flush_interval_jiffies == 0) {
+	if (wdev->log_flush_interval_jiffies == 0)
 		return;
-	}
+
 	/* We will wait for log flush at most the given interval period. */
 	timeout_jiffies = jiffies + wdev->log_flush_interval_jiffies;
 retry:
@@ -2828,7 +2821,7 @@ retry:
 	/* Execute a flush request. */
 	err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
 	if (err) {
-		LOGe("log device flush failed. to be read-only mode\n");
+		WLOGe(wdev, "log device flush failed. try to be read-only mode\n");
 		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 	}
 
@@ -2845,9 +2838,8 @@ retry:
 	}
 	ASSERT(lsid <= wdev->lsids.permanent);
 	spin_unlock(&wdev->lsid_lock);
-	if (should_notice) {
+	if (should_notice)
 		walb_sysfs_notify(wdev, "lsids");
-	}
 }
 
 /**
@@ -2900,7 +2892,7 @@ static void invoke_userland_exec(struct walb_dev *wdev, const char *event_str)
 
 	ret = call_usermodehelper(exec_path_on_error_, argv, envp, UMH_WAIT_EXEC);
 	if (ret) {
-		LOGe("Execute userland command failed: %s %s %s %s\n"
+		WLOGe(wdev, "Execute userland command failed: %s %s %s %s\n"
 			, exec_path_on_error_
 			, major_str
 			, minor_str
@@ -3212,9 +3204,8 @@ void iocore_freeze(struct walb_dev *wdev)
 
 	might_sleep();
 
-	if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-		LOGn("iocore frozen.\n");
-	}
+	if (atomic_inc_return(&iocored->n_stoppers) == 1)
+		WLOGi(wdev, "iocore frozen.\n");
 
 	/* Wait for all started write io done. */
 	wait_for_all_started_write_io_done(wdev);
@@ -3235,7 +3226,7 @@ void iocore_melt(struct walb_dev *wdev)
 	iocored = get_iocored_from_wdev(wdev);
 
 	if (atomic_dec_return(&iocored->n_stoppers) == 0) {
-		LOG_("iocore melted.\n");
+		WLOGi(wdev, "iocore melted.\n");
 		enqueue_submit_task_if_necessary(wdev);
 	}
 }
@@ -3329,13 +3320,14 @@ void iocore_flush(struct walb_dev *wdev)
 void wait_for_all_pending_io_done(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	int nr = atomic_read(&iocored->n_pending_bio);
 
-	while (atomic_read(&iocored->n_pending_bio) > 0) {
-		LOGn("n_pending_bio %d\n",
-			atomic_read(&iocored->n_pending_bio));
+	while (nr > 0) {
+		WLOGi(wdev, "n_pending_bio %d\n", nr);
 		msleep(100);
+		nr = atomic_read(&iocored->n_pending_bio);
 	}
-	LOGn("n_pending_bio %d\n", atomic_read(&iocored->n_pending_bio));
+	WLOGi(wdev, "n_pending_bio %d\n", nr);
 }
 
 /**

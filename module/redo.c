@@ -340,7 +340,7 @@ static struct bio_wrapper* create_log_bio_wrapper_for_redo(
 
 	bio->bi_bdev = wdev->ldev;
 	off_pb = lsid % wdev->ring_buffer_size + wdev->ring_buffer_off;
-	LOG_("lsid: %"PRIu64" off_pb: %"PRIu64"\n", lsid, off_pb);
+	WLOG_(wdev, "lsid: %" PRIu64 " off_pb: %" PRIu64 "\n", lsid, off_pb);
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_sector = off_lb;
 	bio->bi_rw = READ;
@@ -486,7 +486,7 @@ static void bio_end_io_for_redo(struct bio *bio, int error)
 	biow = bio->bi_private;
 	ASSERT(biow);
 
-	LOG_("pos %"PRIu64"\n", (u64)biow->pos);
+	LOG_("pos %" PRIu64 "\n", (u64)biow->pos);
 #ifdef WALB_DEBUG
 	if (bio_wrapper_state_is_discard(biow)) {
 		ASSERT(!biow->private_data);
@@ -542,8 +542,9 @@ static void wait_for_all_read_io_and_destroy(struct redo_data *read_rd)
 	retry:
 		rtimeo = wait_for_completion_timeout(&biow->done, timeo);
 		if (rtimeo == 0) {
-			LOGw("timeout(%d): biow %p pos %"PRIu64" len %u\n",
-				c, biow, (u64)biow->pos, biow->len);
+			WLOGw(read_rd->wdev,
+				"timeout(%d): biow %p pos %" PRIu64 " len %u\n"
+				, c, biow, (u64)biow->pos, biow->len);
 			c++;
 			goto retry;
 		}
@@ -887,7 +888,7 @@ retry2:
 	generic_make_request(logh_biow->bio);
 	wait_for_completion(&logh_biow->done);
 	if (logh_biow->error) {
-		LOGe("Updated logpack header IO failed.");
+		WLOGe(wdev, "Updated logpack header IO failed.");
 		retb = false;
 		goto fin;
 	}
@@ -1132,7 +1133,7 @@ bool execute_redo(struct walb_dev *wdev)
 	gc_rd = create_redo_data(wdev, written_lsid);
 	if (!gc_rd) { goto error3; }
 
-	LOGn("Redo will start from lsid %"PRIu64".\n", written_lsid);
+	WLOGn(wdev, "Redo will start from lsid %"PRIu64".\n", written_lsid);
 
 	/* Run workers. */
 	initialize_worker(read_wd,
@@ -1194,7 +1195,7 @@ bool execute_redo(struct walb_dev *wdev)
 	free_worker(read_wd);
 
 	if (failed) {
-		LOGe("IO error occurred during redo.\n");
+		WLOGe(wdev, "IO error occurred during redo.\n");
 		return false;
 	}
 
@@ -1215,9 +1216,11 @@ bool execute_redo(struct walb_dev *wdev)
 	/* Get end time. */
 	getnstimeofday(&ts[1]);
 	ts[0] = timespec_sub(ts[1], ts[0]);
-	LOGn("Redo period: %ld.%09ld second\n", ts[0].tv_sec, ts[0].tv_nsec);
-	LOGn("Redo %"PRIu64" logpack of totally %"PRIu64" physical blocks.\n",
-		n_logpack, written_lsid - start_lsid);
+	WLOGn(wdev, "Redo period: %ld.%09ld second\n"
+		, ts[0].tv_sec, ts[0].tv_nsec);
+	WLOGn(wdev, "Redo %" PRIu64 " logpack of totally "
+		"%" PRIu64 " physical blocks.\n"
+		, n_logpack, written_lsid - start_lsid);
 
 	return true;
 #if 0
