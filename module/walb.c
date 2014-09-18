@@ -789,10 +789,7 @@ struct walb_dev* prepare_wdev(
 	ldev_lbs = bdev_logical_block_size(wdev->ldev);
 	ldev_pbs = bdev_physical_block_size(wdev->ldev);
 	ASSERT(ldev_lbs == LOGICAL_BLOCK_SIZE);
-	LOGi("log disk (%u:%u)\n"
-		"log disk size %llu\n"
-		"log logical sector size %u\n"
-		"log physical sector size %u\n",
+	LOGi("log disk (%u:%u) size %llu lbs %u pbs %u\n",
 		MAJOR(ldevt), MINOR(ldevt),
 		wdev->ldev_size,
 		ldev_lbs, ldev_pbs);
@@ -809,10 +806,7 @@ struct walb_dev* prepare_wdev(
 	ddev_lbs = bdev_logical_block_size(wdev->ddev);
 	ddev_pbs = bdev_physical_block_size(wdev->ddev);
 	ASSERT(ddev_lbs == LOGICAL_BLOCK_SIZE);
-	LOGi("data disk (%d:%d)\n"
-		"data disk size %llu\n"
-		"data logical sector size %u\n"
-		"data physical sector size %u\n",
+	LOGi("data disk (%u:%u) size %llu lbs %u pbs %u\n",
 		MAJOR(ddevt), MINOR(ddevt),
 		wdev->ddev_size,
 		ddev_lbs, ddev_pbs);
@@ -862,12 +856,6 @@ struct walb_dev* prepare_wdev(
 		wdev->log_flush_interval_pb = param->log_flush_interval_mb
 			* (1024 * 1024 / wdev->physical_bs);
 	}
-	LOGn("max_logpack_pb: %u\n"
-		"log_flush_interval_jiffies: %u\n"
-		"log_flush_interval_pb: %u\n",
-		wdev->max_logpack_pb,
-		wdev->log_flush_interval_jiffies,
-		wdev->log_flush_interval_pb);
 	ASSERT(0 < param->min_pending_mb);
 	ASSERT(param->min_pending_mb < param->max_pending_mb);
 	wdev->max_pending_sectors
@@ -876,26 +864,34 @@ struct walb_dev* prepare_wdev(
 		= param->min_pending_mb * 1024 * 1024 / LOGICAL_BLOCK_SIZE;
 	wdev->queue_stop_timeout_jiffies =
 		msecs_to_jiffies(param->queue_stop_timeout_ms);
-	LOGn("max_pending_sectors: %u\n"
-		"min_pending_sectors: %u\n"
-		"queue_stop_timeout_jiffies: %u\n",
-		wdev->max_pending_sectors,
-		wdev->min_pending_sectors,
-		wdev->queue_stop_timeout_jiffies);
 	wdev->n_pack_bulk = 128; /* default value. */
 	if (param->n_pack_bulk > 0) { wdev->n_pack_bulk = param->n_pack_bulk; }
 	wdev->n_io_bulk = 1024; /* default value. */
 	if (param->n_io_bulk > 0) { wdev->n_io_bulk = param->n_io_bulk; }
-	LOGn("n_pack_bulk: %u\n""n_io_bulk: %u\n",
-		wdev->n_pack_bulk, wdev->n_io_bulk);
 
 	lq = bdev_get_queue(wdev->ldev);
 	dq = bdev_get_queue(wdev->ddev);
 	/* Set chunk size. */
 	set_chunk_sectors(&wdev->ldev_chunk_sectors, wdev->physical_bs, lq);
 	set_chunk_sectors(&wdev->ddev_chunk_sectors, wdev->physical_bs, dq);
-	LOGn("chunk_sectors ldev %u ddev %u.\n",
-		wdev->ldev_chunk_sectors, wdev->ddev_chunk_sectors);
+
+	LOGi("max_logpack_pb: %u "
+		"log_flush_interval_jiffies: %u "
+		"log_flush_interval_pb: %u "
+		"max_pending_sectors: %u "
+		"min_pending_sectors: %u "
+		"queue_stop_timeout_jiffies: %u "
+		"n_pack_bulk: %u n_io_bulk: %u "
+		"chunk_sectors ldev %u ddev %u.\n",
+		wdev->max_logpack_pb,
+		wdev->log_flush_interval_jiffies,
+		wdev->log_flush_interval_pb,
+		wdev->max_pending_sectors,
+		wdev->min_pending_sectors,
+		wdev->queue_stop_timeout_jiffies,
+		wdev->n_pack_bulk, wdev->n_io_bulk,
+		wdev->ldev_chunk_sectors,
+		wdev->ddev_chunk_sectors);
 
 	/* Set device name. */
 	if (walb_set_name(wdev, minor, param->name) != 0) {
