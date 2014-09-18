@@ -767,9 +767,9 @@ struct walb_dev* prepare_wdev(
 	struct walb_super_sector *super;
 	struct request_queue *lq, *dq;
 	bool retb;
+	u64 latest_lsid, oldest_lsid;
 #ifdef WALB_DEBUG
-	u64 written_lsid, latest_lsid, flush_lsid;
-	u64 completed_lsid;
+	u64 completed_lsid, flush_lsid, written_lsid, prev_written_lsid;
 #endif
 
 	ASSERT(is_walb_start_param_valid(param));
@@ -846,12 +846,14 @@ struct walb_dev* prepare_wdev(
 	init_checkpointing(&wdev->cpd);
 
 	/* Set lsids. */
+	spin_lock(&wdev->lsid_lock);
 	wdev->lsids.oldest = super->oldest_lsid;
-	wdev->lsids.prev_written = wdev->lsids.written;
+	wdev->lsids.prev_written = super->written_lsid;
 	wdev->lsids.written = super->written_lsid;
-	wdev->lsids.permanent = wdev->lsids.written;
-	wdev->lsids.completed = wdev->lsids.written;
-	wdev->lsids.latest = wdev->lsids.written;
+	wdev->lsids.permanent = super->written_lsid;
+	wdev->lsids.completed = super->written_lsid;
+	wdev->lsids.latest = super->written_lsid;
+	spin_unlock(&wdev->lsid_lock);
 
 	wdev->ring_buffer_size = super->ring_buffer_size;
 	wdev->ring_buffer_off = get_ring_buffer_offset_2(super);
@@ -954,17 +956,29 @@ struct walb_dev* prepare_wdev(
 		LOGe("Redo failed.\n");
 		goto out_iocore_init;
 	}
-#ifdef WALB_DEBUG
 	spin_lock(&wdev->lsid_lock);
-	written_lsid = wdev->lsids.written;
 	latest_lsid = wdev->lsids.latest;
-	flush_lsid = wdev->lsids.flush;
+	oldest_lsid = wdev->lsids.oldest;
+#ifdef WALB_DEBUG
 	completed_lsid = wdev->lsids.completed;
-	spin_unlock(&wdev->lsid_lock);
-	ASSERT(written_lsid == latest_lsid);
-	ASSERT(written_lsid == flush_lsid);
-	ASSERT(written_lsid == completed_lsid);
+	written_lsid = wdev->lsids.written;
+	prev_written_lsid = wdev->lsids.prev_written;
+	flush_lsid = wdev->lsids.flush;
 #endif
+	spin_unlock(&wdev->lsid_lock);
+#ifdef WALB_DEBUG
+	ASSERT(prev_written_lsid == latest_lsid);
+	ASSERT(prev_written_lsid == completed_lsid);
+	ASSERT(prev_written_lsid == flush_lsid);
+	ASSERT(prev_written_lsid == written_lsid);
+#endif
+
+	/* Check the device overflows or not. */
+	if (latest_lsid - oldest_lsid > wdev->ring_buffer_size
+		|| !walb_check_lsid_valid(wdev, oldest_lsid)) {
+		set_bit(WALB_STATE_OVERFLOW, &wdev->flags);
+		LOGw("Set overflow flag.\n");
+	}
 
 	return wdev;
 
