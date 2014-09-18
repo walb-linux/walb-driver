@@ -3257,22 +3257,27 @@ void iocore_melt(struct walb_dev *wdev)
 void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 {
 	struct bio_wrapper *biow;
-	int error = -EIO;
-	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-	unsigned long is_write = bio->bi_rw & REQ_WRITE;
+	struct iocore_data *iocored;
+	const bool is_write = (bio->bi_rw & REQ_WRITE) != 0;
 
-	/* Failure/Read-only state check. */
-	if (test_bit(WALB_STATE_FINALIZE, &wdev->flags) ||
-		(is_write && test_bit(WALB_STATE_READ_ONLY, &wdev->flags))) {
-		error = -EIO;
-		goto error0;
+	/* Check whether the device is dying. */
+	if (is_wdev_dying(wdev)) {
+		bio_endio(bio, -ENODEV);
+		return;
+	}
+	iocored = get_iocored_from_wdev(wdev);
+
+	/* Check whether read-only mode. */
+	if (is_write && test_bit(WALB_STATE_READ_ONLY, &wdev->flags)) {
+		bio_endio(bio, -EIO);
+		return;
 	}
 
 	/* Create bio wrapper. */
 	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
 	if (!biow) {
-		error = -ENOMEM;
-		goto error0;
+		bio_endio(bio, -ENOMEM);
+		return;
 	}
 	init_bio_wrapper(biow, bio);
 	biow->private_data = wdev;
@@ -3304,11 +3309,10 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	}
 	return;
 #if 0
-error1:
-	destroy_bio_wrapper_dec(wdev, biow);
-#endif
 error0:
-	bio_endio(bio, error);
+	destroy_bio_wrapper_dec(wdev, biow);
+	bio_endio(bio, -EIO);
+#endif
 }
 
 /**
@@ -3316,8 +3320,11 @@ error0:
  */
 void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio)
 {
-	if ((bio->bi_rw & WRITE) ||
-		test_bit(WALB_STATE_FINALIZE, &wdev->flags)) {
+	if (is_wdev_dying(wdev)) {
+		bio_endio(bio, -ENODEV);
+		return;
+	}
+	if (bio->bi_rw & WRITE) {
 		bio_endio(bio, -EIO);
 		return;
 	}
