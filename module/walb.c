@@ -227,8 +227,8 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 	int ret = -ENOTTY;
 	u32 version;
 
-	LOGd("walb_ioctl begin.\n");
-	LOGd("cmd: %08x\n", cmd);
+	LOG_("walb_ioctl begin.\n");
+	LOG_("cmd: %08x\n", cmd);
 
 	switch(cmd) {
 	case HDIO_GETGEO:
@@ -249,7 +249,7 @@ static int walb_ioctl(struct block_device *bdev, fmode_t mode,
 		break;
 	}
 
-	LOGd("walb_ioctl end.\n");
+	LOG_("walb_ioctl end.\n");
 
 	return ret;
 }
