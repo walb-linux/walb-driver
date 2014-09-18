@@ -1006,7 +1006,6 @@ void destroy_wdev(struct walb_dev *wdev)
 		MAJOR(wdev->ddev->bd_dev),
 		MINOR(wdev->ddev->bd_dev));
 
-	set_bit(WALB_STATE_FINALIZE, &wdev->flags);
 	melt_if_frozen(wdev, false);
 
 	walblog_finalize_device(wdev);
@@ -1061,6 +1060,8 @@ error:
 void unregister_wdev(struct walb_dev *wdev)
 {
 	ASSERT(wdev);
+
+	set_bit(WALB_STATE_FINALIZE, &wdev->flags);
 
 	stop_checkpointing(&wdev->cpd);
 	walb_sysfs_exit(wdev);
