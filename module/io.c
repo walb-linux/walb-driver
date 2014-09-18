@@ -942,7 +942,7 @@ static bool create_logpack_list(
 	struct bio_wrapper *biow, *biow_next;
 	struct pack *wpack = NULL;
 	u64 latest_lsid, latest_lsid_old,
-		flush_lsid, prev_written_lsid, oldest_lsid;
+		flush_lsid, written_lsid, prev_written_lsid, oldest_lsid;
 	unsigned long log_flush_jiffies;
 	bool ret;
 
@@ -958,6 +958,7 @@ static bool create_logpack_list(
 	latest_lsid = wdev->lsids.latest;
 	oldest_lsid = wdev->lsids.oldest;
 	prev_written_lsid = wdev->lsids.prev_written;
+	written_lsid = wdev->lsids.written;
 	flush_lsid = wdev->lsids.flush;
 	log_flush_jiffies = iocored->log_flush_jiffies;
 	spin_unlock(&wdev->lsid_lock);
@@ -1034,20 +1035,27 @@ static bool create_logpack_list(
 	}
 
 	/* Check consistency. */
-	ASSERT(latest_lsid >= prev_written_lsid);
+	ASSERT(latest_lsid >= written_lsid);
+	ASSERT(written_lsid >= prev_written_lsid);
 	while (latest_lsid - prev_written_lsid > wdev->ring_buffer_size) {
-		WLOGw(wdev, "Ring buffer size is too small to keep consistency. "
-			"Try to take checkpoint.\n");
-		stop_checkpointing(&wdev->cpd);
-		if (!take_checkpoint(&wdev->cpd))
-			goto error;
-		start_checkpointing(&wdev->cpd);
-
+		if (latest_lsid - written_lsid > wdev->ring_buffer_size) {
+			if (test_bit(WALB_STATE_READ_ONLY, &wdev->flags))
+				goto error;
+			WLOGw(wdev, "Ring buffer size is too small: sleep 100ms.\n");
+			msleep(100);
+		} else {
+			WLOGw(wdev, "Ring buffer size is too small: try to take checkpoint: "
+				"latest %" PRIu64 " written %" PRIu64 " prev_written %" PRIu64 "\n"
+				, latest_lsid, written_lsid, prev_written_lsid);
+			stop_checkpointing(&wdev->cpd);
+			if (!take_checkpoint(&wdev->cpd))
+				goto error;
+			start_checkpointing(&wdev->cpd);
+		}
 		spin_lock(&wdev->lsid_lock);
 		prev_written_lsid = wdev->lsids.prev_written;
+		written_lsid = wdev->lsids.written;
 		spin_unlock(&wdev->lsid_lock);
-		WLOGi(wdev, "latest_lsid %" PRIu64 " prev_written_lsid %" PRIu64 "\n"
-			, latest_lsid, prev_written_lsid);
 	}
 
 	/* Now the logpack can be submitted. */
