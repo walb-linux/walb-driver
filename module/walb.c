@@ -456,9 +456,11 @@ static void walb_finalize_device(struct walb_dev *wdev)
 {
 	if (wdev->gd) {
 		put_disk(wdev->gd);
+		wdev->gd = NULL;
 	}
 	if (wdev->queue) {
 		blk_cleanup_queue(wdev->queue);
+		wdev->queue = NULL;
 	}
 }
 
@@ -517,9 +519,11 @@ static void walblog_finalize_device(struct walb_dev *wdev)
 {
 	if (wdev->log_gd) {
 		put_disk(wdev->log_gd);
+		wdev->log_gd = NULL;
 	}
 	if (wdev->log_queue) {
 		blk_cleanup_queue(wdev->log_queue);
+		wdev->log_queue = NULL;
 	}
 }
 
@@ -624,6 +628,7 @@ static void walb_unregister_device(struct walb_dev *wdev)
 	LOG_("walb_unregister_device begin.\n");
 	if (wdev->gd) {
 		del_gendisk(wdev->gd);
+		/* Do not assign NULL here. */
 	}
 	LOG_("walb_unregister_device end.\n");
 }
@@ -647,6 +652,7 @@ static void walblog_unregister_device(struct walb_dev *wdev)
 	LOG_("walblog_unregister_device begin.\n");
 	if (wdev->log_gd) {
 		del_gendisk(wdev->log_gd);
+		/* Do not assign NULL here. */
 	}
 	LOG_("walblog_unregister_device end.\n");
 }
