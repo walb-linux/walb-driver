@@ -1008,10 +1008,12 @@ void destroy_wdev(struct walb_dev *wdev)
 
 	melt_if_frozen(wdev, false);
 
+	/* Background tasks may access wdev->gd.
+	   So you must call this before put_disk(). */
+	iocore_flush(wdev);
+
 	walblog_finalize_device(wdev);
 	walb_finalize_device(wdev);
-
-	iocore_flush(wdev);
 
 	walb_ldev_finalize(wdev, true);
 	iocore_finalize(wdev);
