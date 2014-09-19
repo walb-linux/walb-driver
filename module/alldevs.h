@@ -7,7 +7,6 @@
 #define WALB_ALLDEVS_H_KERNEL
 
 #include "check_kernel.h"
-#include <linux/rwsem.h>
 #include "kern.h"
 #include "sector_io.h"
 
@@ -15,7 +14,7 @@
  * Prototypes.
  *
  * Before call the following functions,
- * you must lock all_wdevs_lock_ semaphore.
+ * you must lock all_wdevs_lock_ mutex.
  */
 
 /* Init/Exit */
@@ -54,9 +53,7 @@ unsigned int get_free_minor(void);
 bool alldevs_is_already_used(dev_t);
 
 /* Lock wrapper */
-void alldevs_read_lock(void);
-void alldevs_read_unlock(void);
-void alldevs_write_lock(void);
-void alldevs_write_unlock(void);
+void alldevs_lock(void);
+void alldevs_unlock(void);
 
 #endif /* WALB_ALLDEVS_H_KERNEL */

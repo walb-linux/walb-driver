@@ -6,7 +6,7 @@
  */
 #include <linux/module.h>
 #include <linux/list.h>
-#include <linux/rwsem.h>
+#include <linux/mutex.h>
 
 #include "treemap.h"
 #include "hashtbl.h"
@@ -15,7 +15,7 @@
 /**
  * Lock to access all functions declared in this header.
  */
-static struct rw_semaphore all_wdevs_lock_;
+static struct mutex all_wdevs_lock_;
 
 /**
  * List of struct walb_dev.
@@ -115,7 +115,7 @@ int alldevs_init(void)
 	map_minor_ = map_create(GFP_KERNEL, &mmgr_);
 	if (!map_minor_) { goto error3; }
 
-	init_rwsem(&all_wdevs_lock_);
+	mutex_init(&all_wdevs_lock_);
 
 	CHECK_START();
 
@@ -527,40 +527,16 @@ bool alldevs_is_already_used(dev_t devt)
 	return false;
 }
 
-/**
- * Read lock.
- */
-void alldevs_read_lock(void)
+void alldevs_lock(void)
 {
 	CHECK_RUNNING();
-	down_read(&all_wdevs_lock_);
+	mutex_lock(&all_wdevs_lock_);
 }
 
-/**
- * Read unlock.
- */
-void alldevs_read_unlock(void)
+void alldevs_unlock(void)
 {
 	CHECK_RUNNING();
-	up_read(&all_wdevs_lock_);
-}
-
-/**
- * Write lock.
- */
-void alldevs_write_lock(void)
-{
-	CHECK_RUNNING();
-	down_write(&all_wdevs_lock_);
-}
-
-/**
- * Write unlock.
- */
-void alldevs_write_unlock(void)
-{
-	CHECK_RUNNING();
-	up_write(&all_wdevs_lock_);
+	mutex_unlock(&all_wdevs_lock_);
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

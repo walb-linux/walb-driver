@@ -109,16 +109,16 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	}
 
 	/* Lock */
-	alldevs_write_lock();
+	alldevs_lock();
 
 	if (alldevs_is_already_used(ldevt)) {
-		alldevs_write_unlock();
+		alldevs_unlock();
 		LOGe("already used ldev %u:%u\n", MAJOR(ldevt), MINOR(ldevt));
 		ctl->error = -4;
 		goto error0;
 	}
 	if (alldevs_is_already_used(ddevt)) {
-		alldevs_write_unlock();
+		alldevs_unlock();
 		LOGe("already used ddev %u:%u\n", MAJOR(ddevt), MINOR(ddevt));
 		ctl->error = -5;
 		goto error0;
@@ -134,14 +134,14 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 
 	wdev = prepare_wdev(wminor, ldevt, ddevt, param0);
 	if (!wdev) {
-		alldevs_write_unlock();
+		alldevs_unlock();
 		LOGe("prepare wdev failed.\n");
 		ctl->error = -6;
 		goto error0;
 	}
 
 	if (alldevs_add(wdev) != 0) {
-		alldevs_write_unlock();
+		alldevs_unlock();
 		LOGe("alldevs_add failed.\n");
 		ctl->error = -7;
 		goto error1;
@@ -154,7 +154,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 	}
 
 	/* Unlock */
-	alldevs_write_unlock();
+	alldevs_unlock();
 
 	/* Return values to userland. */
 	ctl->k2u.wmajor = walb_major_;
@@ -171,7 +171,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 
 error2:
 	alldevs_del(wdev);
-	alldevs_write_unlock();
+	alldevs_unlock();
 error1:
 	finalize_wdev(wdev);
 	destroy_wdev(wdev);
@@ -212,10 +212,10 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 	wdevt = MKDEV(wmajor, wminor);
 	force = ctl->val_int != 0;
 
-	alldevs_write_lock();
+	alldevs_lock();
 	wdev = search_wdev_with_minor(wminor);
 	if (!wdev) {
-		alldevs_write_unlock();
+		alldevs_unlock();
 		LOGe("Walb device with minor %u not found.\n", wminor);
 		ctl->error = -1;
 		return -EFAULT;
@@ -223,7 +223,7 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 
 	n_users = atomic_read(&wdev->n_users);
 	if (!force && n_users > 0) {
-		alldevs_write_unlock();
+		alldevs_unlock();
 		WLOGe(wdev, "Still opened by %d users.\n", n_users);
 		ctl->error = -2;
 		return -EBUSY;
@@ -231,7 +231,7 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 
 	unregister_wdev(wdev);
 	alldevs_del(wdev);
-	alldevs_write_unlock();
+	alldevs_unlock();
 
 	finalize_wdev(wdev);
 

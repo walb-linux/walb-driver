@@ -446,9 +446,9 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 		goto error2;
 
 	/* Update uuid index of alldev data. */
-	alldevs_write_lock();
+	alldevs_lock();
 	ret = alldevs_update_uuid(old_uuid, new_uuid);
-	alldevs_write_unlock();
+	alldevs_unlock();
 	if (ret) {
 		LOGe("Update alldevs index failed.\n");
 		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);

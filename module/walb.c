@@ -730,7 +730,7 @@ static void walb_exit(void)
 {
 	struct walb_dev *wdev;
 
-	alldevs_write_lock();
+	alldevs_lock();
 	wdev = alldevs_pop();
 	while (wdev) {
 		unregister_wdev(wdev);
@@ -738,7 +738,7 @@ static void walb_exit(void)
 		destroy_wdev(wdev);
 		wdev = alldevs_pop();
 	}
-	alldevs_write_unlock();
+	alldevs_unlock();
 
 	finalize_workqueues();
 	unregister_blkdev(walb_major_, WALB_NAME);
