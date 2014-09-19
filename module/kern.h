@@ -326,9 +326,7 @@ static inline bool is_permanent_log_empty(struct lsid_set *lsids)
 
 static inline bool is_wdev_dying(struct walb_dev *wdev)
 {
-	return !wdev
-		|| test_bit(WALB_STATE_FINALIZE, &wdev->flags)
-		|| !wdev->private_data;
+	return test_bit(WALB_STATE_FINALIZE, &wdev->flags);
 }
 
 /*******************************************************************************
