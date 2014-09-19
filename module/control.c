@@ -173,6 +173,7 @@ static int ioctl_start_dev(struct walb_ctl *ctl)
 error2:
 	alldevs_del(wdev);
 error1:
+	finalize_wdev(wdev);
 	destroy_wdev(wdev);
 error0:
 	alldevs_unlock();
@@ -197,6 +198,8 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 	dev_t wdevt;
 	unsigned int wmajor, wminor;
 	struct walb_dev *wdev;
+	int n_users;
+	bool force;
 
 	ASSERT(ctl->command == WALB_IOCTL_STOP_DEV);
 
@@ -208,15 +211,24 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 		return -EFAULT;
 	}
 	wdevt = MKDEV(wmajor, wminor);
+	force = ctl->val_int != 0;
 
 	alldevs_lock();
 
 	wdev = search_wdev_with_minor(wminor);
 	if (!wdev) {
 		alldevs_unlock();
-		LOGe("Walb dev with minor %u not found.\n", wminor);
+		LOGe("Walb device with minor %u not found.\n", wminor);
 		ctl->error = -1;
 		return -EFAULT;
+	}
+
+	n_users = atomic_read(&wdev->n_users);
+	if (!force && n_users > 0) {
+		alldevs_unlock();
+		WLOGe(wdev, "Still opened by %d users.\n", n_users);
+		ctl->error = -2;
+		return -EBUSY;
 	}
 
 	unregister_wdev(wdev);
@@ -224,7 +236,18 @@ static int ioctl_stop_dev(struct walb_ctl *ctl)
 
 	alldevs_unlock();
 
-	destroy_wdev(wdev);
+	finalize_wdev(wdev);
+
+	n_users = atomic_read(&wdev->n_users);
+	if (n_users == 0) {
+		WLOGi(wdev, "Immediate destroy.\n");
+		destroy_wdev(wdev);
+	} else {
+		/* This is rare case. */
+		WLOGi(wdev, "Deferred destroy (n_users: %d).\n", n_users);
+		INIT_WORK(&wdev->destroy_task, task_destroy_wdev);
+		queue_work(wq_misc_, &wdev->destroy_task);
+	}
 	ctl->error = 0;
 	return 0;
 }

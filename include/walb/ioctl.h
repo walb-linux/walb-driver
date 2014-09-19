@@ -173,10 +173,12 @@ enum {
 	 *
 	 * INPUT:
 	 *   ctl->u2k.wmajor, ctl->u2k.wmajor as walb device major/minor.
+	 *   Set ctl->val_int to non-zero if you force it to stop.
 	 * OUTPUT:
 	 *   ctl->error as error code.
 	 * RETURN:
-	 *   0 in success, or -EFAULT.
+	 *   0 in success, -EBUSY if someone uses the device, or -EFAULT.
+	 *   If force flag is set,
 	 */
 	WALB_IOCTL_STOP_DEV,
 
