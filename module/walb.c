@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <linux/rwsem.h>
 #include <linux/version.h>
+#include <linux/delay.h>
 #include <asm/atomic.h>
 
 #include "kern.h"
@@ -733,6 +734,7 @@ static void walb_exit(void)
 	wdev = alldevs_pop();
 	while (wdev) {
 		unregister_wdev(wdev);
+		finalize_wdev(wdev);
 		destroy_wdev(wdev);
 		wdev = alldevs_pop();
 	}
@@ -1011,38 +1013,59 @@ out:
 }
 
 /**
- * Destroy wdev structure.
+ * Finalize a walb device.
+ * Remaining write IOs will be completely finished and flushed.
  * You must call @unregister_wdev() before calling this.
  */
-void destroy_wdev(struct walb_dev *wdev)
+void finalize_wdev(struct walb_dev *wdev)
 {
-	UNUSED const u32 minor = MINOR(wdev->devt);
+	WLOGd(wdev, "finalizing...\n");
 
-	WLOGi(wdev, "destroy_wdev (ldev %u:%u ddev %u:%u)\n",
-		MAJOR(wdev->ldev->bd_dev),
-		MINOR(wdev->ldev->bd_dev),
-		MAJOR(wdev->ddev->bd_dev),
-		MINOR(wdev->ddev->bd_dev));
+	set_bit(WALB_STATE_FINALIZE, &wdev->flags);
 
 	melt_if_frozen(wdev, false);
-
-	/* Background tasks may access wdev->gd.
-	   So you must call this before put_disk(). */
 	iocore_flush(wdev);
-
-	walblog_finalize_device(wdev);
-	walb_finalize_device(wdev);
-
 	walb_ldev_finalize(wdev, true);
-	iocore_finalize(wdev);
 
 	if (wdev->ddev)
 		walb_unlock_bdev(wdev->ddev);
 	if (wdev->ldev)
 		walb_unlock_bdev(wdev->ldev);
 
+	WLOGd(wdev, "finalized.\n");
+}
+
+/**
+ * Destroy wdev structure.
+ * You must call @finalize_wdev() before calling this.
+ */
+void destroy_wdev(struct walb_dev *wdev)
+{
+	const u32 minor = MINOR(wdev->devt);
+	int n_users;
+
+	LOGd("destroying %u...\n", minor);
+
+	while ((n_users = atomic_read(&wdev->n_users)) > 0) {
+		LOGi("%u: sleep 1000ms to wait for users (%d)\n"
+			, minor, n_users);
+		msleep(1000);
+	}
+
+	walblog_finalize_device(wdev);
+	walb_finalize_device(wdev);
+	iocore_finalize(wdev);
 	kfree(wdev);
-	LOGd("%u: destroy_wdev done.\n", minor);
+	LOGi("%u: destroyed.\n", minor);
+}
+
+/**
+ * Task runner for deferred calling of destroy_wdev().
+ */
+void task_destroy_wdev(struct work_struct *task)
+{
+	struct walb_dev *wdev = container_of(task, struct walb_dev, destroy_task);
+	destroy_wdev(wdev);
 }
 
 /**
@@ -1080,8 +1103,6 @@ error:
 void unregister_wdev(struct walb_dev *wdev)
 {
 	ASSERT(wdev);
-
-	set_bit(WALB_STATE_FINALIZE, &wdev->flags);
 
 	stop_checkpointing(&wdev->cpd);
 	walb_sysfs_exit(wdev);

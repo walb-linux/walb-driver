@@ -258,6 +258,11 @@ struct walb_dev
 	struct kobject kobj;
 
 	/*
+	 * For deferred destory task.
+	 */
+	struct work_struct destroy_task;
+
+	/*
 	 * For IOcore.
 	 */
 	void *private_data;
@@ -333,7 +338,9 @@ static inline bool is_wdev_dying(struct walb_dev *wdev)
 struct walb_dev* prepare_wdev(
 	unsigned int minor, dev_t ldevt, dev_t ddevt,
 	struct walb_start_param *param);
+void finalize_wdev(struct walb_dev *wdev);
 void destroy_wdev(struct walb_dev *wdev);
+void task_destroy_wdev(struct work_struct *task);
 bool register_wdev(struct walb_dev *wdev);
 void unregister_wdev(struct walb_dev *wdev);
 
