@@ -130,17 +130,17 @@ static ssize_t walb_attr_show_status(struct walb_dev *wdev, char *buf)
 
 static ssize_t walb_attr_show_support_flush(struct walb_dev *wdev, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%d", wdev->support_flush ? 1 : 0);
+	return snprintf(buf, PAGE_SIZE, "%d\n", wdev->support_flush ? 1 : 0);
 }
 
 static ssize_t walb_attr_show_support_fua(struct walb_dev *wdev, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%d", wdev->support_fua ? 1 : 0);
+	return snprintf(buf, PAGE_SIZE, "%d\n", wdev->support_fua ? 1 : 0);
 }
 
 static ssize_t walb_attr_show_support_discard(struct walb_dev *wdev, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%d", wdev->support_discard ? 1 : 0);
+	return snprintf(buf, PAGE_SIZE, "%d\n", wdev->support_discard ? 1 : 0);
 }
 
 /*******************************************************************************
