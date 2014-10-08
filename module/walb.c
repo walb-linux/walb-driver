@@ -983,7 +983,8 @@ struct walb_dev* prepare_wdev(
 
 	/* Check the device overflows or not. */
 	if (latest_lsid - oldest_lsid > wdev->ring_buffer_size
-		|| !walb_check_lsid_valid(wdev, oldest_lsid)) {
+		|| (latest_lsid > oldest_lsid &&
+			!walb_check_lsid_valid(wdev, oldest_lsid))) {
 		set_bit(WALB_STATE_OVERFLOW, &wdev->flags);
 		LOGw("Set overflow flag.\n");
 	}
