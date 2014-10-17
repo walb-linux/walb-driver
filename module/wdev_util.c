@@ -221,19 +221,27 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 /**
  * Support discard.
  */
-void walb_discard_support(struct walb_dev *wdev)
+void walb_discard_support(struct walb_dev *wdev, bool support)
 {
 	struct request_queue *q = wdev->queue;
 
-	WLOGi(wdev, "Supports REQ_DISCARD.\n");
-	q->limits.discard_granularity = wdev->physical_bs;
+	if (support) {
+		WLOGi(wdev, "Supports REQ_DISCARD.\n");
+		q->limits.discard_granularity = wdev->physical_bs;
 
-	/* Should be stored in u16 variable and aligned. */
-	q->limits.max_discard_sectors = 1 << 15;
-	q->limits.discard_zeroes_data = 0;
-	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+		/* Should be stored in u16 variable and aligned. */
+		q->limits.max_discard_sectors = 1 << 15;
+		q->limits.discard_zeroes_data = 0;
+		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+	} else {
+		WLOGi(wdev, "Do not support REQ_DISCARD.\n");
+		q->limits.discard_granularity = 0;
+		q->limits.max_discard_sectors = 0;
+		q->limits.discard_zeroes_data = 0;
+		queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
+	}
+	wdev->support_discard = support;
 
-	wdev->support_discard = true;
 }
 
 /**

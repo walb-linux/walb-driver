@@ -87,6 +87,12 @@ module_param_string(exec_path_on_error, exec_path_on_error_, sizeof(exec_path_on
 unsigned int is_error_before_overflow_ = 0;
 module_param_named(is_error_before_overflow, is_error_before_overflow_, uint, S_IRUGO);
 
+/**
+ * Discard support.
+ */
+unsigned int do_support_discard_ = 1;
+module_param_named(do_support_discard, do_support_discard_, uint, S_IRUGO|S_IWUSR);
+
 /*******************************************************************************
  * Shared data definition.
  *******************************************************************************/
@@ -445,7 +451,7 @@ static int walb_prepare_device(
 	walb_decide_flush_support(wdev);
 
 	/* Discard support. */
-	walb_discard_support(wdev);
+	walb_discard_support(wdev, do_support_discard_);
 
 	return 0;
 
