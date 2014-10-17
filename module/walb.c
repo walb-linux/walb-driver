@@ -453,6 +453,9 @@ static int walb_prepare_device(
 	/* Discard support. */
 	walb_discard_support(wdev, do_support_discard_);
 
+	/* Write same support. */
+	walb_write_same_support(wdev);
+
 	return 0;
 
 #if 0
