@@ -43,7 +43,7 @@ u64 get_completed_lsid(struct walb_dev *wdev);
 int walb_set_name(struct walb_dev *wdev, unsigned int minor,
 		const char *name);
 void walb_decide_flush_support(struct walb_dev *wdev);
-void walb_discard_support(struct walb_dev *wdev);
+void walb_discard_support(struct walb_dev *wdev, bool support);
 bool resize_disk(struct gendisk *gd, u64 new_size);
 bool invalidate_lsid(struct walb_dev *wdev, u64 lsid);
 void backup_lsid_set(struct walb_dev *wdev, struct lsid_set *lsids);
