@@ -241,7 +241,14 @@ void walb_discard_support(struct walb_dev *wdev, bool support)
 		queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
 	}
 	wdev->support_discard = support;
+}
 
+void walb_write_same_support(struct walb_dev *wdev)
+{
+	WLOGi(wdev, "Do not supports REQ_WRITE_SAME.\n");
+	blk_queue_max_write_same_sectors(wdev->queue, 0);
+	WLOGd(wdev, "max_write_same_sectors: %u\n"
+		, wdev->queue->limits.max_write_same_sectors);
 }
 
 /**
