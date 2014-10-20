@@ -42,6 +42,11 @@ struct bio_wrapper
 	   (2) comparison with permanent_lsid. */
 	u64 lsid;
 
+	/* Original bio's buffer will be updated during IO.
+	   Walb requires a fixed snapshot of data during IO.
+	   So submitted bio will be copied to here at first. */
+	struct bio *copied_bio;
+
 	struct bio_entry *cloned_bioe; /* cloned bioe */
 
 	/* for temporary use. must be empty after submitted. */

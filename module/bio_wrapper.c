@@ -157,6 +157,7 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 	init_completion(&biow->done);
 	biow->flags = 0;
 	biow->lsid = 0;
+	biow->copied_bio = NULL;
 
 	if (bio) {
 		biow->bio = bio;
@@ -203,6 +204,9 @@ void destroy_bio_wrapper(struct bio_wrapper *biow)
 
 	if (biow->cloned_bioe)
 		destroy_bio_entry(biow->cloned_bioe);
+
+	if (biow->copied_bio)
+		copied_bio_put(biow->copied_bio);
 
 	kmem_cache_free(bio_wrapper_cache_, biow);
 }
