@@ -53,9 +53,6 @@ enum {
 	BIO_ENTRY_SPLITTED,
 	/* Set if read is done by copy from pending data. */
 	BIO_ENTRY_COPIED,
-	/* Set when pages are managed by itself.
-	   destroy_bio_entry() must free the page. */
-	BIO_ENTRY_OWN_PAGES,
 };
 
 #define bio_entry_state_is_discard(bioe) \
@@ -70,10 +67,6 @@ enum {
 	test_bit(BIO_ENTRY_COPIED, &(bioe)->flags)
 #define bio_entry_state_set_copied(bioe) \
 	set_bit(BIO_ENTRY_COPIED, &(bioe)->flags)
-#define bio_entry_state_is_own_pages(bioe) \
-	test_bit(BIO_ENTRY_OWN_PAGES, &(bioe)->flags)
-#define bio_entry_state_set_own_pages(bioe) \
-	set_bit(BIO_ENTRY_OWN_PAGES, &(bioe)->flags)
 
 /**
  * bio_entry cursor.
@@ -103,8 +96,7 @@ void put_bio_entry_list(struct list_head *bio_ent_list);
 void destroy_bio_entry_list(struct list_head *bio_ent_list);
 
 struct bio* bio_clone_copy(struct bio *bio, gfp_t gfp_mask);
-void init_copied_bio_entry(
-	struct bio_entry *bioe, struct bio *bio_with_copy);
+void copied_bio_put(struct bio *bio);
 bool bio_entry_list_mark_copied(
 	struct list_head *bio_ent_list,
 	unsigned int off, unsigned int sectors, gfp_t gfp_mask);

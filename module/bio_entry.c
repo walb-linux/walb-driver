@@ -121,7 +121,6 @@ static void bio_entry_cursor_proceed_to_boundary(
 	struct bio_entry_cursor *cur);
 static bool bio_entry_cursor_split(struct bio_entry_cursor *cur, gfp_t gfp_mask);
 
-static void copied_bio_put(struct bio *bio);
 static void bio_data_copy(
 	struct bio_entry *dst, unsigned int dst_off,
 	struct bio_entry *src, unsigned int src_off,
@@ -787,7 +786,7 @@ error:
 /**
  * Free its all pages and call bio_put().
  */
-static void copied_bio_put(struct bio *bio)
+void copied_bio_put(struct bio *bio)
 {
 	struct bio_vec *bvec;
 	int i;
@@ -968,7 +967,6 @@ void destroy_bio_entry(struct bio_entry *bioe)
 		LOG_("bioe->bio_orig->bi_cnt %d\n",
 			atomic_read(&bioe->bio_orig->bi_cnt));
 		bio = bioe->bio_orig;
-		ASSERT(bio_entry_state_is_own_pages(bioe));
 		ASSERT(!bioe->bio);
 	} else if (bio_entry_state_is_splitted(bioe)) {
 		bio = NULL;
@@ -979,11 +977,7 @@ void destroy_bio_entry(struct bio_entry *bioe)
 
 	if (bio) {
 		LOG_("bio_put %p\n", bio);
-		if (bio_entry_state_is_own_pages(bioe)) {
-			copied_bio_put(bio);
-		} else {
-			bio_put(bio);
-		}
+		bio_put(bio);
 	}
 #ifdef WALB_DEBUG
 	atomic_dec(&n_allocated_);
@@ -1106,22 +1100,6 @@ error1:
 	}
 	bio_put(clone);
 	return NULL;
-}
-
-/**
- * Initialize a bio_entry with a bio with copy.
- */
-void init_copied_bio_entry(
-	struct bio_entry *bioe, struct bio *bio_with_copy)
-{
-	ASSERT(bioe);
-	ASSERT(bio_with_copy);
-
-	init_bio_entry(bioe, bio_with_copy);
-	if (bioe->len > 0 && !bio_entry_state_is_discard(bioe)) {
-		bio_entry_state_set_own_pages(bioe);
-	}
-	bio_get(bio_with_copy);
 }
 
 /**

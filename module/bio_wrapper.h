@@ -35,6 +35,11 @@ struct bio_wrapper
 	struct completion done;
 	bool is_started;
 
+	/* Original bio's buffer will be updated during IO.
+	   Walb requires a fixed snapshot of data during IO.
+	   So submitted bio will be copied to here at first. */
+	struct bio *copied_bio;
+
 	unsigned long flags; /* For atomic state management. */
 
 	/* lsid of bio wrapper.

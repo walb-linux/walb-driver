@@ -72,14 +72,8 @@ static struct treemap_memory_manager mmgr_;
 static void bio_entry_end_io(struct bio *bio, int error);
 static struct bio_entry* create_bio_entry_by_clone(
 	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
-static struct bio_entry* create_bio_entry_by_clone_copy(
-	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask);
 
 /* Helper functions for bio_entry list. */
-static bool create_bio_entry_list(
-	struct bio_wrapper *biow, struct block_device *bdev);
-static bool create_bio_entry_list_by_copy(
-	struct bio_wrapper *biow, struct block_device *bdev);
 static void submit_bio_entry_list(struct list_head *bioe_list);
 static int wait_for_bio_entry_list(struct list_head *bioe_list);
 static void clear_flush_bit_of_bio_entry_list(struct list_head *bioe_list);
@@ -244,25 +238,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 
 	bioe->error = error;
 	bi_cnt = atomic_read(&bio->bi_cnt);
-	if (bio->bi_rw & REQ_WRITE) {
-		if (bioe->bio_orig) {
-			/* 2 for data, 1 for log. */
-			ASSERT(bi_cnt == 2 || bi_cnt == 1);
-		} else {
-#ifdef WALB_DEBUG
-			if (!(bi_cnt == 3 || bi_cnt == 1)) {
-				unsigned int devt = bio->bi_bdev->bd_dev;
-				LOGe("pos %" PRIu64 " len %u dev %u:%u bi_cnt %d\n",
-					(u64)bioe->pos, bioe->len,
-					MAJOR(devt), MINOR(devt), bi_cnt);
-			}
-#endif
-			/* 3 for data, 1 for log. */
-			ASSERT(bi_cnt == 3 || bi_cnt == 1);
-		}
-	} else {
-		ASSERT(bi_cnt == 1);
-	}
+	ASSERT(bi_cnt == 1);
 	LOG_("complete bioe %p pos %"PRIu64" len %u\n",
 		bioe, (u64)bioe->pos, bioe->len);
 	if (bi_cnt == 1) {
@@ -308,100 +284,6 @@ error1:
 error0:
 	LOGe("create_bio_entry_by_clone() end with error.\n");
 	return NULL;
-}
-
-/**
- * Create a bio_entry by clone with copy.
- */
-static struct bio_entry* create_bio_entry_by_clone_copy(
-	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask)
-{
-	struct bio_entry *bioe;
-	struct bio *biotmp;
-
-	bioe = alloc_bio_entry(gfp_mask);
-	if (!bioe) { goto error0; }
-
-	biotmp = bio_clone_copy(bio, gfp_mask);
-	if (!biotmp) {
-		LOGe("bio_clone_copy() failed.\n");
-		goto error1;
-	}
-	biotmp->bi_bdev = bdev;
-	biotmp->bi_end_io = bio_entry_end_io;
-	biotmp->bi_private = bioe;
-
-	init_copied_bio_entry(bioe, biotmp);
-
-	return bioe;
-error1:
-	destroy_bio_entry(bioe);
-error0:
-	LOGe("create_bio_entry_by_clone_copy() end with error.\n");
-	return NULL;
-}
-
-/**
- * Create bio_entry list for a bio_wrapper.
- * This does not copy IO data, bio stubs only.
- *
- * RETURN:
- *     true if succeed, or false.
- * CONTEXT:
- *     Non-IRQ. Non-atomic.
- */
-static bool create_bio_entry_list(struct bio_wrapper *biow, struct block_device *bdev)
-{
-	struct bio_entry *bioe;
-
-	ASSERT(biow);
-	ASSERT(biow->bio);;
-	ASSERT(list_empty(&biow->bioe_list));
-
-	/* clone bio. */
-	bioe = create_bio_entry_by_clone(biow->bio, bdev, GFP_NOIO);
-	if (!bioe) {
-		LOGe("create_bio_entry() failed.\n");
-		goto error0;
-	}
-	list_add_tail(&bioe->list, &biow->bioe_list);
-
-	return true;
-error0:
-	destroy_bio_entry_list(&biow->bioe_list);
-	ASSERT(list_empty(&biow->bioe_list));
-	return false;
-}
-
-/**
- * Create bio_entry list for a bio_wrapper by copying its IO data.
- *
- * RETURN:
- *     true if succeed, or false.
- * CONTEXT:
- *     Non-IRQ, Non-Atomic.
- */
-static bool create_bio_entry_list_by_copy(
-	struct bio_wrapper *biow, struct block_device *bdev)
-{
-	struct bio_entry *bioe;
-
-	ASSERT(biow);
-	ASSERT(biow->bio);
-	ASSERT(list_empty(&biow->bioe_list));
-	ASSERT(biow->bio->bi_rw & REQ_WRITE);
-
-	bioe = create_bio_entry_by_clone_copy(biow->bio, bdev, GFP_NOIO);
-	if (!bioe) {
-		LOGd("create_bio_entry_list_by_copy() failed.\n");
-		goto error0;
-	}
-	list_add_tail(&bioe->list, &biow->bioe_list);
-	return true;
-error0:
-	destroy_bio_entry_list(&biow->bioe_list);
-	ASSERT(list_empty(&biow->bioe_list));
-	return false;
 }
 
 /**
@@ -1515,12 +1397,12 @@ static void logpack_submit_bio_wrapper_zero(
 	struct bio_entry *bioe, *bioe_next;
 
 	ASSERT(biow->len == 0);
-	ASSERT(biow->bio);
-	ASSERT(biow->bio->bi_size == 0);
+	ASSERT(biow->copied_bio);
+	ASSERT(biow->copied_bio->bi_size == 0);
 	ASSERT(list_empty(bioe_list));
 
 retry_bio_entry:
-	bioe = logpack_create_bio_entry(biow->bio, pbs, ldev, 0, 0);
+	bioe = logpack_create_bio_entry(biow->copied_bio, pbs, ldev, 0, 0);
 	if (!bioe) {
 		schedule();
 		goto retry_bio_entry;
@@ -1563,13 +1445,13 @@ static void logpack_submit_bio_wrapper(
 	INIT_LIST_HEAD(&tmp_list);
 	off_lb = 0;
 	ASSERT(biow);
-	ASSERT(biow->bio);
+	ASSERT(biow->copied_bio);
 	ASSERT(!bio_wrapper_state_is_discard(biow));
-	ASSERT((biow->bio->bi_rw & REQ_DISCARD) == 0);
+	ASSERT((biow->copied_bio->bi_rw & REQ_DISCARD) == 0);
 
 retry_bio_entry:
 	bioe = logpack_create_bio_entry(
-		biow->bio, pbs, ldev, ldev_off_pb, off_lb);
+		biow->copied_bio, pbs, ldev, ldev_off_pb, off_lb);
 	if (!bioe) {
 		schedule();
 		goto retry_bio_entry;
@@ -2022,18 +1904,20 @@ static bool writepack_add_bio_wrapper(
 	bool ret;
 	unsigned int pbs;
 	struct walb_logpack_header *lhead = NULL;
+	struct bio *bio;
 
 	LOG_("begin\n");
 
 	ASSERT(wpack_list);
 	ASSERT(wpackp);
 	ASSERT(biow);
-	ASSERT(biow->bio);
-	ASSERT(biow->bio->bi_rw & REQ_WRITE);
+	ASSERT(biow->copied_bio);
+	ASSERT(biow->copied_bio->bi_rw & REQ_WRITE);
 	ASSERT(wdev);
 	pbs = wdev->physical_bs;
 	ASSERT_PBS(pbs);
 
+	bio = biow->copied_bio;
 	pack = *wpackp;
 
 	if (!pack) {
@@ -2050,12 +1934,12 @@ static bool writepack_add_bio_wrapper(
 		goto newpack;
 	}
 	if (lhead->n_records > 0 &&
-		((biow->bio->bi_rw & REQ_FLUSH)
+		((bio->bi_rw & REQ_FLUSH)
 			|| is_pack_size_too_large(lhead, pbs, max_logpack_pb, biow))) {
 		/* Flush request must be the first of the pack. */
 		goto newpack;
 	}
-	if (!walb_logpack_header_add_bio(lhead, biow->bio, pbs, ring_buffer_size)) {
+	if (!walb_logpack_header_add_bio(lhead, bio, pbs, ring_buffer_size)) {
 		/* logpack header capacity full so create a new pack. */
 		goto newpack;
 	}
@@ -2078,7 +1962,7 @@ newpack:
 	if (!pack) { goto error0; }
 	*wpackp = pack;
 	lhead = get_logpack_header(pack->logpack_header_sector);
-	ret = walb_logpack_header_add_bio(lhead, biow->bio, pbs, ring_buffer_size);
+	ret = walb_logpack_header_add_bio(lhead, bio, pbs, ring_buffer_size);
 	ASSERT(ret);
 	if (lhead->n_records > 0) {
 		struct walb_log_record *rec = &lhead->record[lhead->n_records - 1];
@@ -2199,7 +2083,6 @@ static void wait_for_logpack_and_submit_datapack(
 	struct bio_wrapper *biow, *biow_next;
 	bool is_failed = false;
 	struct iocore_data *iocored;
-	bool ret;
 	int reti;
 	bool is_pending_insert_succeeded;
 	bool is_stop_queue = false;
@@ -2235,6 +2118,7 @@ static void wait_for_logpack_and_submit_datapack(
 
 	list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
 		ASSERT(biow->bio);
+		ASSERT(biow->copied_bio);
 		bio_error = wait_for_bio_entry_list(&biow->bioe_list);
 		if (is_failed || bio_error) { goto error_io; }
 
@@ -2253,12 +2137,16 @@ static void wait_for_logpack_and_submit_datapack(
 			if (!bio_wrapper_state_is_discard(biow) ||
 				blk_queue_discard(bdev_get_queue(wdev->ddev))) {
 				/* Create all related bio(s) by copying IO data. */
+				struct bio_entry *bioe;
 			retry_create:
-				ret = create_bio_entry_list_by_copy(biow, wdev->ddev);
-				if (!ret) {
+				ASSERT(list_empty(&biow->bioe_list));
+				bioe = create_bio_entry_by_clone(
+					biow->copied_bio, wdev->ddev, GFP_NOIO);
+				if (!bioe) {
 					schedule();
 					goto retry_create;
 				}
+				list_add_tail(&bioe->list, &biow->bioe_list);
 			}
 
 			if (!bio_wrapper_state_is_discard(biow)) {
@@ -2272,9 +2160,6 @@ static void wait_for_logpack_and_submit_datapack(
 					goto retry_split;
 				}
 			}
-
-			/* Call bio_get() for all bio(s) */
-			get_bio_entry_list(&biow->bioe_list);
 
 			/* Try to insert pending data. */
 		retry_insert_pending:
@@ -2450,9 +2335,6 @@ static void wait_for_write_bio_wrapper(
 		iocore_melt(wdev);
 	}
 
-	/* put related bio(s). */
-	put_bio_entry_list(&biow->bioe_list);
-
 	/* Free resources. */
 	destroy_bio_entry_list(&biow->bioe_list);
 
@@ -2599,14 +2481,18 @@ static void submit_read_bio_wrapper(
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	bool ret;
+	struct bio_entry *bioe;
 
 	ASSERT(biow);
 	ASSERT(biow->bio);
 
 	/* Create cloned bio. */
-	if (!create_bio_entry_list(biow, wdev->ddev)) {
+	ASSERT(list_empty(&biow->bioe_list));
+	bioe = create_bio_entry_by_clone(biow->bio, wdev->ddev, GFP_NOIO);
+	if (!bioe)
 		goto error0;
-	}
+
+	list_add_tail(&bioe->list, &biow->bioe_list);
 
 	/* Split if required due to chunk limitations. */
 	if (!split_bio_entry_list_for_chunk(
@@ -3289,9 +3175,14 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 #ifdef WALB_PERFORMANCE_ANALYSIS
 		getnstimeofday(&biow->ts[WALB_TIME_BEGIN]);
 #endif
+		/* Copy bio. Do not use original bio's data ever after. */
+		biow->copied_bio = bio_clone_copy(bio, GFP_NOIO);
+		if (!biow->copied_bio)
+			goto error0;
+
 		/* Calculate checksum. */
 		biow->csum = bio_calc_checksum(
-			biow->bio, wdev->log_checksum_salt);
+			biow->copied_bio, wdev->log_checksum_salt);
 
 		/* Push into queue. */
 		spin_lock(&iocored->logpack_submit_queue_lock);
@@ -3308,11 +3199,9 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 		/* TODO: support IOCORE_STATE_QUEUE_STOPPED for read also. */
 	}
 	return;
-#if 0
 error0:
 	destroy_bio_wrapper_dec(wdev, biow);
 	bio_endio(bio, -EIO);
-#endif
 }
 
 /**
