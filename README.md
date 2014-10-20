@@ -23,3 +23,16 @@ Use an appropriate branch or a tag for your using kernel as follows:
 | `master`   | `v1.2.x` | 3.14-          |
 | `for-3.13` | `v1.1.x` | 3.10-3.13      |
 | `for-3.2`  | `v1.0.x` | 3.2-3.8        |
+
+for-3.2 branch is not maintained anymore.
+The following fixes have not applied:
+
+- bugfix: forget to check existance of device with the same name.
+- bugfix: it must wait for checkpointing to keep consistency.
+- bugfix: forget to check overflow at device creation.
+- crash-test-related bugfixes
+  - bugfix: forget to check overflow at device creation.
+  - bugfix: call iocore_flush() before put_disk().
+  - bugfix: split destroy_wdev() into finalize_wdev() and destroy_wdev() and the latter must wait for n_users to be 0.
+  - bugfix: set overflow flag wrongly when log space is empty.
+- bugfix: bio contents may change during IO execution.
