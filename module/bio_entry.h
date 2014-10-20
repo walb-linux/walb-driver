@@ -32,7 +32,7 @@ struct bio_entry
 	int error; /* bio error status. */
 	struct completion done;
 
-	bool has_own_pages;
+	bool has_own_pages; /* QQQ this is not necessary anymore. */
 };
 
 /********************************************************************************

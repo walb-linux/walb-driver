@@ -172,35 +172,47 @@ void destroy_bio_entry(struct bio_entry *bioe)
 struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask)
 {
 	struct bio *clone;
-	struct bio_vec *bv;
-	int i;
+	uint i, nr_iovecs, remaining;
 
 	ASSERT(bio);
 	ASSERT(bio->bi_rw & REQ_WRITE);
-	ASSERT(!bio->bi_next); /* for bio_copy_data(). */
+	ASSERT(!bio->bi_next);
 
-	clone = bio_clone(bio, gfp_mask);
+	if (bio_has_data(bio))
+		nr_iovecs = (bio->bi_iter.bi_size + PAGE_SIZE - 1) / PAGE_SIZE;
+	else
+		nr_iovecs = 0;
+
+	clone = bio_alloc(gfp_mask, nr_iovecs);
 	if (!clone)
 		return NULL;
 
-	clone->bi_flags &= ~(1UL << BIO_CLONED);
+	clone->bi_bdev = bio->bi_bdev;
+	clone->bi_rw = bio->bi_rw;
+	clone->bi_iter.bi_sector = bio->bi_iter.bi_sector;
 
-	if (!bio_has_data(bio))
-		goto fin;
-
-	/* Allocate its own pages. */
-	bio_for_each_segment_all(bv, clone, i) {
-		if (bv->bv_page)
-			bv->bv_page = NULL;
-		/* cloned bio has only required bvec array. */
-		bv->bv_page = alloc_page_inc(gfp_mask);
-		if (!bv->bv_page)
-			goto error;
+	if (!bio_has_data(bio)) {
+		clone->bi_iter.bi_size = bio->bi_iter.bi_size;
+		return clone;
 	}
+
+	remaining = bio->bi_iter.bi_size;
+	for (i = 0; i < nr_iovecs; i++) {
+		int len0, len1;
+		struct page *page = alloc_page_inc(gfp_mask);
+		if (!page)
+			goto err;
+
+		len0 = min_t(uint, PAGE_SIZE, remaining);
+		len1 = bio_add_page(clone, page, len0, 0);
+		ASSERT(len0 == len1);
+		remaining -= len0;
+	}
+	ASSERT(remaining == 0);
+	ASSERT(clone->bi_iter.bi_size == bio->bi_iter.bi_size);
 	bio_copy_data(clone, bio);
-fin:
 	return clone;
-error:
+err:
 	copied_bio_put(clone);
 	return NULL;
 }
@@ -229,19 +241,16 @@ void init_copied_bio_entry(
  */
 void copied_bio_put(struct bio *bio)
 {
-	struct bio_vec *bvec;
+	struct bio_vec *bv;
 	int i;
 	ASSERT(bio);
-	ASSERT(!(bio->bi_flags & (1 << BIO_CLONED)));
-	ASSERT(!(bio->bi_rw & REQ_DISCARD));
 
-	bio_for_each_segment_all(bvec, bio, i) {
-		if (bvec->bv_page) {
-			free_page_dec(bvec->bv_page);
-			bvec->bv_page = NULL;
+	bio_for_each_segment_all(bv, bio, i) {
+		if (bv->bv_page) {
+			free_page_dec(bv->bv_page);
+			bv->bv_page = NULL;
 		}
 	}
-
 	ASSERT(atomic_read(&bio->bi_cnt) == 1);
 	bio_put(bio);
 }
