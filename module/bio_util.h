@@ -66,28 +66,33 @@ static inline void bio_get_overlapped(
  * RETURN:
  *   checksum if bio->bi_size > 0, else 0.
  */
-static inline u32 bio_calc_checksum(const struct bio *bio, u32 salt)
+static inline u32 bio_calc_checksum_iter(const struct bio *bio, struct bvec_iter iter, u32 salt)
 {
 	struct bio *biox = (struct bio *)bio;
 	struct bio_vec bvec;
-	struct bvec_iter iter;
+	struct bvec_iter iterx;
 	u32 sum = salt;
 
 	ASSERT(bio);
 
-	if (!bio_has_data(biox))
+	if (iter.bi_size == 0 || (biox->bi_rw & REQ_DISCARD))
 		return 0;
 
-	bio_for_each_segment(bvec, biox, iter) {
-		const uint len = bio_iter_len(bio, iter);
-		const uint off = bio_iter_offset(bio, iter);
+	__bio_for_each_segment(bvec, biox, iterx, iter) {
+		const uint len = bio_iter_len(bio, iterx);
+		const uint off = bio_iter_offset(bio, iterx);
 
-		u8 *buf = (u8 *)kmap_atomic(bio_iter_page(bio, iter));
+		u8 *buf = (u8 *)kmap_atomic(bio_iter_page(bio, iterx));
 		sum = checksum_partial(sum, buf + off, len);
 		kunmap_atomic(buf);
 	}
 
 	return checksum_finish(sum);
+}
+
+static inline u32 bio_calc_checksum(const struct bio *bio, u32 salt)
+{
+	return bio_calc_checksum_iter(bio, bio->bi_iter, salt);
 }
 
 #define SNPRINT_BIO_PROCEED(buf, size, w, s) do {			\
