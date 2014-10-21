@@ -37,16 +37,6 @@ struct bio_entry
 /* for debug */
 void print_bio_entry(const char *level, struct bio_entry *bioe);
 
-/* QQQ */
-#if 0
-struct bio_entry* alloc_bio_entry(gfp_t gfp_mask);
-void free_bio_entry(struct bio_entry *bioe);
-void destroy_bio_entry(struct bio_entry *bioe);
-#endif /* if 0 */
-#ifdef WALB_DEBUG
-unsigned int bio_entry_get_n_allocated(void);
-#endif
-
 void init_bio_entry(struct bio_entry *bioe, struct bio *bio);
 void fin_bio_entry(struct bio_entry *bioe);
 
@@ -60,21 +50,17 @@ void init_bio_entry_by_clone_never_giveup(
 void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs);
 
 /*
- * with pages.
+ * with own pages.
  */
 struct bio* bio_alloc_with_pages(
 	uint sectors, struct block_device *bdev, gfp_t gfp_mask);
 void bio_put_with_pages(struct bio *bio);
 struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask);
-#ifdef WALB_DEBUG
-unsigned int bio_entry_get_n_allocated_pages(void);
-#endif
 
 /********************************************************************************
  * Init/exit.
  ********************************************************************************/
 
-/* init/exit */
 bool bio_entry_init(void);
 void bio_entry_exit(void);
 

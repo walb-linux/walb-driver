@@ -38,19 +38,8 @@
  * Static data.
  *******************************************************************************/
 
-/* kmem cache for bio_entry. */
-#define KMEM_CACHE_BIO_ENTRY_NAME "walb_bio_entry_cache"
-static struct kmem_cache *bio_entry_cache_ = NULL;
-
 /* shared coutner of the cache. */
 static atomic_t shared_cnt_ = ATOMIC_INIT(0);
-
-/*
- * Number of bio_entry allocated.
- */
-#ifdef WALB_DEBUG
-static atomic_t n_allocated_ = ATOMIC_INIT(0);
-#endif
 
 /*
  * Allocated pages by alloc_page().
@@ -112,36 +101,6 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 		, bioe->bio, bioe->error
 		, buf);
 }
-
-#if 0
-struct bio_entry* alloc_bio_entry(gfp_t gfp_mask)
-{
-	struct bio_entry *bioe;
-
-	bioe = kmem_cache_alloc(bio_entry_cache_, gfp_mask);
-	if (!bioe) {
-		LOGd("kmem_cache_alloc() failed.");
-		return NULL;
-	}
-#ifdef WALB_DEBUG
-	atomic_inc(&n_allocated_);
-#endif
-	return bioe;
-}
-#endif
-
-#if 0
-void free_bio_entry(struct bio_entry *bioe)
-{
-	if (!bioe)
-		return;
-	ASSERT(!bioe->bio);
-#ifdef WALB_DEBUG
-	atomic_dec(&n_allocated_);
-#endif
-	kmem_cache_free(bio_entry_cache_, bioe);
-}
-#endif
 
 static void bio_entry_end_io(struct bio *bio, int error)
 {
@@ -223,14 +182,6 @@ void init_bio_entry_by_clone_never_giveup(
 	}
 }
 
-#if 0
-void destroy_bio_entry(struct bio_entry *bioe)
-{
-	fin_bio_entry(bioe);
-	free_bio_entry(bioe);
-}
-#endif
-
 void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs)
 {
 	const ulong timeo = msecs_to_jiffies(timeoutMs);
@@ -247,13 +198,6 @@ retry:
 		goto retry;
 	}
 }
-
-#ifdef WALB_DEBUG
-unsigned int bio_entry_get_n_allocated(void)
-{
-	return atomic_read(&n_allocated_);
-}
-#endif
 
 /**
  * Allocate a bio with pages.
@@ -347,33 +291,13 @@ struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask)
 	return clone;
 }
 
-#ifdef WALB_DEBUG
-unsigned int bio_entry_get_n_allocated_pages(void)
-{
-	return atomic_read(&n_allocated_pages_);
-}
-#endif
-
 /**
  * Initilaize bio_entry cache.
  */
 bool bio_entry_init(void)
 {
 	int cnt;
-
 	cnt = atomic_inc_return(&shared_cnt_);
-	if (cnt > 1) {
-		return true;
-	}
-
-	ASSERT(cnt == 1);
-	bio_entry_cache_ = kmem_cache_create(
-		KMEM_CACHE_BIO_ENTRY_NAME,
-		sizeof(struct bio_entry), 0, 0, NULL);
-	if (!bio_entry_cache_) {
-		LOGe("failed to create a kmem_cache (bio_entry).\n");
-		return false;
-	}
 	return true;
 }
 
@@ -383,7 +307,6 @@ bool bio_entry_init(void)
 void bio_entry_exit(void)
 {
 	int cnt;
-
 	cnt = atomic_dec_return(&shared_cnt_);
 
 	if (cnt < 0) {
@@ -391,15 +314,13 @@ void bio_entry_exit(void)
 		atomic_inc(&shared_cnt_);
 		return;
 	}
-	if (cnt == 0) {
 #ifdef WALB_DEBUG
-		LOGw("n_allocated %u n_allocated_pages %u\n",
-			bio_entry_get_n_allocated(),
-			bio_entry_get_n_allocated_pages());
-#endif
-		kmem_cache_destroy(bio_entry_cache_);
-		bio_entry_cache_ = NULL;
+	if (cnt == 0) {
+		const uint nr = atomic_read(&n_allocated_pages_);
+		if (nr > 0)
+			LOGw("n_allocated_pages %u\n", nr);
 	}
+#endif
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

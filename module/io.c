@@ -2764,12 +2764,8 @@ void iocore_finalize(struct walb_dev *wdev)
 	treemap_memory_manager_put();
 
 #ifdef WALB_DEBUG
-	LOGn("n_allocated_pages: %u\n"
-		"n_flush_io: %d\n"
-		"n_flush_logpack: %d\n"
-		"n_flush_force: %d\n",
-		bio_entry_get_n_allocated_pages(),
-		n_flush_io, n_flush_logpack, n_flush_force);
+	LOGi("n_flush_io: %d\nn_flush_logpack: %d\nn_flush_force: %d\n"
+		, n_flush_io, n_flush_logpack, n_flush_force);
 #endif
 }
 
