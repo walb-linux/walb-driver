@@ -18,9 +18,6 @@
  * Struct data.
  ********************************************************************************/
 
-/**
- * bio as a list entry.
- */
 struct bio_entry
 {
 	struct bio *bio; /* must be NULL if bio->bi_cnt is 0 (and deallocated). */
@@ -31,26 +28,45 @@ struct bio_entry
 
 	int error; /* bio error status. */
 	struct completion done;
-
-	bool has_own_pages; /* QQQ this is not necessary anymore. */
 };
 
 /********************************************************************************
  * Utility functions for bio entry.
  ********************************************************************************/
 
-/* print for debug */
+/* for debug */
 void print_bio_entry(const char *level, struct bio_entry *bioe);
 
-void init_bio_entry(struct bio_entry *bioe, struct bio *bio);
+/* QQQ */
+#if 0
 struct bio_entry* alloc_bio_entry(gfp_t gfp_mask);
+void free_bio_entry(struct bio_entry *bioe);
 void destroy_bio_entry(struct bio_entry *bioe);
-
-struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask);
-void copied_bio_put(struct bio *bio);
-
+#endif /* if 0 */
 #ifdef WALB_DEBUG
 unsigned int bio_entry_get_n_allocated(void);
+#endif
+
+void init_bio_entry(struct bio_entry *bioe, struct bio *bio);
+void fin_bio_entry(struct bio_entry *bioe);
+
+bool init_bio_entry_by_clone(
+	struct bio_entry *bioe, struct bio *bio,
+	struct block_device *bdev, gfp_t gfp_mask);
+void init_bio_entry_by_clone_never_giveup(
+	struct bio_entry *bioe, struct bio *bio,
+	struct block_device *bdev, gfp_t gfp_mask);
+
+void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs);
+
+/*
+ * with pages.
+ */
+struct bio* bio_alloc_with_pages(
+	uint sectors, struct block_device *bdev, gfp_t gfp_mask);
+void bio_put_with_pages(struct bio *bio);
+struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask);
+#ifdef WALB_DEBUG
 unsigned int bio_entry_get_n_allocated_pages(void);
 #endif
 
@@ -66,14 +82,24 @@ void bio_entry_exit(void);
  * Static utilities.
  ********************************************************************************/
 
-static inline sector_t bio_entry_pos(const struct bio_entry *bioe)
+static inline u64 bio_entry_pos(const struct bio_entry *bioe)
 {
-	return bioe->iter.bi_sector;
+	return (u64)bioe->iter.bi_sector;
 }
 
 static inline uint bio_entry_len(const struct bio_entry *bioe)
 {
 	return bioe->iter.bi_size >> 9;
+}
+
+static inline void bio_entry_clear(struct bio_entry *bioe)
+{
+	bioe->bio = NULL;
+}
+
+static inline bool bio_entry_exists(const struct bio_entry *bioe)
+{
+	return bioe->bio != NULL;
 }
 
 #endif /* WALB_BIO_ENTRY_H_KERNEL */

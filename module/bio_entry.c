@@ -15,6 +15,25 @@
 #include "walb/util.h"
 #include "walb/block_size.h"
 
+/**
+ * Bio entry normal procedure:
+ *
+ * (1) prepare bioe or call alloc_bio_entry().
+ * (2) call init_bio_entry(bioe, bio)
+ * (3) call generic_make_request(bio) or do the corresponding operations.
+ * (4) call wait_for_bio_entry(bioe)
+ * (5) call fin_bio_entry(bioe)
+ * (6) (call free_bio_entry(bioe) if allocated before)
+ */
+
+/**
+ * Deep cloning procedure.
+ *
+ * (1) prepare clone by calling alloc_bio_with_pages() or bio_deep_clone().
+ * (2) use clone.
+ * (3) bio_put_with_pages(clone)
+ */
+
 /*******************************************************************************
  * Static data.
  *******************************************************************************/
@@ -71,13 +90,12 @@ static inline void free_page_dec(struct page *page)
 #endif
 }
 
+static void bio_entry_end_io(struct bio *bio, int error);
+
 /*******************************************************************************
  * Global functions definition.
  *******************************************************************************/
 
-/**
- * Print a bio_entry.
- */
 void print_bio_entry(const char *level, struct bio_entry *bioe)
 {
 	char buf[512];
@@ -88,37 +106,14 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 	else
 		buf[0] = '\0';
 
-	printk("%s""bio %p error %d has_own_pages %d\n"
+	printk("%s""bio %p error %d\n"
 		"%s\n"
 		, level
 		, bioe->bio, bioe->error
-		, (int)bioe->has_own_pages
 		, buf);
 }
 
-/**
- * Initialize a bio_entry.
- */
-void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
-{
-	ASSERT(bioe);
-
-	init_completion(&bioe->done);
-	bioe->error = 0;
-	bioe->has_own_pages = false;
-	if (bio) {
-		bioe->bio = bio;
-		bioe->iter = bio->bi_iter; /* copy */
-	} else {
-		bioe->bio = NULL;
-		memset(&bioe->iter, 0, sizeof(bioe->iter));
-	}
-}
-
-/**
- * Create a bio_entry.
- * Internal bio and bi_size will be set NULL.
- */
+#if 0
 struct bio_entry* alloc_bio_entry(gfp_t gfp_mask)
 {
 	struct bio_entry *bioe;
@@ -133,94 +128,177 @@ struct bio_entry* alloc_bio_entry(gfp_t gfp_mask)
 #endif
 	return bioe;
 }
+#endif
 
-/**
- * Destroy a bio_entry.
- */
-void destroy_bio_entry(struct bio_entry *bioe)
+#if 0
+void free_bio_entry(struct bio_entry *bioe)
 {
-	struct bio *bio;
-
-	LOG_("destroy_bio_entry() begin.\n");
-
 	if (!bioe)
 		return;
-
-	bio = bioe->bio;
-	if (bio) {
-		LOG_("bio_put %p\n", bio);
-		if (bioe->has_own_pages) {
-			copied_bio_put(bio);
-		} else {
-			bio_put(bio);
-		}
-	}
+	ASSERT(!bioe->bio);
 #ifdef WALB_DEBUG
 	atomic_dec(&n_allocated_);
 #endif
 	kmem_cache_free(bio_entry_cache_, bioe);
+}
+#endif
 
-	LOG_("destroy_bio_entry() end.\n");
+static void bio_entry_end_io(struct bio *bio, int error)
+{
+	struct bio_entry *bioe = bio->bi_private;
+	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
+	ASSERT(bioe);
+	ASSERT(bio->bi_bdev);
+	ASSERT(bioe->bio == bio);
+
+	if (!uptodate) {
+		UNUSED const unsigned int devt = bio->bi_bdev->bd_dev;
+		LOG_("BIO_UPTODATE is false"
+			" (dev %u:%u rw %lu pos %" PRIu64 " len %u).\n"
+			, MAJOR(devt), MINOR(devt)
+			, bio->bi_rw
+			, bio_entry_pos(bioe), bio_entry_len(bioe));
+	}
+
+	bioe->error = error;
+	LOG_("complete bioe %p pos %" PRIu64 " len %u\n"
+		, bioe, bio_entry_pos(bioe), bio_entry_len(bioe));
+
+	complete(&bioe->done);
+}
+
+void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
+{
+	ASSERT(bioe);
+	ASSERT(bio);
+
+	init_completion(&bioe->done);
+	bioe->error = 0;
+	bioe->bio = bio;
+	bioe->iter = bio->bi_iter; /* copy */
+	bio->bi_private = bioe;
+	bio->bi_end_io = bio_entry_end_io;
+}
+
+void fin_bio_entry(struct bio_entry *bioe)
+{
+	if (!bioe)
+		return;
+	if (bioe->bio) {
+		bio_put(bioe->bio);
+		bioe->bio = NULL;
+	}
 }
 
 /**
- * Allocate pages and copy its data.
- * This is for write bio.
- * CAUSION:
- *   bio->bi_next must be NULL for bio_copy_data().
+ * Create a bio_entry by clone.
+ *
+ * @bioe bio entry (bioe->bio must be NULL)
+ * @bio original bio.
+ * @bdev block device to forward bio.
  */
-struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask)
+bool init_bio_entry_by_clone(
+	struct bio_entry *bioe, struct bio *bio,
+	struct block_device *bdev, gfp_t gfp_mask)
 {
 	struct bio *clone;
-	uint i, nr_iovecs, remaining;
 
-	ASSERT(bio);
-	ASSERT(bio->bi_rw & REQ_WRITE);
-	ASSERT(!bio->bi_next);
-
-	if (bio_has_data(bio))
-		nr_iovecs = (bio->bi_iter.bi_size + PAGE_SIZE - 1) / PAGE_SIZE;
-	else
-		nr_iovecs = 0;
-
-	clone = bio_alloc(gfp_mask, nr_iovecs);
+	clone = bio_clone(bio, gfp_mask);
 	if (!clone)
+		return false;
+
+	clone->bi_bdev = bdev;
+
+	init_bio_entry(bioe, clone);
+	return true;
+}
+
+void init_bio_entry_by_clone_never_giveup(
+	struct bio_entry *bioe, struct bio *bio,
+	struct block_device *bdev, gfp_t gfp_mask)
+{
+	while (!init_bio_entry_by_clone(bioe, bio, bdev, gfp_mask)) {
+		LOGd_("clone bio failed %p.\n", bio);
+		schedule();
+	}
+}
+
+#if 0
+void destroy_bio_entry(struct bio_entry *bioe)
+{
+	fin_bio_entry(bioe);
+	free_bio_entry(bioe);
+}
+#endif
+
+void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs)
+{
+	const ulong timeo = msecs_to_jiffies(timeoutMs);
+	ulong rtimeo;
+	int c = 0;
+
+retry:
+	rtimeo = wait_for_completion_io_timeout(&bioe->done, timeo);
+	if (rtimeo == 0) {
+		LOGn("timeout(%d): bioe %p bio %p pos %" PRIu64 " len %u\n"
+			, c, bioe, bioe->bio
+			, (u64)bio_entry_pos(bioe), bio_entry_len(bioe));
+		c++;
+		goto retry;
+	}
+}
+
+#ifdef WALB_DEBUG
+unsigned int bio_entry_get_n_allocated(void)
+{
+	return atomic_read(&n_allocated_);
+}
+#endif
+
+/**
+ * Allocate a bio with pages.
+ *
+ * @size size in bytes.
+ *
+ * You must set bi_bdev, bi_rw, bi_iter by yourself.
+ * bi_iter.bi_size will be set to the specified size if size is not 0.
+ */
+struct bio* bio_alloc_with_pages(uint size, struct block_device *bdev, gfp_t gfp_mask)
+{
+	struct bio *bio;
+	uint i, nr_pages, remaining;
+
+	nr_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+
+	bio = bio_alloc(gfp_mask, nr_pages);
+	if (!bio)
 		return NULL;
 
-	clone->bi_bdev = bio->bi_bdev;
-	clone->bi_rw = bio->bi_rw;
-	clone->bi_iter.bi_sector = bio->bi_iter.bi_sector;
+	bio->bi_bdev = bdev; /* required to bio_add_page(). */
 
-	if (!bio_has_data(bio)) {
-		clone->bi_iter.bi_size = bio->bi_iter.bi_size;
-		return clone;
-	}
-
-	remaining = bio->bi_iter.bi_size;
-	for (i = 0; i < nr_iovecs; i++) {
-		int len0, len1;
+	remaining = size;
+	for (i = 0; i < nr_pages; i++) {
+		uint len0, len1;
 		struct page *page = alloc_page_inc(gfp_mask);
 		if (!page)
 			goto err;
-
 		len0 = min_t(uint, PAGE_SIZE, remaining);
-		len1 = bio_add_page(clone, page, len0, 0);
+		len1 = bio_add_page(bio, page, len0, 0);
 		ASSERT(len0 == len1);
 		remaining -= len0;
 	}
 	ASSERT(remaining == 0);
-	ASSERT(clone->bi_iter.bi_size == bio->bi_iter.bi_size);
-	bio_copy_data(clone, bio);
-	return clone;
+	ASSERT(bio->bi_iter.bi_size == size);
+	return bio;
 err:
-	copied_bio_put(clone);
+	bio_put_with_pages(bio);
 	return NULL;
 }
 
 /**
  * Free its all pages and call bio_put().
  */
-void copied_bio_put(struct bio *bio)
+void bio_put_with_pages(struct bio *bio)
 {
 	struct bio_vec *bv;
 	int i;
@@ -236,12 +314,38 @@ void copied_bio_put(struct bio *bio)
 	bio_put(bio);
 }
 
-#ifdef WALB_DEBUG
-unsigned int bio_entry_get_n_allocated(void)
+/**
+ * Create a copy of a write bio.
+ */
+struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask)
 {
-	return atomic_read(&n_allocated_);
+	uint size;
+	struct bio *clone;
+
+	ASSERT(bio);
+	ASSERT(bio->bi_rw & REQ_WRITE);
+	ASSERT(!bio->bi_next);
+
+	if (bio_has_data(bio))
+		size = bio->bi_iter.bi_size;
+	else
+		size = 0;
+
+	clone = bio_alloc_with_pages(size, bio->bi_bdev, gfp_mask);
+	if (!clone)
+		return NULL;
+
+	clone->bi_rw = bio->bi_rw;
+	clone->bi_iter.bi_sector = bio->bi_iter.bi_sector;
+
+	if (size == 0) {
+		/* This is for discard IOs. */
+		clone->bi_iter.bi_size = bio->bi_iter.bi_size;
+	} else {
+		bio_copy_data(clone, bio);
+	}
+	return clone;
 }
-#endif
 
 #ifdef WALB_DEBUG
 unsigned int bio_entry_get_n_allocated_pages(void)

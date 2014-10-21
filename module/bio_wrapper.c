@@ -90,7 +90,6 @@ void print_bio_wrapper(const char *level, const struct bio_wrapper *biow)
 		") "
 		"lsid %" PRIu64 " "
 		"private_data %p "
-		"cloned_bioe %p "
 		"cloned_bio_list_size %u "
 #ifdef WALB_OVERLAPPED_SERIALIZE
 		"n_overlapped %d "
@@ -117,7 +116,6 @@ void print_bio_wrapper(const char *level, const struct bio_wrapper *biow)
 #endif
 		, biow->lsid
 		, biow->private_data
-		, biow->cloned_bioe
 		, bio_list_size(&biow->cloned_bio_list)
 #ifdef WALB_OVERLAPPED_SERIALIZE
 		, biow->n_overlapped
@@ -149,7 +147,7 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 #ifdef WALB_DEBUG
 	memset(biow, 0, sizeof(*biow));
 #endif
-	biow->cloned_bioe = NULL;
+	bio_entry_clear(&biow->cloned_bioe);
 	bio_list_init(&biow->cloned_bio_list);
 	biow->error = 0;
 	biow->csum = 0;
@@ -202,11 +200,11 @@ void destroy_bio_wrapper(struct bio_wrapper *biow)
 	if (!biow)
 		return;
 
-	if (biow->cloned_bioe)
-		destroy_bio_entry(biow->cloned_bioe);
+	if (bio_entry_exists(&biow->cloned_bioe))
+		fin_bio_entry(&biow->cloned_bioe);
 
 	if (biow->copied_bio)
-		copied_bio_put(biow->copied_bio);
+		bio_put_with_pages(biow->copied_bio);
 
 	kmem_cache_free(bio_wrapper_cache_, biow);
 }
@@ -223,7 +221,7 @@ void destroy_bio_wrapper(struct bio_wrapper *biow)
  *     to detect whether they are copied or not later.
  *     You must clear the bit before calling bio_endio().
  * @src source bio_wrapper.
- *     This uses src->cloned_bioe->bio and src->cloned_bioe->iter.
+ *     This uses src->cloned_bioe.bio and src->cloned_bioe.iter.
  *     This function does not modify them.
  * @gfp_mask for memory allocation in bio split.
  *
@@ -234,7 +232,7 @@ void destroy_bio_wrapper(struct bio_wrapper *biow)
 bool bio_wrapper_copy_overlapped(
 	struct bio_wrapper *dst, struct bio_wrapper *src, gfp_t gfp_mask)
 {
-	struct bio *src_bio = src->cloned_bioe->bio;
+	struct bio *src_bio = src->cloned_bioe.bio;
 	struct bio_list *dst_list = &dst->cloned_bio_list;
 	struct bio *dst_bio, *prev_bio = NULL, *next_bio;
 
@@ -244,7 +242,7 @@ bool bio_wrapper_copy_overlapped(
 
 	bio_list_for_each_safe(dst_bio, next_bio, dst_list) {
 		struct bvec_iter dst_iter = dst_bio->bi_iter;
-		struct bvec_iter src_iter = src->cloned_bioe->iter;
+		struct bvec_iter src_iter = src->cloned_bioe.iter;
 		uint sectors, written;
 		struct bio *split0 = NULL, *split1 = NULL;
 
@@ -348,6 +346,25 @@ void bio_wrapper_endio_copied(struct bio_wrapper *biow)
 		} else {
 			prev_bio = bio;
 		}
+	}
+}
+
+void wait_for_bio_wrapper(struct bio_wrapper *biow, ulong timeo_ms)
+{
+	const unsigned long timeo = msecs_to_jiffies(timeo_ms);
+	int c = 0;
+
+	for (;;) {
+		ulong rtimeo = wait_for_completion_timeout(&biow->done, timeo);
+		if (rtimeo)
+			break;
+		LOGn("timeout(%d): "
+			"biow %p pos %" PRIu64 " len %u csum %08x "
+			"error %d discard %u\n"
+			, c, biow, (u64)biow->pos, biow->len
+			, biow->csum, biow->error
+			, bio_wrapper_state_is_discard(biow) ? 1 : 0);
+		c++;
 	}
 }
 

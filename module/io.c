@@ -40,7 +40,7 @@ struct pack
 	struct sector_data *logpack_header_sector;
 
 	/* zero_flush or logpack header IO. */
-	struct bio_entry *header_bioe;
+	struct bio_entry header_bioe;
 
 	/* true if req_ent_list contains only a zero-size flush. */
 	bool is_zero_flush_only;
@@ -76,16 +76,6 @@ static struct treemap_memory_manager mmgr_;
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
-
-/* bio_entry related. */
-static void bio_entry_end_io(struct bio *bio, int error);
-static struct bio_entry* create_bio_entry_by_clone(
-	struct bio *bio, struct block_device *bdev,
-	gfp_t gfp_mask);
-static struct bio_entry* create_bio_entry_by_clone_never_giveup(
-	struct bio *bio, struct block_device *bdev,
-	gfp_t gfp_mask);
-static void wait_for_bio_entry(struct bio_entry *bioe);
 
 /* pack related. */
 static struct pack* create_pack(gfp_t gfp_mask);
@@ -126,12 +116,12 @@ static void logpack_calc_checksum(
 	unsigned int pbs, u32 salt, struct list_head *biow_list);
 static void submit_logpack(
 	struct walb_logpack_header *logh,
-	struct list_head *biow_list, struct bio_entry **bioe_p,
+	struct list_head *biow_list, struct bio_entry *bioe,
 	unsigned int pbs, bool is_flush, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
 	unsigned int chunk_sectors);
 static void logpack_submit_header(
-	struct walb_logpack_header *logh, struct bio_entry **bioe_p,
+	struct walb_logpack_header *logh, struct bio_entry *bioe,
 	unsigned int pbs, bool is_flush, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
 	unsigned int chunk_sectors);
@@ -145,12 +135,11 @@ static void logpack_submit_bio_wrapper(
 static struct bio* logpack_create_bio(
 	struct bio *bio, uint pbs, struct block_device *ldev,
 	u64 ldev_off_pb, uint bio_off_lb);
-static struct bio_entry* logpack_create_bio_entry(
-	struct bio *bio, unsigned int pbs,
-	struct block_device *ldev,
+static void logpack_init_bio_entry(
+	struct bio_entry *bioe, struct bio *bio,
+	unsigned int pbs, struct block_device *ldev,
 	u64 ldev_off_pb, unsigned int bio_off_lb);
 static void logpack_submit_flush(struct block_device *bdev, struct pack *pack);
-static void wait_for_bio_wrapper_done(struct bio_wrapper *biow);
 static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list);
 static void dequeue_and_gc_logpack_list(struct walb_dev *wdev);
 
@@ -177,13 +166,13 @@ static void wait_for_logpack_and_submit_datapack(
 	struct walb_dev *wdev, struct pack *wpack);
 static void wait_for_write_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
-static void wait_for_bio_wrapper(
+static void wait_for_bio_wrapper_io(
 	struct bio_wrapper *biow, bool is_endio, bool is_delete);
 static void submit_write_bio_wrapper(
 	struct bio_wrapper *biow, bool is_plugging);
 static void submit_read_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
-static struct bio_entry* submit_flush(struct block_device *bdev);
+static bool submit_flush(struct bio_entry *bioe, struct block_device *bdev);
 static void enqueue_submit_task_if_necessary(struct walb_dev *wdev);
 static void enqueue_wait_task_if_necessary(struct walb_dev *wdev);
 static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev);
@@ -222,106 +211,6 @@ static void io_acct_end(struct bio_wrapper *biow);
  *******************************************************************************/
 
 /**
- * endio callback for bio_entry.
- */
-static void bio_entry_end_io(struct bio *bio, int error)
-{
-	struct bio_entry *bioe = bio->bi_private;
-	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	int bi_cnt;
-	ASSERT(bioe);
-	ASSERT(bio->bi_bdev);
-	ASSERT(bioe->bio == bio);
-
-	if (!uptodate) {
-		UNUSED const unsigned int devt = bio->bi_bdev->bd_dev;
-		LOG_("BIO_UPTODATE is false"
-			" (dev %u:%u rw %lu pos %" PRIu64 " len %u).\n"
-			, MAJOR(devt), MINOR(devt)
-			, bio->bi_rw
-			, (u64)bio_entry_pos(bioe), bio_entry_len(bioe));
-	}
-
-	bioe->error = error;
-	bi_cnt = atomic_read(&bio->bi_cnt);
-	ASSERT(bi_cnt == 1);
-	LOG_("complete bioe %p pos %" PRIu64 " len %u\n"
-		, bioe, (u64)bio_entry_pos(bioe), bio_entry_len(bioe));
-	if (bi_cnt == 1)
-		bioe->bio = NULL;
-
-	bio_put(bio);
-	complete(&bioe->done);
-}
-
-/**
- * Create a bio_entry by clone.
- *
- * @bio original bio.
- * @bdev block device to forward bio.
- */
-static struct bio_entry* create_bio_entry_by_clone(
-	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask)
-{
-	struct bio_entry *bioe;
-	struct bio *biotmp;
-
-	bioe = alloc_bio_entry(gfp_mask);
-	if (!bioe)
-		return NULL;
-
-	biotmp = bio_clone(bio, gfp_mask);
-	if (!biotmp)
-		goto error;
-
-	biotmp->bi_bdev = bdev;
-	biotmp->bi_end_io = bio_entry_end_io;
-	biotmp->bi_private = bioe;
-
-	init_bio_entry(bioe, biotmp);
-	return bioe;
-
-error:
-	destroy_bio_entry(bioe);
-	return NULL;
-}
-
-static struct bio_entry* create_bio_entry_by_clone_never_giveup(
-	struct bio *bio, struct block_device *bdev,
-	gfp_t gfp_mask)
-{
-	struct bio_entry *bioe;
-	for (;;) {
-		bioe = create_bio_entry_by_clone(bio, bdev, gfp_mask);
-		if (bioe)
-			break;
-		LOGd_("clone bio copy failed %p.\n", bio);
-		schedule();
-	}
-	return bioe;
-}
-
-/**
- * Wait for an bio completion in a bio_entry.
- */
-static void wait_for_bio_entry(struct bio_entry *bioe)
-{
-	const ulong timeo = msecs_to_jiffies(completion_timeo_ms_);
-	ulong rtimeo;
-	int c = 0;
-
-retry:
-	rtimeo = wait_for_completion_timeout(&bioe->done, timeo);
-	if (rtimeo == 0) {
-		LOGn("timeout(%d): bioe %p bio %p pos %" PRIu64 " len %u\n"
-			, c, bioe, bioe->bio
-			, (u64)bio_entry_pos(bioe), bio_entry_len(bioe));
-		c++;
-		goto retry;
-	}
-}
-
-/**
  * Create a pack.
  */
 static struct pack* create_pack(gfp_t gfp_mask)
@@ -335,7 +224,7 @@ static struct pack* create_pack(gfp_t gfp_mask)
 	}
 	INIT_LIST_HEAD(&pack->list);
 	INIT_LIST_HEAD(&pack->biow_list);
-	pack->header_bioe = NULL;
+	bio_entry_clear(&pack->header_bioe);
 	pack->is_zero_flush_only = false;
 	pack->is_flush_contained = false;
 	pack->is_flush_header = false;
@@ -393,7 +282,8 @@ static void destroy_pack(struct pack *pack)
 {
 	struct bio_wrapper *biow, *biow_next;
 
-	if (!pack) { return; }
+	if (!pack)
+		return;
 
 	list_for_each_entry_safe(biow, biow_next, &pack->biow_list, list) {
 		list_del(&biow->list);
@@ -403,6 +293,8 @@ static void destroy_pack(struct pack *pack)
 		sector_free(pack->logpack_header_sector);
 		pack->logpack_header_sector = NULL;
 	}
+	fin_bio_entry(&pack->header_bioe);
+
 #ifdef WALB_DEBUG
 	INIT_LIST_HEAD(&pack->biow_list);
 #endif
@@ -488,7 +380,7 @@ static void print_pack(const char *level, struct pack *pack)
 	printk("%s""number of bio_wrapper in biow_list: %u.\n", level, i);
 
 	printk("%s""header_bioe: ", level);
-	print_bio_entry(level, pack->header_bioe);
+	print_bio_entry(level, &pack->header_bioe);
 
 	/* logpack header */
 	if (pack->logpack_header_sector) {
@@ -704,7 +596,7 @@ static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
 	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
 	struct walb_dev *wdev = (struct walb_dev *)biow->private_data;
 
-	wait_for_bio_wrapper(biow, true, true);
+	wait_for_bio_wrapper_io(biow, true, true);
 	destroy_bio_wrapper_dec(wdev, biow);
 }
 
@@ -1048,7 +940,7 @@ error:
 			if (wpack->is_flush_header)
 				atomic_dec(&iocored->n_flush_logpack);
 #endif
-			ASSERT(!wpack->header_bioe);
+			ASSERT(!bio_entry_exists(&wpack->header_bioe));
 			destroy_pack(wpack);
 		}
 		ASSERT(list_empty(wpack_list));
@@ -1151,8 +1043,7 @@ static void logpack_calc_checksum(
  *
  * @logh logpack header.
  * @biow_list bio wrapper list. must not be empty.
- * @bioe_p pointer to bio entry. *bioe_p must be NULL.
- *   submitted bio for logpack header will be set.
+ * @bioe bio entry. submitted bio for logpack header will be set.
  * @pbs physical block size.
  * @is_flush true if the logpack header's REQ_FLUSH flag must be on.
  * @ldev log block device.
@@ -1165,7 +1056,7 @@ static void logpack_calc_checksum(
  */
 static void submit_logpack(
 	struct walb_logpack_header *logh,
-	struct list_head *biow_list, struct bio_entry **bioe_p,
+	struct list_head *biow_list, struct bio_entry *bioe,
 	unsigned int pbs, bool is_flush, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
 	unsigned int chunk_sectors)
@@ -1177,7 +1068,7 @@ static void submit_logpack(
 
 	/* Submit logpack header block. */
 	logpack_submit_header(
-		logh, bioe_p, pbs, is_flush, ldev,
+		logh, bioe, pbs, is_flush, ldev,
 		ring_buffer_off, ring_buffer_size,
 		chunk_sectors);
 
@@ -1227,7 +1118,7 @@ static void submit_logpack(
  * Submit bio of header block.
  *
  * @lhead logpack header data.
- * @bioe_p pointer to bio_entry pointer.
+ * @bioe bio_entry pointer.
  *     submitted lhead bio will be stored.
  * @pbs physical block size [bytes].
  * @is_flush if true, REQ_FLUSH must be added.
@@ -1236,26 +1127,21 @@ static void submit_logpack(
  * @ring_buffer_size ring buffer size [physical blocks].
  */
 static void logpack_submit_header(
-	struct walb_logpack_header *lhead, struct bio_entry **bioe_p,
+	struct walb_logpack_header *lhead, struct bio_entry *bioe,
 	unsigned int pbs, bool is_flush, struct block_device *ldev,
 	u64 ring_buffer_off, u64 ring_buffer_size,
 	unsigned int chunk_sectors)
 {
 	struct bio *bio;
-	struct bio_entry *bioe;
 	struct page *page;
 	u64 off_pb, off_lb;
 	int len;
 #ifdef WALB_DEBUG
 	struct page *page2;
 #endif
+	ASSERT(!bio_entry_exists(bioe));
+	ASSERT(pbs <= PAGE_SIZE);
 
-retry_bio_entry:
-	bioe = alloc_bio_entry(GFP_NOIO);
-	if (!bioe) {
-		schedule();
-		goto retry_bio_entry;
-	}
 retry_bio:
 	bio = bio_alloc(GFP_NOIO, 1);
 	if (!bio) {
@@ -1272,33 +1158,15 @@ retry_bio:
 	off_pb = lhead->logpack_lsid % ring_buffer_size + ring_buffer_off;
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_iter.bi_sector = off_lb;
-	if (is_flush) {
-		bio->bi_rw = WRITE_FLUSH;
-	} else {
-		bio->bi_rw = WRITE;
-	}
-	bio->bi_end_io = bio_entry_end_io;
-	bio->bi_private = bioe;
+	bio->bi_rw = is_flush ? WRITE_FLUSH : WRITE;
 	len = bio_add_page(bio, page, pbs, offset_in_page(lhead));
 	ASSERT(len == pbs);
 
 	init_bio_entry(bioe, bio);
 	ASSERT((bio_entry_len(bioe) << 9) == pbs);
-	*bioe_p = bioe;
 
 	ASSERT(!should_split_bio_for_chunk(bioe->bio, chunk_sectors));
 	generic_make_request(bioe->bio);
-
-	return;
-#if 0
-error2:
-	bio_put(bio);
-	bioe->bio = NULL;
-error1:
-	destroy_bio_entry(bioe);
-error0:
-	return;
-#endif
 }
 
 /**
@@ -1314,19 +1182,13 @@ error0:
 static void logpack_submit_bio_wrapper_zero(
 	struct bio_wrapper *biow, unsigned int pbs, struct block_device *ldev)
 {
-	struct bio_entry *bioe;
+	struct bio_entry *bioe = &biow->cloned_bioe;
 
 	ASSERT(biow->len == 0);
 	ASSERT(biow->bio);
-	ASSERT(!biow->cloned_bioe);
 
-retry:
-	bioe = logpack_create_bio_entry(biow->copied_bio, pbs, ldev, 0, 0);
-	if (!bioe) {
-		schedule();
-		goto retry;
-	}
-	biow->cloned_bioe = bioe;
+	logpack_init_bio_entry(
+		&biow->cloned_bioe, biow->copied_bio, pbs, ldev, 0, 0);
 	LOG_("submit_lr: bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, (u64)bioe->pos, bioe->len);
 	generic_make_request(bioe->bio);
@@ -1359,14 +1221,8 @@ static void logpack_submit_bio_wrapper(
 	ASSERT(!bio_wrapper_state_is_discard(biow));
 	ASSERT((biow->copied_bio->bi_rw & REQ_DISCARD) == 0);
 
-retry_bio_entry:
-	bioe = logpack_create_bio_entry(
-		biow->copied_bio, pbs, ldev, ldev_off_pb, 0);
-	if (!bioe) {
-		schedule();
-		goto retry_bio_entry;
-	}
-	biow->cloned_bioe = bioe;
+	bioe = &biow->cloned_bioe;
+	logpack_init_bio_entry(bioe, biow->copied_bio, pbs, ldev, ldev_off_pb, 0);
 
 	/* split if required. */
 	bio_list = split_bio_for_chunk_never_giveup(
@@ -1404,77 +1260,42 @@ static struct bio* logpack_create_bio(
 }
 
 /**
- * Create a bio_entry which is a part of logpack.
+ * Init a bio_entry which is a part of logpack.
  *
+ * @bioe bio entry to initialize.
  * @bio original bio to clone.
  * @pbs physical block device [bytes].
  * @ldev_off_pb log device offset for the request [physical block].
  * @bio_off_lb offset of the bio inside the whole request [logical block].
- *
- * RETURN:
- *   bio_entry in success which bio is submitted, or NULL.
  */
-static struct bio_entry* logpack_create_bio_entry(
-	struct bio *bio, unsigned int pbs,
-	struct block_device *ldev,
-	u64 ldev_off_pb, unsigned int bio_off_lb)
+static void logpack_init_bio_entry(
+	struct bio_entry *bioe, struct bio *bio,
+	uint pbs, struct block_device *ldev,
+	u64 ldev_off_pb, uint bio_off_lb)
 {
-	struct bio_entry *bioe;
 	struct bio *cbio;
-
-	bioe = alloc_bio_entry(GFP_NOIO);
-	if (!bioe)
-		return NULL;
-
+retry:
 	cbio = logpack_create_bio(bio, pbs, ldev, ldev_off_pb, bio_off_lb);
-	if (!cbio)
-		goto error;
-
-	cbio->bi_end_io = bio_entry_end_io;
-	cbio->bi_private = bioe;
+	if (!cbio) {
+		schedule();
+		goto retry;
+	}
 	init_bio_entry(bioe, cbio);
-	return bioe;
-
-error:
-	destroy_bio_entry(bioe);
-	return NULL;
 }
+
 
 /**
  * Submit flush for logpack.
  */
 static void logpack_submit_flush(struct block_device *bdev, struct pack *pack)
 {
-	struct bio_entry *bioe;
 	ASSERT(bdev);
 	ASSERT(pack);
 
-retry:
-	bioe = submit_flush(bdev);
-	if (!bioe) {
+	while (!submit_flush(&pack->header_bioe, bdev))
 		schedule();
-		goto retry;
-	}
-	pack->header_bioe = bioe;
-}
 
-static void wait_for_bio_wrapper_done(struct bio_wrapper *biow)
-{
-	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
-	int c = 0;
-
-	for (;;) {
-		ulong rtimeo = wait_for_completion_timeout(&biow->done, timeo);
-		if (rtimeo)
-			break;
-		LOGn("timeout(%d): "
-			"biow %p pos %" PRIu64 " len %u csum %08x "
-			"error %d discard %u\n"
-			, c, biow, (u64)biow->pos, biow->len
-			, biow->csum, biow->error
-			, bio_wrapper_state_is_discard(biow) ? 1 : 0);
-		c++;
-	}
+	ASSERT(bio_entry_exists(&pack->header_bioe));
 }
 
 /**
@@ -1492,7 +1313,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 		list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
 			list_del(&biow->list);
 			ASSERT(bio_wrapper_state_is_prepared(biow));
-			wait_for_bio_wrapper_done(biow);
+			wait_for_bio_wrapper(biow, completion_timeo_ms_);
 			ASSERT(bio_wrapper_state_is_submitted(biow));
 			ASSERT(bio_wrapper_state_is_completed(biow));
 			if (biow->error &&
@@ -1505,7 +1326,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 			destroy_bio_wrapper_dec(wdev, biow);
 		}
 		ASSERT(list_empty(&wpack->biow_list));
-		ASSERT(!wpack->header_bioe);
+		ASSERT(!bio_entry_exists(&wpack->header_bioe));
 
 		written_lsid = get_next_lsid_unsafe(
 			get_logpack_header(wpack->logpack_header_sector));
@@ -1959,15 +1780,13 @@ static void writepack_check_and_set_flush(struct pack *wpack)
 
 static bool wait_for_logpack_header(struct pack *wpack)
 {
-	bool success = true;
-	struct bio_entry *bioe = wpack->header_bioe;
+	bool success;
+	struct bio_entry *bioe = &wpack->header_bioe;
+	ASSERT(bio_entry_exists(bioe));
 
-	wait_for_bio_entry(bioe);
-	if (bioe->error)
-		success = false;
-
-	destroy_bio_entry(bioe);
-	wpack->header_bioe = NULL;
+	wait_for_bio_entry(bioe, completion_timeo_ms_);
+	success = bioe->error == 0;
+	fin_bio_entry(bioe);
 	return success;
 }
 
@@ -2025,7 +1844,7 @@ static void wait_for_logpack_and_submit_datapack(
 	 */
 	list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
 		ASSERT(biow->copied_bio);
-		wait_for_bio_wrapper(biow, false, true);
+		wait_for_bio_wrapper_io(biow, false, true);
 		if (is_failed || biow->error) goto error_io;
 
 #ifdef WALB_PERFORMANCE_ANALYSIS
@@ -2040,21 +1859,25 @@ static void wait_for_logpack_and_submit_datapack(
 			bio_endio(biow->bio, 0);
 			destroy_bio_wrapper_dec(wdev, biow);
 		} else {
-			const bool is_discard = bio_wrapper_state_is_discard(biow);
-			if (!is_discard || blk_queue_discard(bdev_get_queue(wdev->ddev))) {
+			const bool is_discard =
+				bio_wrapper_state_is_discard(biow);
+			const bool support_discard =
+				blk_queue_discard(bdev_get_queue(wdev->ddev));
+			if (!is_discard || support_discard) {
 				/* Create all related bio(s) by copying IO data. */
-				biow->cloned_bioe = create_bio_entry_by_clone_never_giveup(
-					biow->copied_bio, wdev->ddev, GFP_NOIO);
+				init_bio_entry_by_clone_never_giveup(
+					&biow->cloned_bioe, biow->copied_bio,
+					wdev->ddev, GFP_NOIO);
 			} else {
 				/* Do nothing.
 				   TODO: should do write zero? */
 			}
 
-			if (biow->cloned_bioe) {
+			if (bio_entry_exists(&biow->cloned_bioe)) {
 				/* Split if required due to chunk limitations. */
 				biow->cloned_bio_list =
 					split_bio_for_chunk_never_giveup(
-						biow->cloned_bioe->bio,
+						biow->cloned_bioe.bio,
 						wdev->ddev_chunk_sectors,
 						GFP_NOIO);
 			}
@@ -2172,7 +1995,7 @@ static void wait_for_write_bio_wrapper(
 #endif
 
 	/* Wait for completion and call end_request. */
-	wait_for_bio_wrapper(biow, false, false);
+	wait_for_bio_wrapper_io(biow, false, false);
 
 	ASSERT(bio_wrapper_state_is_submitted(biow));
 	bio_wrapper_state_set_completed(biow);
@@ -2231,9 +2054,8 @@ static void wait_for_write_bio_wrapper(
 		iocore_melt(wdev);
 
 	/* Put related bio(s) and free resources. */
-	if (biow->cloned_bioe) {
-		destroy_bio_entry(biow->cloned_bioe);
-		biow->cloned_bioe = NULL;
+	if (bio_entry_exists(&biow->cloned_bioe)) {
+		fin_bio_entry(&biow->cloned_bioe);
 	} else {
 		ASSERT(bio_wrapper_state_is_discard(biow));
 		ASSERT(!blk_queue_discard(bdev_get_queue(wdev->ddev)));
@@ -2254,17 +2076,18 @@ static void wait_for_write_bio_wrapper(
  * CONTEXT:
  *   non-irq. non-atomic.
  */
-static void wait_for_bio_wrapper(struct bio_wrapper *biow, bool is_endio, bool is_delete)
+static void wait_for_bio_wrapper_io(struct bio_wrapper *biow, bool is_endio, bool is_delete)
 {
+	struct bio_entry *bioe;
 	ASSERT(biow);
 	ASSERT(biow->error == 0);
+	bioe = &biow->cloned_bioe;
 
-	if (biow->cloned_bioe) {
-		wait_for_bio_entry(biow->cloned_bioe);
-		biow->error = biow->cloned_bioe->error;
-	} else {
+	if (bio_entry_exists(bioe)) {
+		wait_for_bio_entry(bioe, completion_timeo_ms_);
+		biow->error = bioe->error;
+	} else
 		ASSERT(biow->len == 0 || bio_wrapper_state_is_discard(biow));
-	}
 
 	if (is_endio) {
 		ASSERT(biow->bio);
@@ -2276,10 +2099,8 @@ static void wait_for_bio_wrapper(struct bio_wrapper *biow, bool is_endio, bool i
 		bio_endio(biow->bio, biow->error);
 		biow->bio = NULL;
 	}
-	if (is_delete) {
-		destroy_bio_entry(biow->cloned_bioe);
-		biow->cloned_bioe = NULL;
-	}
+	if (is_delete)
+		fin_bio_entry(bioe);
 }
 
 /**
@@ -2289,6 +2110,7 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 {
 #ifdef WALB_DEBUG
 	struct walb_dev *wdev = biow->private_data;
+	const bool bioe_exists = bio_entry_exists(&biow->cloned_bioe);
 #endif
 	struct blk_plug plug;
 
@@ -2303,9 +2125,9 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 	if (bio_wrapper_state_is_discard(biow) &&
 		!blk_queue_discard(bdev_get_queue(wdev->ddev))) {
 		/* Data device does not support REQ_DISCARD. */
-		ASSERT(!biow->cloned_bioe);
+		ASSERT(!bioe_exists);
 	} else {
-		ASSERT(biow->cloned_bioe);
+		ASSERT(bioe_exists);
 		ASSERT(!bio_list_empty(&biow->cloned_bio_list));
 	}
 #endif
@@ -2336,19 +2158,14 @@ static void submit_read_bio_wrapper(
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	bool ret;
-	struct bio_entry *bioe;
+	struct bio_entry *bioe = &biow->cloned_bioe;
 	struct bio_list *bio_list = &biow->cloned_bio_list;
 
 	ASSERT(bio_list_empty(bio_list));
 
 	/* Create cloned bio. */
-	bioe = create_bio_entry_by_clone(
-		biow->bio, wdev->ddev, GFP_NOIO);
-	if (!bioe)
+	if (!init_bio_entry_by_clone(bioe, biow->bio, wdev->ddev, GFP_NOIO))
 		goto error0;
-
-	ASSERT(!biow->cloned_bioe);
-	biow->cloned_bioe = bioe;
 
 	/* Split if required due to chunk limitations. */
 	if (!split_bio_for_chunk(
@@ -2382,8 +2199,7 @@ static void submit_read_bio_wrapper(
 error1:
 	put_all_bio_list(bio_list);
 	bioe->bio = NULL;
-	destroy_bio_entry(bioe);
-	biow->cloned_bioe = NULL;
+	fin_bio_entry(bioe);
 error0:
 	bio_endio(biow->bio, -ENOMEM);
 	destroy_bio_wrapper_dec(wdev, biow);
@@ -2392,26 +2208,23 @@ error0:
 /**
  * Submit a flush request.
  *
+ * @bioe bio entry to use.
  * @bdev block device.
  *
  * RETURN:
- *   created bioe containing submitted bio in success, or NULL.
+ *   true if a bio was allocated and submitted.
  * CONTEXT:
  *   non-atomic.
  */
-static struct bio_entry* submit_flush(struct block_device *bdev)
+static bool submit_flush(struct bio_entry *bioe, struct block_device *bdev)
 {
-	struct bio_entry *bioe;
 	struct bio *bio;
-
-	bioe = alloc_bio_entry(GFP_NOIO);
-	if (!bioe) { goto error0; }
+	ASSERT(!bio_entry_exists(bioe));
 
 	bio = bio_alloc(GFP_NOIO, 0);
-	if (!bio) { goto error1; }
+	if (!bio)
+		return false;
 
-	bio->bi_end_io = bio_entry_end_io;
-	bio->bi_private = bioe;
 	bio->bi_bdev = bdev;
 	bio->bi_rw = WRITE_FLUSH;
 
@@ -2421,10 +2234,11 @@ static struct bio_entry* submit_flush(struct block_device *bdev)
 	generic_make_request(bio);
 
 	return bioe;
-error1:
-	destroy_bio_entry(bioe);
+#if 0
 error0:
+	fin_bio_entry(bioe);
 	return NULL;
+#endif
 }
 
 /**

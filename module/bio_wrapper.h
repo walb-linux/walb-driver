@@ -13,6 +13,7 @@
 #include <linux/completion.h>
 #include <linux/time.h>
 
+#include "bio_entry.h"
 #include "walb/common.h"
 
 /**
@@ -44,10 +45,12 @@ struct bio_wrapper
 
 	/* Original bio's buffer will be updated during IO.
 	   Walb requires a fixed snapshot of data during IO.
-	   So submitted bio will be copied to here at first. */
+	   So submitted bio will be copied to here at first.
+	   For discard IOs, this is NULL. */
 	struct bio *copied_bio;
 
-	struct bio_entry *cloned_bioe; /* cloned bioe */
+	/* for temporary use for IOs for log/data devices. */
+	struct bio_entry cloned_bioe;
 
 	/* for temporary use. must be empty after submitted. */
 	struct bio_list cloned_bio_list;
@@ -169,6 +172,7 @@ void destroy_bio_wrapper(struct bio_wrapper *biow);
 bool bio_wrapper_copy_overlapped(
 	struct bio_wrapper *dst, struct bio_wrapper *src, gfp_t gfp_mask);
 void bio_wrapper_endio_copied(struct bio_wrapper *biow);
+void wait_for_bio_wrapper(struct bio_wrapper *biow, ulong timeo_ms);
 
 bool bio_wrapper_init(void);
 void bio_wrapper_exit(void);
