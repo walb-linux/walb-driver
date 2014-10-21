@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/idr.h>
+#include <linux/version.h>
 
 #include "alldevs.h"
 
@@ -85,7 +86,9 @@ void alldevs_exit(void)
 {
 	CHECK_STOP();
 	ASSERT(atomic_read(&nr_devs_) == 0);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0)
 	ASSERT(idr_is_empty(&all_wdevs_));
+#endif
 	idr_destroy(&all_wdevs_);
 }
 
