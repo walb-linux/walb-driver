@@ -47,8 +47,6 @@ struct bio_entry* alloc_bio_entry(gfp_t gfp_mask);
 void destroy_bio_entry(struct bio_entry *bioe);
 
 struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask);
-void init_copied_bio_entry(
-	struct bio_entry *bioe, struct bio *bio_with_copy);
 void copied_bio_put(struct bio *bio);
 
 #ifdef WALB_DEBUG

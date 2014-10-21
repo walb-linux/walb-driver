@@ -81,10 +81,10 @@ static struct treemap_memory_manager mmgr_;
 static void bio_entry_end_io(struct bio *bio, int error);
 static struct bio_entry* create_bio_entry_by_clone(
 	struct bio *bio, struct block_device *bdev,
-	gfp_t gfp_mask, bool is_deep);
+	gfp_t gfp_mask);
 static struct bio_entry* create_bio_entry_by_clone_never_giveup(
 	struct bio *bio, struct block_device *bdev,
-	gfp_t gfp_mask, bool is_deep);
+	gfp_t gfp_mask);
 static void wait_for_bio_entry(struct bio_entry *bioe);
 
 /* pack related. */
@@ -261,8 +261,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
  * @bdev block device to forward bio.
  */
 static struct bio_entry* create_bio_entry_by_clone(
-	struct bio *bio, struct block_device *bdev,
-	gfp_t gfp_mask, bool is_deep) /* QQQ is_deep is not required anymore. */
+	struct bio *bio, struct block_device *bdev, gfp_t gfp_mask)
 {
 	struct bio_entry *bioe;
 	struct bio *biotmp;
@@ -271,11 +270,7 @@ static struct bio_entry* create_bio_entry_by_clone(
 	if (!bioe)
 		return NULL;
 
-	if (is_deep)
-		biotmp = bio_deep_clone(bio, gfp_mask);
-	else
-		biotmp = bio_clone(bio, gfp_mask);
-
+	biotmp = bio_clone(bio, gfp_mask);
 	if (!biotmp)
 		goto error;
 
@@ -283,11 +278,7 @@ static struct bio_entry* create_bio_entry_by_clone(
 	biotmp->bi_end_io = bio_entry_end_io;
 	biotmp->bi_private = bioe;
 
-	if (is_deep)
-		init_copied_bio_entry(bioe, biotmp);
-	else
-		init_bio_entry(bioe, biotmp);
-
+	init_bio_entry(bioe, biotmp);
 	return bioe;
 
 error:
@@ -297,11 +288,11 @@ error:
 
 static struct bio_entry* create_bio_entry_by_clone_never_giveup(
 	struct bio *bio, struct block_device *bdev,
-	gfp_t gfp_mask, bool is_deep)
+	gfp_t gfp_mask)
 {
 	struct bio_entry *bioe;
 	for (;;) {
-		bioe = create_bio_entry_by_clone(bio, bdev, gfp_mask, is_deep);
+		bioe = create_bio_entry_by_clone(bio, bdev, gfp_mask);
 		if (bioe)
 			break;
 		LOGd_("clone bio copy failed %p.\n", bio);
@@ -2053,7 +2044,7 @@ static void wait_for_logpack_and_submit_datapack(
 			if (!is_discard || blk_queue_discard(bdev_get_queue(wdev->ddev))) {
 				/* Create all related bio(s) by copying IO data. */
 				biow->cloned_bioe = create_bio_entry_by_clone_never_giveup(
-					biow->copied_bio, wdev->ddev, GFP_NOIO, false);
+					biow->copied_bio, wdev->ddev, GFP_NOIO);
 			} else {
 				/* Do nothing.
 				   TODO: should do write zero? */
@@ -2352,7 +2343,7 @@ static void submit_read_bio_wrapper(
 
 	/* Create cloned bio. */
 	bioe = create_bio_entry_by_clone(
-		biow->bio, wdev->ddev, GFP_NOIO, false);
+		biow->bio, wdev->ddev, GFP_NOIO);
 	if (!bioe)
 		goto error0;
 

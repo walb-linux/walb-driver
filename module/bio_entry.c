@@ -218,25 +218,6 @@ err:
 }
 
 /**
- * Initialize a bio_entry with a bio with copy.
- */
-void init_copied_bio_entry(
-	struct bio_entry *bioe, struct bio *bio_with_copy)
-{
-	ASSERT(bioe);
-	ASSERT(bio_with_copy);
-
-	init_bio_entry(bioe, bio_with_copy);
-	if (bio_entry_len(bioe) > 0 && !(bio_with_copy->bi_rw & REQ_DISCARD)) {
-		bioe->has_own_pages = true;
-	}
-
-	/* You must call copied_bio_put() explicitly
-	   or call bio_entry_destroy(). */
-	bio_get(bio_with_copy);
-}
-
-/**
  * Free its all pages and call bio_put().
  */
 void copied_bio_put(struct bio *bio)
