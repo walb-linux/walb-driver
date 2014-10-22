@@ -343,7 +343,7 @@ static int wait_for_bio_entry_list(struct list_head *bioe_list)
 		if (bio_entry_should_wait_completion(bioe)) {
 			int c = 0;
 		retry:
-			rtimeo = wait_for_completion_timeout(&bioe->done, timeo);
+			rtimeo = wait_for_completion_io_timeout(&bioe->done, timeo);
 			if (rtimeo == 0) {
 				LOGn("timeout(%d): bioe %p bio %p len %u\n",
 					c, bioe, bioe->bio, bioe->len);
@@ -2370,7 +2370,7 @@ static void wait_for_bio_wrapper(
 		if (bio_entry_should_wait_completion(bioe)) {
 			int c = 0;
 		retry:
-			rtimeo = wait_for_completion_timeout(&bioe->done, timeo);
+			rtimeo = wait_for_completion_io_timeout(&bioe->done, timeo);
 			if (rtimeo == 0) {
 				LOGn("timeout(%d): biow %p ith %u "
 					"bioe %p bio %p pos %"PRIu64" len %u"
