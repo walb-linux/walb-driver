@@ -1201,11 +1201,11 @@ static void logpack_calc_checksum(
 		}
 
 		ASSERT(biow);
-		ASSERT(biow->bio);
-		ASSERT(biow->bio->bi_rw & REQ_WRITE);
+		ASSERT(biow->copied_bio);
+		ASSERT(biow->copied_bio->bi_rw & REQ_WRITE);
 
 		if (biow->len == 0) {
-			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
+			ASSERT(biow->copied_bio->bi_rw & REQ_FLUSH);
 			continue;
 		}
 
@@ -1273,14 +1273,14 @@ static void submit_logpack(
 		if (test_bit_u32(LOG_RECORD_DISCARD, &rec->flags)) {
 			/* No need to execute IO to the log device. */
 			ASSERT(bio_wrapper_state_is_discard(biow));
-			ASSERT(biow->bio->bi_rw & REQ_DISCARD);
+			ASSERT(biow->copied_bio->bi_rw & REQ_DISCARD);
 			ASSERT(biow->len > 0);
 		} else if (biow->len == 0) {
 			/* Zero-sized IO will not be stored in logpack header.
 			   We just submit it and will wait for it. */
 
 			/* such bio must be flush. */
-			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
+			ASSERT(biow->copied_bio->bi_rw & REQ_FLUSH);
 			/* such bio must be permitted at first only. */
 			ASSERT(i == 0);
 
@@ -1586,7 +1586,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 					" state %d"
 #endif
 					"\n",
-					c, biow, biow->bio, (u64)biow->pos, biow->len,
+					c, biow, biow->copied_bio, (u64)biow->pos, biow->len,
 					bio_wrapper_state_is_prepared(biow),
 					bio_wrapper_state_is_submitted(biow),
 					bio_wrapper_state_is_completed(biow),
@@ -1973,7 +1973,7 @@ newpack:
 fin:
 	/* The request is just added to the pack. */
 	list_add_tail(&biow->list, &pack->biow_list);
-	if (biow->bio->bi_rw & REQ_FLUSH) {
+	if (bio->bi_rw & REQ_FLUSH) {
 		pack->is_flush_contained = true;
 		if (lhead->n_records > 0 && !bio_wrapper_state_is_discard(biow)) {
 			*flush_lsidp = biow->lsid;
@@ -2128,7 +2128,7 @@ static void wait_for_logpack_and_submit_datapack(
 		if (biow->len == 0) {
 			/* Zero-flush. */
 			ASSERT(wpack->is_zero_flush_only);
-			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
+			ASSERT(biow->copied_bio->bi_rw & REQ_FLUSH);
 			list_del(&biow->list);
 			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
 			bio_endio(biow->bio, 0);
