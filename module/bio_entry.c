@@ -792,13 +792,16 @@ void copied_bio_put(struct bio *bio)
 	int i;
 	ASSERT(bio);
 	ASSERT(!(bio->bi_flags & (1 << BIO_CLONED)));
-	ASSERT(!(bio->bi_rw & REQ_DISCARD));
+
+	if (bio->bi_rw & REQ_DISCARD)
+		goto fin;
 
 	__bio_for_each_segment(bvec, bio, i, 0) {
 		free_page_dec(bvec->bv_page);
 		bvec->bv_page = NULL;
 	}
 
+fin:
 	ASSERT(atomic_read(&bio->bi_cnt) == 1);
 	bio_put(bio);
 }
