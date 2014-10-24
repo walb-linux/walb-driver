@@ -238,7 +238,12 @@ static void bio_entry_end_io(struct bio *bio, int error)
 
 	bioe->error = error;
 	bi_cnt = atomic_read(&bio->bi_cnt);
-	ASSERT(bi_cnt == 1);
+	if (bio->bi_rw & REQ_WRITE) {
+		/* 1 for ldev, 2 for ddev. */
+		ASSERT(bi_cnt == 1 || bi_cnt == 2);
+	} else {
+		ASSERT(bi_cnt == 1);
+	}
 	LOG_("complete bioe %p pos %" PRIu64 " len %u\n",
 		bioe, (u64)bioe->pos, bioe->len);
 	if (bi_cnt == 1) {
@@ -2165,6 +2170,10 @@ static void wait_for_logpack_and_submit_datapack(
 				}
 			}
 
+			/* get related bio(s) to keep them
+			   until deleting from pending data. */
+			get_bio_entry_list(&biow->bioe_list);
+
 			/* Try to insert pending data. */
 		retry_insert_pending:
 			spin_lock(&iocored->pending_data_lock);
@@ -2338,6 +2347,9 @@ static void wait_for_write_bio_wrapper(
 	if (is_start_queue) {
 		iocore_melt(wdev);
 	}
+
+	/* Put related bio(s). */
+	put_bio_entry_list(&biow->bioe_list);
 
 	/* Free resources. */
 	destroy_bio_entry_list(&biow->bioe_list);
