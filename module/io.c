@@ -2845,10 +2845,6 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	io_acct_start(biow);
 
 	if (is_write) {
-		const ulong mask = REQ_WRITE | REQ_FLUSH | REQ_FUA | REQ_DISCARD | REQ_SYNC | REQ_NOIDLE | REQ_META | REQ_PRIO;
-		if (bio->bi_rw & ~mask)
-			print_bio(bio); /* debug */
-
 #ifdef WALB_PERFORMANCE_ANALYSIS
 		getnstimeofday(&biow->ts[WALB_TIME_BEGIN]);
 #endif
