@@ -126,6 +126,8 @@ void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow);
 #endif
 
 UNUSED void print_bio_wrapper(const char *level, struct bio_wrapper *biow);
+UNUSED void print_bio_wrapper_short(const char *level, struct bio_wrapper *biow, const char *prefix);
+
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio);
 struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask);
 void destroy_bio_wrapper(struct bio_wrapper *biow);

@@ -122,9 +122,6 @@ void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow)
 }
 #endif
 
-/**
- * Print a req_entry.
- */
 UNUSED
 void print_bio_wrapper(const char *level, struct bio_wrapper *biow)
 {
@@ -178,13 +175,52 @@ void print_bio_wrapper(const char *level, struct bio_wrapper *biow)
 	i = 0;
 	list_for_each_entry(bioe, &biow->bioe_list, list) {
 		printk("%s"
-			"  [%d] bioe %p pos %" PRIu64 " len %u\n"
+			"  [%d] bioe %p bio %p pos %" PRIu64 " len %u\n"
 			, level,
-			i, bioe, (u64)bioe->pos, bioe->len);
+			i, bioe, bioe->bio, (u64)bioe->pos, bioe->len);
 		i++;
 	}
 	printk("%s"
 		"  number of bioe %d\n", level, i);
+}
+
+UNUSED
+void print_bio_wrapper_short(const char *level, struct bio_wrapper *biow, const char *prefix)
+{
+	ASSERT(biow);
+	printk("%s" "%s"
+		"biow %p %p (%" PRIu64 " %u) %08x %d %c %" PRIu64 " %p"
+#ifdef WALB_OVERLAPPED_SERIALIZE
+		" %d"
+#ifdef WALB_DEBUG
+		" %" PRIu64 ""
+#endif
+#endif
+		" [%c%c%c%c%c"
+#ifdef WALB_OVERLAPPED_SERIALIZE
+		"%c"
+#endif
+		"]\n"
+		, level, prefix, biow, biow->bio
+		, (u64)biow->pos, biow->len, biow->csum, biow->error
+		, biow->is_started ? 'S' : '-', biow->lsid
+		, biow->private_data
+#ifdef WALB_OVERLAPPED_SERIALIZE
+		, biow->n_overlapped
+#ifdef WALB_DEBUG
+		, biow->ol_id
+#endif
+#endif
+		, bio_wrapper_state_is_prepared(biow) ? 'P' : '-'
+		, bio_wrapper_state_is_submitted(biow) ? 'S' : '-'
+		, bio_wrapper_state_is_completed(biow) ? 'C' : '-'
+		, bio_wrapper_state_is_discard(biow) ? 'D' : '-'
+		, bio_wrapper_state_is_overwritten(biow) ? 'O' : '-'
+#ifdef WALB_OVERLAPPED_SERIALIZE
+		, bio_wrapper_state_is_delayed(biow) ? 'D' : '-'
+#endif
+		);
+
 }
 
 void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)

@@ -231,7 +231,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 #endif
 	if (!uptodate) {
 		UNUSED unsigned int devt = bio->bi_bdev->bd_dev;
-		LOG_("BIO_UPTODATE is false (dev %u:%u rw %lu pos %"PRIu64" len %u).\n",
+		LOG_("BIO_UPTODATE is false (dev %u:%u rw %lu pos %" PRIu64 " len %u).\n",
 			MAJOR(devt), MINOR(devt),
 			bio->bi_rw, (u64)bioe->pos, bioe->len);
 	}
@@ -239,7 +239,7 @@ static void bio_entry_end_io(struct bio *bio, int error)
 	bioe->error = error;
 	bi_cnt = atomic_read(&bio->bi_cnt);
 	ASSERT(bi_cnt == 1);
-	LOG_("complete bioe %p pos %"PRIu64" len %u\n",
+	LOG_("complete bioe %p pos %" PRIu64 " len %u\n",
 		bioe, (u64)bioe->pos, bioe->len);
 	if (bi_cnt == 1) {
 		bioe->bio_orig = NULL;
@@ -875,6 +875,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 				list_add_tail(&biow->list4, &biow_list_sorted);
 			}
 #endif /* WALB_OVERLAPPED_SERIALIZE */
+
 		}
 
 		/* Submit. */
