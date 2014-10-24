@@ -1026,6 +1026,9 @@ static void logpack_calc_checksum(
 			continue;
 		}
 
+		biow->csum = bio_calc_checksum(
+			biow->copied_bio,
+			((struct walb_dev *)biow->private_data)->log_checksum_salt);
 		logh->record[i].checksum = biow->csum;
 		i++;
 	}
@@ -2854,10 +2857,6 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 		biow->copied_bio = bio_deep_clone(bio, GFP_NOIO);
 		if (!biow->copied_bio)
 			goto error0;
-
-		/* Calculate checksum. */
-		biow->csum = bio_calc_checksum(
-			biow->copied_bio, wdev->log_checksum_salt);
 
 		/* Push into queue. */
 		spin_lock(&iocored->logpack_submit_queue_lock);
