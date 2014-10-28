@@ -494,6 +494,7 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	start_checkpointing(&wdev->cpd);
 	melt_for_reset_wal(wdev);
 
+	WLOGi(wdev, "reset-wal done\n");
 	return 0;
 
 error2:
