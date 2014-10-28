@@ -52,11 +52,11 @@ static bool freeze_for_reset_wal(struct walb_dev *wdev)
 	switch (wdev->freeze_state) {
 	case FRZ_MELTED:
 		iocore_freeze(wdev);
-		wdev->freeze_state = FRZ_FREEZED_DEEP;
+		wdev->freeze_state = FRZ_FROZEN_DEEP;
 		break;
-	case FRZ_FREEZED:
-	case FRZ_FREEZED_WITH_TIMEOUT:
-	case FRZ_FREEZED_DEEP:
+	case FRZ_FROZEN:
+	case FRZ_FROZEN_TIMEO:
+	case FRZ_FROZEN_DEEP:
 		WLOGw(wdev, "Bad state for reset-wal.\n");
 		mutex_unlock(&wdev->freeze_lock);
 		return false;
@@ -71,7 +71,7 @@ static bool freeze_for_reset_wal(struct walb_dev *wdev)
 static void melt_for_reset_wal(struct walb_dev *wdev)
 {
 	mutex_lock(&wdev->freeze_lock);
-	ASSERT(wdev->freeze_state == FRZ_FREEZED_DEEP);
+	ASSERT(wdev->freeze_state == FRZ_FROZEN_DEEP);
 	iocore_melt(wdev);
 	wdev->freeze_state = FRZ_MELTED;
 	mutex_unlock(&wdev->freeze_lock);
