@@ -41,7 +41,7 @@ extern struct workqueue_struct *wq_misc_;
 /**
  * If non-zero, data IOs will be sorted for better performance.
  */
-extern unsigned int is_sort_data_io_;
+extern unsigned int sort_data_io_;
 
 /**
  * Executable binary path for error notification.
@@ -53,7 +53,7 @@ extern char exec_path_on_error_[];
  * Non-zero if you want write IOs to fail in order not to
  * overflow the ring buffer.
  */
-extern unsigned int is_error_before_overflow_;
+extern unsigned int error_before_overflow_;
 
 /*
  * Minor number and partition management.
