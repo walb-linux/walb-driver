@@ -361,13 +361,16 @@ void task_melt(struct work_struct *work)
 
 	switch (wdev->freeze_state) {
 	case FRZ_MELTED:
-		WLOGn(wdev, "FRZ_MELTED\n");
+		WLOGd(wdev, "FRZ_MELTED\n");
 		break;
 	case FRZ_FREEZED:
-		WLOGn(wdev, "FRZ_FREEZED\n");
+		WLOGd(wdev, "FRZ_FREEZED\n");
+		break;
+	case FRZ_FREEZED_DEEP:
+		WLOGd(wdev, "FRZ_FREEZED_DEEP\n");
 		break;
 	case FRZ_FREEZED_WITH_TIMEOUT:
-		WLOGn(wdev, "Melt device\n");
+		WLOGi(wdev, "Melt device\n");
 		start_checkpointing(&wdev->cpd);
 		iocore_melt(wdev);
 		wdev->freeze_state = FRZ_MELTED;
@@ -412,26 +415,23 @@ void cancel_melt_work(struct walb_dev *wdev)
  */
 bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
 {
-	int ret;
-
-	ASSERT(wdev);
-
 	/* Freeze and enqueue a melt work if required. */
 	mutex_lock(&wdev->freeze_lock);
 	switch (wdev->freeze_state) {
 	case FRZ_MELTED:
 		/* Freeze iocore and checkpointing. */
-		WLOGn(wdev, "Freeze walb device.\n");
+		WLOGi(wdev, "Freeze walb device.\n");
 		iocore_freeze(wdev);
 		stop_checkpointing(&wdev->cpd);
 		wdev->freeze_state = FRZ_FREEZED;
 		break;
 	case FRZ_FREEZED:
 		/* Do nothing. */
-		WLOGn(wdev, "Already frozen.\n");
+		WLOGi(wdev, "Already frozen.\n");
 		break;
 	case FRZ_FREEZED_WITH_TIMEOUT:
-		WLOGe(wdev, "Race condition occured.\n");
+	case FRZ_FREEZED_DEEP:
+		WLOGw(wdev, "Bad state to freeze.\n");
 		mutex_unlock(&wdev->freeze_lock);
 		return false;
 	default:
@@ -439,14 +439,15 @@ bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
 	}
 	ASSERT(wdev->freeze_state == FRZ_FREEZED);
 	if (timeout_sec > 0) {
-		WLOGn(wdev, "(Re)set frozen timeout to %u seconds.\n"
+		int ret;
+		WLOGi(wdev, "(Re)set frozen timeout to %u seconds.\n"
 			, timeout_sec);
 		INIT_DELAYED_WORK(&wdev->freeze_dwork, task_melt);
+		wdev->freeze_state = FRZ_FREEZED_WITH_TIMEOUT;
 		ret = queue_delayed_work(
 			wq_misc_, &wdev->freeze_dwork,
 			msecs_to_jiffies(timeout_sec * 1000));
 		ASSERT(ret);
-		wdev->freeze_state = FRZ_FREEZED_WITH_TIMEOUT;
 	}
 	ASSERT(wdev->freeze_state != FRZ_MELTED);
 	mutex_unlock(&wdev->freeze_lock);
@@ -471,11 +472,11 @@ bool melt_if_frozen(
 	switch (wdev->freeze_state) {
 	case FRZ_MELTED:
 		/* Do nothing. */
-		WLOGn(wdev, "Already melted.\n");
+		WLOGi(wdev, "Already melted.\n");
 		break;
 	case FRZ_FREEZED:
 		/* Melt. */
-		WLOGn(wdev, "Melt device.\n");
+		WLOGi(wdev, "Melt device.\n");
 		if (restarts_checkpointing)
 			start_checkpointing(&wdev->cpd);
 
@@ -483,8 +484,8 @@ bool melt_if_frozen(
 		wdev->freeze_state = FRZ_MELTED;
 		break;
 	case FRZ_FREEZED_WITH_TIMEOUT:
-		/* Race condition. */
-		WLOGe(wdev, "Race condition occurred.\n");
+	case FRZ_FREEZED_DEEP:
+		WLOGe(wdev, "Bad state to melt.\n");
 		mutex_unlock(&wdev->freeze_lock);
 		return false;
 	default:

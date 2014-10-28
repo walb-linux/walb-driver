@@ -18,6 +18,10 @@
  * Static functions prototype.
  *******************************************************************************/
 
+/* For reset-wal. */
+static bool freeze_for_reset_wal(struct walb_dev *wdev);
+static void melt_for_reset_wal(struct walb_dev *wdev);
+
 /* Ioctl details. */
 static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
 static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl);
@@ -41,6 +45,37 @@ static int ioctl_wdev_melt(struct walb_dev *wdev, struct walb_ctl *ctl);
 /*******************************************************************************
  * Static functions definition.
  *******************************************************************************/
+
+static bool freeze_for_reset_wal(struct walb_dev *wdev)
+{
+	mutex_lock(&wdev->freeze_lock);
+	switch (wdev->freeze_state) {
+	case FRZ_MELTED:
+		iocore_freeze(wdev);
+		wdev->freeze_state = FRZ_FREEZED_DEEP;
+		break;
+	case FRZ_FREEZED:
+	case FRZ_FREEZED_WITH_TIMEOUT:
+	case FRZ_FREEZED_DEEP:
+		WLOGw(wdev, "Bad state for reset-wal.\n");
+		mutex_unlock(&wdev->freeze_lock);
+		return false;
+	default:
+		BUG();
+	}
+	mutex_unlock(&wdev->freeze_lock);
+
+	return true;
+}
+
+static void melt_for_reset_wal(struct walb_dev *wdev)
+{
+	mutex_lock(&wdev->freeze_lock);
+	ASSERT(wdev->freeze_state == FRZ_FREEZED_DEEP);
+	iocore_melt(wdev);
+	wdev->freeze_state = FRZ_MELTED;
+	mutex_unlock(&wdev->freeze_lock);
+}
 
 /**
  * Get oldest_lsid.
@@ -374,8 +409,9 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	LOG_("WALB_IOCTL_CLEAR_LOG.\n");
 	ASSERT(ctl->command == WALB_IOCTL_CLEAR_LOG);
 
-	/* Freeze iocore and checkpointing.  */
-	iocore_freeze(wdev);
+	/* Freeze iocore and stop checkpointing.  */
+	if (!freeze_for_reset_wal(wdev))
+		return -EFAULT;
 	stop_checkpointing(&wdev->cpd);
 
 	/* Get old/new log device size. */
@@ -454,9 +490,9 @@ static int ioctl_wdev_clear_log(struct walb_dev *wdev, struct walb_ctl *ctl)
 	/* Clear log overflow. */
 	clear_bit(WALB_STATE_OVERFLOW, &wdev->flags);
 
-	/* Melt iocore and checkpointing. */
+	/* Melt iocore and start checkpointing. */
 	start_checkpointing(&wdev->cpd);
-	iocore_melt(wdev);
+	melt_for_reset_wal(wdev);
 
 	return 0;
 
@@ -471,7 +507,7 @@ error2:
 #endif
 error1:
 	start_checkpointing(&wdev->cpd);
-	iocore_melt(wdev);
+	melt_for_reset_wal(wdev);
 error0:
 	return -EFAULT;
 }
