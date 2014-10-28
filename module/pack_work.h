@@ -25,12 +25,12 @@ struct pack_work* create_pack_work(void *data, gfp_t gfp_mask);
 void destroy_pack_work(struct pack_work *work);
 
 /* Helper function for an original queuing feature. */
-struct pack_work* enqueue_task_if_necessary(
+struct pack_work* dispatch_task_if_necessary(
 	void *data, int nr, unsigned long *flags,
 	struct workqueue_struct *wq,
 	void (*task)(struct work_struct *));
 #if 0
-struct pack_work* enqueue_delayed_task_if_necessary(
+struct pack_work* dispatch_delayed_task_if_necessary(
 	void *data, int nr, unsigned long *flags,
 	struct workqueue_struct *wq, void (*task)(struct work_struct *),
 	unsigned int delay);
