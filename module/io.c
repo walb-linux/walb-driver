@@ -152,6 +152,7 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask);
 static void destroy_iocore_data(struct iocore_data *iocored);
 
 /* Other helper functions. */
+static bool push_into_lpack_submit_queue(struct bio_wrapper *biow);
 static bool writepack_add_bio_wrapper(
 	struct list_head *wpack_list, struct pack **wpackp,
 	struct bio_wrapper *biow,
@@ -179,6 +180,7 @@ static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev);
 static void enqueue_wait_data_task_if_necessary(struct walb_dev *wdev);
 static void start_write_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
+static void wait_for_logpack_submit_queue_empty(struct walb_dev *wdev);
 static void wait_for_all_started_write_io_done(struct walb_dev *wdev);
 static void wait_for_all_pending_gc_done(struct walb_dev *wdev);
 static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid);
@@ -439,6 +441,7 @@ static void get_wdev_and_iocored_from_work(
 	*piocored = get_iocored_from_wdev(*pwdev);
 	destroy_pack_work(pwork);
 }
+
 /**
  * Submit all logpacks generated from bio_wrapper list.
  *
@@ -1508,6 +1511,7 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	atomic_set(&iocored->n_stoppers, 0);
 
 	/* Queues and their locks. */
+	INIT_LIST_HEAD(&iocored->frozen_queue);
 	INIT_LIST_HEAD(&iocored->logpack_submit_queue);
 	INIT_LIST_HEAD(&iocored->logpack_wait_queue);
 	INIT_LIST_HEAD(&iocored->datapack_submit_queue);
@@ -1583,6 +1587,52 @@ static void destroy_iocore_data(struct iocore_data *iocored)
 	multimap_destroy(iocored->overlapped_data);
 #endif
 	kfree(iocored);
+}
+
+/**
+ * The lock iocored->logpack_submit_queue_lock must be held.
+ */
+static void make_frozen_queue_empty(struct iocore_data *iocored)
+{
+       struct list_head *fq = &iocored->frozen_queue;
+       struct list_head *sq = &iocored->logpack_submit_queue;
+       struct bio_wrapper *biow, *next;
+
+       if (list_empty(fq))
+               return;
+
+       list_for_each_entry_safe(biow, next, fq, list) {
+               list_move_tail(&biow->list, sq);
+       }
+       ASSERT(list_empty(fq));
+}
+
+/**
+ * Push a bio wrapper into the logpack submit queue if not stopped,
+ * else use frozen queue.
+ *
+ * RETURN:
+ *   true if the logpack submit queue is not empty.
+ */
+static bool push_into_lpack_submit_queue(struct bio_wrapper *biow)
+{
+       struct walb_dev *wdev = biow->private_data;
+       struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+       const bool frozen = atomic_read(&iocored->n_stoppers) > 0;
+       bool ret;
+
+       spin_lock(&iocored->logpack_submit_queue_lock);
+       if (frozen) {
+               list_add_tail(&biow->list, &iocored->frozen_queue);
+               ret = !list_empty(&iocored->logpack_submit_queue);
+       } else {
+               make_frozen_queue_empty(iocored);
+               list_add_tail(&biow->list, &iocored->logpack_submit_queue);
+               ret = true;
+       }
+       spin_unlock(&iocored->logpack_submit_queue_lock);
+
+       return ret;
 }
 
 /**
@@ -2327,6 +2377,23 @@ static void wait_for_all_started_write_io_done(struct walb_dev *wdev)
 	WLOGi(wdev, "n_started_write_bio %d\n", nr);
 }
 
+static void wait_for_logpack_submit_queue_empty(struct walb_dev *wdev)
+{
+       struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+
+       for (;;) {
+               bool is_empty;
+               spin_lock(&iocored->logpack_submit_queue_lock);
+               is_empty = list_empty(&iocored->logpack_submit_queue);
+               spin_unlock(&iocored->logpack_submit_queue_lock);
+
+               if (is_empty)
+                       return;
+               WLOGi(wdev, "wait_for_logpack_submit_queue_empty\n");
+               msleep(100);
+       }
+}
+
 /**
  * Wait for all gc task done.
  */
@@ -2775,10 +2842,10 @@ void iocore_finalize(struct walb_dev *wdev)
 /**
  * Stop (write) IO processing.
  *
- * After stopped, there is no IO pending underlying
+ * After freezed, there is no IO pending underlying
  * data/log devices.
  * Upper layer can submit IOs but the walb driver
- * just queues them and does not start processing during stopped.
+ * just queues them and does not start processing during frozen.
  */
 void iocore_freeze(struct walb_dev *wdev)
 {
@@ -2787,14 +2854,20 @@ void iocore_freeze(struct walb_dev *wdev)
 	might_sleep();
 
 	if (atomic_inc_return(&iocored->n_stoppers) == 1)
-		WLOGi(wdev, "iocore frozen.\n");
+		WLOGi(wdev, "try to freeze iocore.\n");
 
-	/* Wait for all started write io done. */
+	/* We must wait for this at first. */
+	wait_for_logpack_submit_queue_empty(wdev);
+
+	/* After logpack_submit_queue became empty,
+	   the number of started write IOs will monotonically decrease. */
 	wait_for_all_started_write_io_done(wdev);
 
 	/* Wait for all pending gc task done
 	   which update wdev->written_lsid. */
 	wait_for_all_pending_gc_done(wdev);
+
+	WLOGi(wdev, "iocore frozen.\n");
 }
 
 /**
@@ -2803,13 +2876,20 @@ void iocore_freeze(struct walb_dev *wdev)
 void iocore_melt(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored;
+	int n;
 
 	might_sleep();
 	iocored = get_iocored_from_wdev(wdev);
 
-	if (atomic_dec_return(&iocored->n_stoppers) == 0) {
+	n = atomic_dec_return(&iocored->n_stoppers);
+	if (n == 0) {
+		spin_lock(&iocored->logpack_submit_queue_lock);
+		make_frozen_queue_empty(iocored);
+		spin_unlock(&iocored->logpack_submit_queue_lock);
 		WLOGi(wdev, "iocore melted.\n");
-		enqueue_submit_task_if_necessary(wdev);
+	} else if (n < 0) {
+		atomic_inc_return(&iocored->n_stoppers);
+		WLOGw(wdev, "iocore already melted\n");
 	}
 }
 
@@ -2858,15 +2938,9 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 		if (!biow->copied_bio)
 			goto error0;
 
-		/* Push into queue. */
-		spin_lock(&iocored->logpack_submit_queue_lock);
-		list_add_tail(&biow->list, &iocored->logpack_submit_queue);
-		spin_unlock(&iocored->logpack_submit_queue_lock);
-
-		/* Enqueue logpack-submit task. */
-		if (atomic_read(&iocored->n_stoppers) == 0) {
+		/* Push into queue and invoke submit task. */
+		if (push_into_lpack_submit_queue(biow))
 			enqueue_submit_task_if_necessary(wdev);
-		}
 	} else {
 		submit_read_bio_wrapper(wdev, biow);
 

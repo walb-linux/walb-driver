@@ -42,8 +42,11 @@ struct iocore_data
 	 * There are four queues.
 	 * Each queue must be accessed with its own lock held.
 	 *
+	 * frozen_queue:
+	 *   bio_wrapper list.
+	 *   This will use logpack_submit_queue_lock also.
 	 * logpack_submit_queue:
-	 *   writepack list.
+	 *   bio_wrapper list.
 	 * logpack_wait_queue:
 	 *   writepack list.
 	 * datapack_submit_queue:
@@ -54,6 +57,7 @@ struct iocore_data
 	 *   writepack list.
 	 */
 	spinlock_t logpack_submit_queue_lock;
+	struct list_head frozen_queue;
 	struct list_head logpack_submit_queue;
 	spinlock_t logpack_wait_queue_lock;
 	struct list_head logpack_wait_queue;
