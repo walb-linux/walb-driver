@@ -35,9 +35,6 @@ struct iocore_data
 	/* See IOCORE_STATE_XXXXX */
 	unsigned long flags;
 
-	/* IO core can process IOs during only stopper is 0. */
-	atomic_t n_stoppers;
-
 	/*
 	 * There are four queues.
 	 * Each queue must be accessed with its own lock held.
@@ -57,6 +54,8 @@ struct iocore_data
 	 *   writepack list.
 	 */
 	spinlock_t logpack_submit_queue_lock;
+	bool is_frozen_sys;
+	bool is_frozen_usr;
 	struct list_head frozen_queue;
 	struct list_head logpack_submit_queue;
 	spinlock_t logpack_wait_queue_lock;

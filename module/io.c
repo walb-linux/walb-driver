@@ -209,6 +209,12 @@ static void pack_cache_put(void);
 static void io_acct_start(struct bio_wrapper *biow);
 static void io_acct_end(struct bio_wrapper *biow);
 
+/* For freeze/melt. */
+static bool is_frozen(struct iocore_data *iocored);
+static void set_frozen(struct iocore_data *iocored, bool is_usr, bool value);
+static void freeze_detail(struct iocore_data *iocored, bool is_usr);
+static bool melt_detail(struct iocore_data *iocored, bool is_usr);
+
 /*******************************************************************************
  * Static functions implementation.
  *******************************************************************************/
@@ -1803,21 +1809,20 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	/* Flags. */
 	iocored->flags = 0;
 
-	/* Stoppers */
-	atomic_set(&iocored->n_stoppers, 0);
-
 	/* Queues and their locks. */
+	spin_lock_init(&iocored->logpack_submit_queue_lock);
+	iocored->is_frozen_sys = false;
+	iocored->is_frozen_usr = false;
 	INIT_LIST_HEAD(&iocored->frozen_queue);
 	INIT_LIST_HEAD(&iocored->logpack_submit_queue);
-	INIT_LIST_HEAD(&iocored->logpack_wait_queue);
-	INIT_LIST_HEAD(&iocored->datapack_submit_queue);
-	INIT_LIST_HEAD(&iocored->datapack_wait_queue);
-	INIT_LIST_HEAD(&iocored->logpack_gc_queue);
-	spin_lock_init(&iocored->logpack_submit_queue_lock);
 	spin_lock_init(&iocored->logpack_wait_queue_lock);
+	INIT_LIST_HEAD(&iocored->logpack_wait_queue);
 	spin_lock_init(&iocored->datapack_submit_queue_lock);
+	INIT_LIST_HEAD(&iocored->datapack_submit_queue);
 	spin_lock_init(&iocored->datapack_wait_queue_lock);
+	INIT_LIST_HEAD(&iocored->datapack_wait_queue);
 	spin_lock_init(&iocored->logpack_gc_queue_lock);
+	INIT_LIST_HEAD(&iocored->logpack_gc_queue);
 
 	/* To wait all IO for underlying devices done. */
 	atomic_set(&iocored->n_started_write_bio, 0);
@@ -1914,11 +1919,10 @@ static bool push_into_lpack_submit_queue(struct bio_wrapper *biow)
 {
 	struct walb_dev *wdev = biow->private_data;
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
-	const bool frozen = atomic_read(&iocored->n_stoppers) > 0;
 	bool ret;
 
 	spin_lock(&iocored->logpack_submit_queue_lock);
-	if (frozen) {
+	if (is_frozen(iocored)) {
 		list_add_tail(&biow->list, &iocored->frozen_queue);
 		ret = !list_empty(&iocored->logpack_submit_queue);
 	} else {
@@ -2256,11 +2260,8 @@ static void wait_for_logpack_and_submit_datapack(
 			}
 
 			/* Check pending data size and stop the queue if needed. */
-			if (is_stop_queue) {
-				if (atomic_inc_return(&iocored->n_stoppers) == 1) {
-					LOG_("iocore frozen.\n");
-				}
-			}
+			if (is_stop_queue)
+				freeze_detail(iocored, false);
 
 			/* call endio here in fast algorithm,
 			   while easy algorithm call it after data device IO. */
@@ -2394,9 +2395,8 @@ static void wait_for_write_bio_wrapper(
 		}
 	}
 	spin_unlock(&iocored->pending_data_lock);
-	if (is_start_queue) {
-		iocore_melt(wdev);
-	}
+	if (is_start_queue && melt_detail(iocored, false))
+		enqueue_submit_task_if_necessary(wdev);
 
 	/* Put related bio(s). */
 	put_bio_entry_list(&biow->bioe_list);
@@ -3068,6 +3068,52 @@ static void io_acct_end(struct bio_wrapper *biow)
 	part_stat_unlock();
 }
 
+/**
+ * iocored->logpack_submit_queue_lock must be held.
+ */
+static bool is_frozen(struct iocore_data *iocored)
+{
+	return iocored->is_frozen_sys || iocored->is_frozen_usr;
+}
+
+/**
+ * iocored->logpack_submit_queue_lock must be held.
+ */
+static void set_frozen(struct iocore_data *iocored, bool is_usr, bool value)
+{
+	bool *p;
+
+	if (is_usr)
+		p = &iocored->is_frozen_usr;
+	else
+		p = &iocored->is_frozen_sys;
+
+	if (*p != value)
+		*p = value;
+}
+
+static void freeze_detail(struct iocore_data *iocored, bool is_usr)
+{
+	spin_lock(&iocored->logpack_submit_queue_lock);
+	set_frozen(iocored, is_usr, true);
+	spin_unlock(&iocored->logpack_submit_queue_lock);
+}
+
+static bool melt_detail(struct iocore_data *iocored, bool is_usr)
+{
+	bool melted;
+
+	spin_lock(&iocored->logpack_submit_queue_lock);
+	set_frozen(iocored, is_usr, false);
+	melted = !is_frozen(iocored);
+	if (melted)
+		make_frozen_queue_empty(iocored);
+
+	spin_unlock(&iocored->logpack_submit_queue_lock);
+
+	return melted;
+}
+
 /*******************************************************************************
  * Global functions implementation.
  *******************************************************************************/
@@ -3190,11 +3236,11 @@ void iocore_finalize(struct walb_dev *wdev)
 void iocore_freeze(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	struct lsid_set lsids;
 
 	might_sleep();
 
-	if (atomic_inc_return(&iocored->n_stoppers) == 1)
-		WLOGi(wdev, "try to freeze iocore.\n");
+	freeze_detail(iocored, true);
 
 	/* We must wait for this at first. */
 	wait_for_logpack_submit_queue_empty(wdev);
@@ -3207,7 +3253,14 @@ void iocore_freeze(struct walb_dev *wdev)
 	   which update wdev->written_lsid. */
 	wait_for_all_pending_gc_done(wdev);
 
-	WLOGi(wdev, "iocore frozen.\n");
+	spin_lock(&wdev->lsid_lock);
+	lsids = wdev->lsids;
+	spin_unlock(&wdev->lsid_lock);
+	WLOGi(wdev, "iocore frozen."
+		" latest %" PRIu64 ""
+		" written %" PRIu64 "\n"
+		, lsids.latest, lsids.written);
+	ASSERT(lsids.latest == lsids.written);
 }
 
 /**
@@ -3215,21 +3268,13 @@ void iocore_freeze(struct walb_dev *wdev)
  */
 void iocore_melt(struct walb_dev *wdev)
 {
-	struct iocore_data *iocored;
-	int n;
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 
 	might_sleep();
-	iocored = get_iocored_from_wdev(wdev);
 
-	n = atomic_dec_return(&iocored->n_stoppers);
-	if (n == 0) {
-		spin_lock(&iocored->logpack_submit_queue_lock);
-		make_frozen_queue_empty(iocored);
-		spin_unlock(&iocored->logpack_submit_queue_lock);
+	if (melt_detail(iocored, true)) {
+		enqueue_submit_task_if_necessary(wdev);
 		WLOGi(wdev, "iocore melted.\n");
-	} else if (n < 0) {
-		atomic_inc_return(&iocored->n_stoppers);
-		WLOGw(wdev, "iocore already melted\n");
 	}
 }
 
