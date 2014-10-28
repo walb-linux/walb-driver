@@ -64,9 +64,9 @@ void destroy_pack_work(struct pack_work *work)
  * @task task.
  *
  * RETURN:
- *   pack_work if really enqueued, or NULL.
+ *   pack_work if really dispatched, or NULL.
  */
-struct pack_work* enqueue_task_if_necessary(
+struct pack_work* dispatch_task_if_necessary(
 	void *data, int nr, unsigned long *flags_p,
 	struct workqueue_struct *wq, void (*task)(struct work_struct *))
 {
@@ -85,7 +85,7 @@ retry:
 			schedule();
 			goto retry;
 		}
-		LOG_("enqueue task for %d\n", nr);
+		LOG_("dispatch task for %d\n", nr);
 		INIT_WORK(&pwork->work, task);
 		ret = queue_work(wq, &pwork->work);
 		if (!ret) {
@@ -106,10 +106,10 @@ retry:
  * @delay delay [jiffies].
  *
  * RETURN:
- *   pack_work if really enqueued, or NULL.
+ *   pack_work if really dispatched, or NULL.
  */
 #if 0
-struct pack_work* enqueue_delayed_task_if_necessary(
+struct pack_work* dispatch_delayed_task_if_necessary(
 	void *data, int nr, unsigned long *flags_p,
 	struct workqueue_struct *wq, void (*task)(struct work_struct *),
 	unsigned int delay)
@@ -129,7 +129,7 @@ retry:
 			schedule();
 			goto retry;
 		}
-		LOG_("enqueue delayed task for %d\n", nr);
+		LOG_("dispatch delayed task for %d\n", nr);
 		INIT_DELAYED_WORK(&pwork->dwork, task);
 		ret = queue_delayed_work(wq, &pwork->dwork, delay);
 		if (!ret) {

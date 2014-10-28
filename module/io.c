@@ -174,10 +174,10 @@ static void submit_write_bio_wrapper(
 static void submit_read_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 static bool submit_flush(struct bio_entry *bioe, struct block_device *bdev);
-static void enqueue_submit_task_if_necessary(struct walb_dev *wdev);
-static void enqueue_wait_task_if_necessary(struct walb_dev *wdev);
-static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev);
-static void enqueue_wait_data_task_if_necessary(struct walb_dev *wdev);
+static void dispatch_submit_log_task(struct walb_dev *wdev);
+static void dispatch_wait_log_task(struct walb_dev *wdev);
+static void dispatch_submit_data_task(struct walb_dev *wdev);
+static void dispatch_wait_data_task(struct walb_dev *wdev);
 static void start_write_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 static void wait_for_logpack_submit_queue_empty(struct walb_dev *wdev);
@@ -523,7 +523,7 @@ static void task_submit_logpack_list(struct work_struct *work)
 		spin_unlock(&iocored->logpack_wait_queue_lock);
 
 		/* Enqueue wait task. */
-		enqueue_wait_task_if_necessary(wdev);
+		dispatch_wait_log_task(wdev);
 	}
 
 	LOG_("end\n");
@@ -580,7 +580,7 @@ static void task_wait_for_logpack_list(struct work_struct *work)
 		list_for_each_entry_safe(wpack, wpack_next, &wpack_list, list) {
 			wait_for_logpack_and_submit_datapack(wdev, wpack);
 		}
-		enqueue_submit_data_task_if_necessary(wdev);
+		dispatch_submit_data_task(wdev);
 
 		/* Put packs into the gc queue. */
 		atomic_add(n_pack, &iocored->n_pending_gc);
@@ -727,7 +727,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			list_move_tail(&biow->list2, &iocored->datapack_wait_queue);
 		}
 		spin_unlock(&iocored->datapack_wait_queue_lock);
-		enqueue_wait_data_task_if_necessary(wdev);
+		dispatch_wait_data_task(wdev);
 	}
 
 	LOG_("end.\n");
@@ -2105,7 +2105,7 @@ static void wait_for_write_bio_wrapper(
 	}
 	spin_unlock(&iocored->pending_data_lock);
 	if (is_start_queue && melt_detail(iocored, false))
-		enqueue_submit_task_if_necessary(wdev);
+		dispatch_submit_log_task(wdev);
 
 	/* Put related bio(s) and free resources. */
 	if (bio_entry_exists(&biow->cloned_bioe)) {
@@ -2296,11 +2296,11 @@ error0:
 }
 
 /**
- * Enqueue logpack submit task if necessary.
+ * Dispatch logpack submit task if necessary.
  */
-static void enqueue_submit_task_if_necessary(struct walb_dev *wdev)
+static void dispatch_submit_log_task(struct walb_dev *wdev)
 {
-	enqueue_task_if_necessary(
+	dispatch_task_if_necessary(
 		wdev,
 		IOCORE_STATE_SUBMIT_LOG_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
@@ -2309,11 +2309,11 @@ static void enqueue_submit_task_if_necessary(struct walb_dev *wdev)
 }
 
 /**
- * Enqueue wait task if necessary.
+ * Dispatch logpack wait task if necessary.
  */
-static void enqueue_wait_task_if_necessary(struct walb_dev *wdev)
+static void dispatch_wait_log_task(struct walb_dev *wdev)
 {
-	enqueue_task_if_necessary(
+	dispatch_task_if_necessary(
 		wdev,
 		IOCORE_STATE_WAIT_LOG_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
@@ -2322,11 +2322,11 @@ static void enqueue_wait_task_if_necessary(struct walb_dev *wdev)
 }
 
 /**
- * Enqueue datapack submit task if necessary.
+ * Dispatch datapack submit task if necessary.
  */
-static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
+static void dispatch_submit_data_task(struct walb_dev *wdev)
 {
-	enqueue_task_if_necessary(
+	dispatch_task_if_necessary(
 		wdev,
 		IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
@@ -2335,11 +2335,11 @@ static void enqueue_submit_data_task_if_necessary(struct walb_dev *wdev)
 }
 
 /**
- * Enqueue datapack wait task if necessary.
+ * Dispatch datapack wait task if necessary.
  */
-static void enqueue_wait_data_task_if_necessary(struct walb_dev *wdev)
+static void dispatch_wait_data_task(struct walb_dev *wdev)
 {
-	enqueue_task_if_necessary(
+	dispatch_task_if_necessary(
 		wdev,
 		IOCORE_STATE_WAIT_DATA_TASK_WORKING,
 		&get_iocored_from_wdev(wdev)->flags,
@@ -2934,7 +2934,7 @@ void iocore_melt(struct walb_dev *wdev)
 	might_sleep();
 
 	if (melt_detail(iocored, true)) {
-		enqueue_submit_task_if_necessary(wdev);
+		dispatch_submit_log_task(wdev);
 		WLOGi(wdev, "iocore melted.\n");
 	}
 }
@@ -2986,7 +2986,7 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 
 		/* Push into queue and invoke submit task. */
 		if (push_into_lpack_submit_queue(biow))
-			enqueue_submit_task_if_necessary(wdev);
+			dispatch_submit_log_task(wdev);
 	} else {
 		submit_read_bio_wrapper(wdev, biow);
 
