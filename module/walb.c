@@ -59,16 +59,16 @@ module_param_named(walb_major, walb_major_, int, S_IRUGO);
  * Set 1 if you want to sync down superblock in disassemble device.
  * Set 0 if not.
  */
-static int is_sync_superblock_ = 1;
-module_param_named(is_sync_superblock, is_sync_superblock_, int, S_IRUGO|S_IWUSR);
+static int sync_superblock_ = 1;
+module_param_named(sync_superblock, sync_superblock_, int, S_IRUGO|S_IWUSR);
 
 /**
  * Set Non-zero if you want to sort data IOs
  * before submitting to the data device.
  * The parameter n_io_bulk will work as sort buffer size.
  */
-unsigned int is_sort_data_io_ = 1;
-module_param_named(is_sort_data_io, is_sort_data_io_, uint, S_IRUGO|S_IWUSR);
+unsigned int sort_data_io_ = 1;
+module_param_named(sort_data_io, sort_data_io_, uint, S_IRUGO|S_IWUSR);
 
 /**
  * An executable binary for error notification.
@@ -77,20 +77,21 @@ module_param_named(is_sort_data_io, is_sort_data_io_, uint, S_IRUGO|S_IWUSR);
  * argv[2] is event name.
  */
 char exec_path_on_error_[EXEC_PATH_ON_ERROR_LEN] = "";
-module_param_string(exec_path_on_error, exec_path_on_error_, sizeof(exec_path_on_error_), S_IRUGO|S_IWUSR);
+module_param_string(exec_path_on_error, exec_path_on_error_,
+		sizeof(exec_path_on_error_), S_IRUGO|S_IWUSR);
 
 /**
  * Set non-zero if you want walb devices to transit the read-only state
  * where write IO will fail not to overflow ring buffer.
  */
-unsigned int is_error_before_overflow_ = 0;
-module_param_named(is_error_before_overflow, is_error_before_overflow_, uint, S_IRUGO);
+unsigned int error_before_overflow_ = 0;
+module_param_named(error_before_overflow, error_before_overflow_, uint, S_IRUGO);
 
 /**
  * Discard support.
  */
-unsigned int do_support_discard_ = 1;
-module_param_named(do_support_discard, do_support_discard_, uint, S_IRUGO|S_IWUSR);
+unsigned int support_discard_ = 1;
+module_param_named(discard, support_discard_, uint, S_IRUGO|S_IWUSR);
 
 /*******************************************************************************
  * Shared data definition.
@@ -438,7 +439,7 @@ static int walb_prepare_device(
 	walb_decide_flush_support(wdev);
 
 	/* Discard support. */
-	walb_discard_support(wdev, do_support_discard_);
+	walb_discard_support(wdev, support_discard_);
 
 	/* Write same support. */
 	walb_write_same_support(wdev);
@@ -613,7 +614,7 @@ static void walb_ldev_finalize(struct walb_dev *wdev, bool is_sync)
 	ASSERT(wdev);
 	ASSERT(wdev->lsuper0);
 
-	if (!walb_finalize_super_block(wdev, is_sync_superblock_ && is_sync))
+	if (!walb_finalize_super_block(wdev, sync_superblock_ && is_sync))
 		WLOGe(wdev, "finalize super block failed.\n");
 
 	sector_free(wdev->lsuper0);

@@ -687,7 +687,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 #ifdef WALB_OVERLAPPED_SERIALIZE
 			if (!bio_wrapper_state_is_delayed(biow)) {
 				ASSERT(biow->n_overlapped == 0);
-				if (is_sort_data_io_) {
+				if (sort_data_io_) {
 					/* Sort. */
 					insert_to_sorted_bio_wrapper_list_by_pos(
 						biow, &biow_list_sorted);
@@ -698,7 +698,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 				/* Delayed. */
 			}
 #else /* WALB_OVERLAPPED_SERIALIZE */
-			if (is_sort_data_io_) {
+			if (sort_data_io_) {
 				/* Sort. */
 				insert_to_sorted_bio_wrapper_list_by_pos(
 					biow, &biow_list_sorted);
@@ -886,7 +886,7 @@ static bool create_logpack_list(
 	ASSERT(list_empty(biow_list));
 
 	/* Check whether we must avoid ring buffer overflow. */
-	if (is_error_before_overflow_ && wdev->ring_buffer_size < latest_lsid - oldest_lsid)
+	if (error_before_overflow_ && wdev->ring_buffer_size < latest_lsid - oldest_lsid)
 		goto error;
 
 	/* Store lsids. */
