@@ -1133,7 +1133,7 @@ bool execute_redo(struct walb_dev *wdev)
 	gc_rd = create_redo_data(wdev, written_lsid);
 	if (!gc_rd) { goto error3; }
 
-	WLOGn(wdev, "Redo will start from lsid %"PRIu64".\n", written_lsid);
+	WLOGi(wdev, "Redo will start from lsid %"PRIu64".\n", written_lsid);
 
 	/* Run workers. */
 	initialize_worker(read_wd,
@@ -1216,9 +1216,9 @@ bool execute_redo(struct walb_dev *wdev)
 	/* Get end time. */
 	getnstimeofday(&ts[1]);
 	ts[0] = timespec_sub(ts[1], ts[0]);
-	WLOGn(wdev, "Redo period: %ld.%09ld second\n"
+	WLOGi(wdev, "Redo period: %ld.%09ld second\n"
 		, ts[0].tv_sec, ts[0].tv_nsec);
-	WLOGn(wdev, "Redo %" PRIu64 " logpack of totally "
+	WLOGi(wdev, "Redo %" PRIu64 " logpack of totally "
 		"%" PRIu64 " physical blocks.\n"
 		, n_logpack, written_lsid - start_lsid);
 

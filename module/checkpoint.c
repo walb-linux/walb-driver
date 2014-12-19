@@ -148,7 +148,7 @@ void start_checkpointing(struct checkpoint_data *cpd)
 
 	interval = cpd->interval;
 	if (interval == 0) { /* This is not error. */
-		WLOGn(wdev, "checkpoint_interval is 0.\n");
+		WLOGi(wdev, "checkpoint_interval is 0.\n");
 		up_write(&cpd->lock);
 		return;
 	}
