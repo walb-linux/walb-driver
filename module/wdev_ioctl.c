@@ -137,7 +137,7 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 	if (!walb_sync_super_block(wdev))
 		return -EFAULT;
 
-	WLOGi(wdev, "oldest_lsid was set to %" PRIu64 "\n", lsid);
+	WLOGd(wdev, "oldest_lsid was set to %" PRIu64 "\n", lsid);
 	return 0;
 }
 
@@ -179,7 +179,7 @@ static int ioctl_wdev_take_checkpoint(struct walb_dev *wdev, struct walb_ctl *ct
 
 	start_checkpointing(&wdev->cpd);
 
-	WLOGi(wdev, "taken checkpoint.\n");
+	WLOGd(wdev, "taken checkpoint.\n");
 	return 0;
 }
 
@@ -550,7 +550,7 @@ static int ioctl_wdev_freeze(struct walb_dev *wdev, struct walb_ctl *ctl)
 	timeout_sec = ctl->val_u32;
 	if (timeout_sec > 86400) {
 		timeout_sec = 86400;
-		WLOGn(wdev, "Freeze timeout has been cut to %u seconds.\n"
+		WLOGi(wdev, "Freeze timeout has been cut to %u seconds.\n"
 			, timeout_sec);
 	}
 
