@@ -154,9 +154,17 @@ static inline int snprint_bio_flags(
 		{REQ_MIXED_MERGE, "REQ_MIXED_MERGE"},
 		{REQ_SECURE, "REQ_SECURE"},
 		{REQ_PM, "REQ_PM"},
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0)
 		{REQ_END, "REQ_END"},
+#endif
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0)
 		{REQ_HASHED, "REQ_HASHED"},
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
+		{REQ_MQ_INFLIGHT, "REQ_MQ_INFLIGHT"},
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0)
+		{REQ_INTEGRITY, "REQ_INTEGRITY"},
 #endif
 	};
 	s = snprintf(buf, size, "REQ_FLAGS:");
