@@ -22,5 +22,5 @@ Use an appropriate branch or a tag for your using kernel as follows:
 |------------|----------|----------------|
 | `master`   | `v1.2.x` | 3.14-          |
 | `for-3.13` | `v1.1.x` | 3.10-3.13      |
-| `for-3.2`  | `v1.0.x` | 3.2-3.8        |
+| `for-3.2`  | `v1.0.x` | 3.2-3.8 (EOL)  |
 
