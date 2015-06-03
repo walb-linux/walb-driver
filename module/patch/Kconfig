@@ -1,0 +1,60 @@
+#
+# WalB device driver configuration
+#
+
+config BLK_DEV_WALB
+	tristate "WalB (Write-ahead-logging for block device) support"
+	depends on SYSFS && 64BIT
+	default m
+	help
+	  WalB is wrapper devices that stores wlogs as write IOs' metadata
+	  and contents using write-ahead-logging (WAL). Wlogs will be used
+	  to contiguous backup and asynchronous replication of block devices.
+	  Each WalB device requirs two underlying block devices to store
+	  contents and wlogs. WalB provides WalB devices (wdev) and WalB
+	  log devices (wldev). WalB devices work as normal block devices.
+	  WalB log devices are used to extract wlogs, which are just thin
+	  wrappers of the underlying block devices for wlog store.
+
+config BLK_DEV_WALB_OVERLAP
+	bool "Avoid WalB concurrent submission of overlaped write IOs"
+	depends on BLK_DEV_WALB
+	default y
+	help
+	  Say Y to avoid concurrent submittion of write IOs having overlapped
+	  address area. This is strongly required. Say N for test only.
+
+config BLK_DEV_WALB_ASSERT
+	bool "Support WalB assertion check"
+	depends on BLK_DEV_WALB
+	default n
+	help
+	  Say Y if you want to use assertion with BUG_ON() code.
+
+config BLK_DEV_WALB_DEBUG
+	bool "Support WalB debugging"
+	depends on BLK_DEV_WALB
+	default n
+	help
+	  Say Y if you want to debug WalB driver.
+
+config BLK_DEV_WALB_DYNAMIC_DEBUG
+	bool "Support WalB dynamic debugging"
+	depends on BLK_DEV_WALB_DEBUG
+	default n
+	help
+	  Say Y if you want to debug WalB driver dynamic.
+
+config BLK_DEV_WALB_PERF
+	bool "Support WalB each write IO performance analysis"
+	depends on BLK_DEV_WALB
+	default n
+	help
+	  Say Y if you want to know performance of each write IO.
+
+config BLK_DEV_WALB_TRACK
+	bool "Support WalB each write IO tracking"
+	depends on BLK_DEV_WALB
+	default n
+	help
+	  Say Y if you want to track each write IO.
