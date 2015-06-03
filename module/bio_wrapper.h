@@ -13,7 +13,7 @@
 #include <linux/completion.h>
 #include <linux/time.h>
 
-#include "walb/common.h"
+#include "linux/walb/common.h"
 
 /**
  * Bio wrapper.

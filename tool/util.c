@@ -16,10 +16,10 @@
 #include <time.h>
 #include <errno.h>
 
-#include "walb/common.h"
-#include "walb/logger.h"
-#include "walb/block_size.h"
-#include "walb/util.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
+#include "linux/walb/block_size.h"
+#include "linux/walb/util.h"
 #include "random.h"
 #include "util.h"
 

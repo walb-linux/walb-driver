@@ -6,8 +6,8 @@
  */
 #include <linux/module.h>
 #include <linux/sched.h>
-#include "walb/common.h"
-#include "walb/logger.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
 #include "pack_work.h"
 
 /*******************************************************************************

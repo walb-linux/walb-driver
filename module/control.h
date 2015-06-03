@@ -8,7 +8,7 @@
 
 #include "check_kernel.h"
 
-#include "walb/ioctl.h"
+#include "linux/walb/ioctl.h"
 
 void* walb_alloc_and_copy_from_user(
 	void __user *userbuf,

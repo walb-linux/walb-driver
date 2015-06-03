@@ -11,8 +11,8 @@
 #include <linux/completion.h>
 #include <linux/delay.h>
 #include <linux/workqueue.h>
-#include "walb/common.h"
-#include "walb/logger.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
 #include "build_date.h"
 
 struct my_work

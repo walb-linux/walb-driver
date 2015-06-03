@@ -15,13 +15,13 @@
 #include <linux/blkdev.h>
 #include <linux/mutex.h>
 
-#include "walb/common.h"
-#include "walb/print.h"
-#include "walb/logger.h"
-#include "walb/check.h"
-#include "walb/log_device.h"
-#include "walb/sector.h"
-#include "walb/ioctl.h"
+#include "linux/walb/common.h"
+#include "linux/walb/print.h"
+#include "linux/walb/logger.h"
+#include "linux/walb/check.h"
+#include "linux/walb/log_device.h"
+#include "linux/walb/sector.h"
+#include "linux/walb/ioctl.h"
 #include "checkpoint.h"
 #include "util.h"
 

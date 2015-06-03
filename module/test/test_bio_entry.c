@@ -9,7 +9,7 @@
 #include <linux/init.h>
 #include <linux/delay.h>
 
-#include "walb/logger.h"
+#include "linux/walb/logger.h"
 #include "bio_entry.h"
 #include "bio_wrapper.h"
 

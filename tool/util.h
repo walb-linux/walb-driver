@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "walb/common.h"
+#include "linux/walb/common.h"
 
 #ifdef __cplusplus
 extern "C" {

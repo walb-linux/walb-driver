@@ -8,11 +8,11 @@
 #include <linux/module.h>
 #include <linux/list.h>
 #include "bio_entry.h"
-#include "walb/common.h"
-#include "walb/logger.h"
-#include "walb/check.h"
-#include "walb/util.h"
-#include "walb/block_size.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
+#include "linux/walb/check.h"
+#include "linux/walb/util.h"
+#include "linux/walb/block_size.h"
 
 /*******************************************************************************
  * Static data.

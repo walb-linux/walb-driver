@@ -7,8 +7,8 @@
 #include "check_kernel.h"
 
 #include <linux/scatterlist.h>
-#include "walb/common.h"
-#include "walb/logger.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
 #include "util.h"
 #include "sg_util.h"
 

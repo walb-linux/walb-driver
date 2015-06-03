@@ -10,8 +10,8 @@
 
 #include <linux/slab.h>
 
-#include "walb/common.h"
-#include "walb/util.h"
+#include "linux/walb/common.h"
+#include "linux/walb/util.h"
 
 struct kmem_cache *cache_;
 

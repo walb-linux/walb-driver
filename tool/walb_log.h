@@ -7,7 +7,7 @@
 #define WALBLOG_FORMAT_USER_H
 
 #include <stdio.h>
-#include "walb/walb.h"
+#include "linux/walb/walb.h"
 
 #ifdef __cplusplus
 extern "C" {

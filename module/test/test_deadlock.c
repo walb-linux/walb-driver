@@ -12,8 +12,8 @@
 #include <linux/kthread.h>
 #include <linux/wait.h>
 #include <linux/delay.h>
-#include "walb/util.h"
-#include "walb/logger.h"
+#include "linux/walb/util.h"
+#include "linux/walb/logger.h"
 #include "build_date.h"
 #include "util.h"
 

@@ -11,10 +11,10 @@
 #include <linux/list.h>
 #include <linux/hash.h>
 
-#include "walb/walb.h"
-#include "walb/logger.h"
-#include "walb/check.h"
-#include "walb/util.h"
+#include "linux/walb/walb.h"
+#include "linux/walb/logger.h"
+#include "linux/walb/check.h"
+#include "linux/walb/util.h"
 #include "hashtbl.h"
 #include "util.h" /* for debug */
 

@@ -12,7 +12,7 @@
 #include <linux/list.h>
 #include <linux/completion.h>
 
-#include "walb/common.h"
+#include "linux/walb/common.h"
 
 /********************************************************************************
  * Struct data.

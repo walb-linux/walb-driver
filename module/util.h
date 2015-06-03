@@ -8,7 +8,7 @@
 
 #include "check_kernel.h"
 #include <linux/random.h>
-#include "walb/common.h"
+#include "linux/walb/common.h"
 
 /**
  * Get random integer.

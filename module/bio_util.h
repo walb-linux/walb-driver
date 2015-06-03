@@ -10,7 +10,7 @@
 #include <linux/types.h>
 #include <linux/blkdev.h>
 
-#include "walb/common.h"
+#include "linux/walb/common.h"
 
 /**
  * Calculate checksum.

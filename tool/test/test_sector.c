@@ -8,11 +8,11 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include "walb/sector.h"
+#include "linux/walb/sector.h"
 #include "random.h"
 #include "util.h"
 #include "walb_util.h"
-#include "walb/print.h"
+#include "linux/walb/print.h"
 
 #define TEST_FILE "tmp/test_sector_data"
 

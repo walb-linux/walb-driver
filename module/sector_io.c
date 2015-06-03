@@ -9,7 +9,7 @@
 #include <linux/slab.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>
-#include "walb/logger.h"
+#include "linux/walb/logger.h"
 #include "sector_io.h"
 
 /**
