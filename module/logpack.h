@@ -11,8 +11,8 @@
 #include <linux/bio.h>
 #include <linux/workqueue.h>
 #include <linux/list.h>
-#include "walb/block_size.h"
-#include "walb/log_device.h"
+#include "linux/walb/block_size.h"
+#include "linux/walb/log_device.h"
 
 /*******************************************************************************
  * Data definitions.

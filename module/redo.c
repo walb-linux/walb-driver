@@ -6,7 +6,7 @@
  */
 #include <linux/module.h>
 #include <linux/delay.h>
-#include "walb/logger.h"
+#include "linux/walb/logger.h"
 #include "kern.h"
 #include "io.h"
 #include "bio_wrapper.h"

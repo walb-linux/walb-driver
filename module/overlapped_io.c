@@ -5,7 +5,7 @@
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #include <linux/module.h>
-#include "walb/logger.h"
+#include "linux/walb/logger.h"
 #include "overlapped_io.h"
 #include "treemap.h"
 #include "bio_wrapper.h"

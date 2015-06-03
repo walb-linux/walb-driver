@@ -5,10 +5,10 @@
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  * @license 3-clause BSD, GPL version 2 or later.
  */
-#include "walb/walb.h"
-#include "walb/block_size.h"
-#include "walb/util.h"
-#include "walb/logger.h"
+#include "linux/walb/walb.h"
+#include "linux/walb/block_size.h"
+#include "linux/walb/util.h"
+#include "linux/walb/logger.h"
 #include "util.h"
 #include "walb_util.h"
 #include "random.h"

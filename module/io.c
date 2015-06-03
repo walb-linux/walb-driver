@@ -10,7 +10,7 @@
 #include <linux/printk.h>
 #include <linux/time.h>
 #include <linux/kmod.h>
-#include "walb/logger.h"
+#include "linux/walb/logger.h"
 #include "kern.h"
 #include "io.h"
 #include "bio_wrapper.h"

@@ -40,10 +40,10 @@
 #include "wdev_util.h"
 #include "version.h"
 
-#include "walb/ioctl.h"
-#include "walb/log_device.h"
-#include "walb/sector.h"
-#include "walb/logger.h"
+#include "linux/walb/ioctl.h"
+#include "linux/walb/log_device.h"
+#include "linux/walb/sector.h"
+#include "linux/walb/logger.h"
 
 /*******************************************************************************
  * Module parameters definition.

@@ -11,8 +11,8 @@
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
 #include <linux/time.h>
-#include "walb/logger.h"
-#include "walb/util.h"
+#include "linux/walb/logger.h"
+#include "linux/walb/util.h"
 #include "build_date.h"
 
 static int __init test_init(void)

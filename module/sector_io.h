@@ -11,12 +11,12 @@
 #include <linux/completion.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>
-#include "walb/walb.h"
-#include "walb/sector.h"
-#include "walb/super.h"
-#include "walb/log_record.h"
-#include "walb/log_device.h"
-#include "walb/block_size.h"
+#include "linux/walb/walb.h"
+#include "linux/walb/sector.h"
+#include "linux/walb/super.h"
+#include "linux/walb/log_record.h"
+#include "linux/walb/log_device.h"
+#include "linux/walb/block_size.h"
 
 /*******************************************************************************
  * Function prototypes.

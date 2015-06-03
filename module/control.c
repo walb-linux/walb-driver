@@ -17,7 +17,7 @@
 #include "alldevs.h"
 #include "version.h"
 
-#include "walb/ioctl.h"
+#include "linux/walb/ioctl.h"
 
 /*******************************************************************************
  * Prototype of static functions.

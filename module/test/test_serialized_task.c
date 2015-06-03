@@ -19,9 +19,9 @@
 #include <linux/wait.h>
 #include <linux/mutex.h>
 
-#include "walb/common.h"
-#include "walb/logger.h"
-#include "walb/util.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
+#include "linux/walb/util.h"
 
 
 /**

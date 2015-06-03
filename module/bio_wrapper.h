@@ -14,7 +14,7 @@
 #include <linux/time.h>
 
 #include "bio_entry.h"
-#include "walb/common.h"
+#include "linux/walb/common.h"
 
 /**
  * Bio wrapper.

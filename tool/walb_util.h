@@ -8,8 +8,8 @@
 
 #include "check_userland.h"
 
-#include "walb/walb.h"
-#include "walb/log_device.h"
+#include "linux/walb/walb.h"
+#include "linux/walb/log_device.h"
 
 #ifdef __cplusplus
 extern "C" {

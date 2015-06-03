@@ -14,7 +14,7 @@
 #include <sys/time.h>
 #include <string.h>
 
-#include "walb/checksum.h"
+#include "linux/walb/checksum.h"
 #include "random.h"
 
 double time_double(struct timeval *tv)

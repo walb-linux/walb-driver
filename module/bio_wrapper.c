@@ -9,10 +9,10 @@
 #include <linux/list.h>
 #include <linux/time.h>
 #include "bio_entry.h"
-#include "walb/common.h"
-#include "walb/logger.h"
-#include "walb/util.h"
-#include "walb/block_size.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
+#include "linux/walb/util.h"
+#include "linux/walb/block_size.h"
 #include "bio_entry.h"
 #include "bio_wrapper.h"
 #include "bio_util.h"

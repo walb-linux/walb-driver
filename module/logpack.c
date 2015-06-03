@@ -9,7 +9,7 @@
 
 #include "check_kernel.h"
 #include "logpack.h"
-#include "walb/logger.h"
+#include "linux/walb/logger.h"
 
 /**
  * Debug print of logpack header.

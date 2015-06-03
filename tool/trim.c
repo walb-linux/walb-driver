@@ -11,8 +11,8 @@
 #include <linux/fs.h>
 #include <errno.h>
 
-#include "walb/common.h"
-#include "walb/logger.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
 #include "util.h"
 
 int main(int argc, char *argv[])

@@ -12,8 +12,8 @@
 #include <linux/time.h>
 #include <linux/list.h>
 
-#include "walb/common.h"
-#include "walb/logger.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
 #include "treemap.h"
 
 /* Module parameter. */

@@ -8,9 +8,9 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 
-#include "walb/walb.h"
-#include "walb/logger.h"
-#include "walb/check.h"
+#include "linux/walb/walb.h"
+#include "linux/walb/logger.h"
+#include "linux/walb/check.h"
 #include "treemap.h"
 #include "util.h"
 

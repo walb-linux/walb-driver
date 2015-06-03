@@ -12,9 +12,9 @@
 #include <linux/bio.h>
 #include <linux/version.h>
 
-#include "walb/common.h"
-#include "walb/logger.h"
-#include "walb/checksum.h"
+#include "linux/walb/common.h"
+#include "linux/walb/logger.h"
+#include "linux/walb/checksum.h"
 
 #define bio_begin_sector(bio) ((bio)->bi_iter.bi_sector)
 

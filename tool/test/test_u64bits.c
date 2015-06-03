@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <inttypes.h>
 
-#include "walb/u64bits.h"
+#include "linux/walb/u64bits.h"
 #include "random.h"
 
 
