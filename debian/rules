@@ -1,0 +1,28 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+VERSION=$(shell dpkg-parsechangelog |grep ^Version:|cut -d ' ' -f 2)
+
+%:
+	dh $@ --parallel --with=dkms
+
+source_target := usr/src/modules/walb
+source_debdir := $(CURDIR)/debian/walb-source/$(source_target)/debian
+
+override_dh_install:
+	# dkms
+	dh_install -pwalb-dkms VERSION make-ver.sh include/ module/ usr/src/walb-dkms-$(VERSION)/
+	
+	# module assistant
+	dh_install -pwalb-source VERSION make-ver.sh include/ module/ $(source_target)
+	install -D -m 0755 debian/rules.modules $(source_debdir)/rules
+	for file in changelog compat control control.modules.in copyright; do \
+	    install -m 644 debian/$$file $(source_debdir)/; \
+	done
+	cd $(CURDIR)/debian/walb-source/usr/src && tar cfj walb-source.tar.bz2 modules && rm -rf modules
+
+override_dh_dkms:
+	dh_dkms -pwalb-dkms -V $(VERSION)

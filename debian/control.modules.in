@@ -1,0 +1,17 @@
+Source: walb
+Section: kernel
+Priority: optional
+Maintainer: Takashi HOSHINO <starpos@gmail.com>
+Build-Depends: debhelper (>= 9)
+Build-Depends-Indep: dkms
+Standards-Version: 3.9.5
+Homepage: https://github.com/starpos/walb/
+#Vcs-Git: git://git.debian.org/collab-maint/walb.git
+#Vcs-Browser: http://git.debian.org/?p=collab-maint/walb.git;a=summary
+
+Package: walb-modules-_KVERS_
+Architecture: amd64
+Depends: linux-modules-_KVERS_ | linux-image-_KVERS_, ${misc:Depends}
+Conflicts: walb-dkms
+Description: WalB kernel driver binary (kernel _KVERS_).
+ This contains WalB kernel driver binary for _KVERS_.
