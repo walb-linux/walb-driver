@@ -1,0 +1,30 @@
+#!/usr/bin/make -f
+
+PACKAGE = walb-modules
+
+# module assistant
+MA_DIR ?= /usr/share/modass
+-include $(MA_DIR)/include/generic.make
+-include $(MA_DIR)/include/common-rules.make
+
+kdist_clean: prep-deb-files
+	dh_clean
+	$(MAKE) -C module clean
+
+kdist_config: prep-deb-files
+
+binary-modules: kdist_config
+	dh_testdir
+	dh_testroot
+	dh_prep
+	$(MAKE) -C module DEBUG=0 KERNELDIR=$(KSRC)
+	install -D -m 0644 module/walb-mod.ko debian/$(PACKAGE)-$(KVERS)/lib/modules/$(KVERS)/kernel/drivers/block/walb/walb-mod.ko
+	dh_installdocs
+	dh_installchangelogs
+	dh_installmodules
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_gencontrol -- -v$(VERSION)
+	dh_md5sums
+	dh_builddeb --destdir=$(DEB_DESTDIR)
