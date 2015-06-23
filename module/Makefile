@@ -73,9 +73,12 @@ test-sort-mod.o \
 test-bio-entry-mod.o \
 walb-mod.o \
 
+BASEDIR := /lib/modules/$(KERNELRELEASE)
 else
+BASEDIR := /lib/modules/$(shell uname -r)
+endif
 
-KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+KERNELDIR ?= $(BASEDIR)/build
 PWD       := $(shell pwd)
 
 default:
@@ -87,8 +90,11 @@ default:
 buildmodule: build_date_h version_h
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
-clean: clean_build_date clean_version
-	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions
+clean: clean_build_date clean_version clean_test
+	rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions modules.order Module.symvers
+
+clean_test:
+	cd test; rm -rf *.o *~ core .depend .*.cmd *.ko *.mod.c .tmp_versions
 
 depend .depend dep:
 	$(CC) $(CFLAGS) -M *.c > .depend
@@ -105,7 +111,6 @@ version_h:
 clean_version:
 	rm -f version.h
 
-endif
 
 ifeq (.depend,$(wildcard .depend))
 include .depend
