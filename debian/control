@@ -18,7 +18,7 @@ Description: WalB kernel driver source for dkms.
 
 Package: walb-source
 Architecture: all
-Depends: ${misc:Depends}, module-assistant, bzip2
+Depends: ${misc:Depends}, module-assistant, debhelper (>= 9), bzip2
 Description: WalB kernel driver source code for module assistant.
  This contains WalB kernel driver module source code for
  module assistant.
