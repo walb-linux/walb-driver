@@ -218,6 +218,9 @@ static void set_frozen(struct iocore_data *iocored, bool is_usr, bool value);
 static void freeze_detail(struct iocore_data *iocored, bool is_usr);
 static bool melt_detail(struct iocore_data *iocored, bool is_usr);
 
+/* For test. */
+static void logx_exec_bio(u8 *data, struct bio *bio);
+
 /*******************************************************************************
  * Static functions implementation.
  *******************************************************************************/
@@ -3179,6 +3182,31 @@ static bool melt_detail(struct iocore_data *iocored, bool is_usr)
 	return melted;
 }
 
+static void logx_exec_bio(u8 *data, struct bio *bio)
+{
+	const bool is_write = (bio->bi_rw & REQ_WRITE) != 0;
+	while (bio_sectors(bio) > 0) {
+		u64 blks = bio->bi_sector;
+		u32 page_off = do_div(blks, PAGE_SIZE >> 9) << 9;
+		u32 bio_off = bio_offset(bio);
+		u32 bytes = min(bio_iovec(bio)->bv_len, (u32)(PAGE_SIZE) - page_off);
+		u8 *bio_buf = bio_buf = kmap_atomic(bio_page(bio));
+
+#if 0
+		LOGi("logx IO write %d sector %" PRIu64 " bytes %" PRIu32 "\n"
+			, is_write, (u64)bio->bi_sector, bytes);
+#endif
+		if (is_write) {
+			memcpy(data + (bio->bi_sector << 9), bio_buf + bio_off, bytes);
+		} else
+			memcpy(bio_buf + bio_off, data + (bio->bi_sector << 9), bytes);
+
+		kunmap_atomic(bio_buf);
+		bio_advance(bio, bytes);
+	}
+	bio_endio(bio, 0);
+}
+
 /*******************************************************************************
  * Global functions implementation.
  *******************************************************************************/
@@ -3493,6 +3521,19 @@ void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio)
 #endif
 }
 
+void iocore_logx_make_request(struct walb_dev *wdev, struct bio *bio)
+{
+	if (is_wdev_dying(wdev)) {
+		bio_endio(bio, -ENODEV);
+		return;
+	}
+	if (bio->bi_rw & WRITE) {
+		bio_endio(bio, -EIO);
+		return;
+	}
+	logx_exec_bio(wdev->logx_data, bio);
+}
+
 /**
  * Wait for all pending IO(s) for underlying data/log devices.
  */
@@ -3585,6 +3626,12 @@ void walblog_make_request(struct request_queue *q, struct bio *bio)
 {
 	struct walb_dev *wdev = get_wdev_from_queue(q);
 	iocore_log_make_request(wdev, bio);
+}
+
+void walblogx_make_request(struct request_queue *q, struct bio *bio)
+{
+	struct walb_dev *wdev = get_wdev_from_queue(q);
+	iocore_logx_make_request(wdev, bio);
 }
 
 MODULE_LICENSE("Dual BSD/GPL");

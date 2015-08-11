@@ -24,6 +24,7 @@
 #include <linux/rwsem.h>
 #include <linux/version.h>
 #include <linux/delay.h>
+#include <linux/vmalloc.h>
 #include <asm/atomic.h>
 
 #include "kern.h"
@@ -131,6 +132,12 @@ static void walblog_release(struct gendisk *gd, fmode_t mode);
 static int walblog_ioctl(struct block_device *bdev, fmode_t mode,
 			unsigned int cmd, unsigned long arg);
 
+static int walblogx_open(struct block_device *bdev, fmode_t mode);
+static void walblogx_release(struct gendisk *gd, fmode_t mode);
+static int walblogx_ioctl(struct block_device *bdev, fmode_t mode,
+			unsigned int cmd, unsigned long arg);
+
+
 /* Workqueues. */
 static bool initialize_workqueues(void);
 static void finalize_workqueues(void);
@@ -142,6 +149,9 @@ static void walb_finalize_device(struct walb_dev *wdev);
 static int walblog_prepare_device(struct walb_dev *wdev, unsigned int minor,
 				const char* name);
 static void walblog_finalize_device(struct walb_dev *wdev);
+static int walblogx_prepare_device(struct walb_dev *wdev, unsigned int minor,
+				const char* name);
+static void walblogx_finalize_device(struct walb_dev *wdev);
 
 static int walb_ldev_initialize(struct walb_dev *wdev);
 static void walb_ldev_finalize(struct walb_dev *wdev, bool is_sync);
@@ -327,6 +337,62 @@ static struct block_device_operations walblog_ops = {
 	.open	 = walblog_open,
 	.release = walblog_release,
 	.ioctl	 = walblog_ioctl
+};
+
+/**
+ * Open a walb device.
+ */
+static int walblogx_open(struct block_device *bdev, fmode_t mode)
+{
+	struct walb_dev *wdev = get_wdev_from_disk(bdev->bd_disk);
+	int n_users;
+
+	n_users = atomic_inc_return(&wdev->logx_n_users);
+	if (n_users == 1) {
+#if 0
+		LOGn("This is the first time to open walblog device %d"
+			" and check_disk_change() will be called.\n",
+			MINOR(wdev->devt));
+		check_disk_change(bdev);
+#endif
+	}
+	return 0;
+}
+
+/**
+ * Release a walblog device.
+ */
+static void walblogx_release(struct gendisk *gd, fmode_t mode)
+{
+	struct walb_dev *wdev = get_wdev_from_disk(gd);
+	int n_users;
+
+	n_users = atomic_dec_return(&wdev->logx_n_users);
+	ASSERT(n_users >= 0);
+}
+
+static int walblogx_ioctl(struct block_device *bdev, fmode_t mode,
+			unsigned int cmd, unsigned long arg)
+{
+	struct hd_geometry geo;
+	struct walb_dev *wdev = bdev->bd_disk->private_data;
+
+	switch(cmd) {
+	case HDIO_GETGEO:
+		set_geometry(&geo, wdev->ldev_size);
+		if (copy_to_user((void __user *) arg, &geo, sizeof(geo)))
+			return -EFAULT;
+		return 0;
+	default:
+		return -ENOTTY;
+	}
+}
+
+static struct block_device_operations walblogx_ops = {
+	.owner	 = THIS_MODULE,
+	.open	 = walblogx_open,
+	.release = walblogx_release,
+	.ioctl	 = walblogx_ioctl
 };
 
 /**
@@ -527,8 +593,8 @@ static int walblog_prepare_device(struct walb_dev *wdev,
 	snprintf(wdev->log_gd->disk_name, DISK_NAME_LEN,
 		"%s/L%s", WALB_DIR_NAME, name);
 	atomic_set(&wdev->log_n_users , 0);
-	return 0;
 
+	return 0;
 error1:
 	if (wdev->log_queue) {
 		blk_cleanup_queue(wdev->log_queue);
@@ -549,6 +615,83 @@ static void walblog_finalize_device(struct walb_dev *wdev)
 	if (wdev->log_queue) {
 		blk_cleanup_queue(wdev->log_queue);
 		wdev->log_queue = NULL;
+	}
+}
+
+/**
+ * Setup walblog device.
+ */
+static int walblogx_prepare_device(struct walb_dev *wdev,
+				unsigned int minor, const char* name)
+{
+	struct request_queue *lq;
+
+	wdev->logx_queue = blk_alloc_queue(GFP_KERNEL);
+	if (!wdev->logx_queue)
+		goto error0;
+
+	blk_queue_make_request(wdev->logx_queue, walblogx_make_request);
+	wdev->logx_queue->queuedata = wdev;
+
+	/* Queue limits. */
+	lq = bdev_get_queue(wdev->ldev);
+	blk_set_default_limits(&wdev->logx_queue->limits);
+	blk_queue_logical_block_size(wdev->logx_queue, LOGICAL_BLOCK_SIZE);
+	blk_queue_physical_block_size(wdev->logx_queue, wdev->physical_bs);
+	blk_queue_stack_limits(wdev->logx_queue, lq);
+
+	/* Allocate a gendisk and set parameters. */
+	wdev->logx_gd = alloc_disk(1);
+	if (!wdev->logx_gd) {
+		goto error1;
+	}
+	wdev->logx_gd->major = walb_major_;
+	wdev->logx_gd->first_minor = minor + 10000; /* This is for test */
+	wdev->logx_gd->queue = wdev->logx_queue;
+	wdev->logx_gd->fops = &walblogx_ops;
+	wdev->logx_gd->private_data = wdev;
+	set_capacity(wdev->logx_gd, wdev->ldev_size);
+
+	/* Set a name. */
+	snprintf(wdev->logx_gd->disk_name, DISK_NAME_LEN,
+		"%s/X%s", WALB_DIR_NAME, name);
+	atomic_set(&wdev->logx_n_users , 0);
+
+	wdev->logx_data = vmalloc(wdev->ldev_size * LOGICAL_BLOCK_SIZE);
+	if (!wdev->logx_data) {
+		goto error2;
+	}
+
+	return 0;
+error2:
+	if (wdev->logx_gd) {
+		put_disk(wdev->logx_gd);
+		wdev->logx_gd = NULL;
+	}
+error1:
+	if (wdev->logx_queue) {
+		blk_cleanup_queue(wdev->logx_queue);
+	}
+error0:
+	return -1;
+}
+
+/**
+ * Finalize walblog wrapper device.
+ */
+static void walblogx_finalize_device(struct walb_dev *wdev)
+{
+	if (wdev->logx_data) {
+		vfree(wdev->logx_data);
+		wdev->logx_data = NULL;
+	}
+	if (wdev->logx_gd) {
+		put_disk(wdev->logx_gd);
+		wdev->logx_gd = NULL;
+	}
+	if (wdev->logx_queue) {
+		blk_cleanup_queue(wdev->logx_queue);
+		wdev->logx_queue = NULL;
 	}
 }
 
@@ -667,6 +810,7 @@ static void walblog_register_device(struct walb_dev *wdev)
 	ASSERT(wdev->log_gd);
 
 	add_disk(wdev->log_gd);
+	add_disk(wdev->logx_gd);
 }
 
 /**
@@ -678,6 +822,9 @@ static void walblog_unregister_device(struct walb_dev *wdev)
 	if (wdev->log_gd) {
 		del_gendisk(wdev->log_gd);
 		/* Do not assign NULL here. */
+	}
+	if (wdev->logx_gd) {
+		del_gendisk(wdev->logx_gd);
 	}
 	LOG_("walblog_unregister_device end.\n");
 }
@@ -958,10 +1105,14 @@ struct walb_dev* prepare_wdev(
 		goto out_walbdev;
 	}
 
+	if (walblogx_prepare_device(wdev, minor + 1, dev_name) != 0) {
+		goto out_walblogdev;
+	}
+
 	/* Setup iocore data. */
 	if (!iocore_initialize(wdev)) {
 		LOGe("iocore initialization failed.\n");
-		goto out_walblogdev;
+		goto out_walblogxdev;
 	}
 
 	/*
@@ -1006,6 +1157,8 @@ struct walb_dev* prepare_wdev(
 
 out_iocore_init:
 	iocore_finalize(wdev);
+out_walblogxdev:
+	walblogx_finalize_device(wdev);
 out_walblogdev:
 	walblog_finalize_device(wdev);
 out_walbdev:
@@ -1066,6 +1219,7 @@ void destroy_wdev(struct walb_dev *wdev)
 		msleep(1000);
 	}
 
+	walblogx_finalize_device(wdev);
 	walblog_finalize_device(wdev);
 	walb_finalize_device(wdev);
 	iocore_finalize(wdev);

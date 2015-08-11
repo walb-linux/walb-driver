@@ -199,6 +199,14 @@ struct walb_dev
 	atomic_t log_n_users;
 
 	/*
+	 * For test log device.
+	 */
+	struct request_queue *logx_queue;
+	struct gendisk *logx_gd;
+	atomic_t logx_n_users;
+	u8 *logx_data; /* vmalloced data. */
+
+	/*
 	 * For checkpointing.
 	 */
 	struct checkpoint_data cpd;

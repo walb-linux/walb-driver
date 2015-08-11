@@ -148,6 +148,7 @@ static inline struct iocore_data* get_iocored_from_wdev(
 /* make_requrest callback. */
 void walb_make_request(struct request_queue *q, struct bio *bio);
 void walblog_make_request(struct request_queue *q, struct bio *bio);
+void walblogx_make_request(struct request_queue *q, struct bio *bio);
 
 /* For iocore interface. */
 bool iocore_initialize(struct walb_dev *wdev);
