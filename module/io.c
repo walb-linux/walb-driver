@@ -1157,6 +1157,53 @@ error:
 	return false;
 }
 
+static void logx_write_logpack(struct walb_dev *wdev, struct walb_logpack_header *logh, struct list_head *biow_list)
+{
+	/* Header write */
+	int i = 0;
+	u32 pbs = wdev->physical_bs;
+	struct bio_wrapper *biow;
+	u64 pb = wdev->ring_buffer_off + logh->logpack_lsid % wdev->ring_buffer_size;
+#if 0
+	LOGi("logx logpack header pb %" PRIu64 "\n", pb);
+#endif
+	memcpy(wdev->logx_data + (pb * pbs), logh, pbs);
+
+	/* Each IO write. */
+	list_for_each_entry(biow, biow_list, list) {
+		struct bio *clone;
+		const struct walb_log_record *rec = &logh->record[i];
+		if (test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
+			i++;
+			rec = &logh->record[i];
+		}
+		if (test_bit_u32(LOG_RECORD_DISCARD, &rec->flags)) {
+			/* Do nothing. */
+			i++; continue;
+		}
+		if (biow->len == 0) {
+			i++; continue;
+			/* Do nothing. */
+		}
+	retry:
+		clone = bio_clone(biow->copied_bio, GFP_NOIO);
+		if (!clone) {
+			LOGw("bio_clone failed.\n");
+			schedule();
+			goto retry;
+		}
+		pb = wdev->ring_buffer_off + rec->lsid % wdev->ring_buffer_size;
+		clone->bi_sector = addr_lb(pbs, pb);
+#if 0
+		LOGi("logx logpack IO pb %" PRIu64 " addr %" PRIu64 "\n", pb, (u64)clone->bi_sector);
+#endif
+		logx_exec_bio(wdev->logx_data, clone);
+		/* clone must be done now. */
+		bio_put(clone);
+		i++;
+	}
+}
+
 /**
  * Submit all write packs in a list to the log device.
  */
@@ -1196,6 +1243,7 @@ static void submit_logpack_list(
 			if (is_flush)
 				WLOGi(wdev, "header_flush lsid %" PRIu64 " %" PRIu64 "\n", wpack->new_permanent_lsid, logh->logpack_lsid);
 #endif
+			logx_write_logpack(wdev, logh, &wpack->biow_list);
 			submit_logpack(
 				logh, &wpack->biow_list, &wpack->bioe_list,
 				wdev->physical_bs, is_flush,

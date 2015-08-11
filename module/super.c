@@ -72,6 +72,16 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 		goto error1;
 	}
 
+	/* Copy to logx superblock. Checksum is up-to-date. */
+	{
+		const u32 pbs = wdev->physical_bs;
+		const u64 off = get_super_sector0_offset(pbs) * pbs;
+#if 0
+		LOGi("logx superblock pbs: %" PRIu32 " off: %" PRIu64 "\n", pbs, off);
+#endif
+		memcpy(wdev->logx_data + off, lsuper_tmp->data, pbs);
+	}
+
 	sector_free(lsuper_tmp);
 
 	/* Update previously written lsid. */
