@@ -337,7 +337,7 @@ static struct bio_wrapper* create_log_bio_wrapper_for_redo(
 	if (!biow) { goto error2; }
 
 	bio->bi_bdev = wdev->ldev;
-	off_pb = lsid % wdev->ring_buffer_size + wdev->ring_buffer_off;
+	off_pb = get_offset_of_lsid(lsid, wdev->ring_buffer_off, wdev->ring_buffer_size);
 	WLOG_(wdev, "lsid: %" PRIu64 " off_pb: %" PRIu64 "\n", lsid, off_pb);
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_iter.bi_sector = off_lb;

@@ -24,6 +24,7 @@ extern "C" {
 #endif /* WALB_DEBUG */
 #else /* __KERNEL__ */
 #include "userland.h"
+#include "div64_userland.h"
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>

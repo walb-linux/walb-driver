@@ -85,10 +85,10 @@ static inline unsigned int n_lb_in_pb(unsigned int pbs)
  */
 static inline u64 capacity_pb(unsigned int pbs, u64 capacity_lb)
 {
-	unsigned int n_lb;
+	u32 n_lb;
 	ASSERT_PBS(pbs);
 	n_lb = n_lb_in_pb(pbs);
-	return ((capacity_lb + n_lb - 1) / n_lb);
+	return div_u64(capacity_lb + n_lb - 1, n_lb);
 }
 
 /**
@@ -97,7 +97,7 @@ static inline u64 capacity_pb(unsigned int pbs, u64 capacity_lb)
 static inline u64 addr_pb(unsigned int pbs, u64 addr_lb)
 {
 	ASSERT_PBS(pbs);
-	return (addr_lb / (u64)n_lb_in_pb(pbs));
+	return div_u64(addr_lb, n_lb_in_pb(pbs));
 }
 
 /**
@@ -105,8 +105,10 @@ static inline u64 addr_pb(unsigned int pbs, u64 addr_lb)
  */
 static inline u64 off_in_pb(unsigned int pbs, u64 addr_lb)
 {
+	u64 rem;
 	ASSERT_PBS(pbs);
-	return (addr_lb % (u64)n_lb_in_pb(pbs));
+	div64_u64_rem(addr_lb, n_lb_in_pb(pbs), &rem);
+	return rem;
 }
 
 /**
@@ -115,7 +117,7 @@ static inline u64 off_in_pb(unsigned int pbs, u64 addr_lb)
 static inline u64 addr_lb(unsigned int pbs, u64 addr_pb)
 {
 	ASSERT_PBS(pbs);
-	return (addr_pb * (u64)n_lb_in_pb(pbs));
+	return addr_pb * n_lb_in_pb(pbs);
 }
 
 /**

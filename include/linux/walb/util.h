@@ -62,7 +62,7 @@ static inline int sprint_uuid(char *str, int str_size, const u8 *uuid)
  */
 static inline u32 fnv1a_hash(const u8 *x, unsigned int n)
 {
-	u32 v = 2166136261;
+	u32 v = 2166136261U;
 	unsigned int i;
 
 	for (i = 0; i < n; i++) {

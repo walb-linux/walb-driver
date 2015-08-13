@@ -379,8 +379,8 @@ static int ctl_ioctl(unsigned int command, struct walb_ctl __user *user)
 	struct walb_ctl *ctl;
 
 	if (command != WALB_IOCTL_CONTROL) {
-		LOGe("ioctl cmd must be %08lx but %08x\n",
-			WALB_IOCTL_CONTROL, command);
+		LOGe("ioctl cmd must be %08x but %08x\n",
+			(u32)WALB_IOCTL_CONTROL, command);
 		return -ENOTTY;
 	}
 

@@ -120,7 +120,11 @@ bool walb_logpack_header_add_bio(
 	is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
 
 	/* Padding check. */
-	padding_pb = ring_buffer_size - bio_lsid % ring_buffer_size;
+	{
+		u64 rem;
+		div64_u64_rem(bio_lsid, ring_buffer_size, &rem);
+		padding_pb = ring_buffer_size - rem;
+	}
 	if (!is_discard && padding_pb < bio_pb) {
 		/* Log of this request will cross the end of ring buffer.
 		   So padding is required. */

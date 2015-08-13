@@ -1167,7 +1167,7 @@ retry_bio:
 	ASSERT(page == page2);
 #endif
 	bio->bi_bdev = ldev;
-	off_pb = lhead->logpack_lsid % ring_buffer_size + ring_buffer_off;
+	off_pb = get_offset_of_lsid(lhead->logpack_lsid, ring_buffer_off, ring_buffer_size);
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_iter.bi_sector = off_lb;
 	bio->bi_rw = is_flush ? WRITE_FLUSH : WRITE;
@@ -1223,7 +1223,7 @@ static void logpack_submit_bio_wrapper(
 	unsigned int chunk_sectors)
 {
 	struct bio_entry *bioe;
-	const u64 ldev_off_pb = lsid % ring_buffer_size + ring_buffer_off;
+	const u64 ldev_off_pb = get_offset_of_lsid(lsid, ring_buffer_off, ring_buffer_size);
 	struct list_head tmp_list;
 	struct bio_list bio_list;
 

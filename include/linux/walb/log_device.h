@@ -94,6 +94,25 @@ extern "C" {
  */
 
 /**
+ * @lsid log sequence id [physical block]
+ * @ring_buffer_offset [physical block]
+ * @ring_buffer_size [physical block]
+ * RETURN:
+ *   offset of ldev [physical block]
+ */
+static inline u64 get_offset_of_lsid(u64 lsid, u64 ring_buffer_offset, u64 ring_buffer_size)
+{
+        uint64_t pb;
+#ifdef __KERNEL__
+        /* In almost cases, ring_buffer_offset < ring_buffer_size condition is satisfied.
+           This will suggest the caller may specify the wrong order of arguments: offset and size. */
+        WARN_ON(ring_buffer_offset >= ring_buffer_size);
+#endif
+        div64_u64_rem(lsid, ring_buffer_size, &pb);
+        return ring_buffer_offset + pb;
+}
+
+/**
  * Get offset of primary super sector.
  *
  * @sector_size sector size in bytes.
@@ -176,8 +195,7 @@ static inline u64 get_ring_buffer_offset_2(const struct walb_super_sector* super
 static inline u64 get_offset_of_lsid_2
 (const struct walb_super_sector* super_sect, u64 lsid)
 {
-	return	get_ring_buffer_offset_2(super_sect) +
-		(lsid % super_sect->ring_buffer_size);
+	return get_offset_of_lsid(lsid, get_ring_buffer_offset_2(super_sect), super_sect->ring_buffer_size);
 }
 
 /*******************************************************************************
