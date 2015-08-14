@@ -133,6 +133,7 @@ static inline int snprint_bio_flags(
 		{REQ_DISCARD, "REQ_DISCARD"},
 		{REQ_WRITE_SAME, "REQ_WRITE_SAME"},
 		{REQ_NOIDLE, "REQ_NOIDLE"},
+		{REQ_INTEGRITY, "REQ_INTEGRITY"},
 		{REQ_RAHEAD, "REQ_RAHEAD"},
 		{REQ_THROTTLED, "REQ_THROTTLED"},
 		{REQ_SORTED, "REQ_SORTED"},
@@ -154,18 +155,8 @@ static inline int snprint_bio_flags(
 		{REQ_MIXED_MERGE, "REQ_MIXED_MERGE"},
 		{REQ_SECURE, "REQ_SECURE"},
 		{REQ_PM, "REQ_PM"},
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0)
-		{REQ_END, "REQ_END"},
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 15, 0)
 		{REQ_HASHED, "REQ_HASHED"},
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
 		{REQ_MQ_INFLIGHT, "REQ_MQ_INFLIGHT"},
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 18, 0)
-		{REQ_INTEGRITY, "REQ_INTEGRITY"},
-#endif
 	};
 	s = snprintf(buf, size, "REQ_FLAGS:");
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
@@ -236,20 +227,12 @@ static inline int snprint_bio(char *buf, size_t size, const struct bio *bio)
                 , bio->bi_phys_segments
                 , bio->bi_seg_front_size
                 , bio->bi_seg_back_size
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
-                , atomic_read(&bio->bi_remaining)
-#else
                 , atomic_read(&bio->__bi_remaining)
-#endif
                 , bio->bi_end_io
                 , bio->bi_private
                 , bio->bi_vcnt
                 , bio->bi_max_vecs
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
-                , atomic_read(&bio->bi_cnt)
-#else
                 , atomic_read(&bio->__bi_cnt)
-#endif
 		, MAJOR(bio->bi_bdev->bd_dev)
 		, MINOR(bio->bi_bdev->bd_dev));
 	SNPRINT_BIO_PROCEED(buf, size, w, s);

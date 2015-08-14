@@ -253,11 +253,7 @@ void bio_put_with_pages(struct bio *bio)
 			bv->bv_page = NULL;
 		}
 	}
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
-	ASSERT(atomic_read(&bio->bi_cnt) == 1);
-#else
 	ASSERT(atomic_read(&bio->__bi_cnt) == 1);
-#endif
 	bio_put(bio);
 }
 
