@@ -104,8 +104,7 @@ static int ioctl_wdev_get_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
  */
 static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ctl)
 {
-	u64 lsid, oldest_lsid, prev_written_lsid;
-	bool is_valid;
+	u64 lsid, oldest_lsid, prev_written_lsid, permanent_lsid;
 
 	LOG_("WALB_IOCTL_SET_OLDEST_LSID_SET\n");
 
@@ -113,11 +112,11 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 
 	spin_lock(&wdev->lsid_lock);
 	prev_written_lsid = wdev->lsids.prev_written;
+	permanent_lsid = wdev->lsids.permanent;
 	oldest_lsid = wdev->lsids.oldest;
 	spin_unlock(&wdev->lsid_lock);
 
-	is_valid = lsid == prev_written_lsid;
-	if (!is_valid && !(oldest_lsid <= lsid && lsid < prev_written_lsid)) {
+	if (lsid < oldest_lsid || prev_written_lsid < lsid) {
 		WLOGe(wdev, "lsid %" PRIu64 " is not valid.\n"
 			"You shoud specify valid logpack header lsid"
 			" (oldest_lsid (%" PRIu64 ") <= lsid "
@@ -125,9 +124,11 @@ static int ioctl_wdev_set_oldest_lsid(struct walb_dev *wdev, struct walb_ctl *ct
 			, lsid, oldest_lsid, prev_written_lsid);
 		return -EFAULT;
 	}
-	if (!is_valid && !walb_check_lsid_valid(wdev, lsid)) {
-		WLOGe(wdev, "Logpack header of lsid %" PRIu64 " is not valid.\n", lsid);
-		return -EFAULT;
+	if (lsid < permanent_lsid) {
+		if (!walb_check_lsid_valid(wdev, lsid)) {
+			WLOGe(wdev, "Logpack header of lsid %" PRIu64 " is not valid.\n", lsid);
+			return -EFAULT;
+		}
 	}
 
 	spin_lock(&wdev->lsid_lock);
