@@ -1169,18 +1169,29 @@ static void submit_logpack_list(
 
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
-			WLOG_(wdev, "is_zero_flush_only\n");
+#if 0
+			WLOGi(wdev, "(1) is_zero_flush_only lsid %" PRIu64 "\n", logh->logpack_lsid);
+#endif
 			logpack_submit_flush(wdev->ldev, &wpack->bioe_list);
 		} else {
 			ASSERT(logh->n_records > 0);
 			logpack_calc_checksum(logh, wdev->physical_bs,
 					wdev->log_checksum_salt, &wpack->biow_list);
+#if 0
+			if (wpack->is_flush_contained) {
+				WLOGi(wdev, "(2) is_flush_contained lsid %" PRIu64 "\n", logh->logpack_lsid);
+			}
+			if (wpack->is_flush_header) {
+				WLOGi(wdev, "(3) is_flush_header lsid %" PRIu64 "\n", logh->logpack_lsid);
+			}
+#endif
 			submit_logpack(
 				logh, &wpack->biow_list, &wpack->bioe_list,
 				wdev->physical_bs, wpack->is_flush_header,
 				wdev->ldev, wdev->ring_buffer_off,
 				wdev->ring_buffer_size, wdev->ldev_chunk_sectors);
 		}
+
 	}
 	blk_finish_plug(&plug);
 }
@@ -2167,13 +2178,19 @@ static void wait_for_logpack_and_submit_datapack(
 		struct walb_logpack_header *logh =
 			get_logpack_header(wpack->logpack_header_sector);
 		bool should_notice = false;
+		bool updated = false;
 		spin_lock(&wdev->lsid_lock);
 		if (wdev->lsids.permanent < logh->logpack_lsid) {
 			should_notice = is_permanent_log_empty(&wdev->lsids);
 			wdev->lsids.permanent = logh->logpack_lsid;
+			updated = true;
 			LOG_("log_flush_completed_header\n");
 		}
 		spin_unlock(&wdev->lsid_lock);
+#if 0
+		if (updated)
+			LOGi("permanent_lsid0 %" PRIu64 "\n", logh->logpack_lsid);
+#endif
 		if (should_notice) {
 			walb_sysfs_notify(wdev, "lsids");
 		}
@@ -2296,12 +2313,14 @@ static void wait_for_logpack_and_submit_datapack(
 		struct walb_logpack_header *logh =
 			get_logpack_header(wpack->logpack_header_sector);
 		bool should_notice = false;
+		bool updated = false;
 		spin_lock(&wdev->lsid_lock);
 		wdev->lsids.completed = get_next_lsid(logh);
 		if (wpack->is_flush_contained &&
 			wdev->lsids.permanent < logh->logpack_lsid) {
 			should_notice = is_permanent_log_empty(&wdev->lsids);
 			wdev->lsids.permanent = logh->logpack_lsid;
+			updated = true;
 			LOG_("log_flush_completed_io\n");
 		}
 		if (!(wdev->queue->flush_flags & REQ_FLUSH)) {
@@ -2311,6 +2330,10 @@ static void wait_for_logpack_and_submit_datapack(
 			wdev->lsids.permanent = wdev->lsids.flush;
 		}
 		spin_unlock(&wdev->lsid_lock);
+#if 0
+		if (updated)
+			LOGi("permanent_lsid1 %" PRIu64 "\n", logh->logpack_lsid);
+#endif
 		if (should_notice) {
 			walb_sysfs_notify(wdev, "lsids");
 		}
