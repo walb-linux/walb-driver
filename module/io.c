@@ -3336,6 +3336,55 @@ error0:
 	bio_endio(bio, -EIO);
 }
 
+
+/* #define WLDEV_ANALYSIS */
+#ifdef WLDEV_ANALYSIS
+
+struct wldev_analysis
+{
+	struct bio *bio;
+	struct walb_dev *wdev;
+};
+
+static void wldev_analysis_end_io(struct bio *bio, int error)
+{
+	struct wldev_analysis *ana = bio->bi_private;
+	struct walb_dev *wdev = ana->wdev;
+	struct bio *bio_orig = ana->bio;
+	struct lsid_set lsids;
+	const u64 rb_size = wdev->ring_buffer_size;
+	spin_lock(&wdev->lsid_lock);
+	lsids = wdev->lsids;
+	spin_unlock(&wdev->lsid_lock);
+
+	LOGi("read_end %" PRIu64 " %u\n", (u64)bio_orig->bi_sector, (uint)bio_sectors(bio_orig));
+	while (bio_sectors(bio_orig) > 0) {
+		u32 bio_off = bio_offset(bio_orig);
+		u32 bytes = bio_iovec(bio_orig)->bv_len;
+		u8 *bio_buf = bio_buf = kmap_atomic(bio_page(bio_orig));
+		u64 lsid = INVALID_LSID;
+		struct walb_logpack_header *logh = (struct walb_logpack_header *)(bio_buf + bio_off);
+		ASSERT(bytes >= LOGICAL_BLOCK_SIZE);
+		if (is_valid_logpack_header(logh)) {
+			lsid = logh->logpack_lsid;
+		}
+		kunmap_atomic(bio_buf);
+
+		if (lsid != INVALID_LSID) {
+			if (lsids.permanent < rb_size || lsids.permanent - (rb_size / 2) < lsid) {
+				LOGi("read_logpack_header %" PRIu64 "\n", lsid);
+			}
+		}
+		bio_advance(bio_orig, LOGICAL_BLOCK_SIZE);
+	}
+
+	set_bit(BIO_UPTODATE, &bio_orig->bi_flags);
+	bio_endio(bio_orig, error);
+	bio_put(bio);
+	kfree(ana);
+}
+#endif /* WLDEV_ANALYSIS */
+
 /**
  * Make request for wrapper log device.
  */
@@ -3349,8 +3398,34 @@ void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio)
 		bio_endio(bio, -EIO);
 		return;
 	}
+#ifndef WLDEV_ANALYSIS
 	bio->bi_bdev = wdev->ldev;
 	generic_make_request(bio);
+#else
+	LOGi("read_bgn %" PRIu64 " %u\n", (u64)bio->bi_sector, (uint)bio_sectors(bio));
+	{
+		struct bio *biotmp;
+		struct wldev_analysis *ana;
+	retry:
+		biotmp = bio_clone(bio, GFP_NOIO);
+		if (!biotmp) {
+			schedule();
+			goto retry;
+		}
+	retry2:
+		ana = kmalloc(sizeof(struct wldev_analysis), GFP_NOIO);
+		if (!ana) {
+			schedule();
+			goto retry2;
+		}
+		ana->wdev = wdev;
+		ana->bio = bio;
+		biotmp->bi_bdev = wdev->ldev;
+		biotmp->bi_end_io = wldev_analysis_end_io;
+		biotmp->bi_private = ana;
+		generic_make_request(biotmp);
+	}
+#endif
 }
 
 /**
