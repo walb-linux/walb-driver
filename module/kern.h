@@ -87,11 +87,9 @@ extern unsigned int error_before_overflow_;
  *   All logpacks with lsid < oldest
  *   on the log device can be overwritten.
  *
- * Property 1
+ * Property
  *   oldest <= prev_written <= written
- *   <= permanent <= completed <= latest.
- * Property 2
- *   permanent <= flush <= latest.
+ *   <= permanent <= flush <= completed <= latest.
  */
 struct lsid_set
 {
@@ -310,11 +308,28 @@ static inline struct walb_dev* get_wdev_from_checkpoint_data(
  *
  * wdev->lsid_lock must be held.
  */
-static inline bool is_permanent_log_empty(struct lsid_set *lsids)
+static inline bool is_permanent_log_empty(const struct lsid_set *lsids)
 {
 	ASSERT(lsids);
 	ASSERT(lsids->oldest <= lsids->permanent);
 	return lsids->oldest == lsids->permanent;
+}
+
+/**
+ * RETURN:
+ *   true is lsid set is valid.
+ *
+ * wdev->lsid_lock must be held.
+ */
+static inline bool lsid_set_is_valid(const struct lsid_set *lsids)
+{
+       ASSERT(lsids);
+       return lsids->oldest <= lsids->prev_written &&
+               lsids->prev_written <= lsids->written &&
+               lsids->written <= lsids->permanent &&
+               lsids->permanent <= lsids->flush &&
+               lsids->flush <= lsids->completed &&
+               lsids->completed <= lsids->latest;
 }
 
 static inline bool is_wdev_dying(struct walb_dev *wdev)
