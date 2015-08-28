@@ -1304,10 +1304,14 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 		list_del(&wpack->list);
 		list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
 			list_del(&biow->list);
+#ifdef WALB_DEBUG
 			ASSERT(bio_wrapper_state_is_prepared(biow));
+#endif
 			wait_for_bio_wrapper(biow, completion_timeo_ms_);
+#ifdef WALB_DEBUG
 			ASSERT(bio_wrapper_state_is_submitted(biow));
 			ASSERT(bio_wrapper_state_is_completed(biow));
+#endif
 			if (biow->error &&
 				!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 				WLOGe(wdev, "data IO error. to be read-only mode.\n");
@@ -2012,8 +2016,10 @@ static void wait_for_write_bio_wrapper(
 	unsigned int c = 0;
 	struct blk_plug plug;
 #endif
+#ifdef WALB_DEBUG
 	ASSERT(bio_wrapper_state_is_prepared(biow));
 	ASSERT(bio_wrapper_state_is_submitted(biow));
+#endif
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	ASSERT(biow->n_overlapped == 0);
 #endif
@@ -2021,7 +2027,9 @@ static void wait_for_write_bio_wrapper(
 	/* Wait for completion and call end_request. */
 	wait_for_bio_wrapper_io(biow, false, false);
 
+#ifdef WALB_DEBUG
 	ASSERT(bio_wrapper_state_is_submitted(biow));
+#endif
 	bio_wrapper_state_set_completed(biow);
 	BIO_WRAPPER_PRINT("done", biow);
 
@@ -2142,7 +2150,9 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 	ASSERT(biow->n_overlapped == 0);
 #endif
 
+#ifdef WALB_DEBUG
 	ASSERT(bio_wrapper_state_is_prepared(biow));
+#endif
 	bio_wrapper_state_set_submitted(biow);
 
 #ifdef WALB_DEBUG
