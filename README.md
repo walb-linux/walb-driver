@@ -2,10 +2,6 @@
 
 WalB is a block device driver for linux kernel that stores write-ahead logs additionally for efficient backup and replication.
 
-# License
-
-GPL version 2 or 3.
-
 # Directories
 
 * include: header files shared by kernel/userland code.
@@ -24,3 +20,12 @@ Use an appropriate branch or a tag for your using kernel as follows:
 | `for-3.14` | `v1.2.x` | 3.14-4.1       |
 | `for-3.10` | `v1.1.x` | 3.10-3.13      |
 | `for-3.2`  | `v1.0.x` | 3.2-3.8 (EOL)  |
+
+# License
+
+GPL version 2 or 3.
+
+# Copyright
+
+(C) 2010 Cybozu Labs, Inc.
+
