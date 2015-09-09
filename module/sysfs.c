@@ -47,15 +47,15 @@ static ssize_t walb_attr_show_lsids(struct walb_dev *wdev, char *buf)
 	spin_unlock(&wdev->lsid_lock);
 	return sprintf(buf,
 		"latest       %" PRIu64 "\n"
-		"flush        %" PRIu64 "\n"
 		"completed    %" PRIu64 "\n"
+		"flush        %" PRIu64 "\n"
 		"permanent    %" PRIu64 "\n"
 		"written      %" PRIu64 "\n"
 		"prev_written %" PRIu64 "\n"
 		"oldest       %" PRIu64 "\n"
 		, lsids.latest
-		, lsids.flush
 		, lsids.completed
+		, lsids.flush
 		, lsids.permanent
 		, lsids.written
 		, lsids.prev_written

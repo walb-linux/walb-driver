@@ -67,12 +67,12 @@ extern unsigned int error_before_overflow_;
  *
  * latest:
  *   This is used to generate new logpack.
- * flush:
- *   This is to remember the latest lsid of
- *   log flush request executed.
  * completed:
  *   All logpacks with lsid < completed
  *   have been written to the log device.
+ * flush:
+ *   The latest flush request for ldev will
+ *   flush all logpacks with lsid < flush.
  * permanent:
  *   ALl logpacks with lsid < permanent
  *   have been permanent in the log device.
@@ -94,8 +94,8 @@ extern unsigned int error_before_overflow_;
 struct lsid_set
 {
 	u64 latest;
-	u64 flush;
 	u64 completed;
+	u64 flush;
 	u64 permanent;
 	u64 written;
 	u64 prev_written;
