@@ -851,6 +851,7 @@ struct walb_dev* prepare_wdev(
 	wdev->lsids.prev_written = super->written_lsid;
 	wdev->lsids.written = super->written_lsid;
 	wdev->lsids.permanent = super->written_lsid;
+	wdev->lsids.flush = super->written_lsid;
 	wdev->lsids.completed = super->written_lsid;
 	wdev->lsids.latest = super->written_lsid;
 	spin_unlock(&wdev->lsid_lock);
