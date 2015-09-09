@@ -159,10 +159,10 @@ static bool writepack_add_bio_wrapper(
 	struct list_head *wpack_list, struct pack **wpackp,
 	struct bio_wrapper *biow,
 	u64 ring_buffer_size, unsigned int max_logpack_pb,
-	u64 *latest_lsidp, struct walb_dev *wdev, gfp_t gfp_mask);
+	u64 *latest_lsidp, struct walb_dev *wdev, gfp_t gfp_mask, bool *is_flushp);
 static void insert_to_sorted_bio_wrapper_list_by_pos(
 	struct bio_wrapper *biow, struct list_head *biow_list);
-static void writepack_check_and_set_flush(struct pack *wpack);
+static void writepack_check_and_set_zeroflush(struct pack *wpack, bool *is_flushp);
 static bool wait_for_logpack_header(struct pack *wpack);
 static void wait_for_logpack_and_submit_datapack(
 	struct walb_dev *wdev, struct pack *wpack);
@@ -192,7 +192,6 @@ static void invoke_userland_exec(struct walb_dev *wdev, const char *event);
 static void fail_and_destroy_bio_wrapper_list(
 	struct walb_dev *wdev, struct list_head *biow_list);
 static void update_flush_lsid_if_necessary(struct walb_dev *wdev, u64 lsid);
-static void set_new_permanent_lsid(struct walb_dev *wdev, struct pack *pack);
 
 /* Stop/start queue for fast algorithm. */
 static bool should_stop_queue(
@@ -434,8 +433,7 @@ static void print_pack_list(const char *level, struct list_head *wpack_list)
  */
 static bool pack_header_should_flush(const struct pack *pack)
 {
-	return pack->is_zero_flush_only ||
-		(pack->is_flush_header && !pack->is_fua_contained);
+	return pack->is_flush_header && !pack->is_fua_contained;
 }
 
 /**
@@ -654,6 +652,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			list_move_tail(&biow->list2, &biow_list);
 			n_io++;
 			lsid = biow->lsid;
+			ASSERT(biow->len > 0);
 			pb = capacity_pb(wdev->physical_bs, biow->len);
 			BIO_WRAPPER_CHANGE_STATE(biow);
 			if (n_io >= wdev->n_io_bulk) { break; }
@@ -825,9 +824,10 @@ static bool create_logpack_list(
 	struct bio_wrapper *biow, *biow_next;
 	struct pack *wpack = NULL;
 	u64 latest_lsid, latest_lsid_old,
-		flush_lsid, written_lsid, prev_written_lsid, oldest_lsid;
+		completed_lsid, flush_lsid,
+		written_lsid, prev_written_lsid, oldest_lsid;
 	unsigned long log_flush_jiffies;
-	bool ret;
+	bool ret, is_flush = false;
 
 	ASSERT(wdev);
 	iocored = get_iocored_from_wdev(wdev);
@@ -840,6 +840,7 @@ static bool create_logpack_list(
 	spin_lock(&wdev->lsid_lock);
 	latest_lsid = wdev->lsids.latest;
 	oldest_lsid = wdev->lsids.oldest;
+	completed_lsid = wdev->lsids.completed;
 	prev_written_lsid = wdev->lsids.prev_written;
 	written_lsid = wdev->lsids.written;
 	flush_lsid = wdev->lsids.flush;
@@ -854,7 +855,7 @@ static bool create_logpack_list(
 		ret = writepack_add_bio_wrapper(
 			wpack_list, &wpack, biow,
 			wdev->ring_buffer_size, wdev->max_logpack_pb,
-			&latest_lsid, wdev, GFP_NOIO);
+			&latest_lsid, wdev, GFP_NOIO, &is_flush);
 		if (!ret) {
 			WLOGw(wdev, "writepack_add_bio_wrapper failed.\n");
 			schedule();
@@ -862,34 +863,36 @@ static bool create_logpack_list(
 		}
 	}
 	if (wpack) {
-		bool is_flush_size, is_flush_period;
 		struct walb_logpack_header *logh
 			= get_logpack_header(wpack->logpack_header_sector);
-		writepack_check_and_set_flush(wpack);
+		writepack_check_and_set_zeroflush(wpack, &is_flush);
 		ASSERT(is_prepared_pack_valid(wpack));
 		list_add_tail(&wpack->list, wpack_list);
 		latest_lsid = get_next_lsid_unsafe(logh);
-
-		/* Decide to flush the log device or not. */
-		if (!wpack->is_flush_header && !wpack->is_zero_flush_only
-			&& !wpack->is_fua_contained) {
-			is_flush_size = wdev->log_flush_interval_pb > 0 &&
-				latest_lsid - flush_lsid > wdev->log_flush_interval_pb;
-			is_flush_period = wdev->log_flush_interval_jiffies > 0 &&
-				log_flush_jiffies < jiffies;
-			if (is_flush_size || is_flush_period) {
-				wpack->is_flush_header = true;
-#ifdef WALB_DEBUG
-				atomic_inc(&iocored->n_flush_logpack);
-#endif
-			}
-		}
 	}
 
 	/* Currently all requests are packed and lsid of all writepacks is defined. */
 	ASSERT(is_pack_list_valid(wpack_list));
 	ASSERT(!list_empty(wpack_list));
 	ASSERT(list_empty(biow_list));
+
+	if (!is_flush) {
+		/* Decide to flush the log device or not. */
+		bool is_flush_size = wdev->log_flush_interval_pb > 0 &&
+			completed_lsid - flush_lsid > wdev->log_flush_interval_pb;
+		bool is_flush_period = wdev->log_flush_interval_jiffies > 0 &&
+			log_flush_jiffies < jiffies;
+		if (is_flush_size || is_flush_period)
+			is_flush = true;
+	}
+	if (is_flush) {
+		/* Flush flag should be set on only the first logpack header. */
+		wpack = list_first_entry(wpack_list, struct pack, list);
+		wpack->is_flush_header = true;
+#ifdef WALB_DEBUG
+		atomic_inc(&iocored->n_flush_logpack);
+#endif
+	}
 
 	/* Check whether we must avoid ring buffer overflow. */
 	if (error_before_overflow_ && wdev->ring_buffer_size < latest_lsid - oldest_lsid)
@@ -900,6 +903,10 @@ static bool create_logpack_list(
 	spin_lock(&wdev->lsid_lock);
 	ASSERT(wdev->lsids.latest == latest_lsid_old);
 	wdev->lsids.latest = latest_lsid;
+	if (is_flush) {
+		wpack->new_permanent_lsid = wdev->lsids.completed;
+		update_flush_lsid_if_necessary(wdev, wpack->new_permanent_lsid);
+	}
 	spin_unlock(&wdev->lsid_lock);
 
 	/* Check ring buffer overflow. */
@@ -975,17 +982,17 @@ static void submit_logpack_list(
 	blk_start_plug(&plug);
 	list_for_each_entry(wpack, wpack_list, list) {
 		struct walb_logpack_header *logh;
+		const bool is_flush = pack_header_should_flush(wpack);
 
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		logh = get_logpack_header(wpack->logpack_header_sector);
-		set_new_permanent_lsid(wdev, wpack);
 
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
 			WLOG_(wdev, "is_zero_flush_only\n");
-			logpack_submit_flush(wdev->ldev, wpack);
+			if (is_flush)
+				logpack_submit_flush(wdev->ldev, wpack);
 		} else {
-			const bool is_flush = pack_header_should_flush(wpack);
 			ASSERT(logh->n_records > 0);
 			logpack_calc_checksum(logh, wdev->physical_bs,
 					wdev->log_checksum_salt, &wpack->biow_list);
@@ -1623,6 +1630,19 @@ static bool push_into_lpack_submit_queue(struct bio_wrapper *biow)
        return ret;
 }
 
+static void update_biow_lsid(struct walb_logpack_header *logh, struct bio_wrapper *biow)
+{
+	struct walb_log_record *rec;
+
+	if (logh->n_records == 0)
+		return;
+
+	rec = &logh->record[logh->n_records - 1];
+	ASSERT(rec->offset == biow->pos);
+	ASSERT(rec->io_size == biow->len);
+	biow->lsid = rec->lsid;
+}
+
 /**
  * Add a bio_wrapper to a writepack.
  *
@@ -1644,7 +1664,7 @@ static bool writepack_add_bio_wrapper(
 	struct list_head *wpack_list, struct pack **wpackp,
 	struct bio_wrapper *biow,
 	u64 ring_buffer_size, unsigned int max_logpack_pb,
-	u64 *latest_lsidp, struct walb_dev *wdev, gfp_t gfp_mask)
+	u64 *latest_lsidp, struct walb_dev *wdev, gfp_t gfp_mask, bool *is_flushp)
 {
 	struct pack *pack;
 	bool ret;
@@ -1689,17 +1709,12 @@ static bool writepack_add_bio_wrapper(
 		/* logpack header capacity full so create a new pack. */
 		goto newpack;
 	}
-	if (lhead->n_records > 0) {
-		struct walb_log_record *rec = &lhead->record[lhead->n_records - 1];
-		ASSERT(rec->offset == biow->pos);
-		ASSERT(rec->io_size == biow->len);
-		biow->lsid = rec->lsid;
-	}
+	update_biow_lsid(lhead, biow);
 	goto fin;
 
 newpack:
 	if (lhead) {
-		writepack_check_and_set_flush(pack);
+		writepack_check_and_set_zeroflush(pack, is_flushp);
 		ASSERT(is_prepared_pack_valid(pack));
 		list_add_tail(&pack->list, wpack_list);
 		*latest_lsidp = get_next_lsid_unsafe(lhead);
@@ -1710,28 +1725,22 @@ newpack:
 	lhead = get_logpack_header(pack->logpack_header_sector);
 	ret = walb_logpack_header_add_bio(lhead, bio, pbs, ring_buffer_size);
 	ASSERT(ret);
-	if (lhead->n_records > 0) {
-		struct walb_log_record *rec = &lhead->record[lhead->n_records - 1];
-		ASSERT(rec->offset == biow->pos);
-		ASSERT(rec->io_size == biow->len);
-		biow->lsid = rec->lsid;
-	}
+	update_biow_lsid(lhead, biow);
 fin:
 	/* The request is just added to the pack. */
 	list_add_tail(&biow->list, &pack->biow_list);
-	if (bio->bi_rw & REQ_FLUSH) {
-		pack->is_flush_header = true;
+	if (bio->bi_rw & REQ_FLUSH && !(bio->bi_rw & REQ_FUA)) {
+		*is_flushp = true;
 
 		/* debug */
 		if (bio_wrapper_state_is_discard(biow)) {
 			WLOGw(wdev, "The bio has both REQ_FLUSH and REQ_DISCARD.\n");
 		}
-#ifdef WALB_DEBUG
-		atomic_inc(&get_iocored_from_wdev(wdev)->n_flush_io);
-#endif
 	}
-	if (bio->bi_rw & REQ_FUA)
+	if (bio->bi_rw & REQ_FUA) {
+		WARN_ON(biow->len == 0);
 		pack->is_fua_contained = true;
+	}
 	LOG_("normal end\n");
 	return true;
 error0:
@@ -1798,7 +1807,7 @@ static void insert_to_sorted_bio_wrapper_list_by_pos(
 /**
  * Check whether wpack is zero-flush-only and set the flag.
  */
-static void writepack_check_and_set_flush(struct pack *wpack)
+static void writepack_check_and_set_zeroflush(struct pack *wpack, bool *is_flushp)
 {
 	struct walb_logpack_header *logh =
 		get_logpack_header(wpack->logpack_header_sector);
@@ -1807,6 +1816,7 @@ static void writepack_check_and_set_flush(struct pack *wpack)
 	if (logh->n_records == 0) {
 		ASSERT(is_zero_flush_only(wpack));
 		wpack->is_zero_flush_only = true;
+		*is_flushp = true;
 	}
 }
 
@@ -2450,22 +2460,24 @@ static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
 	u64 permanent_lsid, flush_lsid;
 	unsigned long timeout_jiffies;
 
-	if (wdev->log_flush_interval_jiffies == 0)
-		return;
-
 	/* We will wait for log flush at most the given interval period. */
-	timeout_jiffies = jiffies + wdev->log_flush_interval_jiffies / 2;
+	timeout_jiffies = jiffies + wdev->log_flush_interval_jiffies;
 retry:
 	spin_lock(&wdev->lsid_lock);
 	permanent_lsid = wdev->lsids.permanent;
 	flush_lsid = wdev->lsids.flush;
 	spin_unlock(&wdev->lsid_lock);
-	if (lsid < permanent_lsid) {
+	if (lsid <= permanent_lsid) {
 		/* No need to wait. */
 		return;
 	}
+	if (lsid <= flush_lsid) {
+		/* Flush request to make lsid permanent will be completed soon. */
+		msleep(1);
+		goto retry;
+	}
 	if (time_is_after_jiffies(timeout_jiffies) &&
-		lsid < flush_lsid + wdev->log_flush_interval_pb / 2) {
+		lsid < flush_lsid + wdev->log_flush_interval_pb) {
 		/* Too early to force flush log device.
 		   Wait for a while. */
 		msleep(1);
@@ -2558,23 +2570,6 @@ static void update_flush_lsid_if_necessary(struct walb_dev *wdev, u64 flush_lsid
                get_iocored_from_wdev(wdev)->log_flush_jiffies =
                        jiffies + wdev->log_flush_interval_jiffies;
        }
-}
-
-/**
- * Set new permanent lsid if necessary.
- */
-static void set_new_permanent_lsid(struct walb_dev *wdev, struct pack *pack)
-{
-	if (!pack_header_should_flush(pack))
-		return;
-
-	spin_lock(&wdev->lsid_lock);
-	{
-		const u64 lsid = wdev->lsids.completed;
-		pack->new_permanent_lsid = lsid;
-		update_flush_lsid_if_necessary(wdev, lsid);
-	}
-	spin_unlock(&wdev->lsid_lock);
 }
 
 /**
