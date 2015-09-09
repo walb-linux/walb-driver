@@ -2274,7 +2274,7 @@ static void wait_for_logpack_and_submit_datapack(
 			   because WalB must flush all the previous logpacks and
 			   the logpack header and all the previous IOs and itself in the same logpack
 			   in order to make the IO be permanent in the log device. */
-			if (biow->bio->bi_flags & REQ_FUA)
+			if (biow->copied_bio->bi_rw & REQ_FUA)
 				force_flush_ldev(wdev);
 
 			/* Check pending data size and stop the queue if needed. */
