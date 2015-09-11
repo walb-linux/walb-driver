@@ -2355,8 +2355,8 @@ static void wait_for_logpack_and_submit_datapack(
 			if (biow->copied_bio->bi_rw & REQ_FUA) {
 #if 0
 				WLOGi(wdev, "force_flush_fua %" PRIu64 "\n", biow->lsid);
-#endif
 				force_flush_ldev(wdev);
+#endif
 			}
 
 
