@@ -1,7 +1,7 @@
 #!/bin/sh
 
 version=`cat VERSION`
-name=walb
+name=walb-driver
 tarprefix=${name}_${version}/
 tarfile=${name}_${version}.tar
 
