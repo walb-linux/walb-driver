@@ -40,6 +40,7 @@
 #include "wdev_ioctl.h"
 #include "wdev_util.h"
 #include "version.h"
+#include "build_date.h"
 
 #include "linux/walb/ioctl.h"
 #include "linux/walb/log_device.h"
@@ -684,6 +685,7 @@ static void walblog_unregister_device(struct walb_dev *wdev)
 static int __init walb_init(void)
 {
 	LOGn("WALB_VERSION %s\n", WALB_VERSION_STR);
+	LOGi("BUILD_DATE %s\n", BUILD_DATE);
 
 	/* DISK_NAME_LEN assersion */
 	ASSERT_DISK_NAME_LEN();
