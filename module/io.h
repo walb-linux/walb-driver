@@ -25,6 +25,8 @@ enum {
 	IOCORE_STATE_WAIT_LOG_TASK_WORKING,
 	IOCORE_STATE_SUBMIT_DATA_TASK_WORKING,
 	IOCORE_STATE_WAIT_DATA_TASK_WORKING,
+
+	IOCORE_STATE_IS_QUEUE_STOPPED,
 };
 
 /**
@@ -119,9 +121,6 @@ struct iocore_data
 
 	/* For queue stopped timeout check. */
 	unsigned long queue_restart_jiffies;
-
-	/* true if queue is stopped. */
-	bool is_under_throttling;
 
 	/* To check that we should flush log device. */
 	unsigned long log_flush_jiffies;
