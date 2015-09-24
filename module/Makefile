@@ -17,7 +17,7 @@ endif
 ifeq ($(DEBUG),1)
   DEBFLAGS = -O -g -DDEBUG -DWALB_DEBUG
 endif
-DEBFLAGS ?= -O2
+DEBFLAGS ?= -O2 -g
 
 ifeq ($(ASSERT),1)
   DEBFLAGS += -DASSERT_ON
