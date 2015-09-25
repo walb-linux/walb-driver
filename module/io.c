@@ -1549,7 +1549,6 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	}
 	iocored->pending_sectors = 0;
 	iocored->queue_restart_jiffies = jiffies;
-	iocored->is_under_throttling = false;
 	iocored->max_sectors_in_pending = 0;
 
 #ifdef WALB_DEBUG
@@ -1954,16 +1953,16 @@ static void wait_for_logpack_and_submit_datapack(
 				goto retry_insert_pending;
 			}
 
+			/* Check pending data size and stop the queue if needed. */
+			if (is_stop_queue && !test_and_set_bit(IOCORE_STATE_IS_QUEUE_STOPPED, &iocored->flags))
+				freeze_detail(iocored, false);
+
 			/* We must flush here for REQ_FUA request before calling bio_endio().
 			   because WalB must flush all the previous logpacks and
 			   the logpack header and all the previous IOs and itself in the same logpack
 			   in order to make the IO be permanent in the log device. */
 			if (biow->copied_bio->bi_rw & REQ_FUA)
 				force_flush_ldev(wdev);
-
-			/* Check pending data size and stop the queue if needed. */
-			if (is_stop_queue)
-				freeze_detail(iocored, false);
 
 			/* call endio here in fast algorithm,
 			   while easy algorithm call it after data device IO. */
@@ -2092,8 +2091,11 @@ static void wait_for_write_bio_wrapper(
 		}
 	}
 	spin_unlock(&iocored->pending_data_lock);
-	if (is_start_queue && melt_detail(iocored, false))
-		dispatch_submit_log_task(wdev);
+	if (is_start_queue && test_bit(IOCORE_STATE_IS_QUEUE_STOPPED, &iocored->flags)) {
+		if (melt_detail(iocored, false))
+			dispatch_submit_log_task(wdev);
+		clear_bit(IOCORE_STATE_IS_QUEUE_STOPPED, &iocored->flags);
+	}
 
 	/* Put related bio(s) and free resources. */
 	if (bio_entry_exists(&biow->cloned_bioe)) {
@@ -2590,9 +2592,8 @@ static bool should_stop_queue(
 	iocored = get_iocored_from_wdev(wdev);
 	ASSERT(iocored);
 
-	if (iocored->is_under_throttling) {
+	if (test_bit(IOCORE_STATE_IS_QUEUE_STOPPED, &iocored->flags))
 		return false;
-	}
 
 	should_stop = iocored->pending_sectors + biow->len
 		> wdev->max_pending_sectors;
@@ -2600,7 +2601,6 @@ static bool should_stop_queue(
 	if (should_stop) {
 		iocored->queue_restart_jiffies =
 			jiffies + wdev->queue_stop_timeout_jiffies;
-		iocored->is_under_throttling = true;
 		return true;
 	} else {
 		return false;
@@ -2626,25 +2626,18 @@ static bool should_start_queue(
 	iocored = get_iocored_from_wdev(wdev);
 	ASSERT(iocored);
 
-	if (!iocored->is_under_throttling) {
+	if (!test_bit(IOCORE_STATE_IS_QUEUE_STOPPED, &iocored->flags))
 		return false;
-	}
 
-	if (iocored->pending_sectors >= biow->len) {
+	if (iocored->pending_sectors >= biow->len)
 		is_size = iocored->pending_sectors - biow->len
 			< wdev->min_pending_sectors;
-	} else {
+	else
 		is_size = true;
-	}
 
 	is_timeout = time_is_before_jiffies(iocored->queue_restart_jiffies);
 
-	if (is_size || is_timeout) {
-		iocored->is_under_throttling = false;
-		return true;
-	} else {
-		return false;
-	}
+	return is_size || is_timeout;
 }
 
 /**
