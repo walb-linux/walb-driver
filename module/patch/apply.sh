@@ -10,6 +10,7 @@ mkdir -p drivers/block/walb
 cp -a $SCRIPT_DIR/../../include/linux/walb/*.h include/linux/walb/
 make -C $SCRIPT_DIR/../ clean
 make -C $SCRIPT_DIR/../ version_h
+make -C $SCRIPT_DIR/../ build_date_h
 cp -a $SCRIPT_DIR/../../module/*.h drivers/block/walb/
 cp -a $SCRIPT_DIR/../../module/*.c drivers/block/walb/
 cp -a $SCRIPT_DIR/Kconfig drivers/block/walb/
