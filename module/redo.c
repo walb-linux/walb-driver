@@ -72,7 +72,7 @@ static struct bio_wrapper* create_discard_bio_wrapper_for_redo(
 	struct walb_dev *wdev, u64 pos, unsigned int len);
 static void destroy_bio_wrapper_for_redo(
 	struct walb_dev *wdev, struct bio_wrapper* biow);
-static void bio_end_io_for_redo(struct bio *bio, int error);
+static void bio_end_io_for_redo(struct bio *bio);
 static void wait_for_all_read_io_and_destroy(
 	struct redo_data *read_rd);
 static void wait_for_all_write_io_for_redo(struct walb_dev *wdev);
@@ -476,7 +476,7 @@ static void destroy_bio_wrapper_for_redo(
 /**
  * bio_end_io for redo.
  */
-static void bio_end_io_for_redo(struct bio *bio, int error)
+static void bio_end_io_for_redo(struct bio *bio)
 {
 	struct bio_wrapper *biow;
 
@@ -492,7 +492,7 @@ static void bio_end_io_for_redo(struct bio *bio, int error)
 	}
 #endif
 
-	biow->error = error;
+	biow->error = bio->bi_error;
 	bio_put(bio);
 	biow->bio = NULL;
 	complete(&biow->done);

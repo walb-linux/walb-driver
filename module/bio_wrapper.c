@@ -342,7 +342,7 @@ void bio_wrapper_endio_copied(struct bio_wrapper *biow)
 		if (bio_private_lsb_get(bio)) {
 			bio_private_lsb_clear(bio);
 			bio_list_del(bio_list, bio, prev_bio);
-			bio_endio(bio, 0);
+			bio_endio(bio);
 		} else {
 			prev_bio = bio;
 		}

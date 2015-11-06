@@ -1895,8 +1895,7 @@ static void wait_for_logpack_and_submit_datapack(
 			ASSERT(wpack->is_zero_flush_only);
 			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
 			list_del(&biow->list);
-			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
-			bio_endio(biow->bio, 0);
+			bio_endio(biow->bio);
 			destroy_bio_wrapper_dec(wdev, biow);
 		} else {
 			const bool is_discard =
@@ -1967,9 +1966,8 @@ static void wait_for_logpack_and_submit_datapack(
 			/* call endio here in fast algorithm,
 			   while easy algorithm call it after data device IO. */
 			io_acct_end(biow);
-			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
 			BIO_WRAPPER_PRINT("log1", biow);
-			bio_endio(biow->bio, 0);
+			bio_endio(biow->bio);
 			biow->bio = NULL;
 
 			bio_wrapper_state_set_prepared(biow);
@@ -1985,7 +1983,7 @@ static void wait_for_logpack_and_submit_datapack(
 		is_failed = true;
 		if (!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 			WLOGe(wdev, "changed to read-only mode.\n");
-		bio_endio(biow->bio, -EIO);
+		bio_io_error(biow->bio);
 		list_del(&biow->list);
 		destroy_bio_wrapper_dec(wdev, biow);
 	}
@@ -2135,12 +2133,12 @@ static void wait_for_bio_wrapper_io(struct bio_wrapper *biow, bool is_endio, boo
 
 	if (is_endio) {
 		ASSERT(biow->bio);
-		if (!biow->error)
-			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
-
 		BIO_WRAPPER_PRINT_CSUM("read2", biow);
 		io_acct_end(biow);
-		bio_endio(biow->bio, biow->error);
+		if (biow->error)
+			bio_io_error(biow->bio);
+		else
+			bio_endio(biow->bio);
 		biow->bio = NULL;
 	}
 	if (is_delete)
@@ -2247,7 +2245,8 @@ error1:
 	bioe->bio = NULL;
 	fin_bio_entry(bioe);
 error0:
-	bio_endio(biow->bio, -ENOMEM);
+	biow->bio->bi_error = -ENOMEM;
+	bio_endio(biow->bio);
 	destroy_bio_wrapper_dec(wdev, biow);
 }
 
@@ -2554,7 +2553,7 @@ static void fail_and_destroy_bio_wrapper_list(
 {
 	struct bio_wrapper *biow, *biow_next;
 	list_for_each_entry_safe(biow, biow_next, biow_list, list) {
-		bio_endio(biow->bio, -EIO);
+		bio_io_error(biow->bio);
 		list_del(&biow->list);
 		destroy_bio_wrapper_dec(wdev, biow);
 	}
@@ -2946,21 +2945,23 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 
 	/* Check whether the device is dying. */
 	if (is_wdev_dying(wdev)) {
-		bio_endio(bio, -ENODEV);
+		bio->bi_error = -ENODEV;
+		bio_endio(bio);
 		return;
 	}
 	iocored = get_iocored_from_wdev(wdev);
 
 	/* Check whether read-only mode. */
 	if (is_write && test_bit(WALB_STATE_READ_ONLY, &wdev->flags)) {
-		bio_endio(bio, -EIO);
+		bio_io_error(bio);
 		return;
 	}
 
 	/* Create bio wrapper. */
 	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
 	if (!biow) {
-		bio_endio(bio, -ENOMEM);
+		bio->bi_error = -ENOMEM;
+		bio_endio(bio);
 		return;
 	}
 	init_bio_wrapper(biow, bio);
@@ -2991,7 +2992,7 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	return;
 error0:
 	destroy_bio_wrapper_dec(wdev, biow);
-	bio_endio(bio, -EIO);
+	bio_io_error(bio);
 }
 
 /**
@@ -3000,11 +3001,12 @@ error0:
 void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio)
 {
 	if (is_wdev_dying(wdev)) {
-		bio_endio(bio, -ENODEV);
+		bio->bi_error = -ENODEV;
+		bio_endio(bio);
 		return;
 	}
 	if (bio->bi_rw & WRITE) {
-		bio_endio(bio, -EIO);
+		bio_io_error(bio);
 		return;
 	}
 	bio->bi_bdev = wdev->ldev;

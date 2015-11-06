@@ -79,7 +79,7 @@ static inline void free_page_dec(struct page *page)
 #endif
 }
 
-static void bio_entry_end_io(struct bio *bio, int error);
+static void bio_entry_end_io(struct bio *bio);
 
 /*******************************************************************************
  * Global functions definition.
@@ -102,24 +102,23 @@ void print_bio_entry(const char *level, struct bio_entry *bioe)
 		, buf);
 }
 
-static void bio_entry_end_io(struct bio *bio, int error)
+static void bio_entry_end_io(struct bio *bio)
 {
 	struct bio_entry *bioe = bio->bi_private;
-	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	ASSERT(bioe);
 	ASSERT(bio->bi_bdev);
 	ASSERT(bioe->bio == bio);
 
-	if (!uptodate) {
+	if (bio->bi_error) {
 		UNUSED const unsigned int devt = bio->bi_bdev->bd_dev;
-		LOG_("BIO_UPTODATE is false"
+		LOG_("bio is error"
 			" (dev %u:%u rw %lu pos %" PRIu64 " len %u).\n"
 			, MAJOR(devt), MINOR(devt)
 			, bio->bi_rw
 			, bio_entry_pos(bioe), bio_entry_len(bioe));
 	}
 
-	bioe->error = error;
+	bioe->error = bio->bi_error;
 	LOG_("complete bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, bio_entry_pos(bioe), bio_entry_len(bioe));
 

@@ -214,7 +214,8 @@ static inline int snprint_bio(char *buf, size_t size, const struct bio *bio)
 		buf, size,
 		"bio %p\n"
                 "  bi_next %p\n"
-                "  bi_flags %lx\n"
+                "  bi_flags %x\n"
+		"  bi_error %d\n"
                 "  bi_rw %lx\n"
                 "  bi_phys_segments %u\n"
                 "  bi_seg_front_size %u\n"
@@ -230,6 +231,7 @@ static inline int snprint_bio(char *buf, size_t size, const struct bio *bio)
                 , bio
                 , bio->bi_next
                 , bio->bi_flags
+		, bio->bi_error
                 , bio->bi_rw
                 , bio->bi_phys_segments
                 , bio->bi_seg_front_size
