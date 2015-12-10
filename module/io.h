@@ -11,6 +11,7 @@
 #include <linux/bio.h>
 #include <linux/blkdev.h>
 #include <linux/list.h>
+#include <linux/version.h>
 #include "kern.h"
 #include "bio_wrapper.h"
 #include "worker.h"
@@ -147,8 +148,13 @@ static inline struct iocore_data* get_iocored_from_wdev(
 }
 
 /* make_requrest callback. */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0)
 void walb_make_request(struct request_queue *q, struct bio *bio);
 void walblog_make_request(struct request_queue *q, struct bio *bio);
+#else
+blk_qc_t walb_make_request(struct request_queue *q, struct bio *bio);
+blk_qc_t walblog_make_request(struct request_queue *q, struct bio *bio);
+#endif
 
 /* For iocore interface. */
 bool iocore_initialize(struct walb_dev *wdev);
