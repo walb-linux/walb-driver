@@ -13,6 +13,7 @@
 #include "super.h"
 #include "alldevs.h"
 #include "control.h"
+#include "queue_util.h"
 
 /*******************************************************************************
  * Static functions prototype.
@@ -325,7 +326,7 @@ static int ioctl_wdev_is_flush_capable(struct walb_dev *wdev, struct walb_ctl *c
 	LOG_("WALB_IOCTL_IS_FLUAH_CAPABLE");
 	ASSERT(ctl->command == WALB_IOCTL_IS_FLUSH_CAPABLE);
 
-	ctl->val_int = (wdev->queue->flush_flags & REQ_FLUSH) != 0;
+	ctl->val_int = is_queue_flush_enabled(wdev->queue);
 	return 0;
 }
 

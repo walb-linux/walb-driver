@@ -24,6 +24,7 @@
 #include "sysfs.h"
 #include "pending_io.h"
 #include "overlapped_io.h"
+#include "queue_util.h"
 
 /*******************************************************************************
  * Static data definition.
@@ -1996,7 +1997,7 @@ static void wait_for_logpack_and_submit_datapack(
 		bool should_notice = false;
 		spin_lock(&wdev->lsid_lock);
 		wdev->lsids.completed = get_next_lsid(logh);
-		if (!(wdev->queue->flush_flags & REQ_FLUSH)) {
+		if (!(is_queue_flush_enabled(wdev->queue))) {
 			/* For flush-not-supportted device. */
 			should_notice = is_permanent_log_empty(&wdev->lsids);
 			wdev->lsids.flush = wdev->lsids.completed;

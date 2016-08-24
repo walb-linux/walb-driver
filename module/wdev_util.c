@@ -13,6 +13,7 @@
 #include "super.h"
 #include "io.h"
 #include "sector_io.h"
+#include "queue_util.h"
 
 /**
  * Check logpack of the given lsid exists.
@@ -190,10 +191,11 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 	dq = bdev_get_queue(wdev->ddev);
 
 	/* Get flush/fua flags. */
-	lq_flush = lq->flush_flags & REQ_FLUSH;
-	dq_flush = dq->flush_flags & REQ_FLUSH;
-	lq_fua = lq->flush_flags & REQ_FUA;
-	dq_fua = dq->flush_flags & REQ_FUA;
+	lq_flush = is_queue_flush_enabled(lq);
+	dq_flush = is_queue_flush_enabled(dq);
+	lq_fua = is_queue_fua_enabled(lq);
+	dq_fua = is_queue_fua_enabled(dq);
+
 	WLOGi(wdev, "flush/fua flags: log_device %d/%d data_device %d/%d\n"
 		, lq_flush, lq_fua, dq_flush, dq_fua);
 
@@ -209,7 +211,11 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 			WLOGi(wdev, "Supports REQ_FUA.\n");
 			wdev->support_fua = true;
 		}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0)
 		blk_queue_flush(q, flush_flags);
+#else
+		blk_queue_write_cache(q, true, lq_fua);
+#endif
 		blk_queue_flush_queueable(q, true);
 	} else {
 		WLOGw(wdev, "REQ_FLUSH is not supported!\n"
