@@ -1870,7 +1870,8 @@ static void wait_for_logpack_and_submit_datapack(
 		is_failed = true;
 
 	/* Wait for logpack header or flush IO. */
-	is_failed = !wait_for_logpack_header(wpack);
+	if (!wait_for_logpack_header(wpack))
+		is_failed = true;
 
 	/* Update permanent_lsid if necessary. */
 	if (!is_failed && pack_header_should_flush(wpack)) {
