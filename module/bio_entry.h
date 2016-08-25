@@ -35,7 +35,7 @@ struct bio_entry
  ********************************************************************************/
 
 /* for debug */
-void print_bio_entry(const char *level, struct bio_entry *bioe);
+void print_bio_entry(const char *level, const struct bio_entry *bioe);
 
 void init_bio_entry(struct bio_entry *bioe, struct bio *bio);
 void fin_bio_entry(struct bio_entry *bioe);
