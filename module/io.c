@@ -1866,7 +1866,6 @@ static void wait_for_logpack_and_submit_datapack(
 	ASSERT(wdev);
 
 	/* Check read only mode. */
-	iocored = get_iocored_from_wdev(wdev);
 	if (test_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 		is_failed = true;
 
@@ -1888,6 +1887,7 @@ static void wait_for_logpack_and_submit_datapack(
 			walb_sysfs_notify(wdev, "lsids");
 	}
 
+	iocored = get_iocored_from_wdev(wdev);
 	/*
 	 * For each biow,
 	 *   (1) Wait for each log IOs corresponding to the biow.
