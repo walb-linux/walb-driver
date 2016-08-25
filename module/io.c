@@ -1833,7 +1833,9 @@ static bool wait_for_logpack_header(struct pack *wpack)
 {
 	bool success;
 	struct bio_entry *bioe = &wpack->header_bioe;
-	ASSERT(bio_entry_exists(bioe));
+
+	/* bioe->bio may be null when the flush request is not really required. */
+	if (!bio_entry_exists(bioe)) return true;
 
 	wait_for_bio_entry(bioe, completion_timeo_ms_);
 	success = bioe->error == 0;
