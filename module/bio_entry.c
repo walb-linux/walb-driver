@@ -85,7 +85,7 @@ static void bio_entry_end_io(struct bio *bio);
  * Global functions definition.
  *******************************************************************************/
 
-void print_bio_entry(const char *level, struct bio_entry *bioe)
+void print_bio_entry(const char *level, const struct bio_entry *bioe)
 {
 	char buf[512];
 	ASSERT(bioe);

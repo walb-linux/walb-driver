@@ -92,9 +92,9 @@ static bool is_pack_size_too_large(
 	unsigned int pbs, unsigned int max_logpack_pb,
 	struct bio_wrapper *biow);
 UNUSED static void print_pack(
-	const char *level, struct pack *pack);
+	const char *level, const struct pack *pack);
 UNUSED static void print_pack_list(
-	const char *level, struct list_head *wpack_list);
+	const char *level, const struct list_head *wpack_list);
 static bool pack_header_should_flush(const struct pack *pack);
 static void get_wdev_and_iocored_from_work(
 	struct walb_dev **pwdev, struct iocore_data **piocored,
@@ -375,7 +375,7 @@ static bool is_pack_size_too_large(
 /**
  * Print a pack data for debug.
  */
-static void print_pack(const char *level, struct pack *pack)
+static void print_pack(const char *level, const struct pack *pack)
 {
 	struct walb_logpack_header *lhead;
 	struct bio_wrapper *biow;
@@ -403,8 +403,18 @@ static void print_pack(const char *level, struct pack *pack)
 		printk("%s""logpack_header_sector is NULL.\n", level);
 	}
 
-	printk("%s""is_logpack_failed: %u\n",
-		level, pack->is_logpack_failed);
+	printk("%s"
+		"new_permanent_lsid: %" PRIu64 "\n"
+		"is_zero_flush_only: %u\n"
+		"is_flush_header: %u\n"
+		"is_fua_contained: %u\n"
+		"is_logpack_failed: %u\n"
+		, level
+		, pack->new_permanent_lsid
+		, pack->is_zero_flush_only
+		, pack->is_flush_header
+		, pack->is_fua_contained
+		, pack->is_logpack_failed);
 
 	printk("%s""print_pack %p end\n", level, pack);
 }
@@ -412,9 +422,9 @@ static void print_pack(const char *level, struct pack *pack)
 /**
  * Print a list of pack data for debug.
  */
-static void print_pack_list(const char *level, struct list_head *wpack_list)
+static void print_pack_list(const char *level, const struct list_head *wpack_list)
 {
-	struct pack *pack;
+	const struct pack *pack;
 	unsigned int i = 0;
 	ASSERT(level);
 	ASSERT(wpack_list);
