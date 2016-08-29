@@ -12,26 +12,29 @@
 extern "C" {
 #endif
 
+#include "print.h"
+
 /**
  * Check macro for is_valid_* functions.
  */
-#define WALB_CHECK(label, cond, msg, level) do {	\
-		if (!(cond)) {				\
-			goto label;			\
-		}					\
+#define WALB_CHECK(label, cond, msg, level) do {			\
+		if (!(cond)) {						\
+			PRINT(level, "WALB_CHECK func:%s LINE:%d\n", __func__, __LINE__); \
+			goto label;					\
+		}							\
 	} while (0)
 
-#define CHECKd(cond) WALB_CHECK(error, cond, "", d)
-#define CHECKi(cond) WALB_CHECK(error, cond, "", i)
-#define CHECKn(cond) WALB_CHECK(error, cond, "", n)
-#define CHECKw(cond) WALB_CHECK(error, cond, "", w)
-#define CHECKe(cond) WALB_CHECK(error, cond, "", e)
+#define CHECKd(cond) WALB_CHECK(error, cond, "", KERN_DEBUG)
+#define CHECKi(cond) WALB_CHECK(error, cond, "", KERN_INFO)
+#define CHECKn(cond) WALB_CHECK(error, cond, "", KERN_NOTICE)
+#define CHECKw(cond) WALB_CHECK(error, cond, "", KERN_WARNING)
+#define CHECKe(cond) WALB_CHECK(error, cond, "", KERN_ERROR)
 
-#define CHECKld(label, cond) WALB_CHECK(label, cond, "", d)
-#define CHECKli(label, cond) WALB_CHECK(label, cond, "", i)
-#define CHECKln(label, cond) WALB_CHECK(label, cond, "", n)
-#define CHECKlw(label, cond) WALB_CHECK(label, cond, "", w)
-#define CHECKle(label, cond) WALB_CHECK(label, cond, "", e)
+#define CHECKld(label, cond) WALB_CHECK(label, cond, "", KERN_DEBUG)
+#define CHECKli(label, cond) WALB_CHECK(label, cond, "", KERN_INFO)
+#define CHECKln(label, cond) WALB_CHECK(label, cond, "", KERN_NOTICE)
+#define CHECKlw(label, cond) WALB_CHECK(label, cond, "", KERN_WARNING)
+#define CHECKle(label, cond) WALB_CHECK(label, cond, "", KERN_ERROR)
 
 #ifdef __cplusplus
 }
