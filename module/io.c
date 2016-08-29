@@ -1065,7 +1065,12 @@ static void logpack_calc_checksum(
 		logh->record[i].checksum = biow->csum;
 		i++;
 	}
-
+	if (i < logh->n_records) {
+		/* This is the last padding record. */
+		ASSERT(test_bit_u32(LOG_RECORD_PADDING, &logh->record[i].flags));
+		n_padding++;
+		i++;
+	}
 	ASSERT(n_padding <= 1);
 	ASSERT(n_padding == logh->n_padding);
 	ASSERT(i == logh->n_records);
@@ -1410,6 +1415,7 @@ static bool is_prepared_pack_valid(struct pack *pack)
 	struct bio_wrapper *biow;
 	u64 total_pb; /* total io size in physical block. */
 	unsigned int n_padding = 0;
+	struct walb_log_record *lrec;
 
 	LOG_("is_prepared_pack_valid begin.\n");
 
@@ -1427,14 +1433,13 @@ static bool is_prepared_pack_valid(struct pack *pack)
 	i = 0;
 	total_pb = 0;
 	list_for_each_entry(biow, &pack->biow_list, list) {
-		struct walb_log_record *lrec;
-
 		CHECKd(biow->bio);
 		if (biow->len == 0) {
 			CHECKd(biow->bio->bi_rw & REQ_FLUSH);
 			CHECKd(i == 0);
 			CHECKd(lhead->n_records == 0);
 			CHECKd(lhead->total_io_size == 0);
+			/* The loop must be done. */
 			continue;
 		}
 
@@ -1467,8 +1472,18 @@ static bool is_prepared_pack_valid(struct pack *pack)
 		}
 		i++;
 	}
+	if (i < lhead->n_records) {
+		/* It must be the last padding record. */
+		lrec = &lhead->record[i];
+		CHECKd(test_bit_u32(LOG_RECORD_EXIST, &lrec->flags));
+		CHECKd(test_bit_u32(LOG_RECORD_PADDING, &lrec->flags));
+		total_pb += capacity_pb(pbs, lrec->io_size);
+		n_padding++;
+		i++;
+	}
 	CHECKd(i == lhead->n_records);
 	CHECKd(total_pb == lhead->total_io_size);
+	CHECKd(n_padding <= 1);
 	CHECKd(n_padding == lhead->n_padding);
 	if (lhead->n_records == 0) {
 		CHECKd(pack->is_zero_flush_only);

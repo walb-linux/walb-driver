@@ -224,6 +224,7 @@ static inline int is_valid_logpack_header(
 		CHECKd(lhead->total_io_size == 0);
 		CHECKd(lhead->n_padding == 0);
 	} else {
+		CHECKd(lhead->n_padding <= 1);
 		CHECKd(lhead->n_padding <= lhead->n_records);
 
 		/* logpack_lsid overflow check. */

@@ -156,6 +156,7 @@ bool walb_logpack_header_add_bio(
 		ASSERT(bio_lsid == logpack_lsid + 1 + lhead->total_io_size);
 
 		if (lhead->n_records == max_n_rec) {
+			/* The last record is padding. */
 			LOG_(no_more_bio_msg);
 			return false;
 		}
