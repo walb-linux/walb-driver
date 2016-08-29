@@ -368,6 +368,9 @@ static bool is_pack_size_too_large(
 		return false;
 	}
 
+	if (bio_wrapper_state_is_discard(biow))
+		return false;
+
 	pb = (unsigned int)capacity_pb(pbs, biow->len);
 	return pb + lhead->total_io_size > max_logpack_pb;
 }
