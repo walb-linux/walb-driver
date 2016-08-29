@@ -686,6 +686,7 @@ static int __init walb_init(void)
 {
 	LOGn("WALB_VERSION %s\n", WALB_VERSION_STR);
 	LOGi("BUILD_DATE %s\n", BUILD_DATE);
+	LOGi("WALB_LOG_VERSION %d\n", WALB_LOG_VERSION);
 
 	/* DISK_NAME_LEN assersion */
 	ASSERT_DISK_NAME_LEN();
