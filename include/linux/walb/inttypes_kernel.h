@@ -22,4 +22,9 @@
 #define PRIu32 "u"
 #define PRIu64 __PRI64_PREFIX "u"
 
+#define UINT8_MAX ((u8)~0U)
+#define UINT16_MAX ((u16)~0U)
+#define UINT32_MAX ((u32)~0U)
+#define UINT64_MAX ((u64)~0ULL)
+
 #endif /* WALB_INT_TYPES_KERNEL_H */

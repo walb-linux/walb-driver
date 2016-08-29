@@ -228,9 +228,7 @@ void walb_discard_support(struct walb_dev *wdev, bool support)
 	if (support) {
 		WLOGi(wdev, "Supports REQ_DISCARD.\n");
 		q->limits.discard_granularity = wdev->physical_bs;
-
-		/* Should be stored in u16 variable and aligned. */
-		blk_queue_max_discard_sectors(q, 1 << 15);
+		blk_queue_max_discard_sectors(q, WALB_MAX_DISCARD_IO_SECTORS);
 		q->limits.discard_zeroes_data = 0;
 		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
 	} else {
