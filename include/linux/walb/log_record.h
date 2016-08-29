@@ -34,7 +34,7 @@ enum {
  */
 struct walb_log_record {
 
-	/* (4 + 4) + 8 + (2 + 2 + 4) + 8 = 32 bytes */
+	/* (4 + 4) + 8 + (4 + 2 + 2) + 8 = 32 bytes */
 
 	/* Just sum of the array assuming data contents
 	   as an array of u32 integer.
@@ -49,14 +49,15 @@ struct walb_log_record {
 	u64 offset;
 
 	/* IO size [logical sector].
-	   512B * (65K - 1) = (32M-512)B is the maximum request size. */
-	u16 io_size;
+	 * A discard IO size can be UINT32_MAX,
+	 * while normal IO size must be less than UINT16_MAX. */
+	u32 io_size;
 
 	/* Local sequence id as the data offset in the log record.
 	   lsid - lsid_local is logpack lsid. */
 	u16 lsid_local;
 
-	u32 reserved1;
+	u16 reserved1;
 
 	/* Log sequence id of the record. */
 	u64 lsid;
@@ -172,6 +173,9 @@ static inline int is_valid_log_record(struct walb_log_record *rec)
 	CHECKd(test_bit_u32(LOG_RECORD_EXIST, &rec->flags));
 	if (!test_bit_u32(LOG_RECORD_PADDING, &rec->flags)) {
 		CHECKd(rec->io_size > 0);
+	}
+	if (!test_bit_u32(LOG_RECORD_DISCARD, &rec->flags)) {
+		CHECKd(rec->io_size <= WALB_MAX_NORMAL_IO_SECTORS);
 	}
 	CHECKd(rec->lsid_local > 0);
 	CHECKd(rec->lsid <= MAX_LSID);
