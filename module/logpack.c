@@ -115,9 +115,10 @@ bool walb_logpack_header_add_bio(
 		return true;
 	}
 	ASSERT(0 < bio_lb);
-	ASSERT((1U << 16) > bio_lb); /* can be u16. */
 	bio_pb = capacity_pb(pbs, bio_lb);
 	is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
+	if (!is_discard)
+		ASSERT(bio_lb <= WALB_MAX_NORMAL_IO_SECTORS);
 
 	/* Padding check. */
 	{
@@ -128,6 +129,7 @@ bool walb_logpack_header_add_bio(
 	if (!is_discard && padding_pb < bio_pb) {
 		/* Log of this request will cross the end of ring buffer.
 		   So padding is required. */
+		u64 cap_lb;
 
 		if (lhead->total_io_size + padding_pb
 			> MAX_TOTAL_IO_SIZE_IN_LOGPACK_HEADER) {
@@ -139,9 +141,12 @@ bool walb_logpack_header_add_bio(
 		set_bit_u32(LOG_RECORD_PADDING, &lhead->record[idx].flags);
 		set_bit_u32(LOG_RECORD_EXIST, &lhead->record[idx].flags);
 		lhead->record[idx].lsid = bio_lsid;
+		ASSERT(bio_lsid - logpack_lsid <= UINT16_MAX);
 		lhead->record[idx].lsid_local = (u16)(bio_lsid - logpack_lsid);
 		lhead->record[idx].offset = 0;
-		lhead->record[idx].io_size = (u16)capacity_lb(pbs, padding_pb);
+		cap_lb = capacity_lb(pbs, padding_pb);
+		ASSERT(cap_lb <= UINT16_MAX);
+		lhead->record[idx].io_size = (u16)cap_lb;
 		lhead->n_padding++;
 		lhead->n_records++;
 		lhead->total_io_size += padding_pb;
@@ -169,7 +174,7 @@ bool walb_logpack_header_add_bio(
 	lhead->record[idx].lsid = bio_lsid;
 	lhead->record[idx].lsid_local = (u16)(bio_lsid - logpack_lsid);
 	lhead->record[idx].offset = (u64)bio->bi_iter.bi_sector;
-	lhead->record[idx].io_size = (u16)bio_lb;
+	lhead->record[idx].io_size = (u32)bio_lb;
 	lhead->n_records++;
 	if (is_discard) {
 		set_bit_u32(LOG_RECORD_DISCARD, &lhead->record[idx].flags);

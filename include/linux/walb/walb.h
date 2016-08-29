@@ -15,8 +15,19 @@ extern "C" {
 
 /**
  * Walb log device format version.
+ *
+ * ChangeLog:
+ * ver2
+ *   enlarge max IO size to 32bit from 16bit unsigned int.
+ *   Still max IO size with data is limited to 16bit due to other reasons.
  */
-#define WALB_LOG_VERSION 1
+#define WALB_LOG_VERSION 2
+
+/**
+ * Maximum IO size [logical block or sector].
+ */
+#define WALB_MAX_DISCARD_IO_SECTORS UINT32_MAX
+#define WALB_MAX_NORMAL_IO_SECTORS UINT16_MAX
 
 /**
  * Device name prefix/suffix.
