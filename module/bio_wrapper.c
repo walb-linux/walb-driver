@@ -358,12 +358,8 @@ void wait_for_bio_wrapper(struct bio_wrapper *biow, ulong timeo_ms)
 		ulong rtimeo = wait_for_completion_timeout(&biow->done, timeo);
 		if (rtimeo)
 			break;
-		LOGn("timeout(%d): "
-			"biow %p pos %" PRIu64 " len %u csum %08x "
-			"error %d discard %u\n"
-			, c, biow, (u64)biow->pos, biow->len
-			, biow->csum, biow->error
-			, bio_wrapper_state_is_discard(biow) ? 1 : 0);
+		LOGn("timeout(%d): ", c);
+		print_bio_wrapper(KERN_NOTICE, biow);
 		c++;
 	}
 }
