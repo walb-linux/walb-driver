@@ -172,6 +172,8 @@ static void wait_for_bio_wrapper(
 	struct bio_wrapper *biow, bool is_endio, bool is_delete);
 static void submit_write_bio_wrapper(
 	struct bio_wrapper *biow, bool is_plugging);
+static void cancel_write_bio_wrapper(
+	struct walb_dev *wdev, struct bio_wrapper *biow);
 static void submit_read_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 static struct bio_entry* submit_flush(struct block_device *bdev);
@@ -185,7 +187,7 @@ static void wait_for_logpack_submit_queue_empty(struct walb_dev *wdev);
 static void wait_for_all_started_write_io_done(struct walb_dev *wdev);
 static void wait_for_all_pending_gc_done(struct walb_dev *wdev);
 static void force_flush_ldev(struct walb_dev *wdev);
-static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid);
+static bool wait_for_log_permanent(struct walb_dev *wdev, u64 lsid);
 static void flush_all_wq(void);
 static void clear_working_flag(int working_bit, unsigned long *flag_p);
 static void invoke_userland_exec(struct walb_dev *wdev, const char *event);
@@ -193,6 +195,8 @@ static void fail_and_destroy_bio_wrapper_list(
 	struct walb_dev *wdev, struct list_head *biow_list);
 static void update_flush_lsid_if_necessary(struct walb_dev *wdev, u64 flush_lsid);
 UNUSED static void set_new_permanent_lsid(struct walb_dev *wdev, struct pack *pack);
+static bool delete_bio_wrapper_from_pending_data(
+	struct walb_dev *wdev, struct bio_wrapper *biow);
 
 /* Stop/start queue for fast algorithm. */
 static bool should_stop_queue(
@@ -848,7 +852,18 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 
 		/* Wait for all previous log must be permanent
 		   before submitting data IO. */
-		wait_for_log_permanent(wdev, lsid + pb);
+		if (!wait_for_log_permanent(wdev, lsid + pb)) {
+			/* The device became read-only mode
+			   so all the write data IOs must fail. */
+			size_t nr = 0;
+			list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
+				list_del(&biow->list2);
+				cancel_write_bio_wrapper(wdev, biow);
+				nr++;
+			}
+			WLOGi(wdev, "write data IOs were canceled due to READ_ONLY mode: %zu\n", nr);
+			continue;
+		}
 
 #ifdef WALB_OVERLAPPED_SERIALIZE
 		/* Check and insert to overlapped detection data. */
@@ -1619,41 +1634,16 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 		retry:
 			rtimeo = wait_for_completion_timeout(&biow->done, timeo);
 			if (rtimeo == 0) {
-				LOGn("timeout(%d): biow %p bio %p pos %"PRIu64" len %u"
-					" state(%d%d%d%d"
-					"%d"
-#ifdef WALB_OVERLAPPED_SERIALIZE
-					"%d"
-#endif
-					")"
-#ifdef WALB_OVERLAPPED_SERIALIZE
-					" n_overlapped %d"
-#endif
-					" started %d"
-#ifdef WALB_DEBUG
-					" state %d"
-#endif
-					"\n",
-					c, biow, biow->copied_bio, (u64)biow->pos, biow->len,
-					bio_wrapper_state_is_prepared(biow),
-					bio_wrapper_state_is_submitted(biow),
-					bio_wrapper_state_is_completed(biow),
-					bio_wrapper_state_is_discard(biow)
-					, bio_wrapper_state_is_overwritten(biow)
-#ifdef WALB_OVERLAPPED_SERIALIZE
-					, bio_wrapper_state_is_delayed(biow)
-					, biow->n_overlapped
-#endif
-					, biow->is_started
-#ifdef WALB_DEBUG
-					, atomic_read(&biow->state)
-#endif
-					);
+				char buf[32];
+				snprintf(buf, sizeof(buf), "timeout(%d): ", c);
+				print_bio_wrapper_short(KERN_NOTICE, biow, buf);
 				c++;
 				goto retry;
 			}
-			ASSERT(bio_wrapper_state_is_submitted(biow));
-			ASSERT(bio_wrapper_state_is_completed(biow));
+			if (!test_bit(WALB_STATE_READ_ONLY, &wdev->flags)) {
+				ASSERT(bio_wrapper_state_is_submitted(biow));
+				ASSERT(bio_wrapper_state_is_completed(biow));
+			}
 			if (biow->error &&
 				!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 				WLOGe(wdev, "data IO error. to be read-only mode.\n");
@@ -2383,7 +2373,7 @@ static void wait_for_write_bio_wrapper(
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	const bool is_endio = false;
 	const bool is_delete = false;
-	bool is_start_queue;
+	bool starts_queue;
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	struct bio_wrapper *biow_tmp, *biow_tmp_next;
 	unsigned int n_should_submit;
@@ -2440,19 +2430,8 @@ static void wait_for_write_bio_wrapper(
 #endif
 
 	/* Delete from pending data. */
-	spin_lock(&iocored->pending_data_lock);
-	is_start_queue = should_start_queue(wdev, biow);
-	if (bio_wrapper_state_is_discard(biow)) {
-		iocored->pending_sectors--;
-	} else {
-		iocored->pending_sectors -= biow->len;
-		if (!bio_wrapper_state_is_overwritten(biow)) {
-			pending_delete(iocored->pending_data,
-				&iocored->max_sectors_in_pending, biow);
-		}
-	}
-	spin_unlock(&iocored->pending_data_lock);
-	if (is_start_queue && test_bit(IOCORE_STATE_IS_QUEUE_STOPPED, &iocored->flags)) {
+	starts_queue = delete_bio_wrapper_from_pending_data(wdev, biow);
+	if (starts_queue && test_bit(IOCORE_STATE_IS_QUEUE_STOPPED, &iocored->flags)) {
 		if (melt_detail(iocored, false))
 			dispatch_submit_log_task(wdev);
 		clear_bit(IOCORE_STATE_IS_QUEUE_STOPPED, &iocored->flags);
@@ -2594,6 +2573,30 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 #ifdef WALB_PERFORMANCE_ANALYSIS
 	getnstimeofday(&biow->ts[WALB_TIME_DATA_SUBMITTED]);
 #endif
+}
+
+static void cancel_write_bio_wrapper(
+	struct walb_dev *wdev, struct bio_wrapper *biow)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	bool starts_queue;
+#ifdef WALB_DEBUG
+	ASSERT(bio_wrapper_state_is_prepared(biow));
+	ASSERT(!bio_wrapper_state_is_submitted(biow));
+#endif
+
+	starts_queue = delete_bio_wrapper_from_pending_data(wdev, biow);
+	if (starts_queue && melt_detail(iocored, false))
+		dispatch_submit_log_task(wdev);
+
+	/* Put related bio(s) and free resources */
+	put_bio_entry_list(&biow->bioe_list); // 1st.
+	put_bio_entry_list(&biow->bioe_list); // 2nd.
+	destroy_bio_entry_list(&biow->bioe_list);
+	ASSERT(list_empty(&biow->bioe_list));
+
+	biow->error = -EIO;
+	complete(&biow->done);
 }
 
 /**
@@ -2864,8 +2867,11 @@ static void force_flush_ldev(struct walb_dev *wdev)
  *
  * @wdev walb device.
  * @lsid threshold lsid.
+ * RETURN:
+ *   true if the log has been permanent.
+ *   false if wdev became read-only mode.
  */
-static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
+static bool wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
 {
 	u64 permanent_lsid, flush_lsid;
 	unsigned long timeout_jiffies;
@@ -2873,13 +2879,15 @@ static void wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
 	/* We will wait for log flush at most the given interval period. */
 	timeout_jiffies = jiffies + wdev->log_flush_interval_jiffies;
 retry:
+	if (test_bit(WALB_STATE_READ_ONLY, &wdev->flags))
+		return false;
 	spin_lock(&wdev->lsid_lock);
 	permanent_lsid = wdev->lsids.permanent;
 	flush_lsid = wdev->lsids.flush;
 	spin_unlock(&wdev->lsid_lock);
 	if (lsid <= permanent_lsid) {
 		/* No need to wait. */
-		return;
+		return true;
 	}
 	if (lsid <= flush_lsid) {
 		/* Flush request to make the lsid permanent will be completed soon. */
@@ -2894,6 +2902,7 @@ retry:
 	}
 
 	force_flush_ldev(wdev);
+	return !test_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 }
 
 /**
@@ -2994,6 +3003,32 @@ static void set_new_permanent_lsid(struct walb_dev *wdev, struct pack *pack)
 	pack->new_permanent_lsid = wdev->lsids.completed;
 	update_flush_lsid_if_necessary(wdev, pack->new_permanent_lsid);
 	spin_unlock(&wdev->lsid_lock);
+}
+
+/**
+ * RETURN:
+ *   sould_start_queue() return value.
+ */
+static bool delete_bio_wrapper_from_pending_data(
+	struct walb_dev *wdev, struct bio_wrapper *biow)
+{
+	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
+	bool starts_queue;
+
+	spin_lock(&iocored->pending_data_lock);
+	starts_queue = should_start_queue(wdev, biow);
+	if (bio_wrapper_state_is_discard(biow)) {
+		iocored->pending_sectors--;
+	} else {
+		iocored->pending_sectors -= biow->len;
+		if (!bio_wrapper_state_is_overwritten(biow)) {
+			pending_delete(iocored->pending_data,
+				&iocored->max_sectors_in_pending, biow);
+		}
+	}
+	spin_unlock(&iocored->pending_data_lock);
+
+	return starts_queue;
 }
 
 /**
