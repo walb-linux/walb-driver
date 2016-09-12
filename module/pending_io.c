@@ -294,4 +294,27 @@ bool pending_insert_and_delete_fully_overwritten(
 	return true;
 }
 
+void pending_data_print(struct multimap *pending_data)
+{
+	struct multimap_cursor cur;
+	multimap_cursor_init(pending_data, &cur);
+
+	if (!multimap_cursor_begin(&cur))
+		return;
+
+	printk(KERN_INFO "pending_data_print BEGIN\n");
+	while (multimap_cursor_next(&cur)) {
+		struct bio_wrapper *biow;
+		ASSERT(multimap_cursor_is_valid(&cur));
+		biow = (struct bio_wrapper *)multimap_cursor_val(&cur);
+		if (!biow) {
+			printk(KERN_INFO "biow null\n");
+		} else {
+			print_bio_wrapper(KERN_INFO, biow);
+		}
+	}
+	printk(KERN_INFO "pending_data_print END\n");
+
+}
+
 MODULE_LICENSE("Dual BSD/GPL");

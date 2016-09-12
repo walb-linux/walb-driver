@@ -29,6 +29,7 @@ unsigned int overlapped_delete_and_notify(
 	, u64 *overlapped_out_id
 #endif
 	);
+void overlapped_data_print(struct multimap *overlapped_data);
 #endif
 
 #endif /* WALB_OVERLAPPED_IO_H_KERNEL */

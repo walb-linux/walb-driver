@@ -184,4 +184,28 @@ unsigned int overlapped_delete_and_notify(
 }
 #endif
 
+#ifdef WALB_OVERLAPPED_SERIALIZE
+void overlapped_data_print(struct multimap *overlapped_data)
+{
+	struct multimap_cursor cur;
+	ASSERT(overlapped_data);
+	multimap_cursor_init(overlapped_data, &cur);
+
+	if (!multimap_cursor_begin(&cur))
+		return;
+
+	printk(KERN_INFO "overlapped_data_print BEGIN\n");
+	while (multimap_cursor_next(&cur)) {
+		struct bio_wrapper *biow;
+		ASSERT(multimap_cursor_is_valid(&cur));
+		biow = (struct bio_wrapper *)multimap_cursor_val(&cur);
+		if (!biow)
+			printk(KERN_INFO "biow null\n");
+		else
+			print_bio_wrapper(KERN_INFO, biow);
+	}
+	printk(KERN_INFO "overlapped_data_print END\n");
+}
+#endif
+
 MODULE_LICENSE("Dual BSD/GPL");
