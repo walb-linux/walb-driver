@@ -1602,6 +1602,8 @@ static struct iocore_data* create_iocore_data(gfp_t gfp_mask)
 	atomic_set(&iocored->n_flush_io, 0);
 	atomic_set(&iocored->n_flush_logpack, 0);
 	atomic_set(&iocored->n_flush_force, 0);
+
+	atomic_set(&iocored->n_io_acct, 0);
 #endif
 	return iocored;
 
@@ -2812,6 +2814,10 @@ static void io_acct_start(struct bio_wrapper *biow)
 	part_stat_add(cpu, part0, sectors[rw], biow->len);
 	part_inc_in_flight(part0, rw);
 	part_stat_unlock();
+
+#ifdef WALB_DEBUG
+	atomic_inc(&get_iocored_from_wdev(wdev)->n_io_acct);
+#endif
 }
 
 static void io_acct_end(struct bio_wrapper *biow)
@@ -2827,6 +2833,10 @@ static void io_acct_end(struct bio_wrapper *biow)
 	part_round_stats(cpu, part0);
 	part_dec_in_flight(part0, rw);
 	part_stat_unlock();
+
+#ifdef WALB_DEBUG
+	atomic_dec(&get_iocored_from_wdev(wdev)->n_io_acct);
+#endif
 }
 
 /**
@@ -3131,6 +3141,9 @@ void wait_for_all_pending_io_done(struct walb_dev *wdev)
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	int nr = atomic_read(&iocored->n_pending_bio);
+#ifdef WALB_DEBUG
+	int n_io_acct;
+#endif
 
 	while (nr > 0) {
 		WLOGi(wdev, "n_pending_bio %d\n", nr);
@@ -3138,6 +3151,13 @@ void wait_for_all_pending_io_done(struct walb_dev *wdev)
 		nr = atomic_read(&iocored->n_pending_bio);
 	}
 	WLOGi(wdev, "n_pending_bio %d\n", nr);
+
+#ifdef WALB_DEBUG
+	n_io_acct = atomic_read(&iocored->n_io_acct);
+	WLOGi(wdev, "n_io_acct %d\n", n_io_acct);
+	if (nr == 0 && n_io_acct > 0)
+		WLOGw(wdev, "n_io_acct should be ZERO.\n");
+#endif
 }
 
 /**
