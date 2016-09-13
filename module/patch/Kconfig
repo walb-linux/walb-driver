@@ -27,7 +27,7 @@ config BLK_DEV_WALB_OVERLAP
 config BLK_DEV_WALB_ASSERT
 	bool "Support WalB assertion check"
 	depends on BLK_DEV_WALB
-	default n
+	default y
 	help
 	  Say Y if you want to use assertion with BUG_ON() code.
 
