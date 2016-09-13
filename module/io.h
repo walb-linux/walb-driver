@@ -130,6 +130,8 @@ struct iocore_data
 	atomic_t n_flush_io;
 	atomic_t n_flush_logpack;
 	atomic_t n_flush_force;
+
+	atomic_t n_io_acct;
 #endif
 };
 
