@@ -1944,6 +1944,7 @@ static void wait_for_logpack_and_submit_datapack(
 			ASSERT(wpack->is_zero_flush_only);
 			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
 			list_del(&biow->list);
+			io_acct_end(biow);
 			set_bit(BIO_UPTODATE, &biow->bio->bi_flags);
 			bio_endio(biow->bio, 0);
 			destroy_bio_wrapper_dec(wdev, biow);
@@ -2034,6 +2035,7 @@ static void wait_for_logpack_and_submit_datapack(
 		is_failed = true;
 		if (!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 			WLOGe(wdev, "changed to read-only mode.\n");
+		io_acct_end(biow);
 		bio_endio(biow->bio, -EIO);
 		list_del(&biow->list);
 		destroy_bio_wrapper_dec(wdev, biow);
@@ -2311,6 +2313,7 @@ error1:
 	bioe->bio = NULL;
 	fin_bio_entry(bioe);
 error0:
+	io_acct_end(biow);
 	bio_endio(biow->bio, -ENOMEM);
 	destroy_bio_wrapper_dec(wdev, biow);
 }
@@ -2624,8 +2627,9 @@ static void fail_and_destroy_bio_wrapper_list(
 {
 	struct bio_wrapper *biow, *biow_next;
 	list_for_each_entry_safe(biow, biow_next, biow_list, list) {
-		bio_endio(biow->bio, -EIO);
 		list_del(&biow->list);
+		io_acct_end(biow);
+		bio_endio(biow->bio, -EIO);
 		destroy_bio_wrapper_dec(wdev, biow);
 	}
 	ASSERT(list_empty(biow_list));
@@ -2819,8 +2823,8 @@ static void io_acct_end(struct bio_wrapper *biow)
 	unsigned long duration = jiffies - biow->start_time;
 
 	cpu = part_stat_lock();
-	part_round_stats(cpu, part0);
 	part_stat_add(cpu, part0, ticks[rw], duration);
+	part_round_stats(cpu, part0);
 	part_dec_in_flight(part0, rw);
 	part_stat_unlock();
 }
@@ -3086,6 +3090,7 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	}
 	return;
 error0:
+	io_acct_end(biow);
 	destroy_bio_wrapper_dec(wdev, biow);
 	bio_endio(bio, -EIO);
 }
