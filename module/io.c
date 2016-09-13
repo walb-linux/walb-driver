@@ -2479,25 +2479,9 @@ static void wait_for_bio_wrapper(
 		retry:
 			rtimeo = wait_for_completion_io_timeout(&bioe->done, timeo);
 			if (rtimeo == 0) {
-				LOGn("timeout(%d): biow %p ith %u "
-					"bioe %p bio %p pos %"PRIu64" len %u"
-					" state(%d%d%d%d"
-					"%d"
-#ifdef WALB_OVERLAPPED_SERIALIZE
-					"%d"
-#endif
-					")\n",
-					c, biow, i, bioe, bioe->bio,
-					(u64)bioe->pos, bioe->len,
-					bio_wrapper_state_is_prepared(biow),
-					bio_wrapper_state_is_submitted(biow),
-					bio_wrapper_state_is_completed(biow),
-					bio_wrapper_state_is_discard(biow)
-					, bio_wrapper_state_is_overwritten(biow)
-#ifdef WALB_OVERLAPPED_SERIALIZE
-					, bio_wrapper_state_is_delayed(biow)
-#endif
-					);
+				char buf[32];
+				snprintf(buf, sizeof(buf), "timeout(%d): ", c);
+				print_bio_wrapper_short(KERN_NOTICE, biow, buf);
 				c++;
 				goto retry;
 			}
