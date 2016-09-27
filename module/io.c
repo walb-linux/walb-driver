@@ -955,7 +955,9 @@ static bool create_logpack_list(
 		if (latest_lsid - written_lsid > wdev->ring_buffer_size) {
 			if (test_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 				goto error;
-			WLOGw(wdev, "Ring buffer size is too small: sleep 100ms.\n");
+			WLOGw(wdev, "Ring buffer size is too small: sleep 100ms: "
+				"latest %" PRIu64 " written %" PRIu64 " prev_written %" PRIu64 "\n"
+				, latest_lsid, written_lsid, prev_written_lsid);
 			msleep(100);
 		} else {
 			WLOGw(wdev, "Ring buffer size is too small: try to take checkpoint: "
