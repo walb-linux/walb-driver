@@ -1,0 +1,10 @@
+--- a/drivers/block/Makefile	2016-09-27 19:15:24.338203399 +0900
++++ b/drivers/block/Makefile	2016-09-27 19:18:43.897807765 +0900
+@@ -42,6 +42,7 @@
+ obj-$(CONFIG_BLK_DEV_RSXX) += rsxx/
+ obj-$(CONFIG_BLK_DEV_NULL_BLK)	+= null_blk.o
+ obj-$(CONFIG_ZRAM) += zram/
++obj-$(CONFIG_BLK_DEV_WALB) += walb/
+ 
+ skd-y		:= skd_main.o
+ swim_mod-y	:= swim.o swim_asm.o
