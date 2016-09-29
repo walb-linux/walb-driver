@@ -41,7 +41,7 @@ int walb_check_lsid_valid(struct walb_dev *wdev, u64 lsid)
 	spin_lock(&wdev->lsuper0_lock);
 	off = get_offset_of_lsid_2(get_super_sector(wdev->lsuper0), lsid);
 	spin_unlock(&wdev->lsuper0_lock);
-	if (!sector_io(READ, wdev->ldev, off, sect)) {
+	if (!sector_io(REQ_OP_READ, 0, wdev->ldev, off, sect)) {
 		WLOGe(wdev, "read sector failed.\n");
 		goto error1;
 	}
@@ -199,7 +199,7 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 	WLOGi(wdev, "flush/fua flags: log_device %d/%d data_device %d/%d\n"
 		, lq_flush, lq_fua, dq_flush, dq_fua);
 
-	/* Check REQ_FLUSH/REQ_FUA supports. */
+	/* Check flush/fua supports. */
 	wdev->support_flush = false;
 	wdev->support_fua = false;
 	if (lq_flush && dq_flush) {
@@ -315,7 +315,7 @@ bool invalidate_lsid(struct walb_dev *wdev, u64 lsid)
 	off = get_offset_of_lsid_2(super, lsid);
 	spin_unlock(&wdev->lsuper0_lock);
 
-	ret = sector_io(WRITE, wdev->ldev, off, zero_sector);
+	ret = sector_io(REQ_OP_WRITE, 0, wdev->ldev, off, zero_sector);
 	if (!ret) {
 		WLOGe(wdev, "sector write failed. to be read-only mode.\n");
 		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);

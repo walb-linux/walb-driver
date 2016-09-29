@@ -161,7 +161,7 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 		biow->bio = bio;
 		biow->pos = bio_begin_sector(bio);
 		biow->len = bio_sectors(bio);
-		if (bio->bi_rw & REQ_DISCARD) {
+		if (bio_op(bio) == REQ_OP_DISCARD) {
 			set_bit(BIO_WRAPPER_DISCARD, &biow->flags);
 		}
 	} else {

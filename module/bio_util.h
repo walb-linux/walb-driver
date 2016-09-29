@@ -75,7 +75,7 @@ static inline u32 bio_calc_checksum_iter(const struct bio *bio, struct bvec_iter
 
 	ASSERT(bio);
 
-	if (iter.bi_size == 0 || (biox->bi_rw & REQ_DISCARD))
+	if (iter.bi_size == 0 || bio_op(biox) == REQ_OP_DISCARD)
 		return 0;
 
 	__bio_for_each_segment(bvec, biox, iterx, iter) {
@@ -114,6 +114,24 @@ struct pair_u64_char {
 	const char *name;
 };
 
+static inline const char *get_req_op_str(uint op)
+{
+	uint i;
+	const struct pair_u64_char tbl[] = {
+		{REQ_OP_READ, "READ"},
+		{REQ_OP_WRITE, "WRITE"},
+		{REQ_OP_DISCARD, "DISCARD"},
+		{REQ_OP_SECURE_ERASE, "SECURE_ERASE"},
+		{REQ_OP_WRITE_SAME, "WRITE_SAME"},
+		{REQ_OP_FLUSH, "FLUSH"},
+	};
+	for (i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++) {
+		if (op == tbl[i].value)
+			return tbl[i].name;
+	}
+	return "NOT_FOUND";
+}
+
 /**
  * Print request flags for debug.
  */
@@ -123,48 +141,45 @@ static inline int snprint_bio_flags(
 	uint i;
 	int s, w = 0;
 	const struct pair_u64_char tbl[] = {
-		{REQ_WRITE, "REQ_WRITE"},
-		{REQ_FAILFAST_DEV, "REQ_FAILFAST_DEV"},
-		{REQ_FAILFAST_TRANSPORT, "REQ_FAILFAST_TRANSPORT"},
-		{REQ_FAILFAST_DRIVER, "REQ_FAILFAST_DRIVER"},
-		{REQ_SYNC, "REQ_SYNC"},
-		{REQ_META, "REQ_META"},
-		{REQ_PRIO, "REQ_PRIO"},
-		{REQ_DISCARD, "REQ_DISCARD"},
-		{REQ_WRITE_SAME, "REQ_WRITE_SAME"},
-		{REQ_NOIDLE, "REQ_NOIDLE"},
-		{REQ_INTEGRITY, "REQ_INTEGRITY"},
-		{REQ_RAHEAD, "REQ_RAHEAD"},
-		{REQ_THROTTLED, "REQ_THROTTLED"},
-		{REQ_SORTED, "REQ_SORTED"},
-		{REQ_SOFTBARRIER, "REQ_SOFTBARRIER"},
-		{REQ_FUA, "REQ_FUA"},
-		{REQ_NOMERGE, "REQ_NOMERGE"},
-		{REQ_STARTED, "REQ_STARTED"},
-		{REQ_DONTPREP, "REQ_DONTPREP"},
-		{REQ_QUEUED, "REQ_QUEUED"},
-		{REQ_ELVPRIV, "REQ_ELVPRIV"},
-		{REQ_FAILED, "REQ_FAILED"},
-		{REQ_QUIET, "REQ_QUIET"},
-		{REQ_PREEMPT, "REQ_PREEMPT"},
-		{REQ_ALLOCED, "REQ_ALLOCED"},
-		{REQ_COPY_USER, "REQ_COPY_USER"},
-		{REQ_FLUSH, "REQ_FLUSH"},
-		{REQ_FLUSH_SEQ, "REQ_FLUSH_SEQ"},
-		{REQ_IO_STAT, "REQ_IO_STAT"},
-		{REQ_MIXED_MERGE, "REQ_MIXED_MERGE"},
-		{REQ_SECURE, "REQ_SECURE"},
-		{REQ_PM, "REQ_PM"},
-		{REQ_HASHED, "REQ_HASHED"},
-		{REQ_MQ_INFLIGHT, "REQ_MQ_INFLIGHT"},
+		{REQ_FAILFAST_DEV, "FAILFAST_DEV"},
+		{REQ_FAILFAST_TRANSPORT, "FAILFAST_TRANSPORT"},
+		{REQ_FAILFAST_DRIVER, "FAILFAST_DRIVER"},
+		{REQ_SYNC, "SYNC"},
+		{REQ_META, "META"},
+		{REQ_PRIO, "PRIO"},
+		{REQ_NOIDLE, "NOIDLE"},
+		{REQ_INTEGRITY, "INTEGRITY"},
+		{REQ_RAHEAD, "RAHEAD"},
+		{REQ_THROTTLED, "THROTTLED"},
+		{REQ_SORTED, "SORTED"},
+		{REQ_SOFTBARRIER, "SOFTBARRIER"},
+		{REQ_FUA, "FUA"},
+		{REQ_NOMERGE, "NOMERGE"},
+		{REQ_STARTED, "STARTED"},
+		{REQ_DONTPREP, "DONTPREP"},
+		{REQ_QUEUED, "QUEUED"},
+		{REQ_ELVPRIV, "ELVPRIV"},
+		{REQ_FAILED, "FAILED"},
+		{REQ_QUIET, "QUIET"},
+		{REQ_PREEMPT, "PREEMPT"},
+		{REQ_ALLOCED, "ALLOCED"},
+		{REQ_COPY_USER, "COPY_USER"},
+		{REQ_PREFLUSH, "PREFLUSH"},
+		{REQ_FLUSH_SEQ, "FLUSH_SEQ"},
+		{REQ_IO_STAT, "IO_STAT"},
+		{REQ_MIXED_MERGE, "MIXED_MERGE"},
+		{REQ_PM, "PM"},
+		{REQ_HASHED, "HASHED"},
+		{REQ_MQ_INFLIGHT, "MQ_INFLIGHT"},
 	};
-	s = snprintf(buf, size, "REQ_FLAGS:");
+	s = snprintf(buf, size, "REQ_OP: %s", get_req_op_str(bio_op(bio)));
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
 
+	s = snprintf(buf, size, " REQ_FLAGS:");
+	SNPRINT_BIO_PROCEED(buf, size, w, s);
 	for (i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++) {
-		if (!(bio->bi_rw & tbl[i].value))
+		if (!(bio->bi_opf & tbl[i].value))
 			continue;
-
 		s = snprintf(buf, size, " %s", tbl[i].name);
 		SNPRINT_BIO_PROCEED(buf, size, w, s);
 	}
@@ -207,7 +222,7 @@ static inline int snprint_bio(char *buf, size_t size, const struct bio *bio)
                 "  bi_next %p\n"
                 "  bi_flags %x\n"
 		"  bi_error %d\n"
-                "  bi_rw %lx\n"
+                "  bi_opf %08x\n"
                 "  bi_phys_segments %u\n"
                 "  bi_seg_front_size %u\n"
                 "  bi_seg_back_size %u\n"
@@ -223,7 +238,7 @@ static inline int snprint_bio(char *buf, size_t size, const struct bio *bio)
                 , bio->bi_next
                 , bio->bi_flags
 		, bio->bi_error
-                , bio->bi_rw
+                , bio->bi_opf
                 , bio->bi_phys_segments
                 , bio->bi_seg_front_size
                 , bio->bi_seg_back_size
@@ -278,11 +293,11 @@ static inline void print_bio(const struct bio *bio)
 static inline void print_bio_short(const char *prefix, const struct bio *bio)
 {
 	pr_info("%sbio %p pos %" PRIu64 " len %u"
-		" bdev(%d:%d) rw %lu\n"
+		" bdev(%d:%d) opf %08x\n"
 		, prefix, bio, (u64)bio_begin_sector(bio), bio_sectors(bio)
 		, MAJOR(bio->bi_bdev->bd_dev)
 		, MINOR(bio->bi_bdev->bd_dev)
-		, bio->bi_rw);
+		, bio->bi_opf);
 }
 
 static inline void print_bio_short_(const char *prefix, const struct bio *bio)
@@ -317,18 +332,32 @@ static inline void put_all_bio_list(struct bio_list *bio_list)
 	}
 }
 
+static inline bool bio_has_flush(const struct bio *bio)
+{
+	if (bio && (bio_op(bio) == REQ_OP_FLUSH || (bio->bi_opf & REQ_PREFLUSH)))
+		return true;
+
+	return false;
+}
+
 /**
- * Clear REQ_FLUSH and REQ_FUA bit of all bios inside bio entry list.
+ * Clear REQ_PREFLUSH and REQ_FUA bit of a bio.
  */
-static inline void clear_flush_bit(struct bio_list *bio_list)
+static inline void bio_clear_flush_flags(struct bio *bio)
+{
+	const unsigned int mask = REQ_PREFLUSH | REQ_FUA;
+	ASSERT(op_is_write(bio_op(bio)));
+	bio->bi_opf &= ~mask;
+}
+
+/**
+ * Clear REQ_PREFLUSH and REQ_FUA bit of all bios inside bio entry list.
+ */
+static inline void bio_clear_flush_flags_list(struct bio_list *bio_list)
 {
 	struct bio *bio;
-	const unsigned long mask = REQ_FLUSH | REQ_FUA;
-
-	bio_list_for_each(bio, bio_list) {
-		ASSERT(bio->bi_rw & REQ_WRITE);
-		bio->bi_rw &= ~mask;
-	}
+	bio_list_for_each(bio, bio_list)
+		bio_clear_flush_flags(bio);
 }
 
 static inline bool should_split_bio_for_chunk(

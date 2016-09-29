@@ -341,7 +341,7 @@ static struct bio_wrapper* create_log_bio_wrapper_for_redo(
 	WLOG_(wdev, "lsid: %" PRIu64 " off_pb: %" PRIu64 "\n", lsid, off_pb);
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_iter.bi_sector = off_lb;
-	bio->bi_rw = READ;
+	bio_set_op_attrs(bio, REQ_OP_READ, 0);
 	bio->bi_end_io = bio_end_io_for_redo;
 	bio->bi_private = biow;
 	bytes = bio_add_page(bio, virt_to_page(sectd->data),
@@ -394,7 +394,7 @@ static bool prepare_data_bio_for_redo(
 
 	bio->bi_bdev = wdev->ddev;
 	bio->bi_iter.bi_sector = pos;
-	bio->bi_rw = WRITE;
+	bio_set_op_attrs(bio, REQ_OP_WRITE, 0);
 	bio->bi_end_io = bio_end_io_for_redo;
 	bio->bi_private = biow;
 	bio_add_page(bio, virt_to_page(sectd->data),
@@ -432,7 +432,7 @@ static struct bio_wrapper* create_discard_bio_wrapper_for_redo(
 	bio->bi_bdev = wdev->ddev;
 	bio->bi_iter.bi_sector = pos;
 	bio->bi_iter.bi_size = len << 9;
-	bio->bi_rw = WRITE | REQ_DISCARD;
+	bio_set_op_attrs(bio, REQ_OP_DISCARD, 0);
 	bio->bi_end_io = bio_end_io_for_redo;
 	bio->bi_private = biow;
 
@@ -881,7 +881,7 @@ retry2:
 		schedule();
 		goto retry2;
 	}
-	logh_biow->bio->bi_rw = WRITE_FLUSH_FUA;
+	bio_set_op_attrs(logh_biow->bio, REQ_OP_WRITE, WRITE_FLUSH_FUA);
 	generic_make_request(logh_biow->bio);
 	wait_for_completion(&logh_biow->done);
 	if (logh_biow->error) {

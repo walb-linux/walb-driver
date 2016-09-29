@@ -341,7 +341,7 @@ static bool is_zero_flush_only(const struct pack *pack)
 		int i = 0;
 		list_for_each_entry(biow, &pack->biow_list, list) {
 			ASSERT(biow->bio);
-			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
+			ASSERT(bio_has_flush(biow->bio));
 			ASSERT(biow->len == 0);
 			i++;
 		}
@@ -716,7 +716,7 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 
 		/* Sort IOs. */
 		list_for_each_entry_safe(biow, biow_next, &biow_list, list2) {
-			clear_flush_bit(&biow->cloned_bio_list);
+			bio_clear_flush_flags_list(&biow->cloned_bio_list);
 
 #ifdef WALB_OVERLAPPED_SERIALIZE
 			if (!bio_wrapper_state_is_delayed(biow)) {
@@ -1069,10 +1069,10 @@ static void logpack_calc_checksum(
 
 		ASSERT(biow);
 		ASSERT(biow->copied_bio);
-		ASSERT(biow->copied_bio->bi_rw & REQ_WRITE);
+		ASSERT(op_is_write(bio_op(biow->copied_bio)));
 
 		if (biow->len == 0) {
-			ASSERT(biow->copied_bio->bi_rw & REQ_FLUSH);
+			ASSERT(bio_has_flush(biow->copied_bio));
 			continue;
 		}
 
@@ -1145,14 +1145,14 @@ static void submit_logpack(
 		if (test_bit_u32(LOG_RECORD_DISCARD, &rec->flags)) {
 			/* No need to execute IO to the log device. */
 			ASSERT(bio_wrapper_state_is_discard(biow));
-			ASSERT(biow->bio->bi_rw & REQ_DISCARD);
+			ASSERT(bio_op(biow->bio) == REQ_OP_DISCARD);
 			ASSERT(biow->len > 0);
 		} else if (biow->len == 0) {
 			/* Zero-sized IO will not be stored in logpack header.
 			   We just submit it and will wait for it. */
 
 			/* such bio must be flush. */
-			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
+			ASSERT(bio_has_flush(biow->bio));
 			/* such bio must be permitted at first only. */
 			ASSERT(i == 0);
 
@@ -1216,7 +1216,7 @@ retry_bio:
 	off_pb = get_offset_of_lsid(lhead->logpack_lsid, ring_buffer_off, ring_buffer_size);
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_iter.bi_sector = off_lb;
-	bio->bi_rw = is_flush ? WRITE_FLUSH : WRITE;
+	bio_set_op_attrs(bio, REQ_OP_WRITE, is_flush ? REQ_PREFLUSH : 0);
 	len = bio_add_page(bio, page, pbs, offset_in_page(lhead));
 	ASSERT(len == pbs);
 
@@ -1252,7 +1252,7 @@ static void logpack_submit_bio_wrapper(
 	ASSERT(biow);
 	ASSERT(biow->copied_bio);
 	ASSERT(!bio_wrapper_state_is_discard(biow));
-	ASSERT((biow->copied_bio->bi_rw & REQ_DISCARD) == 0);
+	ASSERT(bio_op(biow->copied_bio) != REQ_OP_DISCARD);
 
 	bioe = &biow->cloned_bioe;
 	logpack_init_bio_entry(bioe, biow->copied_bio, pbs, ldev, ldev_off_pb, 0);
@@ -1286,10 +1286,7 @@ static struct bio* logpack_create_bio(
 	/* cbio->bi_private = NULL; */
 
 	/* REQ_FLUSH and REQ_FUA must be off while they are processed in other ways. */
-	{
-		const unsigned long mask = REQ_FLUSH | REQ_FUA;
-		cbio->bi_rw &= ~mask;
-	}
+	bio_clear_flush_flags(cbio);
 
 	return cbio;
 }
@@ -1455,7 +1452,7 @@ static bool is_prepared_pack_valid(struct pack *pack)
 	list_for_each_entry(biow, &pack->biow_list, list) {
 		CHECKd(biow->bio);
 		if (biow->len == 0) {
-			CHECKd(biow->bio->bi_rw & REQ_FLUSH);
+			CHECKd(bio_has_flush(biow->bio));
 			CHECKd(i == 0);
 			CHECKd(lhead->n_records == 0);
 			CHECKd(lhead->total_io_size == 0);
@@ -1480,7 +1477,7 @@ static bool is_prepared_pack_valid(struct pack *pack)
 
 		/* Normal record. */
 		CHECKd(biow->bio);
-		CHECKd(biow->bio->bi_rw & REQ_WRITE);
+		CHECKd(op_is_write(bio_op(biow->bio)));
 		CHECKd(biow->pos == (sector_t)lrec->offset);
 		CHECKd(lhead->logpack_lsid == lrec->lsid - lrec->lsid_local);
 		CHECKd(biow->len == lrec->io_size);
@@ -1728,7 +1725,7 @@ static bool writepack_add_bio_wrapper(
 	ASSERT(wpackp);
 	ASSERT(biow);
 	ASSERT(biow->copied_bio);
-	ASSERT(biow->copied_bio->bi_rw & REQ_WRITE);
+	ASSERT(op_is_write(bio_op(biow->copied_bio)));
 	ASSERT(wdev);
 	pbs = wdev->physical_bs;
 	ASSERT_PBS(pbs);
@@ -1750,8 +1747,8 @@ static bool writepack_add_bio_wrapper(
 		goto newpack;
 	}
 	if (lhead->n_records > 0 &&
-		((bio->bi_rw & REQ_FLUSH)
-			|| is_pack_size_too_large(lhead, pbs, max_logpack_pb, biow))) {
+		(bio_has_flush(bio) ||
+			is_pack_size_too_large(lhead, pbs, max_logpack_pb, biow))) {
 		/* Flush request must be the first of the pack. */
 		goto newpack;
 	}
@@ -1779,7 +1776,7 @@ newpack:
 fin:
 	/* The request is just added to the pack. */
 	list_add_tail(&biow->list, &pack->biow_list);
-	if (bio->bi_rw & REQ_FLUSH && !(bio->bi_rw & REQ_FUA)) {
+	if (bio_has_flush(bio) && !(bio->bi_opf & REQ_FUA)) {
 		*is_flushp = true;
 
 		/* debug */
@@ -1787,7 +1784,7 @@ fin:
 			WLOGw(wdev, "The bio has both REQ_FLUSH and REQ_DISCARD.\n");
 		}
 	}
-	if (bio->bi_rw & REQ_FUA) {
+	if (bio->bi_opf & REQ_FUA) {
 		WARN_ON(biow->len == 0);
 		pack->is_fua_contained = true;
 	}
@@ -1947,7 +1944,7 @@ static void wait_for_logpack_and_submit_datapack(
 		if (biow->len == 0) {
 			/* Zero-flush. */
 			ASSERT(wpack->is_zero_flush_only);
-			ASSERT(biow->bio->bi_rw & REQ_FLUSH);
+			ASSERT(bio_has_flush(biow->bio));
 			list_del(&biow->list);
 			io_acct_end(biow);
 			bio_endio(biow->bio);
@@ -2015,7 +2012,7 @@ static void wait_for_logpack_and_submit_datapack(
 			   because WalB must flush all the previous logpacks and
 			   the logpack header and all the previous IOs and itself in the same logpack
 			   in order to make the IO be permanent in the log device. */
-			if (biow->copied_bio->bi_rw & REQ_FUA)
+			if (biow->copied_bio->bi_opf & REQ_FUA)
 				force_flush_ldev(wdev);
 
 			/* call endio here in fast algorithm,
@@ -2343,7 +2340,7 @@ static bool submit_flush(struct bio_entry *bioe, struct block_device *bdev)
 		return false;
 
 	bio->bi_bdev = bdev;
-	bio->bi_rw = WRITE_FLUSH;
+	bio_set_op_attrs(bio, REQ_OP_WRITE, WRITE_FLUSH);
 
 	init_bio_entry(bioe, bio);
 	ASSERT(bio_entry_len(bioe) == 0);
@@ -3054,7 +3051,23 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 {
 	struct bio_wrapper *biow;
 	struct iocore_data *iocored;
-	const bool is_write = (bio->bi_rw & REQ_WRITE) != 0;
+	bool is_write;
+
+	switch(bio_op(bio)) {
+	case REQ_OP_READ:
+		is_write = false;
+		break;
+	case REQ_OP_WRITE:
+	case REQ_OP_DISCARD:
+	case REQ_OP_FLUSH:
+		is_write = true;
+		break;
+	default:
+		WLOGw(wdev, "not supported op: %s\n", get_req_op_str(bio_op(bio)));
+		print_bio(bio);
+		bio_io_error(bio);
+		return;
+	}
 
 	/* Check whether the device is dying. */
 	if (is_wdev_dying(wdev)) {
@@ -3119,7 +3132,7 @@ void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio)
 		bio_endio(bio);
 		return;
 	}
-	if (bio->bi_rw & WRITE) {
+	if (op_is_write(bio_op(bio))) {
 		bio_io_error(bio);
 		return;
 	}

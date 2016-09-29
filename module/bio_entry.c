@@ -112,9 +112,9 @@ static void bio_entry_end_io(struct bio *bio)
 	if (bio->bi_error) {
 		UNUSED const unsigned int devt = bio->bi_bdev->bd_dev;
 		LOG_("bio is error"
-			" (dev %u:%u rw %lu pos %" PRIu64 " len %u).\n"
+			" (dev %u:%u opf %08x pos %" PRIu64 " len %u).\n"
 			, MAJOR(devt), MINOR(devt)
-			, bio->bi_rw
+			, bio->bi_opf
 			, bio_entry_pos(bioe), bio_entry_len(bioe));
 	}
 
@@ -203,7 +203,7 @@ retry:
  *
  * @size size in bytes.
  *
- * You must set bi_bdev, bi_rw, bi_iter by yourself.
+ * You must set bi_bdev, bi_opf, bi_iter by yourself.
  * bi_iter.bi_size will be set to the specified size if size is not 0.
  */
 struct bio* bio_alloc_with_pages(uint size, struct block_device *bdev, gfp_t gfp_mask)
@@ -266,7 +266,7 @@ struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask)
 	struct bio *clone;
 
 	ASSERT(bio);
-	ASSERT(bio->bi_rw & REQ_WRITE);
+	ASSERT(op_is_write(bio_op(bio)));
 	ASSERT(!bio->bi_next);
 
 	if (bio_has_data(bio))
@@ -278,7 +278,7 @@ struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask)
 	if (!clone)
 		return NULL;
 
-	clone->bi_rw = bio->bi_rw;
+	clone->bi_opf = bio->bi_opf;
 	clone->bi_iter.bi_sector = bio->bi_iter.bi_sector;
 
 	if (size == 0) {

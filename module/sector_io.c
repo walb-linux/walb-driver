@@ -17,7 +17,8 @@
  * This is blocked operation.
  * Do not call this function in interuption handlers.
  *
- * @bi_rw should be bio->bi_rw like REQ_WRITE, REQ_READ, etc.
+ * @op bio operation like REQ_OP_READ, REQ_OP_WRITE, etc.
+ * @op_flags bio operation flags like REQ_PREFLUSH, REQ_FUA, etc.
  * @bdev block device, which is already opened.
  * @addr address in the block device [physical block].
  * @sect sector data.
@@ -25,7 +26,7 @@
  * @return true in success, or false.
  */
 bool sector_io(
-	ulong bi_rw, struct block_device *bdev,
+	uint op, uint op_flags, struct block_device *bdev,
 	u64 addr, struct sector_data *sect)
 {
 	struct bio *bio;
@@ -57,19 +58,19 @@ bool sector_io(
 	page = virt_to_page(buf);
 	off = offset_in_page(buf);
 
-	bio->bi_rw = bi_rw;
+	bio_set_op_attrs(bio, op, op_flags);
 	bio->bi_bdev = bdev;
 	bio->bi_iter.bi_sector = addr_lb(pbs, addr);
 	bio_add_page(bio, page, pbs, off);
 
 	LOGd("sector %" PRIu64 " "
-		"buf %p page %p offset %u sectorsize %d rw %lu\n"
+		"buf %p page %p offset %u sectorsize %d opf %08x\n"
 		, addr_lb(pbs, addr)
-		, buf, page, off, pbs, bi_rw);
+		, buf, page, off, pbs, bio->bi_opf);
 
 	/* Submit, wait for completion,
 	   check errors, and deallocate. */
-	error = submit_bio_wait(bi_rw, bio);
+	error = submit_bio_wait(bio);
 	if (error) {
 		LOGe("sector io failed with error %d\n", error);
 		goto error1;
@@ -146,7 +147,7 @@ bool walb_read_super_sector(
 	/* Really read. */
 	off0 = get_super_sector0_offset(pbs);
 	/* off1 = get_super_sector1_offset(wdev->physical_bs, 0); */
-	if (!sector_io(READ, ldev, off0, lsuper)) {
+	if (!sector_io(REQ_OP_READ, 0, ldev, off0, lsuper)) {
 		LOGe("read super sector0 failed\n");
 		goto error0;
 	}
@@ -220,7 +221,7 @@ bool walb_write_super_sector(
 
 	/* Really write. */
 	off0 = get_super_sector0_offset(pbs);
-	if (!sector_io(WRITE_FLUSH_FUA, ldev, off0, lsuper)) {
+	if (!sector_io(REQ_OP_WRITE, WRITE_FLUSH_FUA, ldev, off0, lsuper)) {
 		LOGe("write super sector0 failed\n");
 		return false;
 	}

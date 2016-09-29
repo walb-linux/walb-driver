@@ -9,6 +9,7 @@
 
 #include "check_kernel.h"
 #include "logpack.h"
+#include "bio_util.h"
 #include "linux/walb/logger.h"
 
 /**
@@ -92,7 +93,7 @@ bool walb_logpack_header_add_bio(
 	ASSERT(lhead->sector_type == SECTOR_TYPE_LOGPACK);
 	ASSERT(bio);
 	ASSERT_PBS(pbs);
-	ASSERT(bio->bi_rw & REQ_WRITE);
+	ASSERT(op_is_write(bio_op(bio)));
 	ASSERT(ring_buffer_size > 0);
 
 	logpack_lsid = lhead->logpack_lsid;
@@ -109,14 +110,14 @@ bool walb_logpack_header_add_bio(
 	bio_lb = bio_sectors(bio);
 	if (bio_lb == 0) {
 		/* Only flush requests can have zero-size. */
-		ASSERT(bio->bi_rw & REQ_FLUSH);
+		ASSERT(bio_has_flush(bio));
 		/* Currently a zero-flush must be alone. */
 		ASSERT(idx == 0);
 		return true;
 	}
 	ASSERT(0 < bio_lb);
 	bio_pb = capacity_pb(pbs, bio_lb);
-	is_discard = ((bio->bi_rw & REQ_DISCARD) != 0);
+	is_discard = bio_op(bio) == REQ_OP_DISCARD;
 	if (!is_discard)
 		ASSERT(bio_lb <= WALB_MAX_NORMAL_IO_SECTORS);
 

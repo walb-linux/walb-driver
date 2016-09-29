@@ -24,7 +24,7 @@
 
 /* Sector IO function. */
 bool sector_io(
-	ulong bi_rw, struct block_device *bdev,
+	uint op, uint op_flags, struct block_device *bdev,
 	u64 off, struct sector_data *sect);
 
 /* Super sector functions. */

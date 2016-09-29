@@ -94,7 +94,7 @@ bool pending_insert(
 	ASSERT(max_sectors_p);
 	ASSERT(biow);
 	ASSERT(biow->copied_bio);
-	ASSERT(biow->copied_bio->bi_rw & REQ_WRITE);
+	ASSERT(op_is_write(bio_op(biow->copied_bio)));
 	ASSERT(biow->len > 0);
 
 	/* Insert the entry. */
