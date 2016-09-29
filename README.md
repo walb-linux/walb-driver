@@ -7,19 +7,20 @@ WalB is a block device driver for linux kernel that stores write-ahead logs addi
 * include: header files shared by kernel/userland code.
 * module: linux device driver source files.
 * doc: documents.
-* tool(deprecated): userland tools to control walb devices.
+* tool(deprecated): userland tools to control walb devices. use walb-tools repository.
 * sim(deprecated): simulators to check algorithm consistency.
 
 # Supported kernel version.
 
 Use an appropriate branch or a tag for your using kernel as follows:
 
-| Branch     | Tag      | Kernel version |
-|------------|----------|----------------|
-| `master`   | `v1.3.x` | 4.3-(4.7)      |
-| `for-3.14` | `v1.2.x` | 3.14-4.2       |
-| `for-3.10` | `v1.1.x` | 3.10-3.13      |
-| `for-3.2`  | `v1.0.x` | 3.2-3.8 (EOL)  |
+| Branch          | Tag      | Kernel version |
+|-----------------|----------|----------------|
+| `master`        | `v1.4.x` | 4.8-           |
+| `for-4.3`       | `v1.3.x` | 4.3-4.7        |
+| `for-3.14`      | `v1.2.x` | 3.14-4.2       |
+| `for-3.10`      | `v1.1.x` | 3.10-3.13      |
+| `for-3.2` (EOL) | `v1.0.x` | 3.2-3.8        |
 
 # License
 
