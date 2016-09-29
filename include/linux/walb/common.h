@@ -16,6 +16,7 @@ extern "C" {
 #ifdef __KERNEL__
 #include <linux/types.h>
 #include <linux/kdev_t.h>
+#include <linux/bug.h>
 #include "inttypes_kernel.h"
 #if defined(WALB_DEBUG) || defined(ASSERT_ON)
 #define ASSERT(cond) BUG_ON(!(cond))
