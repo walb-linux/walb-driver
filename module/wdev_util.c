@@ -203,19 +203,13 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 	wdev->support_flush = false;
 	wdev->support_fua = false;
 	if (lq_flush && dq_flush) {
-		uint flush_flags = REQ_FLUSH;
 		WLOGi(wdev, "Supports REQ_FLUSH.\n");
 		wdev->support_flush = true;
 		if (lq_fua) {
-			flush_flags |= REQ_FUA;
 			WLOGi(wdev, "Supports REQ_FUA.\n");
 			wdev->support_fua = true;
 		}
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0)
-		blk_queue_flush(q, flush_flags);
-#else
 		blk_queue_write_cache(q, true, lq_fua);
-#endif
 		blk_queue_flush_queueable(q, true);
 	} else {
 		WLOGw(wdev, "REQ_FLUSH is not supported!\n"

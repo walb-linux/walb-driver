@@ -3211,17 +3211,11 @@ void destroy_bio_wrapper_dec(
 /**
  * Make request.
  */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0)
-void walb_make_request(struct request_queue *q, struct bio *bio)
-#else
 blk_qc_t walb_make_request(struct request_queue *q, struct bio *bio)
-#endif
 {
 	struct walb_dev *wdev = get_wdev_from_queue(q);
 	iocore_make_request(wdev, bio);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)
 	return BLK_QC_T_NONE;
-#endif
 }
 
 /**
@@ -3233,17 +3227,11 @@ blk_qc_t walb_make_request(struct request_queue *q, struct bio *bio)
  * @q request queue.
  * @bio bio.
  */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0)
-void walblog_make_request(struct request_queue *q, struct bio *bio)
-#else
 blk_qc_t walblog_make_request(struct request_queue *q, struct bio *bio)
-#endif
 {
 	struct walb_dev *wdev = get_wdev_from_queue(q);
 	iocore_log_make_request(wdev, bio);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)
 	return BLK_QC_T_NONE;
-#endif
 }
 
 MODULE_LICENSE("Dual BSD/GPL");
