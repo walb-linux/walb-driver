@@ -1021,8 +1021,8 @@ static void submit_logpack_list(
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
 			WLOG_(wdev, "is_zero_flush_only\n");
-			if (is_flush)
-				logpack_submit_flush(wdev->ldev, wpack);
+			ASSERT(is_flush);
+			logpack_submit_flush(wdev->ldev, wpack);
 		} else {
 			ASSERT(logh->n_records > 0);
 			logpack_calc_checksum(logh, wdev->physical_bs,
