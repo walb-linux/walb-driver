@@ -2316,10 +2316,11 @@ static void wait_for_logpack_and_submit_datapack(
 			   the logpack header and all the previous IOs and itself in the same logpack
 			   in order to make the IO be permanent in the log device. */
 			if (biow->copied_bio->bi_rw & REQ_FUA) {
+				u32 pb = capacity_pb(wdev->physical_bs, biow->len);
 #if 0
 				WLOGi(wdev, "force_flush_fua %" PRIu64 "\n", biow->lsid);
 #endif
-				force_flush_ldev(wdev, INVALID_LSID);
+				force_flush_ldev(wdev, biow->lsid + pb);
 			}
 
 
@@ -2899,7 +2900,7 @@ retry:
 		goto retry;
 	}
 
-	force_flush_ldev(wdev, INVALID_LSID);
+	force_flush_ldev(wdev, lsid);
 	return !test_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 }
 
