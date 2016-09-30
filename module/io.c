@@ -194,7 +194,6 @@ static void invoke_userland_exec(struct walb_dev *wdev, const char *event);
 static void fail_and_destroy_bio_wrapper_list(
 	struct walb_dev *wdev, struct list_head *biow_list);
 static void update_flush_lsid_if_necessary(struct walb_dev *wdev, u64 flush_lsid);
-UNUSED static void set_new_permanent_lsid(struct walb_dev *wdev, struct pack *pack);
 static bool delete_bio_wrapper_from_pending_data(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 
@@ -1195,7 +1194,6 @@ static void submit_logpack_list(
 
 		ASSERT_SECTOR_DATA(wpack->logpack_header_sector);
 		logh = get_logpack_header(wpack->logpack_header_sector);
-		/* set_new_permanent_lsid(wdev, wpack); */
 
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
@@ -2981,20 +2979,6 @@ static void update_flush_lsid_if_necessary(struct walb_dev *wdev, u64 flush_lsid
 		get_iocored_from_wdev(wdev)->log_flush_jiffies =
 			jiffies + wdev->log_flush_interval_jiffies;
 	}
-}
-
-/**
- * Set new permanent lsid if necessary.
- */
-static void set_new_permanent_lsid(struct walb_dev *wdev, struct pack *pack)
-{
-	if (!pack_header_should_flush(pack))
-		return;
-
-	spin_lock(&wdev->lsid_lock);
-	pack->new_permanent_lsid = wdev->lsids.completed;
-	update_flush_lsid_if_necessary(wdev, pack->new_permanent_lsid);
-	spin_unlock(&wdev->lsid_lock);
 }
 
 /**
