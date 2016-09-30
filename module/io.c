@@ -1197,12 +1197,11 @@ static void submit_logpack_list(
 
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
-			if (is_flush) {
+			ASSERT(is_flush);
 #if 0
-				WLOGi(wdev, "zero_flush lsid %" PRIu64 " %" PRIu64 "\n", wpack->new_permanent_lsid, logh->logpack_lsid);
+			WLOGi(wdev, "zero_flush lsid %" PRIu64 " %" PRIu64 "\n", wpack->new_permanent_lsid, logh->logpack_lsid);
 #endif
-				logpack_submit_flush(wdev->ldev, &wpack->bioe_list);
-			}
+			logpack_submit_flush(wdev->ldev, &wpack->bioe_list);
 		} else {
 			ASSERT(logh->n_records > 0);
 			logpack_calc_checksum(logh, wdev->physical_bs,
