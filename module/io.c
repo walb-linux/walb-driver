@@ -186,7 +186,7 @@ static void start_write_bio_wrapper(
 static void wait_for_logpack_submit_queue_empty(struct walb_dev *wdev);
 static void wait_for_all_started_write_io_done(struct walb_dev *wdev);
 static void wait_for_all_pending_gc_done(struct walb_dev *wdev);
-static void force_flush_ldev(struct walb_dev *wdev);
+static void force_flush_ldev(struct walb_dev *wdev, u64 lsid);
 static bool wait_for_log_permanent(struct walb_dev *wdev, u64 lsid);
 static void flush_all_wq(void);
 static void clear_working_flag(int working_bit, unsigned long *flag_p);
@@ -2315,7 +2315,7 @@ static void wait_for_logpack_and_submit_datapack(
 #if 0
 				WLOGi(wdev, "force_flush_fua %" PRIu64 "\n", biow->lsid);
 #endif
-				force_flush_ldev(wdev);
+				force_flush_ldev(wdev, INVALID_LSID);
 			}
 
 
@@ -2796,7 +2796,10 @@ static void wait_for_all_pending_gc_done(struct walb_dev *wdev)
 	WLOGi(wdev, "n_pending_gc %d\n", nr);
 }
 
-static void force_flush_ldev(struct walb_dev *wdev)
+/**
+ * lsid: if lsid is INVALID_LSID, use completed lsid.
+ */
+static void force_flush_ldev(struct walb_dev *wdev, u64 lsid)
 {
 	int err;
 	u64 new_permanent_lsid;
@@ -2805,7 +2808,10 @@ static void force_flush_ldev(struct walb_dev *wdev)
 
 	/* Get completed_lsid and update flush_lsid. */
 	spin_lock(&wdev->lsid_lock);
-	new_permanent_lsid = wdev->lsids.completed;
+	if (lsid == INVALID_LSID)
+		new_permanent_lsid = wdev->lsids.completed;
+	else
+		new_permanent_lsid = lsid;
 	update_flush_lsid_if_necessary(wdev, new_permanent_lsid);
 	spin_unlock(&wdev->lsid_lock);
 
@@ -2889,7 +2895,7 @@ retry:
 		goto retry;
 	}
 
-	force_flush_ldev(wdev);
+	force_flush_ldev(wdev, INVALID_LSID);
 	return !test_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 }
 
