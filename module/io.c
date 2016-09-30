@@ -957,6 +957,10 @@ static bool create_logpack_list(
 			WLOGw(wdev, "Ring buffer size is too small: sleep 100ms: "
 				"latest %" PRIu64 " written %" PRIu64 " prev_written %" PRIu64 "\n"
 				, latest_lsid, written_lsid, prev_written_lsid);
+
+			/* In order to avoid live lock of IOs waiting their logs to be permanent */
+			force_flush_ldev(wdev);
+
 			msleep(100);
 		} else {
 			WLOGw(wdev, "Ring buffer size is too small: try to take checkpoint: "
