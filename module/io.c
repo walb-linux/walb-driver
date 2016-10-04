@@ -186,7 +186,7 @@ static void start_write_bio_wrapper(
 static void wait_for_logpack_submit_queue_empty(struct walb_dev *wdev);
 static void wait_for_all_started_write_io_done(struct walb_dev *wdev);
 static void wait_for_all_pending_gc_done(struct walb_dev *wdev);
-static void force_flush_ldev(struct walb_dev *wdev, u64 lsid);
+static void force_flush_ldev(struct walb_dev *wdev);
 static bool wait_for_log_permanent(struct walb_dev *wdev, u64 lsid);
 static void flush_all_wq(void);
 static void clear_working_flag(int working_bit, unsigned long *flag_p);
@@ -670,7 +670,10 @@ static void task_submit_bio_wrapper_list(struct work_struct *work)
 			n_io++;
 			lsid = biow->lsid;
 			ASSERT(biow->len > 0);
-			pb = capacity_pb(wdev->physical_bs, biow->len);
+			if (bio_wrapper_state_is_discard(biow))
+				pb = 0;
+			else
+				pb = capacity_pb(wdev->physical_bs, biow->len);
 			BIO_WRAPPER_CHANGE_STATE(biow);
 			if (n_io >= wdev->n_io_bulk) { break; }
 		}
@@ -959,7 +962,7 @@ static bool create_logpack_list(
 				, latest_lsid, written_lsid, prev_written_lsid);
 
 			/* In order to avoid live lock of IOs waiting their logs to be permanent */
-			force_flush_ldev(wdev, INVALID_LSID);
+			force_flush_ldev(wdev);
 
 			msleep(100);
 		} else {
@@ -2020,8 +2023,15 @@ static void wait_for_logpack_and_submit_datapack(
 			   the logpack header and all the previous IOs and itself in the same logpack
 			   in order to make the IO be permanent in the log device. */
 			if (biow->copied_bio->bi_rw & REQ_FUA) {
-				u32 pb = capacity_pb(wdev->physical_bs, biow->len);
-				force_flush_ldev(wdev, biow->lsid + pb);
+				u32 pb;
+				if (bio_wrapper_state_is_discard(biow))
+					pb = 0;
+				else
+					pb = capacity_pb(wdev->physical_bs, biow->len);
+				spin_lock(&wdev->lsid_lock);
+				wdev->lsids.completed = biow->lsid + pb;
+				spin_unlock(&wdev->lsid_lock);
+				force_flush_ldev(wdev);
 			}
 
 			/* call endio here in fast algorithm,
@@ -2483,7 +2493,7 @@ static void wait_for_all_pending_gc_done(struct walb_dev *wdev)
 /**
  * lsid: if lsid is INVALID_LSID, use completed lsid.
  */
-static void force_flush_ldev(struct walb_dev *wdev, u64 lsid)
+static void force_flush_ldev(struct walb_dev *wdev)
 {
 	int err;
 	u64 new_permanent_lsid;
@@ -2491,10 +2501,7 @@ static void force_flush_ldev(struct walb_dev *wdev, u64 lsid)
 
 	/* Get completed_lsid and update flush_lsid. */
 	spin_lock(&wdev->lsid_lock);
-	if (lsid == INVALID_LSID)
-		new_permanent_lsid = wdev->lsids.completed;
-	else
-		new_permanent_lsid = lsid;
+	new_permanent_lsid = wdev->lsids.completed;
 	update_flush_lsid_if_necessary(wdev, new_permanent_lsid);
 	spin_unlock(&wdev->lsid_lock);
 
@@ -2560,6 +2567,11 @@ retry:
 		/* No need to wait. */
 		return true;
 	}
+	if (lsid > lsids.completed) {
+		/* The ldev IO is still not completed. */
+		msleep(1);
+		goto retry;
+	}
 	if (lsid <= lsids.flush) {
 		/* Flush request to make lsid permanent will be completed soon. */
 		msleep(1);
@@ -2573,7 +2585,7 @@ retry:
 		goto retry;
 	}
 
-	force_flush_ldev(wdev, lsid);
+	force_flush_ldev(wdev);
 	return !test_bit(WALB_STATE_READ_ONLY, &wdev->flags);
 }
 
