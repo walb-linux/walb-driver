@@ -2545,7 +2545,7 @@ static void force_flush_ldev(struct walb_dev *wdev, u64 lsid)
  */
 static bool wait_for_log_permanent(struct walb_dev *wdev, u64 lsid)
 {
-	u64 permanent_lsid, flush_lsid;
+	struct lsid_set lsids;
 	unsigned long timeout_jiffies;
 
 	/* We will wait for log flush at most the given interval period. */
@@ -2554,20 +2554,19 @@ retry:
 	if (test_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 		return false;
 	spin_lock(&wdev->lsid_lock);
-	permanent_lsid = wdev->lsids.permanent;
-	flush_lsid = wdev->lsids.flush;
+	lsids = wdev->lsids;
 	spin_unlock(&wdev->lsid_lock);
-	if (lsid <= permanent_lsid) {
+	if (lsid <= lsids.permanent) {
 		/* No need to wait. */
 		return true;
 	}
-	if (lsid <= flush_lsid) {
+	if (lsid <= lsids.flush) {
 		/* Flush request to make lsid permanent will be completed soon. */
 		msleep(1);
 		goto retry;
 	}
 	if (time_is_after_jiffies(timeout_jiffies) &&
-		lsid < flush_lsid + wdev->log_flush_interval_pb) {
+		lsid < lsids.flush + wdev->log_flush_interval_pb) {
 		/* Too early to force flush log device.
 		   Wait for a while. */
 		msleep(1);
