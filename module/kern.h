@@ -332,6 +332,23 @@ static inline bool lsid_set_is_valid(const struct lsid_set *lsids)
                lsids->completed <= lsids->latest;
 }
 
+static inline void print_lsid_set(const struct lsid_set *lsids)
+{
+	ASSERT(lsids);
+	pr_info("lsid_set %p  "
+		"latest %" PRIu64 "  "
+		"completed %" PRIu64 "  "
+		"flush %" PRIu64 "  "
+		"permanent %" PRIu64 "  "
+		"written %" PRIu64 "  "
+		"prev_written %" PRIu64 "  "
+		"oldest %" PRIu64 "\n"
+		, lsids
+		, lsids->latest, lsids->completed
+		, lsids->flush, lsids->permanent
+		, lsids->written, lsids->prev_written, lsids->oldest);
+}
+
 static inline bool is_wdev_dying(struct walb_dev *wdev)
 {
 	return test_bit(WALB_STATE_FINALIZE, &wdev->flags);
