@@ -139,7 +139,7 @@ enum
 static inline void bio_wrapper_state_set(struct bio_wrapper *biow, uint flag)
 {
 	if (test_and_set_bit(flag, &biow->flags))
-		BUG();
+		WARN(1, "BUG: set a bio_wrapper flag twice: %p %u\n", biow, flag);
 }
 
 #define bio_wrapper_state_set_prepared(biow) \
