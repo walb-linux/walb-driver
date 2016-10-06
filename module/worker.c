@@ -87,7 +87,7 @@ void initialize_worker(
 	ASSERT(run);
 
 	len = strnlen(wd->name, WORKER_NAME_MAX_LEN);
-	BUG_ON(len >= WORKER_NAME_MAX_LEN);
+	ASSERT(len < WORKER_NAME_MAX_LEN);
 
 	wd->flags = 0; /* clear bit */
 	init_waitqueue_head(&wd->wait_q);

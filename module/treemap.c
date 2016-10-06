@@ -162,7 +162,8 @@ static struct tree_node* map_lookup_node_detail(const struct map *tmap, u64 key,
 		}
 		break;
 	default:
-		BUG();
+		WARN(1, "BUG: bad search_flag (map %p key %" PRIu64 " search_flag %d)\n"
+			, tmap, key, search_flag);
 	}
 	return NULL;
 }
@@ -874,7 +875,8 @@ int map_cursor_search(struct map_cursor* cursor, u64 key, int search_flag)
 		break;
 
 	default:
-		BUG();
+		WARN(1, "BUG: bad search_flag (cursor %p key %" PRIu64 " search_flag %d)\n"
+			, cursor, key, search_flag);
 	}
 
 	ASSERT_MAP_CURSOR(cursor);
@@ -911,7 +913,8 @@ int map_cursor_next(struct map_cursor *cursor)
 		break;
 
 	default:
-		BUG();
+		WARN(1, "BUG: bad cursor->state (cursor %p state %d)\n"
+			, cursor, cursor->state);
 	}
 	ASSERT_MAP_CURSOR(cursor);
 
@@ -948,7 +951,8 @@ int map_cursor_prev(struct map_cursor *cursor)
 		break;
 
 	default:
-		BUG();
+		WARN(1, "BUG: bad cursor->state (cursor %p state %d)\n"
+			, cursor, cursor->state);
 	}
 	ASSERT_MAP_CURSOR(cursor);
 
@@ -1505,7 +1509,8 @@ int multimap_cursor_search(struct multimap_cursor *cursor, u64 key, int search_f
 		break;
 
 	default:
-		BUG();
+		WARN(1, "BUG: bad search_flag (cursor %p key %" PRIu64 " search_flag %d is_end %d)\n"
+			, cursor, key, search_flag, is_end);
 	}
 
 	return 1;
@@ -1566,7 +1571,8 @@ int multimap_cursor_next(struct multimap_cursor *cursor)
 		break;
 
 	default:
-		BUG();
+		WARN(1, "BUG: bad cursor state (cursor %p cur %p state %d)\n"
+			, cursor, cur, cur->state);
 	}
 	ASSERT_MULTIMAP_CURSOR(cursor);
 
@@ -1624,7 +1630,8 @@ int multimap_cursor_prev(struct multimap_cursor *cursor)
 		break;
 
 	default:
-		BUG();
+		WARN(1, "BUG: bad cursor->state (cursor %p cur %p state %d)\n"
+			, cursor, cur, cur->state);
 	}
 	ASSERT_MULTIMAP_CURSOR(cursor);
 
