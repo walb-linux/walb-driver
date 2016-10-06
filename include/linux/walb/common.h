@@ -19,7 +19,7 @@ extern "C" {
 #include <linux/bug.h>
 #include "inttypes_kernel.h"
 #if defined(WALB_DEBUG) || defined(ASSERT_ON)
-#define ASSERT(cond) BUG_ON(!(cond))
+#define ASSERT(cond) WARN_ON(!(cond))
 #else /* WALB_DEBUG */
 #define ASSERT(cond)
 #endif /* WALB_DEBUG */

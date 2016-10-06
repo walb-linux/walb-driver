@@ -374,7 +374,8 @@ void task_melt(struct work_struct *work)
 		wdev->freeze_state = FRZ_MELTED;
 		break;
 	default:
-		BUG();
+		WARN(1, "BUG: invalid wdev->freeze_state: %p %u\n"
+			, wdev, wdev->freeze_state);
 	}
 
 	mutex_unlock(&wdev->freeze_lock);
@@ -433,7 +434,8 @@ bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
 		mutex_unlock(&wdev->freeze_lock);
 		return false;
 	default:
-		BUG();
+		WARN(1, "BUG: invalid wdev->freeze_state: %p %u\n"
+			, wdev, wdev->freeze_state);
 	}
 	ASSERT(wdev->freeze_state == FRZ_FROZEN);
 	if (timeout_sec > 0) {
@@ -487,7 +489,8 @@ bool melt_if_frozen(
 		mutex_unlock(&wdev->freeze_lock);
 		return false;
 	default:
-		BUG();
+		WARN(1, "BUG: invalid wdev->freeze_state: %p %u\n"
+			, wdev, wdev->freeze_state);
 	}
 	ASSERT(wdev->freeze_state == FRZ_MELTED);
 	mutex_unlock(&wdev->freeze_lock);

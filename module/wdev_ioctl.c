@@ -62,7 +62,8 @@ static bool freeze_for_reset_wal(struct walb_dev *wdev)
 		mutex_unlock(&wdev->freeze_lock);
 		return false;
 	default:
-		BUG();
+		WARN(1, "BUG: invalid wdev->freeze_state: %p %u\n"
+			, wdev, wdev->freeze_state);
 	}
 	mutex_unlock(&wdev->freeze_lock);
 

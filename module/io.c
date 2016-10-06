@@ -2433,7 +2433,7 @@ static void start_write_bio_wrapper(
 	ASSERT(biow);
 
 	if (test_and_set_bit(BIO_WRAPPER_STARTED, &biow->flags))
-		BUG();
+		WARN(1, "BUG: try to set BIO_WRAPPER_STARTED twice: %p\n", biow);
 
 	atomic_inc(&iocored->n_started_write_bio);
 }
