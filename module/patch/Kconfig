@@ -29,7 +29,7 @@ config BLK_DEV_WALB_ASSERT
 	depends on BLK_DEV_WALB
 	default y
 	help
-	  Say Y if you want to use assertion with BUG_ON() code.
+	  Say Y if you want to use assertion with WARN_ON() code.
 
 config BLK_DEV_WALB_DEBUG
 	bool "Support WalB debugging"

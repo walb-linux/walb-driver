@@ -2555,7 +2555,7 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 	ASSERT(bio_wrapper_state_is_prepared(biow));
 	if (test_and_set_bit(BIO_WRAPPER_SUBMITTED, &biow->flags) != 0) {
 		/* Already submitted. */
-		BUG();
+		WARN_ON(1);
 	}
 
 #ifdef WALB_DEBUG

@@ -81,7 +81,8 @@ static unsigned int get_n_bits(u32 val)
 			return i + 1;
 		}
 	}
-	BUG();
+	WARN_ON(1);
+	return 0;
 }
 
 /**
@@ -767,7 +768,7 @@ int hashtbl_cursor_next(hashtbl_cursor_t *cursor)
 		break;
 
 	default:
-		BUG();
+		WARN_ON(1);
 	}
 
 	/* Get and set next. */

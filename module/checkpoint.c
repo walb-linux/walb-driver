@@ -83,7 +83,8 @@ void task_do_checkpointing(struct work_struct *work)
 		cpd->state = CP_RUNNING;
 		break;
 	default:
-		BUG();
+		WARN(1, "BUG: invalid cpd->state (wdev: %p state: %u)\n"
+			, wdev, cpd->state);
 	}
 	up_write(&cpd->lock);
 

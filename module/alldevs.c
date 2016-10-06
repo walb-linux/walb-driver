@@ -54,20 +54,20 @@ static atomic_t is_available_ = ATOMIC_INIT(0);
 
 #define CHECK_START() do {					\
 		if (atomic_inc_return(&is_available_) != 1) {	\
-			BUG();					\
+			WARN(1, "CHECK_START failed\n");	\
 		}						\
 	} while (0)
 
 #define CHECK_STOP() do {					\
 		if (atomic_dec_return(&is_available_) != 0) {	\
-			BUG();					\
+			WARN(1, "CHECK_STOP failed\n");		\
 		}						\
 	} while (0)
 
-#define CHECK_RUNNING() do {				\
-		if (atomic_read(&is_available_) != 1) { \
-			BUG();				\
-		}					\
+#define CHECK_RUNNING() do {					\
+		if (atomic_read(&is_available_) != 1) {		\
+			WARN(1, "CHECK_RUNNING failed\n");	\
+		}						\
 	} while (0)
 
 /*******************************************************************************

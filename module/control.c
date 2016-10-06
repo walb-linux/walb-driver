@@ -458,7 +458,7 @@ void* walb_alloc_and_copy_from_user(
 	if (buf_size <= PAGE_SIZE) {
 		buf = kmalloc(buf_size, gfp_mask);
 	} else {
-		BUG_ON(gfp_mask != GFP_KERNEL);
+		ASSERT(gfp_mask == GFP_KERNEL);
 		buf = vmalloc(buf_size);
 	}
 	if (!buf) {
