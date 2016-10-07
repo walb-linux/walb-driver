@@ -1027,7 +1027,10 @@ static void submit_logpack_list(
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
 			WLOG_(wdev, "is_zero_flush_only\n");
-			ASSERT(is_flush);
+			if (!is_flush) {
+				/* do nothing because only the first wpack should submit flush request. */
+				continue;
+			}
 			logpack_submit_flush(wdev->ldev, wpack);
 		} else {
 			ASSERT(logh->n_records > 0);
