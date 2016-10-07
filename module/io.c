@@ -1214,7 +1214,10 @@ static void submit_logpack_list(
 
 		if (wpack->is_zero_flush_only) {
 			ASSERT(logh->n_records == 0);
-			ASSERT(is_flush);
+			if (!is_flush) {
+				/* do nothing because only the first wpack should submit flush request. */
+				continue;
+			}
 #if 0
 			WLOGi(wdev, "zero_flush lsid %" PRIu64 " %" PRIu64 "\n", wpack->new_permanent_lsid, logh->logpack_lsid);
 #endif
