@@ -582,8 +582,18 @@ static void print_pack(const char *level, struct pack *pack)
 		printk("%s""logpack_header_sector is NULL.\n", level);
 	}
 
-	printk("%s""is_logpack_failed: %u\n",
-		level, pack->is_logpack_failed);
+	printk("%s"
+		"is_logpack_failed: %u\n"
+		"new_permanent_lsid: %" PRIu64 "\n"
+		"is_zero_flush_only: %u\n"
+		"is_flush_header: %u\n"
+		"is_fua_contained: %u\n"
+		, level
+		, pack->is_logpack_failed
+		, pack->new_permanent_lsid
+		, pack->is_zero_flush_only
+		, pack->is_flush_header
+		, pack->is_fua_contained);
 
 	printk("%s""print_pack %p end\n", level, pack);
 }
