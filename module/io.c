@@ -2359,7 +2359,7 @@ static bool submit_flush(struct bio_entry *bioe, struct block_device *bdev)
 		return false;
 
 	bio->bi_bdev = bdev;
-	bio_set_op_attrs(bio, REQ_OP_WRITE, WRITE_FLUSH);
+	bio_set_op_attrs(bio, REQ_OP_WRITE, REQ_PREFLUSH);
 
 	init_bio_entry(bioe, bio);
 	ASSERT(bio_entry_len(bioe) == 0);

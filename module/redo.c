@@ -881,7 +881,7 @@ retry2:
 		schedule();
 		goto retry2;
 	}
-	bio_set_op_attrs(logh_biow->bio, REQ_OP_WRITE, WRITE_FLUSH_FUA);
+	bio_set_op_attrs(logh_biow->bio, REQ_OP_WRITE, REQ_PREFLUSH | REQ_FUA);
 	generic_make_request(logh_biow->bio);
 	wait_for_completion(&logh_biow->done);
 	if (logh_biow->error) {

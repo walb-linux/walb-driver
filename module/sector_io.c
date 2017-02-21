@@ -221,7 +221,7 @@ bool walb_write_super_sector(
 
 	/* Really write. */
 	off0 = get_super_sector0_offset(pbs);
-	if (!sector_io(REQ_OP_WRITE, WRITE_FLUSH_FUA, ldev, off0, lsuper)) {
+	if (!sector_io(REQ_OP_WRITE, REQ_PREFLUSH | REQ_FUA, ldev, off0, lsuper)) {
 		LOGe("write super sector0 failed\n");
 		return false;
 	}
