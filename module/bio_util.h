@@ -147,14 +147,21 @@ static inline int snprint_bio_flags(
 		{REQ_SYNC, "SYNC"},
 		{REQ_META, "META"},
 		{REQ_PRIO, "PRIO"},
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
 		{REQ_NOIDLE, "NOIDLE"},
+#else
+		{REQ_IDLE, "IDLE"},
+#endif
 		{REQ_INTEGRITY, "INTEGRITY"},
 		{REQ_RAHEAD, "RAHEAD"},
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
 		{REQ_THROTTLED, "THROTTLED"},
 		{REQ_SORTED, "SORTED"},
 		{REQ_SOFTBARRIER, "SOFTBARRIER"},
+#endif
 		{REQ_FUA, "FUA"},
 		{REQ_NOMERGE, "NOMERGE"},
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
 		{REQ_STARTED, "STARTED"},
 		{REQ_DONTPREP, "DONTPREP"},
 		{REQ_QUEUED, "QUEUED"},
@@ -164,13 +171,16 @@ static inline int snprint_bio_flags(
 		{REQ_PREEMPT, "PREEMPT"},
 		{REQ_ALLOCED, "ALLOCED"},
 		{REQ_COPY_USER, "COPY_USER"},
+#endif
 		{REQ_PREFLUSH, "PREFLUSH"},
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
 		{REQ_FLUSH_SEQ, "FLUSH_SEQ"},
 		{REQ_IO_STAT, "IO_STAT"},
 		{REQ_MIXED_MERGE, "MIXED_MERGE"},
 		{REQ_PM, "PM"},
 		{REQ_HASHED, "HASHED"},
 		{REQ_MQ_INFLIGHT, "MQ_INFLIGHT"},
+#endif
 	};
 	s = snprintf(buf, size, "REQ_OP: %s", get_req_op_str(bio_op(bio)));
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
