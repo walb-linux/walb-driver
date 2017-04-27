@@ -62,7 +62,7 @@ struct walb_log_record {
 	/* Log sequence id of the record. */
 	u64 lsid;
 
-} __attribute__((packed));
+} __attribute__((packed, aligned(8)));
 
 /**
  * Logpack header data inside sector.
@@ -98,7 +98,7 @@ struct walb_logpack_header {
 	struct walb_log_record record[0];
 	/* continuous records */
 
-} __attribute__((packed));
+} __attribute__((packed, aligned(8)));
 
 
 /*******************************************************************************
