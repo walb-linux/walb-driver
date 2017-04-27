@@ -110,7 +110,7 @@ struct walb_super_sector {
 	/* Size of wrapper block device [logical block] */
 	u64 device_size;
 
-} __attribute__((packed));
+} __attribute__((packed, aligned(8)));
 
 /**
  * Check super sector.
