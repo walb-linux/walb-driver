@@ -7,18 +7,21 @@
 #define WALB_UTIL_H_KERNEL
 
 #include "check_kernel.h"
+#include <linux/version.h>
 #include <linux/random.h>
 #include "linux/walb/common.h"
 
 /**
  * Get random integer.
  */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0)
 static inline u32 get_random_u32(void)
 {
 	u32 ret;
 	get_random_bytes(&ret, sizeof(u32));
 	return ret;
 }
+#endif
 
 /**
  * Get random integer.
