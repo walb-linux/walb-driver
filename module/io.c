@@ -142,7 +142,7 @@ static struct bio_entry* logpack_create_bio_entry(
 	struct block_device *ldev,
 	u64 ldev_offset, unsigned int bio_offset);
 static void logpack_submit_flush(
-	struct block_device *bdev, struct list_head *bioe_list);
+	struct block_device *ldev, struct list_head *bioe_list);
 static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list);
 static void dequeue_and_gc_logpack_list(struct walb_dev *wdev);
 
@@ -1095,7 +1095,7 @@ static bool create_logpack_list(
 	ASSERT(!list_empty(wpack_list));
 	ASSERT(list_empty(biow_list));
 
-	if (!is_flush) {
+	if (!is_flush && supports_flush_request_bdev(wdev->ldev)) {
 		/* Decide to flush the log device or not. */
 		bool is_flush_size = wdev->log_flush_interval_pb > 0 &&
 			completed_lsid - flush_lsid > wdev->log_flush_interval_pb;
@@ -1425,11 +1425,7 @@ retry_bio:
 	off_pb = lhead->logpack_lsid % ring_buffer_size + ring_buffer_off;
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_sector = off_lb;
-	if (is_flush) {
-		bio->bi_rw = WRITE_FLUSH;
-	} else {
-		bio->bi_rw = WRITE;
-	}
+	bio->bi_rw = (is_flush ? WRITE_FLUSH : WRITE);
 	bio->bi_end_io = bio_entry_end_io;
 	bio->bi_private = bioe;
 	len = bio_add_page(bio, page, pbs, offset_in_page(lhead));
@@ -1615,14 +1611,17 @@ error0:
 /**
  * Submit flush for logpack.
  */
-static void logpack_submit_flush(struct block_device *bdev, struct list_head *bioe_list)
+static void logpack_submit_flush(struct block_device *ldev, struct list_head *bioe_list)
 {
 	struct bio_entry *bioe;
-	ASSERT(bdev);
+	ASSERT(ldev);
 	ASSERT(bioe_list);
 
+	if (!supports_flush_request_bdev(ldev))
+		return;
+
 retry:
-	bioe = submit_flush(bdev);
+	bioe = submit_flush(ldev);
 	if (!bioe) {
 		schedule();
 		goto retry;
@@ -2380,18 +2379,9 @@ static void wait_for_logpack_and_submit_datapack(
 	if (!is_failed) {
 		struct walb_logpack_header *logh =
 			get_logpack_header(wpack->logpack_header_sector);
-		bool should_notice = false;
 		spin_lock(&wdev->lsid_lock);
 		wdev->lsids.completed = get_next_lsid(logh);
-		if (!(wdev->queue->flush_flags & REQ_FLUSH)) {
-			/* For flush-not-supportted device. */
-			should_notice = is_permanent_log_empty(&wdev->lsids);
-			wdev->lsids.flush = wdev->lsids.completed;
-			wdev->lsids.permanent = wdev->lsids.completed;
-		}
 		spin_unlock(&wdev->lsid_lock);
-		if (should_notice)
-			walb_sysfs_notify(wdev, "lsids");
 	}
 }
 
@@ -2845,10 +2835,12 @@ static void force_flush_ldev(struct walb_dev *wdev)
 #endif
 
 	/* Execute a flush request. */
-	err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
-	if (err) {
-		WLOGe(wdev, "log device flush failed. try to be read-only mode\n");
-		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
+	if (supports_flush_request_bdev(wdev->ldev)) {
+		err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
+		if (err) {
+			WLOGe(wdev, "log device flush failed. try to be read-only mode\n");
+			set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
+		}
 	}
 
 #ifdef WALB_DEBUG

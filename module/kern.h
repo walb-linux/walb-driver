@@ -361,6 +361,11 @@ static inline bool is_wdev_dying(struct walb_dev *wdev)
 	return test_bit(WALB_STATE_FINALIZE, &wdev->flags);
 }
 
+static inline bool supports_flush_request_bdev(struct block_device *bdev)
+{
+	return (bdev_get_queue(bdev)->flush_flags & REQ_FLUSH) != 0;
+}
+
 /*******************************************************************************
  * Prototypes defined in walb.c
  *******************************************************************************/

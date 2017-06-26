@@ -61,9 +61,11 @@ bool walb_sync_super_block(struct walb_dev *wdev)
 	spin_unlock(&wdev->lsuper0_lock);
 
 	/* Flush the data device for written_lsid to be permanent. */
-	if (blkdev_issue_flush(wdev->ddev, GFP_KERNEL, NULL)) {
-		WLOGe(wdev, "ddev flush failed.\n");
-		goto error1;
+	if (supports_flush_request_bdev(wdev->ddev)) {
+		if (blkdev_issue_flush(wdev->ddev, GFP_KERNEL, NULL)) {
+			WLOGe(wdev, "ddev flush failed.\n");
+			goto error1;
+		}
 	}
 
 	/* Write and flush superblock in the log device. */
