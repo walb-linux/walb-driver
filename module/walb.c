@@ -95,6 +95,17 @@ module_param_named(error_before_overflow, error_before_overflow_, uint, S_IRUGO)
 static unsigned int support_discard_ = 1;
 module_param_named(discard, support_discard_, uint, S_IRUGO|S_IWUSR);
 
+
+/**
+ * IO latency threshold for monitoring [ms].
+ * If the latency of an IO exceeds this threshold, a log will be put.
+ * 0 means disabled.
+ */
+unsigned int io_latency_threshold_ms_ = 10000;
+module_param_named(io_latency_threshold_ms, io_latency_threshold_ms_,
+		   uint, S_IRUGO|S_IWUSR);
+
+
 /*******************************************************************************
  * Shared data definition.
  *******************************************************************************/

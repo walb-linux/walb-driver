@@ -55,6 +55,11 @@ extern char exec_path_on_error_[];
  */
 extern unsigned int error_before_overflow_;
 
+/**
+ * IO latency threshold for monitoring.
+ */
+extern unsigned int io_latency_threshold_ms_;
+
 /*
  * Minor number and partition management.
  */
