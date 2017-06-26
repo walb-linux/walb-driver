@@ -2854,12 +2854,20 @@ static void io_acct_end(struct bio_wrapper *biow)
 	struct walb_dev *wdev = biow->private_data;
 	struct hd_struct *part0 = &wdev->gd->part0;
 	unsigned long duration = jiffies - biow->start_time;
+	unsigned long duration_ms = jiffies_to_msecs(duration);
 
 	cpu = part_stat_lock();
 	part_stat_add(cpu, part0, ticks[rw], duration);
 	part_round_stats(cpu, part0);
 	part_dec_in_flight(part0, rw);
 	part_stat_unlock();
+
+	if (io_latency_threshold_ms_ > 0 && duration_ms > io_latency_threshold_ms_) {
+		char buf[64];
+		snprintf(buf, sizeof(buf), "%u: IO latency exceeds threshold: %lu "
+			 , wdev_minor(wdev), duration_ms);
+		print_bio_wrapper_short(KERN_WARNING, biow, buf);
+	}
 
 #ifdef WALB_DEBUG
 	atomic_dec(&get_iocored_from_wdev(wdev)->n_io_acct);
