@@ -92,7 +92,7 @@ module_param_named(error_before_overflow, error_before_overflow_, uint, S_IRUGO)
 /**
  * Discard support.
  */
-unsigned int support_discard_ = 1;
+static unsigned int support_discard_ = 1;
 module_param_named(discard, support_discard_, uint, S_IRUGO|S_IWUSR);
 
 /*******************************************************************************
