@@ -76,7 +76,7 @@ static struct bio_entry* create_bio_entry_by_clone(
 
 /* Helper functions for bio_entry list. */
 static void submit_bio_entry_list(struct list_head *bioe_list);
-static int wait_for_bio_entry_list(struct list_head *bioe_list);
+static int wait_for_bio_entry_list(struct list_head *bioe_list, struct walb_dev *wdev);
 static void clear_flush_bit_of_bio_entry_list(struct list_head *bioe_list);
 
 /* pack related. */
@@ -348,7 +348,7 @@ static void submit_bio_entry_list(struct list_head *bioe_list)
  * RETURN:
  *   error of the last failed bio (0 means success).
  */
-static int wait_for_bio_entry_list(struct list_head *bioe_list)
+static int wait_for_bio_entry_list(struct list_head *bioe_list, struct walb_dev *wdev)
 {
 	struct bio_entry *bioe, *next_bioe;
 	int bio_error = 0;
@@ -364,8 +364,8 @@ static int wait_for_bio_entry_list(struct list_head *bioe_list)
 		retry:
 			rtimeo = wait_for_completion_io_timeout(&bioe->done, timeo);
 			if (rtimeo == 0) {
-				LOGn("timeout(%d): bioe %p bio %p len %u\n",
-					c, bioe, bioe->bio, bioe->len);
+				LOGn("%u: timeout(%d): bioe %p bio %p len %u\n",
+					wdev_minor(wdev), c, bioe, bioe->bio, bioe->len);
 				c++;
 				goto retry;
 			}
@@ -1654,7 +1654,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 			rtimeo = wait_for_completion_timeout(&biow->done, timeo);
 			if (rtimeo == 0) {
 				char buf[32];
-				snprintf(buf, sizeof(buf), "timeout(%d): ", c);
+				snprintf(buf, sizeof(buf), "%u: timeout(%d): ", wdev_minor(wdev), c);
 				print_bio_wrapper_short(KERN_NOTICE, biow, buf);
 				c++;
 				goto retry;
@@ -2216,7 +2216,7 @@ static void wait_for_logpack_and_submit_datapack(
 		is_failed = true;
 
 	/* Wait for logpack header bio or zero_flush pack bio. */
-	bio_error = wait_for_bio_entry_list(&wpack->bioe_list);
+	bio_error = wait_for_bio_entry_list(&wpack->bioe_list, wdev);
 	if (bio_error)
 		is_failed = true;
 
@@ -2244,7 +2244,7 @@ static void wait_for_logpack_and_submit_datapack(
 	list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
 		ASSERT(biow->bio);
 		ASSERT(biow->copied_bio);
-		bio_error = wait_for_bio_entry_list(&biow->bioe_list);
+		bio_error = wait_for_bio_entry_list(&biow->bioe_list, wdev);
 		if (is_failed || bio_error)
 			goto error_io;
 
@@ -2497,6 +2497,7 @@ static void wait_for_bio_wrapper(
 	const unsigned long timeo = msecs_to_jiffies(completion_timeo_ms_);
 	unsigned long rtimeo;
 	unsigned i = 0;
+	const struct walb_dev *wdev = biow->private_data;
 
 	ASSERT(biow);
 	ASSERT(biow->error == 0);
@@ -2509,7 +2510,7 @@ static void wait_for_bio_wrapper(
 			rtimeo = wait_for_completion_io_timeout(&bioe->done, timeo);
 			if (rtimeo == 0) {
 				char buf[32];
-				snprintf(buf, sizeof(buf), "timeout(%d): ", c);
+				snprintf(buf, sizeof(buf), "%u: timeout(%d): ", wdev_minor(wdev), c);
 				print_bio_wrapper_short(KERN_NOTICE, biow, buf);
 				c++;
 				goto retry;
@@ -2523,7 +2524,6 @@ static void wait_for_bio_wrapper(
 	}
 #ifdef WALB_DEBUG
 	{
-		const struct walb_dev *wdev = biow->private_data;
 		if (bio_wrapper_state_is_discard(biow) &&
 			!blk_queue_discard(bdev_get_queue(wdev->ddev))) {
 			ASSERT(remaining == biow->len);
