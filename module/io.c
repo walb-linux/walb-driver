@@ -3197,8 +3197,8 @@ static void io_acct_end(struct bio_wrapper *biow)
 
 	if (io_latency_threshold_ms_ > 0 && duration_ms > io_latency_threshold_ms_) {
 		char buf[64];
-		snprintf(buf, sizeof(buf), "%u: IO latency exceeds threshold: %lu "
-			 , wdev_minor(wdev), duration_ms);
+		snprintf(buf, sizeof(buf), "%u: IO latency exceeds threshold: %lu %c "
+			 , wdev_minor(wdev), duration_ms, rw == WRITE ? 'W' : 'R');
 		print_bio_wrapper_short(KERN_WARNING, biow, buf);
 #ifdef WALB_PERFORMANCE_ANALYSIS
 		print_bio_wrapper_performance(KERN_WARNING, biow);

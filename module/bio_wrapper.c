@@ -189,7 +189,7 @@ void print_bio_wrapper_short(const char *level, struct bio_wrapper *biow, const 
 {
 	ASSERT(biow);
 	printk("%s" "%s"
-		"biow %p %p (%" PRIu64 " %u) %08x %d %c %" PRIu64 " %p"
+		"biow %p %p %c (%" PRIu64 " %u) %08x %d %c %" PRIu64 " %p"
 #ifdef WALB_OVERLAPPED_SERIALIZE
 		" %d"
 #ifdef WALB_DEBUG
@@ -202,6 +202,7 @@ void print_bio_wrapper_short(const char *level, struct bio_wrapper *biow, const 
 #endif
 		"]\n"
 		, level, prefix, biow, biow->bio
+		, biow->bio ? (bio_data_dir(biow->bio) ? 'W' : 'R') : '?'
 		, (u64)biow->pos, biow->len, biow->csum, biow->error
 		, biow->is_started ? 'S' : '-', biow->lsid
 		, biow->private_data
