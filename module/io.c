@@ -2867,6 +2867,9 @@ static void io_acct_end(struct bio_wrapper *biow)
 		snprintf(buf, sizeof(buf), "%u: IO latency exceeds threshold: %lu "
 			 , wdev_minor(wdev), duration_ms);
 		print_bio_wrapper_short(KERN_WARNING, biow, buf);
+#ifdef WALB_PERFORMANCE_ANALYSIS
+		print_bio_wrapper_performance(KERN_WARNING, biow);
+#endif
 	}
 
 #ifdef WALB_DEBUG

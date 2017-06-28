@@ -178,6 +178,9 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 #ifdef WALB_DEBUG
 	atomic_set(&biow->state, 0);
 #endif
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	memset(&biow->ts[0], 0, sizeof(biow->ts));
+#endif
 }
 
 struct bio_wrapper* alloc_bio_wrapper(gfp_t gfp_mask)
