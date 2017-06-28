@@ -105,6 +105,15 @@ unsigned int io_latency_threshold_ms_ = 10000;
 module_param_named(io_latency_threshold_ms, io_latency_threshold_ms_,
 		   uint, S_IRUGO|S_IWUSR);
 
+/**
+ * Checkpoint execution time threshold for monitoring [ms].
+ * If the latency of an IO exceeds this threshold, a log will be put.
+ * 0 means disabled.
+ */
+unsigned int checkpoint_threshold_ms_ = 10000;
+module_param_named(checkpoint_threshold_ms, checkpoint_threshold_ms_,
+		   uint, S_IRUGO|S_IWUSR);
+
 
 /*******************************************************************************
  * Shared data definition.
