@@ -59,7 +59,7 @@ bool take_checkpoint(struct checkpoint_data *cpd)
 void task_do_checkpointing(struct work_struct *work)
 {
 	unsigned long j0, j1;
-	unsigned long interval;
+	unsigned long interval, sync_time_ms;
 	long delay, sync_time, next_delay;
 	int ret;
 
@@ -103,12 +103,17 @@ void task_do_checkpointing(struct work_struct *work)
 	delay = msecs_to_jiffies(interval);
 	sync_time = (long)(j1 - j0);
 	next_delay = delay - sync_time;
+	sync_time_ms = jiffies_to_msecs(sync_time);
 	WLOG_(wdev, "delay %ld sync_time %ld next_delay %ld\n",
 		delay, sync_time, next_delay);
+	if (checkpoint_threshold_ms_ > 0 && sync_time_ms > checkpoint_threshold_ms_) {
+		WLOGw(wdev, "Checkpoint running time exceeds threshold: %lu\n"
+			, sync_time_ms);
+	}
 	if (next_delay <= 0) {
 		WLOGw(wdev, "Checkpoint interval is too small. "
-			"Should be more than %d.\n"
-			, jiffies_to_msecs(sync_time));
+			"Should be more than %lu.\n"
+			, sync_time_ms);
 		next_delay = 1;
 	}
 	ASSERT(next_delay > 0);
