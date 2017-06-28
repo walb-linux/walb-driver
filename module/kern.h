@@ -60,6 +60,11 @@ extern unsigned int error_before_overflow_;
  */
 extern unsigned int io_latency_threshold_ms_;
 
+/**
+ * Checkpoint execution time threshold for monitoring.
+ */
+extern unsigned int checkpoint_threshold_ms_;
+
 /*
  * Minor number and partition management.
  */
