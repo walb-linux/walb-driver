@@ -89,36 +89,60 @@ static void bio_wrapper_get_overlapped_pos_and_len(
  *******************************************************************************/
 
 #ifdef WALB_PERFORMANCE_ANALYSIS
-void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow)
+static void print_bio_wrapper_performance_write(const char *level, struct bio_wrapper *biow)
 {
-	struct timespec *tsp[WALB_TIME_MAX];
-	struct timespec ts[WALB_TIME_MAX - 1];
+	struct timespec ts[WALB_TIME_W_MAX - 1];
+	size_t i;
 
-	if (!biow) { return; }
+	for (i = 0; i < WALB_TIME_W_MAX - 1; i++) {
+		ts[i] = timespec_sub(biow->ts[i + 1], biow->ts[i]);
+	}
 
-	tsp[0] = &biow->ts[WALB_TIME_BEGIN];
-	tsp[1] = &biow->ts[WALB_TIME_LOG_SUBMITTED];
-	tsp[2] = &biow->ts[WALB_TIME_LOG_COMPLETED];
-	tsp[3] = &biow->ts[WALB_TIME_DATA_SUBMITTED];
-	tsp[4] = &biow->ts[WALB_TIME_DATA_COMPLETED];
-	tsp[5] = &biow->ts[WALB_TIME_END];
-
-	ts[0] = timespec_sub(*tsp[1], *tsp[0]);
-	ts[1] = timespec_sub(*tsp[2], *tsp[1]);
-	ts[2] = timespec_sub(*tsp[3], *tsp[2]);
-	ts[3] = timespec_sub(*tsp[4], *tsp[3]);
-	ts[4] = timespec_sub(*tsp[5], *tsp[4]);
-
+	ASSERT(WALB_TIME_W_MAX == 8);
 	printk("%s"
-		"biow_perf lsid %" PRIu64 " pos %" PRIu64 " len %4u "
-		"time %ld.%09ld %ld.%09ld %ld.%09ld %ld.%09ld %ld.%09ld\n"
+		"biow_perf lsid %" PRIu64 " W(%" PRIu64 ", %4u) "
+		"time %ld.%09ld %ld.%09ld %ld.%09ld %ld.%09ld %ld.%09ld %ld.%09ld %ld.%09ld\n"
 		, level
 		, biow->lsid, (u64)biow->pos , biow->len
 		, ts[0].tv_sec, ts[0].tv_nsec
 		, ts[1].tv_sec, ts[1].tv_nsec
 		, ts[2].tv_sec, ts[2].tv_nsec
 		, ts[3].tv_sec, ts[3].tv_nsec
-		, ts[4].tv_sec, ts[4].tv_nsec);
+		, ts[4].tv_sec, ts[4].tv_nsec
+		, ts[5].tv_sec, ts[5].tv_nsec
+		, ts[6].tv_sec, ts[6].tv_nsec
+	       );
+}
+
+static void print_bio_wrapper_performance_read(const char *level, struct bio_wrapper *biow)
+{
+	struct timespec ts[WALB_TIME_R_MAX - 1];
+	size_t i;
+
+	for (i = 0; i < WALB_TIME_R_MAX - 1; i++) {
+		ts[i] = timespec_sub(biow->ts[i + 1], biow->ts[i]);
+	}
+
+	ASSERT(WALB_TIME_R_MAX == 4);
+	printk("%s"
+		"biow_perf R(%" PRIu64 ", %4u) "
+		"time %ld.%09ld %ld.%09ld %ld.%09ld\n"
+		, level
+		, (u64)biow->pos , biow->len
+		, ts[0].tv_sec, ts[0].tv_nsec
+		, ts[1].tv_sec, ts[1].tv_nsec
+		, ts[2].tv_sec, ts[2].tv_nsec);
+}
+
+void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow)
+{
+	if (!biow)
+		return;
+
+	if (bio_wrapper_state_is_write(biow))
+		print_bio_wrapper_performance_write(level, biow);
+	else
+		print_bio_wrapper_performance_read(level, biow);
 }
 #endif
 

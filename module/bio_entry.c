@@ -918,6 +918,9 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 	bioe->error = 0;
 	bioe->bio_orig = NULL;
 	bioe->flags = 0;
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	memset(&bioe->end_ts, 0, sizeof(bioe->end_ts));
+#endif
 	if (bio) {
 		bioe->bio = bio;
 		bioe->pos = bio->bi_sector;

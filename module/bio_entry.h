@@ -38,6 +38,9 @@ struct bio_entry
 				 while bio member is the first splitted one.
 				 You must finalize the bio_orig. */
 	unsigned long flags;
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	struct timespec end_ts; /* timestamp when end_io callback is called. */
+#endif
 };
 
 /**

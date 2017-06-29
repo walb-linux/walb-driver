@@ -64,20 +64,32 @@ struct bio_wrapper
 	atomic_t state;
 #endif
 #ifdef WALB_PERFORMANCE_ANALYSIS
-	struct timespec ts[6];
+	struct timespec ts[8];
 #endif
 };
 
 #ifdef WALB_PERFORMANCE_ANALYSIS
+/* For write */
 enum
 {
-	WALB_TIME_BEGIN,
-	WALB_TIME_LOG_SUBMITTED,
-	WALB_TIME_LOG_COMPLETED,
-	WALB_TIME_DATA_SUBMITTED,
-	WALB_TIME_DATA_COMPLETED,
-	WALB_TIME_END,
-	WALB_TIME_MAX,
+	WALB_TIME_W_BEGIN,
+	WALB_TIME_W_LOG_SUBMITTED,
+	WALB_TIME_W_LOG_COMPLETED,
+	WALB_TIME_W_LOG_END,
+	WALB_TIME_W_DATA_SUBMITTED,
+	WALB_TIME_W_DATA_COMPLETED,
+	WALB_TIME_W_DATA_END,
+	WALB_TIME_W_END,
+	WALB_TIME_W_MAX,
+};
+/* For read */
+enum
+{
+	WALB_TIME_R_BEGIN,
+	WALB_TIME_R_SUBMITTED,
+	WALB_TIME_R_COMPLETED,
+	WALB_TIME_R_END,
+	WALB_TIME_R_MAX,
 };
 #endif
 
@@ -104,6 +116,9 @@ enum
 	   due to overlapped. */
 	BIO_WRAPPER_DELAYED,
 #endif
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	BIO_WRAPPER_WRITE,
+#endif
 };
 
 #define bio_wrapper_state_is_prepared(biow) \
@@ -121,7 +136,10 @@ enum
 	test_bit(BIO_WRAPPER_DELAYED, &(biow)->flags)
 #endif
 
+
 #ifdef WALB_PERFORMANCE_ANALYSIS
+#define bio_wrapper_state_is_write(biow)	\
+	test_bit(BIO_WRAPPER_WRITE, &(biow)->flags)
 void print_bio_wrapper_performance(const char *level, struct bio_wrapper *biow);
 #endif
 
