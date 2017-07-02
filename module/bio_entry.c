@@ -181,7 +181,7 @@ void init_bio_entry_by_clone_never_giveup(
 	}
 }
 
-void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs)
+void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs, uint dev_minor)
 {
 	const ulong timeo = msecs_to_jiffies(timeoutMs);
 	ulong rtimeo;
@@ -190,8 +190,8 @@ void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs)
 retry:
 	rtimeo = wait_for_completion_io_timeout(&bioe->done, timeo);
 	if (rtimeo == 0) {
-		LOGn("timeout(%d): bioe %p bio %p pos %" PRIu64 " len %u\n"
-			, c, bioe, bioe->bio
+		LOGn("%u: timeout(%d): bioe %p bio %p pos %" PRIu64 " len %u\n"
+			, dev_minor, c, bioe, bioe->bio
 			, (u64)bio_entry_pos(bioe), bio_entry_len(bioe));
 		c++;
 		goto retry;
