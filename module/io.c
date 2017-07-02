@@ -912,7 +912,7 @@ static bool create_logpack_list(
 	ASSERT(!list_empty(wpack_list));
 	ASSERT(list_empty(biow_list));
 
-	if (!is_flush) {
+	if (!is_flush && supports_flush_request_bdev(wdev->ldev)) {
 		/* Decide to flush the log device or not. */
 		bool is_flush_size = wdev->log_flush_interval_pb > 0 &&
 			completed_lsid - flush_lsid > wdev->log_flush_interval_pb;
@@ -1340,6 +1340,9 @@ static void logpack_submit_flush(struct block_device *bdev, struct pack *pack)
 {
 	ASSERT(bdev);
 	ASSERT(pack);
+
+	if (!supports_flush_request_bdev(bdev))
+		return;
 
 	while (!submit_flush(&pack->header_bioe, bdev))
 		schedule();
@@ -2072,18 +2075,9 @@ static void wait_for_logpack_and_submit_datapack(
 	if (!is_failed) {
 		struct walb_logpack_header *logh =
 			get_logpack_header(wpack->logpack_header_sector);
-		bool should_notice = false;
 		spin_lock(&wdev->lsid_lock);
 		wdev->lsids.completed = get_next_lsid(logh);
-		if (!(is_queue_flush_enabled(wdev->queue))) {
-			/* For flush-not-supportted device. */
-			should_notice = is_permanent_log_empty(&wdev->lsids);
-			wdev->lsids.flush = wdev->lsids.completed;
-			wdev->lsids.permanent = wdev->lsids.completed;
-		}
 		spin_unlock(&wdev->lsid_lock);
-		if (should_notice)
-			walb_sysfs_notify(wdev, "lsids");
 	}
 }
 
@@ -2375,12 +2369,11 @@ static bool submit_flush(struct bio_entry *bioe, struct block_device *bdev)
 	ASSERT(bio_entry_len(bioe) == 0);
 
 	generic_make_request(bio);
-
-	return bioe;
+	return true;
 #if 0
 error0:
 	fin_bio_entry(bioe);
-	return NULL;
+	return false;
 #endif
 }
 
@@ -2520,10 +2513,12 @@ static void force_flush_ldev(struct walb_dev *wdev)
 #endif
 
 	/* Execute a flush request. */
-	err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
-	if (err) {
-		WLOGe(wdev, "log device flush failed. try to be read-only mode\n");
-		set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
+	if (supports_flush_request_bdev(wdev->ldev)) {
+		err = blkdev_issue_flush(wdev->ldev, GFP_NOIO, NULL);
+		if (err) {
+			WLOGe(wdev, "log device flush failed. try to be read-only mode\n");
+			set_bit(WALB_STATE_READ_ONLY, &wdev->flags);
+		}
 	}
 
 #ifdef WALB_DEBUG

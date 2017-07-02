@@ -202,7 +202,7 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 	/* Check REQ_FLUSH/REQ_FUA supports. */
 	wdev->support_flush = false;
 	wdev->support_fua = false;
-	if (lq_flush && dq_flush) {
+	if (lq_flush) {
 		uint flush_flags = REQ_FLUSH;
 		WLOGi(wdev, "Supports REQ_FLUSH.\n");
 		wdev->support_flush = true;
@@ -218,9 +218,12 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 #endif
 		blk_queue_flush_queueable(q, true);
 	} else {
-		WLOGw(wdev, "REQ_FLUSH is not supported!\n"
-			"WalB can not guarantee data consistency"
-			"in sudden crashes of underlying devices.\n");
+		WLOGw(wdev, "Does not support REQ_FLUSH.\n");
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0)
+		blk_queue_flush(q, 0);
+#else
+		blk_queue_write_cache(q, false, false);
+#endif
 	}
 }
 
