@@ -136,8 +136,9 @@ void print_bio_wrapper_short(
 	if (!biow)
 		return;
 
-	printk("%s%s biow lsid %" PRIu64 " pos %" PRIu64 " len %u csum %08x\n"
+	printk("%s%s biow lsid %" PRIu64 " %c (%" PRIu64 ", %u) csum %08x\n"
 		, level, prefix, (u64)biow->lsid
+		, biow->bio ? (bio_data_dir(biow->bio) ? 'W' : 'R') : '?'
 		, (u64)biow->pos, biow->len, biow->csum);
 }
 
