@@ -47,7 +47,7 @@ void init_bio_entry_by_clone_never_giveup(
 	struct bio_entry *bioe, struct bio *bio,
 	struct block_device *bdev, gfp_t gfp_mask);
 
-void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs);
+void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs, uint dev_minor);
 
 /*
  * with own pages.

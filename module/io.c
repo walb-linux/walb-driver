@@ -43,6 +43,8 @@ struct pack
 	/* zero_flush or logpack header IO. */
 	struct bio_entry header_bioe;
 
+	struct walb_dev *wdev;
+
 	/* not invalid if the pack contains flush. */
 	u64 new_permanent_lsid;
 
@@ -84,7 +86,7 @@ static struct treemap_memory_manager mmgr_;
 
 /* pack related. */
 static struct pack* create_pack(gfp_t gfp_mask);
-static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid);
+static struct pack* create_writepack(gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid, struct walb_dev *wdev);
 static void destroy_pack(struct pack *pack);
 static bool is_zero_flush_only(const struct pack *pack);
 static bool is_pack_size_too_large(
@@ -241,6 +243,7 @@ static struct pack* create_pack(gfp_t gfp_mask)
 	INIT_LIST_HEAD(&pack->list);
 	INIT_LIST_HEAD(&pack->biow_list);
 	bio_entry_clear(&pack->header_bioe);
+	pack->wdev = NULL;
 	pack->is_zero_flush_only = false;
 	pack->is_flush_header = false;
 	pack->is_fua_contained = false;
@@ -267,7 +270,7 @@ error0:
  *   Allocated and initialized writepack in success, or NULL.
  */
 static struct pack* create_writepack(
-	gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid)
+	gfp_t gfp_mask, unsigned int pbs, u64 logpack_lsid, struct walb_dev *wdev)
 {
 	struct pack *pack;
 	struct walb_logpack_header *lhead;
@@ -275,6 +278,7 @@ static struct pack* create_writepack(
 	ASSERT(logpack_lsid != INVALID_LSID);
 	pack = create_pack(gfp_mask);
 	if (!pack) { goto error0; }
+	pack->wdev = wdev;
 	pack->logpack_header_sector = sector_alloc(pbs, gfp_mask | __GFP_ZERO);
 	if (!pack->logpack_header_sector) { goto error1; }
 
@@ -1776,7 +1780,7 @@ newpack:
 		list_add_tail(&pack->list, wpack_list);
 		*latest_lsidp = get_next_lsid_unsafe(lhead);
 	}
-	pack = create_writepack(gfp_mask, pbs, *latest_lsidp);
+	pack = create_writepack(gfp_mask, pbs, *latest_lsidp, wdev);
 	if (!pack) { goto error0; }
 	*wpackp = pack;
 	lhead = get_logpack_header(pack->logpack_header_sector);
@@ -1885,7 +1889,7 @@ static bool wait_for_logpack_header(struct pack *wpack)
 	/* bioe->bio may be null when the flush request is not really required. */
 	if (!bio_entry_exists(bioe)) return true;
 
-	wait_for_bio_entry(bioe, completion_timeo_ms_);
+	wait_for_bio_entry(bioe, completion_timeo_ms_, wdev_minor(wpack->wdev));
 	success = bioe->error == 0;
 	fin_bio_entry(bioe);
 	return success;
@@ -2182,12 +2186,15 @@ static void wait_for_write_bio_wrapper(
 static void wait_for_bio_wrapper_io(struct bio_wrapper *biow, bool is_endio, bool is_delete)
 {
 	struct bio_entry *bioe;
+	struct walb_dev *wdev;
 	ASSERT(biow);
 	ASSERT(biow->error == 0);
 	bioe = &biow->cloned_bioe;
+	wdev = biow->private_data;
+	ASSERT(wdev);
 
 	if (bio_entry_exists(bioe)) {
-		wait_for_bio_entry(bioe, completion_timeo_ms_);
+		wait_for_bio_entry(bioe, completion_timeo_ms_, wdev_minor(wdev));
 		biow->error = bioe->error;
 	} else
 		ASSERT(biow->len == 0 || bio_wrapper_state_is_discard(biow));
