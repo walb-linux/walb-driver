@@ -1377,7 +1377,9 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 				WLOGe(wdev, "data IO error. to be read-only mode.\n");
 #ifdef WALB_PERFORMANCE_ANALYSIS
 			getnstimeofday(&biow->ts[WALB_TIME_END]);
+#if 0
 			print_bio_wrapper_performance(KERN_NOTICE, biow);
+#endif
 #endif
 			destroy_bio_wrapper_dec(wdev, biow);
 		}
