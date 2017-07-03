@@ -123,6 +123,9 @@ static inline const char *get_req_op_str(uint op)
 		{REQ_OP_DISCARD, "DISCARD"},
 		{REQ_OP_SECURE_ERASE, "SECURE_ERASE"},
 		{REQ_OP_WRITE_SAME, "WRITE_SAME"},
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
+		{REQ_OP_WRITE_ZEROES, "WRITE_ZEROES"},
+#endif
 		{REQ_OP_FLUSH, "FLUSH"},
 	};
 	for (i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++) {
@@ -180,6 +183,12 @@ static inline int snprint_bio_flags(
 		{REQ_PM, "PM"},
 		{REQ_HASHED, "HASHED"},
 		{REQ_MQ_INFLIGHT, "MQ_INFLIGHT"},
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
+		{REQ_BACKGROUND, "BACKGROUND"},
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+		{REQ_NOUNMAP, "NOUNMAP"},
 #endif
 	};
 	s = snprintf(buf, size, "REQ_OP: %s", get_req_op_str(bio_op(bio)));
