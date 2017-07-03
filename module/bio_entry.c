@@ -122,6 +122,9 @@ static void bio_entry_end_io(struct bio *bio)
 	LOG_("complete bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, bio_entry_pos(bioe), bio_entry_len(bioe));
 
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	getnstimeofday(&bioe->end_ts);
+#endif
 	complete(&bioe->done);
 }
 
@@ -136,6 +139,9 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 	bioe->iter = bio->bi_iter; /* copy */
 	bio->bi_private = bioe;
 	bio->bi_end_io = bio_entry_end_io;
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	memset(&bioe->end_ts, 0, sizeof(bioe->end_ts));
+#endif
 }
 
 void fin_bio_entry(struct bio_entry *bioe)

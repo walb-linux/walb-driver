@@ -28,6 +28,10 @@ struct bio_entry
 
 	int error; /* bio error status. */
 	struct completion done;
+
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	struct timespec end_ts; /* timestamp when end_io callback is called. */
+#endif
 };
 
 /********************************************************************************
