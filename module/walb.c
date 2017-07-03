@@ -465,6 +465,9 @@ static int walb_prepare_device(
 	/* Write same support. */
 	walb_write_same_support(wdev);
 
+	/* Write zeroes support. */
+	walb_write_zeroes_support(wdev);
+
 	return 0;
 
 #if 0

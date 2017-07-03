@@ -232,16 +232,19 @@ void walb_discard_support(struct walb_dev *wdev, bool support)
 		WLOGi(wdev, "Supports REQ_DISCARD.\n");
 		q->limits.discard_granularity = wdev->physical_bs;
 		blk_queue_max_discard_sectors(q, WALB_MAX_DISCARD_IO_SECTORS);
-		q->limits.discard_zeroes_data = 0;
 		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
 	} else {
 		WLOGi(wdev, "Do not support REQ_DISCARD.\n");
 		q->limits.discard_granularity = 0;
 		blk_queue_max_discard_sectors(q, 0);
-		q->limits.discard_zeroes_data = 0;
 		queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
 	}
 	wdev->support_discard = support;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
+	/* We assume discarded area are not (virtually) zero-filled. */
+	q->limits.discard_zeroes_data = 0;
+#endif
 }
 
 void walb_write_same_support(struct walb_dev *wdev)
@@ -249,7 +252,17 @@ void walb_write_same_support(struct walb_dev *wdev)
 	WLOGi(wdev, "Do not supports REQ_WRITE_SAME.\n");
 	blk_queue_max_write_same_sectors(wdev->queue, 0);
 	WLOGd(wdev, "max_write_same_sectors: %u\n"
-		, wdev->queue->limits.max_write_same_sectors);
+		, blk_queue_get_max_sectors(wdev->queue, REQ_OP_WRITE_SAME));
+}
+
+void walb_write_zeroes_support(struct walb_dev *wdev)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+	WLOGi(wdev, "Do not supports REQ_WRITE_ZEROES.\n");
+	blk_queue_max_write_zeroes_sectors(wdev->queue, 0);
+	WLOGd(wdev, "max_write_zeroes_sectors: %u\n"
+		, blk_queue_get_max_sectors(wdev->queue, REQ_OP_WRITE_ZEROES));
+#endif
 }
 
 /**
