@@ -579,8 +579,8 @@ void print_queue_limits(
 		"    max_segments: %u\n"
 		"    max_integrity_segments: %u\n"
 		, level, msg
-		, limits->max_sectors
 		, limits->max_hw_sectors
+		, limits->max_sectors
 		, limits->max_segment_size
 		, limits->physical_block_size
 		, limits->alignment_offset
