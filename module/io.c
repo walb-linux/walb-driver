@@ -172,7 +172,7 @@ static void wait_for_logpack_and_submit_datapack(
 static void wait_for_write_bio_wrapper(
 	struct walb_dev *wdev, struct bio_wrapper *biow);
 static void wait_for_bio_wrapper_io(
-	struct bio_wrapper *biow, bool is_endio, bool is_delete);
+	struct bio_wrapper *biow, bool is_endio, bool is_delete, struct timespec *end_ts);
 static void submit_write_bio_wrapper(
 	struct bio_wrapper *biow, bool is_plugging);
 static void cancel_write_bio_wrapper(
@@ -628,8 +628,9 @@ static void task_wait_and_gc_read_bio_wrapper(struct work_struct *work)
 {
 	struct bio_wrapper *biow = container_of(work, struct bio_wrapper, work);
 	struct walb_dev *wdev = (struct walb_dev *)biow->private_data;
+	struct timespec end_ts;
 
-	wait_for_bio_wrapper_io(biow, true, true);
+	wait_for_bio_wrapper_io(biow, true, true, &end_ts);
 	destroy_bio_wrapper_dec(wdev, biow);
 }
 
@@ -818,7 +819,7 @@ static void task_wait_for_bio_wrapper_list(struct work_struct *work)
 			list_del(&biow->list2);
 			wait_for_write_bio_wrapper(wdev, biow);
 #ifdef WALB_PERFORMANCE_ANALYSIS
-			getnstimeofday(&biow->ts[WALB_TIME_DATA_COMPLETED]);
+			getnstimeofday(&biow->ts[WALB_TIME_W_DATA_END]);
 #endif
 			complete(&biow->done);
 		}
@@ -1154,7 +1155,7 @@ static void submit_logpack(
 			/* The biow must be for the next record. */
 		}
 #ifdef WALB_PERFORMANCE_ANALYSIS
-		getnstimeofday(&biow->ts[WALB_TIME_LOG_SUBMITTED]);
+		getnstimeofday(&biow->ts[WALB_TIME_W_LOG_SUBMITTED]);
 #endif
 		if (test_bit_u32(LOG_RECORD_DISCARD, &rec->flags)) {
 			/* No need to execute IO to the log device. */
@@ -1379,7 +1380,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 				!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 				WLOGe(wdev, "data IO error. to be read-only mode.\n");
 #ifdef WALB_PERFORMANCE_ANALYSIS
-			getnstimeofday(&biow->ts[WALB_TIME_END]);
+			getnstimeofday(&biow->ts[WALB_TIME_W_END]);
 #if 0
 			print_bio_wrapper_performance(KERN_NOTICE, biow);
 #endif
@@ -1956,12 +1957,14 @@ static void wait_for_logpack_and_submit_datapack(
 	 *   (4) Insert cloned bio to the pending data.
 	 */
 	list_for_each_entry_safe(biow, biow_next, &wpack->biow_list, list) {
+		struct timespec end_ts;
 		ASSERT(biow->copied_bio);
-		wait_for_bio_wrapper_io(biow, false, true);
+		wait_for_bio_wrapper_io(biow, false, true, &end_ts);
 		if (is_failed || biow->error) goto error_io;
 
 #ifdef WALB_PERFORMANCE_ANALYSIS
-		getnstimeofday(&biow->ts[WALB_TIME_LOG_COMPLETED]);
+		biow->ts[WALB_TIME_W_LOG_COMPLETED] = end_ts;
+		getnstimeofday(&biow->ts[WALB_TIME_W_LOG_END]);
 #endif
 		if (biow->len == 0) {
 			/* Zero-flush. */
@@ -2091,6 +2094,7 @@ static void wait_for_write_bio_wrapper(
 {
 	struct iocore_data *iocored = get_iocored_from_wdev(wdev);
 	bool starts_queue;
+	struct timespec end_ts;
 #ifdef WALB_OVERLAPPED_SERIALIZE
 	struct bio_wrapper *biow_tmp, *biow_tmp_next;
 	unsigned int n_should_submit;
@@ -2107,7 +2111,10 @@ static void wait_for_write_bio_wrapper(
 #endif
 
 	/* Wait for completion and call end_request. */
-	wait_for_bio_wrapper_io(biow, false, false);
+	wait_for_bio_wrapper_io(biow, false, false, &end_ts);
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	biow->ts[WALB_TIME_W_DATA_COMPLETED] = end_ts;
+#endif
 
 #ifdef WALB_DEBUG
 	ASSERT(bio_wrapper_state_is_submitted(biow));
@@ -2178,16 +2185,19 @@ static void wait_for_write_bio_wrapper(
  *   if true, call bio_endio() and io_acct_end() for biow->bio.
  * @is_delete
  *   destroy biow->cloned_bioe.
+ * @end_ts
+ *   end timestamp.
  *
  * CONTEXT:
  *   non-irq. non-atomic.
  */
-static void wait_for_bio_wrapper_io(struct bio_wrapper *biow, bool is_endio, bool is_delete)
+static void wait_for_bio_wrapper_io(struct bio_wrapper *biow, bool is_endio, bool is_delete, struct timespec *end_ts)
 {
 	struct bio_entry *bioe;
 	struct walb_dev *wdev;
 	ASSERT(biow);
 	ASSERT(biow->error == 0);
+	ASSERT(end_ts);
 	bioe = &biow->cloned_bioe;
 	wdev = biow->private_data;
 	ASSERT(wdev);
@@ -2198,9 +2208,18 @@ static void wait_for_bio_wrapper_io(struct bio_wrapper *biow, bool is_endio, boo
 	} else
 		ASSERT(biow->len == 0 || bio_wrapper_state_is_discard(biow));
 
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	*end_ts = bioe->end_ts;
+#endif
 	if (is_endio) {
 		ASSERT(biow->bio);
 		BIO_WRAPPER_PRINT_CSUM("read2", biow);
+#ifdef WALB_PERFORMANCE_ANALYSIS
+		if (!bio_wrapper_state_is_write(biow)) {
+			biow->ts[WALB_TIME_R_COMPLETED] = *end_ts;
+			getnstimeofday(&biow->ts[WALB_TIME_R_END]);
+		}
+#endif
 		io_acct_end(biow);
 		if (biow->error)
 			bio_io_error(biow->bio);
@@ -2242,6 +2261,10 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 		ASSERT(!bio_list_empty(&biow->cloned_bio_list));
 	}
 #endif
+
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	getnstimeofday(&biow->ts[WALB_TIME_W_DATA_SUBMITTED]);
+#endif
 	/* Submit all related bio(s). */
 	if (is_plugging)
 		blk_start_plug(&plug);
@@ -2252,10 +2275,6 @@ static void submit_write_bio_wrapper(struct bio_wrapper *biow, bool is_plugging)
 
 	if (is_plugging)
 		blk_finish_plug(&plug);
-
-#ifdef WALB_PERFORMANCE_ANALYSIS
-	getnstimeofday(&biow->ts[WALB_TIME_DATA_SUBMITTED]);
-#endif
 }
 
 static void cancel_write_bio_wrapper(struct walb_dev *wdev, struct bio_wrapper *biow)
@@ -2321,6 +2340,9 @@ static void submit_read_bio_wrapper(
 		goto error1;
 
 	/* Submit all related bio(s). */
+#ifdef WALB_PERFORMANCE_ANALYSIS
+	getnstimeofday(&biow->ts[WALB_TIME_R_SUBMITTED]);
+#endif
 	LOG_("submit_lr: bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, bioe->pos, bioe->len);
 	BIO_WRAPPER_PRINT_LS("read1", biow, bio_list_size(bio_list));
@@ -3126,7 +3148,7 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 
 	if (is_write) {
 #ifdef WALB_PERFORMANCE_ANALYSIS
-		getnstimeofday(&biow->ts[WALB_TIME_BEGIN]);
+		getnstimeofday(&biow->ts[WALB_TIME_W_BEGIN]);
 #endif
 
 		/* Allocate another buffer and copy bio data.
@@ -3139,6 +3161,9 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 		if (push_into_lpack_submit_queue(biow))
 			dispatch_submit_log_task(wdev);
 	} else {
+#ifdef WALB_PERFORMANCE_ANALYSIS
+		getnstimeofday(&biow->ts[WALB_TIME_R_BEGIN]);
+#endif
 		submit_read_bio_wrapper(wdev, biow);
 
 		/* TODO: support IOCORE_STATE_QUEUE_STOPPED for read also. */
