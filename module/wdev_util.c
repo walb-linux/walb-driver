@@ -565,6 +565,8 @@ void print_queue_limits(
 	printk("%s"
 		"queue limits of %s:\n"
 		"    max_hw_sectors: %u\n"
+		"    max_dev_sectors: %u\n"
+		"    chunk_sectors: %u\n"
 		"    max_sectors: %u\n"
 		"    max_segment_size: %u\n"
 		"    physical_block_size: %u\n"
@@ -573,13 +575,21 @@ void print_queue_limits(
 		"    io_opt: %u\n"
 		"    max_discard_sectors: %u\n"
 		"    max_write_same_sectors: %u\n"
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
+		"    max_write_zeroes_sectors: %u\n"
+#endif
 		"    discard_granularity: %u\n"
 		"    discard_alignment: %u\n"
 		"    logical_block_size: %u\n"
 		"    max_segments: %u\n"
 		"    max_integrity_segments: %u\n"
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+		"    max_discard_segments: %u\n"
+#endif
 		, level, msg
 		, limits->max_hw_sectors
+		, limits->max_dev_sectors
+		, limits->chunk_sectors
 		, limits->max_sectors
 		, limits->max_segment_size
 		, limits->physical_block_size
@@ -588,11 +598,18 @@ void print_queue_limits(
 		, limits->io_opt
 		, limits->max_discard_sectors
 		, limits->max_write_same_sectors
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
+		, limits->max_write_zeroes_sectors
+#endif
 		, limits->discard_granularity
 		, limits->discard_alignment
 		, limits->logical_block_size
 		, limits->max_segments
-		, limits->max_integrity_segments);
+		, limits->max_integrity_segments
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+		, limits->max_discard_segments
+#endif
+		);
 }
 
 /**
