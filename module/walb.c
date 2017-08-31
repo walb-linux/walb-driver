@@ -38,6 +38,7 @@
 #include "sysfs.h"
 #include "wdev_ioctl.h"
 #include "wdev_util.h"
+#include "bio_set.h"
 #include "version.h"
 #include "build_date.h"
 
@@ -712,10 +713,19 @@ static int __init walb_init(void)
 	LOGi("walb_start with major id %d.\n", walb_major_);
 
 	/*
+	 * Bio set.
+	 */
+	if (!walb_bio_set_init()) {
+		LOGe("walb_bio_set_init failed.\n");
+		goto out_register;
+	}
+
+	/*
 	 * Workqueues.
 	 */
 	if (!initialize_workqueues()) {
-		goto out_register;
+		LOGe("initialize_workqueue failed.\n");
+		goto out_bio_set_exit;
 	}
 
 	/*
@@ -744,6 +754,8 @@ out_alldevs_exit:
 	alldevs_exit();
 out_workqueues:
 	finalize_workqueues();
+out_bio_set_exit:
+	walb_bio_set_exit();
 out_register:
 	unregister_blkdev(walb_major_, WALB_NAME);
 	return -ENOMEM;
@@ -767,6 +779,7 @@ static void walb_exit(void)
 	unregister_blkdev(walb_major_, WALB_NAME);
 	walb_control_exit();
 	alldevs_exit();
+	walb_bio_set_exit();
 
 	LOGi("walb exit.\n");
 }

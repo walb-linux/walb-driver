@@ -9,6 +9,7 @@
 #include <linux/list.h>
 #include "bio_entry.h"
 #include "bio_util.h"
+#include "bio_set.h"
 #include "linux/walb/common.h"
 #include "linux/walb/logger.h"
 #include "linux/walb/check.h"
@@ -167,7 +168,7 @@ bool init_bio_entry_by_clone(
 {
 	struct bio *clone;
 
-	clone = bio_clone(bio, gfp_mask);
+	clone = bio_clone_fast(bio, gfp_mask, walb_bio_set_);
 	if (!clone)
 		return false;
 

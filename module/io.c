@@ -25,6 +25,7 @@
 #include "pending_io.h"
 #include "overlapped_io.h"
 #include "queue_util.h"
+#include "bio_set.h"
 
 /*******************************************************************************
  * Static data definition.
@@ -1291,7 +1292,7 @@ static struct bio* logpack_create_bio(
 	u64 ldev_off_pb, uint bio_off_lb)
 {
 	struct bio *cbio;
-	cbio = bio_clone(bio, GFP_NOIO);
+	cbio = bio_clone_fast(bio, GFP_NOIO, walb_bio_set_);
 	if (!cbio)
 		return NULL;
 

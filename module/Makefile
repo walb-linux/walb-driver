@@ -47,7 +47,7 @@ walb-mod-objs := \
 walb.o wdev_util.o wdev_ioctl.o sysfs.o control.o alldevs.o checkpoint.o \
 super.o logpack.o overlapped_io.o pending_io.o io.o redo.o \
 sector_io.o bio_entry.o bio_wrapper.o worker.o pack_work.o \
-treemap.o
+treemap.o bio_set.o
 
 test-treemap-mod-objs := test/test_treemap.o treemap.o
 test-kmem-cache-mod-objs := test/test_kmem_cache.o
@@ -59,7 +59,7 @@ test-completion-mod-objs := test/test_completion.o
 test-vmalloc-mod-objs := test/test_vmalloc.o
 test-bdev-mod-objs := test/test_bdev.o
 test-sort-mod-objs := test/test_sort.o treemap.o
-test-bio-entry-mod-objs := test/test_bio_entry.o bio_entry.o bio_wrapper.o
+test-bio-entry-mod-objs := test/test_bio_entry.o bio_entry.o bio_wrapper.o bio_set.o
 
 obj-m := \
 test-treemap-mod.o \
