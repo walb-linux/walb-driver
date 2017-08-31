@@ -213,11 +213,7 @@ void walb_decide_flush_support(struct walb_dev *wdev)
 		blk_queue_flush_queueable(q, true);
 	} else {
 		WLOGw(wdev, "Does not support REQ_FLUSH.\n");
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0)
-		blk_queue_flush(q, 0);
-#else
 		blk_queue_write_cache(q, false, false);
-#endif
 	}
 }
 
@@ -240,11 +236,6 @@ void walb_discard_support(struct walb_dev *wdev, bool support)
 		queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
 	}
 	wdev->support_discard = support;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
-	/* We assume discarded area are not (virtually) zero-filled. */
-	q->limits.discard_zeroes_data = 0;
-#endif
 }
 
 void walb_write_same_support(struct walb_dev *wdev)
@@ -257,12 +248,10 @@ void walb_write_same_support(struct walb_dev *wdev)
 
 void walb_write_zeroes_support(struct walb_dev *wdev)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
 	WLOGi(wdev, "Do not supports REQ_WRITE_ZEROES.\n");
 	blk_queue_max_write_zeroes_sectors(wdev->queue, 0);
 	WLOGd(wdev, "max_write_zeroes_sectors: %u\n"
 		, blk_queue_get_max_sectors(wdev->queue, REQ_OP_WRITE_ZEROES));
-#endif
 }
 
 /**
@@ -588,17 +577,13 @@ void print_queue_limits(
 		"    io_opt: %u\n"
 		"    max_discard_sectors: %u\n"
 		"    max_write_same_sectors: %u\n"
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
 		"    max_write_zeroes_sectors: %u\n"
-#endif
 		"    discard_granularity: %u\n"
 		"    discard_alignment: %u\n"
 		"    logical_block_size: %u\n"
 		"    max_segments: %u\n"
 		"    max_integrity_segments: %u\n"
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 		"    max_discard_segments: %u\n"
-#endif
 		, level, msg
 		, limits->max_hw_sectors
 		, limits->max_dev_sectors
@@ -611,17 +596,13 @@ void print_queue_limits(
 		, limits->io_opt
 		, limits->max_discard_sectors
 		, limits->max_write_same_sectors
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
 		, limits->max_write_zeroes_sectors
-#endif
 		, limits->discard_granularity
 		, limits->discard_alignment
 		, limits->logical_block_size
 		, limits->max_segments
 		, limits->max_integrity_segments
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 		, limits->max_discard_segments
-#endif
 		);
 }
 
