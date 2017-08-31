@@ -120,11 +120,18 @@ static inline const char *get_req_op_str(uint op)
 	const struct pair_u64_char tbl[] = {
 		{REQ_OP_READ, "READ"},
 		{REQ_OP_WRITE, "WRITE"},
+		{REQ_OP_FLUSH, "FLUSH"},
 		{REQ_OP_DISCARD, "DISCARD"},
+		{REQ_OP_ZONE_REPORT, "ZONE_REPORT"},
 		{REQ_OP_SECURE_ERASE, "SECURE_ERASE"},
+		{REQ_OP_ZONE_RESET, "ZONE_RESET"},
 		{REQ_OP_WRITE_SAME, "WRITE_SAME"},
 		{REQ_OP_WRITE_ZEROES, "WRITE_ZEROES"},
-		{REQ_OP_FLUSH, "FLUSH"},
+
+		{REQ_OP_SCSI_IN, "SCSI_IN"},
+		{REQ_OP_SCSI_OUT, "SCSI_OUT"},
+		{REQ_OP_DRV_IN, "DRV_IN"},
+		{REQ_OP_DRV_OUT, "DRV_OUT"},
 	};
 	for (i = 0; i < sizeof(tbl) / sizeof(tbl[0]); i++) {
 		if (op == tbl[i].value)
@@ -148,14 +155,15 @@ static inline int snprint_bio_flags(
 		{REQ_SYNC, "SYNC"},
 		{REQ_META, "META"},
 		{REQ_PRIO, "PRIO"},
+		{REQ_NOMERGE, "NOMERGE"},
 		{REQ_IDLE, "IDLE"},
 		{REQ_INTEGRITY, "INTEGRITY"},
-		{REQ_RAHEAD, "RAHEAD"},
 		{REQ_FUA, "FUA"},
-		{REQ_NOMERGE, "NOMERGE"},
 		{REQ_PREFLUSH, "PREFLUSH"},
+		{REQ_RAHEAD, "RAHEAD"},
 		{REQ_BACKGROUND, "BACKGROUND"},
 		{REQ_NOUNMAP, "NOUNMAP"},
+		{REQ_NOWAIT, "NOWAIT"},
 	};
 	s = snprintf(buf, size, "REQ_OP: %s", get_req_op_str(bio_op(bio)));
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
