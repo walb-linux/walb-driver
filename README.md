@@ -16,7 +16,7 @@ Use an appropriate branch or a tag for your using kernel as follows:
 
 | Branch          | Tag      | Kernel version |
 |-----------------|----------|----------------|
-| `master`        | `v1.4.x` | 4.8-           |
+| `for-4.8`       | `v1.4.x` | 4.8-4.12       |
 | `for-4.3`       | `v1.3.x` | 4.3-4.7        |
 | `for-3.14`      | `v1.2.x` | 3.14-4.2       |
 | `for-3.10`      | `v1.1.x` | 3.10-3.13      |
