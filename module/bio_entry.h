@@ -26,7 +26,7 @@ struct bio_entry
 	   So store it here before splitted or submitted. */
 	struct bvec_iter iter;
 
-	int error; /* bio error status. */
+	blk_status_t status; /* bio status. */
 	struct completion done;
 
 #ifdef WALB_PERFORMANCE_ANALYSIS

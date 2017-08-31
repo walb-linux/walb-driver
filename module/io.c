@@ -1373,7 +1373,7 @@ static void gc_logpack_list(struct walb_dev *wdev, struct list_head *wpack_list)
 				ASSERT(bio_wrapper_state_is_completed(biow));
 			}
 #endif
-			if (biow->error &&
+			if (biow->status &&
 				!test_and_set_bit(WALB_STATE_READ_ONLY, &wdev->flags))
 				WLOGe(wdev, "data IO error. to be read-only mode.\n");
 #ifdef WALB_PERFORMANCE_ANALYSIS
@@ -1896,7 +1896,7 @@ static bool wait_for_logpack_header(struct pack *wpack)
 	if (!bio_entry_exists(bioe)) return true;
 
 	wait_for_bio_entry(bioe, completion_timeo_ms_, wdev_minor(wpack->wdev));
-	success = bioe->error == 0;
+	success = (bioe->status == BLK_STS_OK);
 	fin_bio_entry(bioe);
 	return success;
 }
@@ -1957,7 +1957,7 @@ static void wait_for_logpack_and_submit_datapack(
 		struct timespec end_ts;
 		ASSERT(biow->copied_bio);
 		wait_for_bio_wrapper_io(biow, false, true, &end_ts);
-		if (is_failed || biow->error) goto error_io;
+		if (is_failed || biow->status) goto error_io;
 
 #ifdef WALB_PERFORMANCE_ANALYSIS
 		biow->ts[WALB_TIME_W_LOG_COMPLETED] = end_ts;
@@ -2193,7 +2193,7 @@ static void wait_for_bio_wrapper_io(struct bio_wrapper *biow, bool is_endio, boo
 	struct bio_entry *bioe;
 	struct walb_dev *wdev;
 	ASSERT(biow);
-	ASSERT(biow->error == 0);
+	ASSERT(biow->status == BLK_STS_OK);
 	ASSERT(end_ts);
 	bioe = &biow->cloned_bioe;
 	wdev = biow->private_data;
@@ -2201,7 +2201,7 @@ static void wait_for_bio_wrapper_io(struct bio_wrapper *biow, bool is_endio, boo
 
 	if (bio_entry_exists(bioe)) {
 		wait_for_bio_entry(bioe, completion_timeo_ms_, wdev_minor(wdev));
-		biow->error = bioe->error;
+		biow->status = bioe->status;
 	} else
 		ASSERT(biow->len == 0 || bio_wrapper_state_is_discard(biow));
 
@@ -2218,7 +2218,7 @@ static void wait_for_bio_wrapper_io(struct bio_wrapper *biow, bool is_endio, boo
 		}
 #endif
 		io_acct_end(biow);
-		if (biow->error)
+		if (biow->status)
 			bio_io_error(biow->bio);
 		else
 			bio_endio(biow->bio);
@@ -2296,7 +2296,7 @@ static void cancel_write_bio_wrapper(struct walb_dev *wdev, struct bio_wrapper *
 		ASSERT(!blk_queue_discard(bdev_get_queue(wdev->ddev)));
 	}
 
-	biow->error = -EIO;
+	biow->status = BLK_STS_IOERR;
 	complete(&biow->done);
 }
 
@@ -2358,7 +2358,7 @@ error1:
 	fin_bio_entry(bioe);
 error0:
 	io_acct_end(biow);
-	biow->bio->bi_error = -ENOMEM;
+	biow->bio->bi_status = BLK_STS_RESOURCE;
 	bio_endio(biow->bio);
 	destroy_bio_wrapper_dec(wdev, biow);
 }
@@ -3134,7 +3134,7 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 
 	/* Check whether the device is dying. */
 	if (is_wdev_dying(wdev)) {
-		bio->bi_error = -ENODEV;
+		bio->bi_status = BLK_STS_IOERR;
 		bio_endio(bio);
 		return;
 	}
@@ -3149,7 +3149,7 @@ void iocore_make_request(struct walb_dev *wdev, struct bio *bio)
 	/* Create bio wrapper. */
 	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
 	if (!biow) {
-		bio->bi_error = -ENOMEM;
+		bio->bi_status = BLK_STS_RESOURCE;
 		bio_endio(bio);
 		return;
 	}
@@ -3194,7 +3194,7 @@ error0:
 void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio)
 {
 	if (is_wdev_dying(wdev)) {
-		bio->bi_error = -ENODEV;
+		bio->bi_status = BLK_STS_IOERR;
 		bio_endio(bio);
 		return;
 	}

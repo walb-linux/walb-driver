@@ -32,7 +32,7 @@ struct bio_wrapper
 	sector_t pos; /* position of the original bio [logical block]. */
 	unsigned int len; /* length of the original bio [logical block]. */
 	u32 csum; /* checksum for write IO. */
-	int error;
+	blk_status_t status;
 	struct completion done;
 
 	unsigned long flags; /* For atomic state management. */

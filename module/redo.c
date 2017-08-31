@@ -29,7 +29,7 @@ struct redo_data
 {
 	struct walb_dev *wdev;
 	u64 lsid;
-	int error;
+	blk_status_t status;
 
 	/* These are shared with worker and master.
 	   Use queue_lock to access them. */
@@ -123,7 +123,7 @@ static struct redo_data* create_redo_data(struct walb_dev *wdev, u64 lsid)
 	spin_lock_init(&data->queue_lock);
 	INIT_LIST_HEAD(&data->queue);
 	data->queue_len = 0;
-	data->error = 0;
+	data->status = BLK_STS_OK;
 	return data;
 }
 
@@ -213,11 +213,11 @@ static void run_read_log_in_redo(void *data)
 	ASSERT(list_empty(&biow_list));
 
 fin:
-	redod->error = 0;
+	redod->status = BLK_STS_OK;
 	return;
 #if 0
 error0:
-	redod->error = -1;
+	redod->status = BLK_STS_IOERR;
 #endif
 }
 
@@ -295,8 +295,8 @@ static void run_gc_log_in_redo(void *data)
 			}
 			ASSERT(list_empty(&should_submit_list));
 #endif
-			if (biow->error) {
-				redod->error = biow->error;
+			if (biow->status) {
+				redod->status = biow->status;
 			}
 			destroy_bio_wrapper_for_redo(redod->wdev, biow);
 		}
@@ -492,7 +492,7 @@ static void bio_end_io_for_redo(struct bio *bio)
 	}
 #endif
 
-	biow->error = bio->bi_error;
+	biow->status = bio->bi_status;
 	bio_put(bio);
 	biow->bio = NULL;
 	complete(&biow->done);
@@ -695,7 +695,7 @@ static bool redo_logpack(
 	struct bio_wrapper *biow, *biow_next;
 	u32 csum;
 	bool is_valid = true;
-	int error = 0;
+	blk_status_t status = BLK_STS_OK;
 	struct blk_plug plug;
 	bool retb = true;
 
@@ -767,14 +767,14 @@ retry1:
 		ASSERT(list_empty(&biow_list_io));
 		n = 0;
 		list_for_each_entry_safe(biow, biow_next, &biow_list_pack, list) {
-			if (biow->error) {
-				error = biow->error;
+			if (biow->status) {
+				status = biow->status;
 			}
 			list_move_tail(&biow->list, &biow_list_io);
 			n++;
 			if (n == n_pb) { break; }
 		}
-		if (error) {
+		if (status) {
 			retb = false;
 			goto fin;
 		}
@@ -884,7 +884,7 @@ retry2:
 	bio_set_op_attrs(logh_biow->bio, REQ_OP_WRITE, REQ_PREFLUSH | REQ_FUA);
 	generic_make_request(logh_biow->bio);
 	wait_for_completion(&logh_biow->done);
-	if (logh_biow->error) {
+	if (logh_biow->status) {
 		WLOGe(wdev, "Updated logpack header IO failed.");
 		retb = false;
 		goto fin;
@@ -1152,7 +1152,7 @@ bool execute_redo(struct walb_dev *wdev)
 		}
 
 		/* Check IO error of the logpack header. */
-		if (logh_biow->error) {
+		if (logh_biow->status) {
 			destroy_bio_wrapper_for_redo(wdev, logh_biow);
 			failed = true;
 			break;

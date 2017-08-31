@@ -95,10 +95,10 @@ void print_bio_entry(const char *level, const struct bio_entry *bioe)
 	else
 		buf[0] = '\0';
 
-	printk("%s""bio %p error %d\n"
+	printk("%s""bio %p status %u\n"
 		"%s\n"
 		, level
-		, bioe->bio, bioe->error
+		, bioe->bio, bioe->status
 		, buf);
 }
 
@@ -109,7 +109,7 @@ static void bio_entry_end_io(struct bio *bio)
 	ASSERT(bio->bi_bdev);
 	ASSERT(bioe->bio == bio);
 
-	if (bio->bi_error) {
+	if (bio->bi_status) {
 		UNUSED const unsigned int devt = bio->bi_bdev->bd_dev;
 		LOG_("bio is error"
 			" (dev %u:%u opf %08x pos %" PRIu64 " len %u).\n"
@@ -118,7 +118,7 @@ static void bio_entry_end_io(struct bio *bio)
 			, bio_entry_pos(bioe), bio_entry_len(bioe));
 	}
 
-	bioe->error = bio->bi_error;
+	bioe->status = bio->bi_status;
 	LOG_("complete bioe %p pos %" PRIu64 " len %u\n"
 		, bioe, bio_entry_pos(bioe), bio_entry_len(bioe));
 
@@ -134,7 +134,7 @@ void init_bio_entry(struct bio_entry *bioe, struct bio *bio)
 	ASSERT(bio);
 
 	init_completion(&bioe->done);
-	bioe->error = 0;
+	bioe->status = BLK_STS_OK;
 	bioe->bio = bio;
 	bioe->iter = bio->bi_iter; /* copy */
 	bio->bi_private = bioe;

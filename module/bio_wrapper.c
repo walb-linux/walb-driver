@@ -101,7 +101,7 @@ void print_bio_wrapper(const char *level, const struct bio_wrapper *biow)
 		"pos %" PRIu64 " "
 		"len %u "
 		"csum %08x "
-		"error %d "
+		"status %u "
 		"flags(%d%d%d"
 #ifdef WALB_OVERLAPPED_SERIALIZE
 		"%d"
@@ -124,7 +124,7 @@ void print_bio_wrapper(const char *level, const struct bio_wrapper *biow)
 #endif
 		"\n"
 		, level, biow, biow->bio
-		, (u64)biow->pos, biow->len, biow->csum, biow->error
+		, (u64)biow->pos, biow->len, biow->csum, biow->status
 		, bio_wrapper_state_is_started(biow) ? 1 : 0
 		, bio_wrapper_state_is_discard(biow) ? 1 : 0
 		, bio_wrapper_state_is_overwritten(biow) ? 1 : 0
@@ -172,7 +172,7 @@ void init_bio_wrapper(struct bio_wrapper *biow, struct bio *bio)
 #endif
 	bio_entry_clear(&biow->cloned_bioe);
 	bio_list_init(&biow->cloned_bio_list);
-	biow->error = 0;
+	biow->status = BLK_STS_OK;
 	biow->csum = 0;
 	biow->private_data = NULL;
 	init_completion(&biow->done);
