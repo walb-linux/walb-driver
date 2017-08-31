@@ -15,7 +15,6 @@
 #include "linux/walb/util.h"
 #include "linux/walb/logger.h"
 #include "build_date.h"
-#include "util.h"
 
 #define THREAD_WAKEUP 0
 

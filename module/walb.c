@@ -29,7 +29,6 @@
 #include "kern.h"
 #include "control.h"
 #include "alldevs.h"
-#include "util.h"
 #include "logpack.h"
 #include "checkpoint.h"
 #include "super.h"

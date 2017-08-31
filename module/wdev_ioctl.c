@@ -5,6 +5,7 @@
  * @author HOSHINO Takashi <hoshino@labs.cybozu.co.jp>
  */
 #include <linux/module.h>
+#include <linux/random.h>
 #include "linux/walb/logger.h"
 #include "wdev_ioctl.h"
 #include "wdev_util.h"

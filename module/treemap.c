@@ -14,7 +14,6 @@
 #include "linux/walb/logger.h"
 #include "linux/walb/check.h"
 #include "treemap.h"
-#include "util.h" /* for debug */
 
 /**
  * Prototypes of static functions.

@@ -23,7 +23,6 @@
 #include "linux/walb/sector.h"
 #include "linux/walb/ioctl.h"
 #include "checkpoint.h"
-#include "util.h"
 
 /**
  * Walb device major.

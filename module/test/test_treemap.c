@@ -7,12 +7,12 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
+#include <linux/random.h>
 
 #include "linux/walb/walb.h"
 #include "linux/walb/logger.h"
 #include "linux/walb/check.h"
 #include "treemap.h"
-#include "util.h"
 
 /**
  * Test treemap for debug.
