@@ -433,4 +433,4 @@ void bio_wrapper_exit(void)
 	}
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

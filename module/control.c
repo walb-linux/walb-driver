@@ -628,4 +628,4 @@ void walb_control_exit(void)
 	misc_deregister(&walb_misc_);
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

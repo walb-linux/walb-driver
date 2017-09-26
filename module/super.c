@@ -114,4 +114,4 @@ bool walb_finalize_super_block(struct walb_dev *wdev, bool is_superblock_sync)
 	}
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

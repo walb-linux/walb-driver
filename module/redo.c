@@ -1235,4 +1235,4 @@ error0:
 	return false;
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

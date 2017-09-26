@@ -689,4 +689,4 @@ int walb_dispatch_ioctl_wdev(struct walb_dev *wdev, void __user *userctl)
 	return ret;
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

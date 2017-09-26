@@ -1818,4 +1818,4 @@ int multimap_cursor_del(struct multimap_cursor *cursor)
 	return 1;
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

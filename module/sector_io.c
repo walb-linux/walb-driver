@@ -230,4 +230,4 @@ bool walb_write_super_sector(
 	return true;
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

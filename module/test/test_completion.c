@@ -73,7 +73,7 @@ static void test_exit(void)
 
 module_init(test_init);
 module_exit(test_exit);
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Test of completion.");
 MODULE_ALIAS("test_completion");
 /* MODULE_ALIAS_BLOCKDEV_MAJOR(MEMBLK_MAJOR); */

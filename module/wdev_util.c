@@ -637,4 +637,4 @@ u64 walb_get_log_capacity(struct walb_dev *wdev)
 	return wdev->ring_buffer_size;
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

@@ -378,4 +378,4 @@ void alldevs_unlock(void)
 	mutex_unlock(&all_wdevs_lock_);
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

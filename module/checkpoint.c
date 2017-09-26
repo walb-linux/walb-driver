@@ -234,4 +234,4 @@ void set_checkpoint_interval(struct checkpoint_data *cpd, u32 interval)
 	start_checkpointing(cpd);
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

@@ -208,4 +208,4 @@ void overlapped_data_print(struct multimap *overlapped_data)
 }
 #endif
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

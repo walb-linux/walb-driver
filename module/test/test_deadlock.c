@@ -63,6 +63,6 @@ static void test_exit(void)
 
 module_init(test_init);
 module_exit(test_exit);
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("test of deadlock");
 MODULE_ALIAS("test_deadlock");

@@ -1149,7 +1149,7 @@ void unregister_wdev(struct walb_dev *wdev)
 
 module_init(walb_init);
 module_exit(walb_exit);
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Block-level WAL");
 MODULE_ALIAS(WALB_NAME);
 /* MODULE_ALIAS_BLOCKDEV_MAJOR(WALB_MAJOR); */

@@ -317,4 +317,4 @@ void pending_data_print(struct multimap *pending_data)
 
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

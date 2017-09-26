@@ -188,4 +188,4 @@ bool walb_logpack_header_add_bio(
 	return true;
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

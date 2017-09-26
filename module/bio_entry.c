@@ -329,4 +329,4 @@ void bio_entry_exit(void)
 #endif
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

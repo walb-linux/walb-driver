@@ -133,4 +133,4 @@ void finalize_worker(struct worker_data *wd)
 #endif
 }
 
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");
