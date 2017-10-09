@@ -46,7 +46,7 @@ You can specify the following make options:
 
 == Build userland tools
 
-The userland tools in tool/ directory are obsolute.
+The userland tools in tool/ directory are obsolete.
 Use walb-tools written by c++.
 https://github.com/starpos/walb-tools/
 

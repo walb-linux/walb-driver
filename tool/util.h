@@ -49,7 +49,7 @@ void copy_uuid(u8* dst, const u8* src);
 bool read_data(int fd, u8* data, size_t size);
 bool write_data(int fd, const u8* data, size_t size);
 
-/* Sector functions (will be obsolute). */
+/* Sector functions (will be obsolete). */
 bool read_sectors_raw(
 	int fd, u8* sectors_buf, u32 sector_size, u64 offset, int n);
 bool read_sector_raw(
