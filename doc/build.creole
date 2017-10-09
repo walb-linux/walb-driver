@@ -78,8 +78,8 @@ You can specify any existing kernel version directly like {{{3.2.0}}} instead of
 
 Install the module.
 {{{
-> mkdir -p /lib/module/`uname -r`/kernel/drivers/block/walb
-> cp -p walb.git/module/walb-mod.ko /lib/module/`uname -r`/kernel/drivers/block/walb/
+> mkdir -p /lib/modules/`uname -r`/kernel/drivers/block/walb
+> cp -p walb.git/module/walb-mod.ko /lib/modules/`uname -r`/kernel/drivers/block/walb/
 > depmod `uname -r`
 }}}
 
