@@ -440,7 +440,7 @@ bool init_super_sector(
 
 /**
  * Print super sector for debug.
- * This will be obsolute. Use print_super_sector() instead.
+ * This will be obsolete. Use print_super_sector() instead.
  */
 void print_super_sector_raw(const struct walb_super_sector* super_sect)
 {

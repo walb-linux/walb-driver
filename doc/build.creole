@@ -46,7 +46,7 @@ You can specify the following make options:
 
 == Build userland tools
 
-The userland tools in tool/ directory are obsolute.
+The userland tools in tool/ directory are obsolete.
 Use walb-tools written by c++.
 https://github.com/starpos/walb-tools/
 
@@ -78,8 +78,8 @@ You can specify any existing kernel version directly like {{{3.2.0}}} instead of
 
 Install the module.
 {{{
-> mkdir -p /lib/module/`uname -r`/kernel/drivers/block/walb
-> cp -p walb.git/module/walb-mod.ko /lib/module/`uname -r`/kernel/drivers/block/walb/
+> mkdir -p /lib/modules/`uname -r`/kernel/drivers/block/walb
+> cp -p walb.git/module/walb-mod.ko /lib/modules/`uname -r`/kernel/drivers/block/walb/
 > depmod `uname -r`
 }}}
 
