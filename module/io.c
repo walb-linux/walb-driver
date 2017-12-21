@@ -2853,19 +2853,13 @@ static void pack_cache_put(void)
 
 static void io_acct_start(struct bio_wrapper *biow)
 {
-	int cpu;
 	int rw = bio_data_dir(biow->bio);
 	struct walb_dev *wdev = biow->private_data;
 	struct hd_struct *part0 = &wdev->gd->part0;
 
 	biow->start_time = jiffies;
 
-	cpu = part_stat_lock();
-	part_round_stats(cpu, part0);
-	part_stat_inc(cpu, part0, ios[rw]);
-	part_stat_add(cpu, part0, sectors[rw], biow->len);
-	part_inc_in_flight(part0, rw);
-	part_stat_unlock();
+	generic_start_io_acct(biow->bio->bi_disk->queue, rw, biow->len, part0);
 
 #ifdef WALB_DEBUG
 	atomic_inc(&get_iocored_from_wdev(wdev)->n_io_acct);
@@ -2874,18 +2868,14 @@ static void io_acct_start(struct bio_wrapper *biow)
 
 static void io_acct_end(struct bio_wrapper *biow)
 {
-	int cpu;
 	int rw = bio_data_dir(biow->bio);
 	struct walb_dev *wdev = biow->private_data;
 	struct hd_struct *part0 = &wdev->gd->part0;
 	unsigned long duration = jiffies - biow->start_time;
 	unsigned long duration_ms = jiffies_to_msecs(duration);
 
-	cpu = part_stat_lock();
-	part_stat_add(cpu, part0, ticks[rw], duration);
-	part_round_stats(cpu, part0);
-	part_dec_in_flight(part0, rw);
-	part_stat_unlock();
+	generic_end_io_acct(biow->bio->bi_disk->queue, rw, part0,
+			    biow->start_time);
 
 	if (io_latency_threshold_ms_ > 0 && duration_ms > io_latency_threshold_ms_) {
 		char buf[64];
