@@ -107,11 +107,10 @@ static void bio_entry_end_io(struct bio *bio)
 {
 	struct bio_entry *bioe = bio->bi_private;
 	ASSERT(bioe);
-	ASSERT(bio->bi_bdev);
 	ASSERT(bioe->bio == bio);
 
 	if (bio->bi_status) {
-		UNUSED const unsigned int devt = bio->bi_bdev->bd_dev;
+		UNUSED const unsigned int devt = bio_dev(bio);
 		LOG_("bio is error"
 			" (dev %u:%u opf %08x pos %" PRIu64 " len %u).\n"
 			, MAJOR(devt), MINOR(devt)
@@ -172,7 +171,7 @@ bool init_bio_entry_by_clone(
 	if (!clone)
 		return false;
 
-	clone->bi_bdev = bdev;
+	bio_set_dev(clone, bdev);
 
 	init_bio_entry(bioe, clone);
 	return true;
@@ -210,10 +209,10 @@ retry:
  *
  * @size size in bytes.
  *
- * You must set bi_bdev, bi_opf, bi_iter by yourself.
+ * You must set bi_disk, bi_opf, bi_iter by yourself.
  * bi_iter.bi_size will be set to the specified size if size is not 0.
  */
-struct bio* bio_alloc_with_pages(uint size, struct block_device *bdev, gfp_t gfp_mask)
+struct bio* bio_alloc_with_pages(uint size, struct bio *src, gfp_t gfp_mask)
 {
 	struct bio *bio;
 	uint i, nr_pages, remaining;
@@ -224,7 +223,7 @@ struct bio* bio_alloc_with_pages(uint size, struct block_device *bdev, gfp_t gfp
 	if (!bio)
 		return NULL;
 
-	bio->bi_bdev = bdev; /* required to bio_add_page(). */
+	bio_copy_dev(bio, src); /* required to bio_add_page(). */
 
 	remaining = size;
 	for (i = 0; i < nr_pages; i++) {
@@ -281,7 +280,7 @@ struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask)
 	else
 		size = 0;
 
-	clone = bio_alloc_with_pages(size, bio->bi_bdev, gfp_mask);
+	clone = bio_alloc_with_pages(size, bio, gfp_mask);
 	if (!clone)
 		return NULL;
 

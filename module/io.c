@@ -1228,7 +1228,7 @@ retry_bio:
 	page2 = virt_to_page((unsigned long)lhead + pbs - 1);
 	ASSERT(page == page2);
 #endif
-	bio->bi_bdev = ldev;
+	bio_set_dev(bio, ldev);
 	off_pb = get_offset_of_lsid(lhead->logpack_lsid, ring_buffer_off, ring_buffer_size);
 	off_lb = addr_lb(pbs, off_pb);
 	bio->bi_iter.bi_sector = off_lb;
@@ -1296,7 +1296,7 @@ static struct bio* logpack_create_bio(
 	if (!cbio)
 		return NULL;
 
-	cbio->bi_bdev = ldev;
+	bio_set_dev(cbio, ldev);
 	cbio->bi_iter.bi_sector = addr_lb(pbs, ldev_off_pb) + bio_off_lb;
 	/* cbio->bi_end_io = NULL; */
 	/* cbio->bi_private = NULL; */
@@ -2384,7 +2384,7 @@ static bool submit_flush(struct bio_entry *bioe, struct block_device *bdev)
 	if (!bio)
 		return false;
 
-	bio->bi_bdev = bdev;
+	bio_set_dev(bio, bdev);
 	bio_set_op_attrs(bio, REQ_OP_WRITE, REQ_PREFLUSH);
 
 	init_bio_entry(bioe, bio);
@@ -3203,7 +3203,7 @@ void iocore_log_make_request(struct walb_dev *wdev, struct bio *bio)
 		bio_io_error(bio);
 		return;
 	}
-	bio->bi_bdev = wdev->ldev;
+	bio_set_dev(bio, wdev->ldev);
 	generic_make_request(bio);
 }
 
