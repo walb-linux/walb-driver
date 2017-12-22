@@ -241,8 +241,8 @@ static inline int snprint_bio(char *buf, size_t size, const struct bio *bio)
                 , bio->bi_vcnt
                 , bio->bi_max_vecs
                 , atomic_read(&bio->__bi_cnt)
-		, MAJOR(bio->bi_bdev->bd_dev)
-		, MINOR(bio->bi_bdev->bd_dev));
+		, MAJOR(bio_dev(bio))
+		, MINOR(bio_dev(bio)));
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
 	s = snprint_bvec_iter(buf, size, &bio->bi_iter);
 	SNPRINT_BIO_PROCEED(buf, size, w, s);
@@ -288,8 +288,8 @@ static inline void print_bio_short(const char *prefix, const struct bio *bio)
 	pr_info("%sbio %p pos %" PRIu64 " len %u"
 		" bdev(%d:%d) opf %08x\n"
 		, prefix, bio, (u64)bio_begin_sector(bio), bio_sectors(bio)
-		, MAJOR(bio->bi_bdev->bd_dev)
-		, MINOR(bio->bi_bdev->bd_dev)
+		, MAJOR(bio_dev(bio))
+		, MINOR(bio_dev(bio))
 		, bio->bi_opf);
 }
 
