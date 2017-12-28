@@ -209,10 +209,10 @@ retry:
  *
  * @size size in bytes.
  *
- * You must set bi_disk, bi_opf, bi_iter by yourself.
+ * You must set bi_disk, bi_partno, bi_opf, bi_iter by yourself.
  * bi_iter.bi_size will be set to the specified size if size is not 0.
  */
-struct bio* bio_alloc_with_pages(uint size, struct bio *src, gfp_t gfp_mask)
+struct bio* bio_alloc_with_pages(uint size, gfp_t gfp_mask)
 {
 	struct bio *bio;
 	uint i, nr_pages, remaining;
@@ -222,8 +222,6 @@ struct bio* bio_alloc_with_pages(uint size, struct bio *src, gfp_t gfp_mask)
 	bio = bio_alloc(gfp_mask, nr_pages);
 	if (!bio)
 		return NULL;
-
-	bio_copy_dev(bio, src); /* required to bio_add_page(). */
 
 	remaining = size;
 	for (i = 0; i < nr_pages; i++) {
@@ -280,10 +278,11 @@ struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask)
 	else
 		size = 0;
 
-	clone = bio_alloc_with_pages(size, bio, gfp_mask);
+	clone = bio_alloc_with_pages(size, gfp_mask);
 	if (!clone)
 		return NULL;
 
+	bio_copy_dev(clone, bio);
 	clone->bi_opf = bio->bi_opf;
 	clone->bi_iter.bi_sector = bio->bi_iter.bi_sector;
 

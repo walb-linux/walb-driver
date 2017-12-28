@@ -56,8 +56,7 @@ void wait_for_bio_entry(struct bio_entry *bioe, ulong timeoutMs, uint dev_minor)
 /*
  * with own pages.
  */
-struct bio* bio_alloc_with_pages(
-	uint sectors, struct bio *src, gfp_t gfp_mask);
+struct bio* bio_alloc_with_pages(uint sectors, gfp_t gfp_mask);
 void bio_put_with_pages(struct bio *bio);
 struct bio* bio_deep_clone(struct bio *bio, gfp_t gfp_mask);
 
