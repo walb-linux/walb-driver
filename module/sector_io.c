@@ -59,7 +59,7 @@ bool sector_io(
 	off = offset_in_page(buf);
 
 	bio_set_op_attrs(bio, op, op_flags);
-	bio->bi_bdev = bdev;
+	bio_set_dev(bio, bdev);
 	bio->bi_iter.bi_sector = addr_lb(pbs, addr);
 	bio_add_page(bio, page, pbs, off);
 

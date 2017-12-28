@@ -336,7 +336,7 @@ static struct bio_wrapper* create_log_bio_wrapper_for_redo(
 	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
 	if (!biow) { goto error2; }
 
-	bio->bi_bdev = wdev->ldev;
+	bio_set_dev(bio, wdev->ldev);
 	off_pb = get_offset_of_lsid(lsid, wdev->ring_buffer_off, wdev->ring_buffer_size);
 	WLOG_(wdev, "lsid: %" PRIu64 " off_pb: %" PRIu64 "\n", lsid, off_pb);
 	off_lb = addr_lb(pbs, off_pb);
@@ -392,7 +392,7 @@ static bool prepare_data_bio_for_redo(
 	bio = bio_alloc(GFP_NOIO, 1);
 	if (!bio) { return false; }
 
-	bio->bi_bdev = wdev->ddev;
+	bio_set_dev(bio, wdev->ddev);
 	bio->bi_iter.bi_sector = pos;
 	bio_set_op_attrs(bio, REQ_OP_WRITE, 0);
 	bio->bi_end_io = bio_end_io_for_redo;
@@ -429,7 +429,7 @@ static struct bio_wrapper* create_discard_bio_wrapper_for_redo(
 	biow = alloc_bio_wrapper_inc(wdev, GFP_NOIO);
 	if (!biow) { goto error1; }
 
-	bio->bi_bdev = wdev->ddev;
+	bio_set_dev(bio, wdev->ddev);
 	bio->bi_iter.bi_sector = pos;
 	bio->bi_iter.bi_size = len << 9;
 	bio_set_op_attrs(bio, REQ_OP_DISCARD, 0);
