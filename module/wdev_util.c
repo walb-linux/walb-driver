@@ -228,12 +228,20 @@ void walb_discard_support(struct walb_dev *wdev, bool support)
 		WLOGi(wdev, "Supports REQ_DISCARD.\n");
 		q->limits.discard_granularity = wdev->physical_bs;
 		blk_queue_max_discard_sectors(q, WALB_MAX_DISCARD_IO_SECTORS);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0)
 		queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, q);
+#else
+		blk_queue_flag_set(QUEUE_FLAG_DISCARD, q);
+#endif
 	} else {
 		WLOGi(wdev, "Do not support REQ_DISCARD.\n");
 		q->limits.discard_granularity = 0;
 		blk_queue_max_discard_sectors(q, 0);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0)
 		queue_flag_clear_unlocked(QUEUE_FLAG_DISCARD, q);
+#else
+		blk_queue_flag_clear(QUEUE_FLAG_DISCARD, q);
+#endif
 	}
 	wdev->support_discard = support;
 }
