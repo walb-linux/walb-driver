@@ -6,12 +6,8 @@
 
 * Architecture: x86_64
 ** Currently x86_32 is not supported.
-* Linux kernel version: from 3.2 to 3.16 (or later).
-** v1.0.x for kernel 3.2 to 3.8.
-** v1.1.x for kernel 3.10 to 3.13.
-** v1.2.x for kernel 3.14 to 3.16.
+* Linux kernel version: see README.
 
-Tested Linux distribution: Ubuntu Linux Server 12.04 and 14.04.
 
 === Build tools
 
