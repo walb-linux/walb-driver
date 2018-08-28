@@ -271,6 +271,7 @@ void walb_write_zeroes_support(struct walb_dev *wdev)
  * RETURN:
  *   true in success, or false.
  */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 bool resize_disk(struct gendisk *gd, u64 new_size)
 {
 	struct block_device *bdev;
@@ -301,8 +302,24 @@ bool resize_disk(struct gendisk *gd, u64 new_size)
 	}
 	mutex_unlock(&bdev->bd_mutex);
 	bdput(bdev);
+        return true;
+}
+#else
+bool resize_disk(struct gendisk *gd, u64 new_size)
+{
+	u64 old_size;
+
+	ASSERT(gd);
+
+	old_size = get_capacity(gd);
+	if (old_size == new_size)
+		return true;
+
+	set_capacity(gd, new_size);
+	revalidate_disk(gd);
 	return true;
 }
+#endif
 
 /**
  * Invalidate lsid inside ring buffer.
