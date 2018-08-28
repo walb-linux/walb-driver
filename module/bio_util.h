@@ -382,7 +382,11 @@ static inline bool split_bio_for_chunk(
 		struct bio *split;
 		sector_t bgn = bio_begin_sector(bio);
 		const int sectors = chunk_sectors - do_div(bgn, chunk_sectors);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 		split = bio_split(bio, sectors, gfp_mask, fs_bio_set);
+#else
+		split = bio_split(bio, sectors, gfp_mask, &fs_bio_set);
+#endif
 		if (!split)
 			return false;
 

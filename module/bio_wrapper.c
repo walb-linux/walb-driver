@@ -293,8 +293,13 @@ bool bio_wrapper_copy_overlapped(
 		if (dst_bio->bi_iter.bi_sector < dst_iter.bi_sector) {
 			const uint split_sectors =
 				dst_iter.bi_sector - dst_bio->bi_iter.bi_sector;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 			split0 = bio_split(
 				dst_bio, split_sectors, gfp_mask, fs_bio_set);
+#else
+			split0 = bio_split(
+				dst_bio, split_sectors, gfp_mask, &fs_bio_set);
+#endif
 			if (!split0)
 				return false;
 
@@ -302,8 +307,13 @@ bool bio_wrapper_copy_overlapped(
 		}
 		/* Split bottom */
 		if (sectors < (dst_iter.bi_size >> 9)) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 18, 0)
 			split1 = bio_split(
 				dst_bio, sectors, gfp_mask, fs_bio_set);
+#else
+			split1 = bio_split(
+				dst_bio, sectors, gfp_mask, &fs_bio_set);
+#endif
 			if (!split1)
 				return false;
 
