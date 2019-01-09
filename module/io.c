@@ -2644,7 +2644,7 @@ static void invoke_userland_exec(struct walb_dev *wdev, const char *event_str)
 	size_t len;
 	int ret;
 	/* uint max is "4294967295\0" so size 11 is enough. */
-	const int UINT_STR_LEN = 11;
+	enum { UINT_STR_LEN = 11 };
 	char major_str[UINT_STR_LEN];
 	char minor_str[UINT_STR_LEN];
 	char *argv[] = { exec_path_on_error_, NULL, NULL, NULL, NULL };

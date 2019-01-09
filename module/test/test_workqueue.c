@@ -397,7 +397,7 @@ static void test_mutex_task(struct work_struct *work)
  */
 static void test_mutex(void)
 {
-	const unsigned int N_TASK = 8;
+	enum { N_TASK = 8 };
 	struct mutex mutex;
 	struct test_work_mutex twork[N_TASK];
 	int i;
