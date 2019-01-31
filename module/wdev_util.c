@@ -156,12 +156,15 @@ int walb_set_name(struct walb_dev *wdev,
 
 	dev_name = get_super_sector(wdev->lsuper0)->name;
 
-	if (name && *name) {
+	if (name && name[0] != '\0') {
 		memset(dev_name, 0, DISK_NAME_LEN);
 		snprintf(dev_name, DISK_NAME_LEN, "%s", name);
-	} else if (*dev_name == 0) {
+	} else if (dev_name[0] == '\0') {
 		memset(dev_name, 0, DISK_NAME_LEN);
 		snprintf(dev_name, DISK_NAME_LEN, "%u", minor / 2);
+	} else {
+		/* Avoid buffer overflow if the superblock is broken or modified. */
+		dev_name[DISK_NAME_LEN - 1] = '\0';
 	}
 	WLOGd(wdev, "dev_name: %s\n", dev_name);
 
