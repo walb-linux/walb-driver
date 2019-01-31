@@ -588,10 +588,12 @@ static int walb_ldev_initialize(struct walb_dev *wdev)
 		goto error1;
 	}
 
+	/* Verify superblock contents. */
 	if (!walb_read_super_sector(wdev->ldev, wdev->lsuper0)) {
 		LOGe("walb_ldev_init: read super sector failed.\n");
 		goto error2;
 	}
+	/* Verify superblock is writable. */
 	if (!walb_write_super_sector(wdev->ldev, wdev->lsuper0)) {
 		LOGe("walb_ldev_init: write super sector failed.\n");
 		goto error2;
