@@ -2797,6 +2797,7 @@ static bool should_start_queue(
 /**
  * Increment n_users of treemap memory manager and
  * iniitialize mmgr_ if necessary.
+ * CAUSION: This is not thread-safe code.
  */
 static bool treemap_memory_manager_get(void)
 {
@@ -2819,6 +2820,7 @@ error:
 /**
  * Decrement n_users of treemap memory manager and
  * finalize mmgr_ if necessary.
+ * CAUSION: This is not thread-safe code.
  */
 static void treemap_memory_manager_put(void)
 {
@@ -2827,6 +2829,9 @@ static void treemap_memory_manager_put(void)
 	}
 }
 
+/*
+ * CAUSION: This is not thread-safe code.
+ */
 static bool pack_cache_get(void)
 {
 	if (atomic_inc_return(&n_users_of_pack_cache_) == 1) {
@@ -2843,6 +2848,9 @@ error:
 	return false;
 }
 
+/*
+ * CAUSION: This is not thread-safe code.
+ */
 static void pack_cache_put(void)
 {
 	if (atomic_dec_return(&n_users_of_pack_cache_) == 0) {
