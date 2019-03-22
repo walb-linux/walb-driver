@@ -514,7 +514,9 @@ fin:
  * Alloc required memory and copy userctl data.
  *
  * @userctl userctl pointer.
- * @return gfp_mask mask for kmalloc.
+ * @gfp_mask mask for kmalloc.
+ *
+ * @return pointer to the allocated and filled walb_ctl data.
  */
 struct walb_ctl* walb_get_ctl(void __user *userctl, gfp_t gfp_mask)
 {
