@@ -406,6 +406,9 @@ void task_melt(struct work_struct *work)
 		iocore_melt(wdev);
 		wdev->freeze_state = FRZ_MELTED;
 		break;
+	case FRZ_CANCELING:
+		WLOGd(wdev, "Now canceling.\n");
+		break;
 	default:
 		WARN(1, "BUG: invalid wdev->freeze_state: %p %u\n"
 			, wdev, wdev->freeze_state);
@@ -423,15 +426,24 @@ void cancel_melt_work(struct walb_dev *wdev)
 
 	/* Check existance of the melt work. */
 	mutex_lock(&wdev->freeze_lock);
+	if (wdev->freeze_state == FRZ_CANCELING) {
+		mutex_unlock(&wdev->freeze_lock);
+		return;
+	}
 	if (wdev->freeze_state == FRZ_FROZEN_TIMEO) {
 		should_cancel_work = true;
-		wdev->freeze_state = FRZ_FROZEN;
+		wdev->freeze_state = FRZ_CANCELING;
 	}
 	mutex_unlock(&wdev->freeze_lock);
 
 	/* Cancel the melt work if required. */
-	if (should_cancel_work)
+	if (should_cancel_work) {
 		cancel_delayed_work_sync(&wdev->freeze_dwork);
+		mutex_lock(&wdev->freeze_lock);
+		ASSERT(wdev->freeze_state == FRZ_CANCELING);
+		wdev->freeze_state = FRZ_FROZEN;
+		mutex_unlock(&wdev->freeze_lock);
+	}
 }
 
 
@@ -466,6 +478,10 @@ bool freeze_if_melted(struct walb_dev *wdev, u32 timeout_sec)
 		WLOGw(wdev, "Bad state to freeze.\n");
 		mutex_unlock(&wdev->freeze_lock);
 		return false;
+	case FRZ_CANCELING:
+		WLOGi(wdev, "Now canceling.\n");
+		mutex_unlock(&wdev->freeze_lock);
+		return true;
 	default:
 		WARN(1, "BUG: invalid wdev->freeze_state: %p %u\n"
 			, wdev, wdev->freeze_state);
@@ -516,6 +532,10 @@ bool melt_if_frozen(
 		iocore_melt(wdev);
 		wdev->freeze_state = FRZ_MELTED;
 		break;
+	case FRZ_CANCELING:
+		WLOGe(wdev, "Now canceling.\n");
+		mutex_unlock(&wdev->freeze_lock);
+		return false;
 	case FRZ_FROZEN_TIMEO:
 	case FRZ_FROZEN_DEEP:
 		WLOGe(wdev, "Bad state to melt.\n");

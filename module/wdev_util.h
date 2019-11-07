@@ -24,13 +24,16 @@
  * FRZ_FROZEN -> FRZ_FROZEN_DEEP
  * FRZ_FROZEN_TIMEO -> FRZ_FROZEN
  * FRZ_FROZEN_TIMEO -> FRZ_MELTED
+ * FRZ_FROZEN_TIMEO -> FRZ_CANCELING
  * FRZ_FROZEN_DEEP -> FRZ_FROZEN
+ * FRZ_CANCELING -> FRZ_FROZEN
  */
 enum {
 	FRZ_MELTED = 0,
 	FRZ_FROZEN,
 	FRZ_FROZEN_TIMEO,
 	FRZ_FROZEN_DEEP,
+	FRZ_CANCELING
 };
 
 /*******************************************************************************
