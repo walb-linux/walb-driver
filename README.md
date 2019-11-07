@@ -14,14 +14,14 @@ WalB is a block device driver for linux kernel that stores write-ahead logs addi
 
 Use an appropriate branch or a tag for your using kernel as follows:
 
-| Branch          | Tag      | Kernel version |
-|-----------------|----------|----------------|
-| `master`        | `v1.5.x` | 4.14-          |
-| `for-4.8`       | `v1.4.x` | 4.8-4.12       |
-| `for-4.3`       | `v1.3.x` | 4.3-4.7        |
-| `for-3.14`      | `v1.2.x` | 3.14-4.2       |
-| `for-3.10`      | `v1.1.x` | 3.10-3.13      |
-| `for-3.2` (EOL) | `v1.0.x` | 3.2-3.8        |
+| Branch           | Tag      | Kernel version |
+|------------------|----------|----------------|
+| `master`         | `v1.5.x` | 4.14-          |
+| `for-4.8`        | `v1.4.x` | 4.8-4.12       |
+| `for-4.3`        | `v1.3.x` | 4.3-4.7        |
+| `for-3.14` (EOL) | `v1.2.x` | 3.14-4.2       |
+| `for-3.10` (EOL) | `v1.1.x` | 3.10-3.13      |
+| `for-3.2`  (EOL) | `v1.0.x` | 3.2-3.8        |
 
 # License
 
